@@ -1,6 +1,8 @@
 {
-  "name": "React + Spring Boot",
-  "image": "mcr.microsoft.com/devcontainers/java:1-21-bookworm",
+  "name": "React + Spring Boot + PostgreSQL",
+  "dockerComposeFile": "docker-compose.yml",
+  "service": "app",
+  "workspaceFolder": "/workspaces/${localWorkspaceFolderBasename}",
   "features": {
     "ghcr.io/devcontainers/features/java:1": {
       "version": "none",

@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # Starts the Spring Boot backend and the React frontend together.
+# Needs PostgreSQL on localhost:5432 (provided automatically in Codespaces).
 # Press Ctrl+C to stop both.
 set -e
 cd "$(dirname "$0")"
