@@ -1,6 +1,8 @@
 {
-  "name": "React + Spring Boot",
-  "image": "mcr.microsoft.com/devcontainers/java:1-21-bookworm",
+  "name": "React + Spring Boot + PostgreSQL",
+  "dockerComposeFile": "docker-compose.yml",
+  "service": "app",
+  "workspaceFolder": "/workspaces/${localWorkspaceFolderBasename}",
   "features": {
     "ghcr.io/devcontainers/features/java:1": {
       "version": "none",
@@ -10,11 +12,12 @@
       "version": "lts"
     }
   },
-  "postCreateCommand": "cd frontend && npm install",
-  "forwardPorts": [5173, 8080],
+  "postCreateCommand": "sudo apt-get update && sudo apt-get install -y --no-install-recommends postgresql-client && cd frontend && npm install",
+  "forwardPorts": [5173, 8080, 5432],
   "portsAttributes": {
     "5173": { "label": "App (React)", "onAutoForward": "openPreview" },
-    "8080": { "label": "API (Spring Boot)", "onAutoForward": "silent" }
+    "8080": { "label": "API (Spring Boot)", "onAutoForward": "silent" },
+    "5432": { "label": "PostgreSQL", "onAutoForward": "silent" }
   },
   "customizations": {
     "vscode": {

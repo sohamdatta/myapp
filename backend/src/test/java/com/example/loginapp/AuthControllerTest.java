@@ -15,7 +15,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
-@SpringBootTest(properties = {"app.demo.username=admin", "app.demo.password=admin123"})
+@SpringBootTest
 @AutoConfigureMockMvc
 class AuthControllerTest {
 
@@ -32,6 +32,14 @@ class AuthControllerTest {
                         .content("{\"username\":\"admin\",\"password\":\"nope\"}"))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.message", is("Incorrect username or password")));
+    }
+
+    @Test
+    void unknownUserIsRejected() throws Exception {
+        mvc.perform(post("/api/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"username\":\"nobody\",\"password\":\"admin123\"}"))
+                .andExpect(status().isUnauthorized());
     }
 
     @Test
