@@ -179,6 +179,7 @@ It is never read from the URL, a header or the request body.
 ## Useful commands
 
 ```bash
+./restart.sh                        # stop the app if running, pull the latest code, start again
 cd backend && mvn test              # backend tests; skipped when PostgreSQL is not reachable
 cd backend && mvn spring-boot:run   # backend only
 cd frontend && npm run dev          # frontend only
