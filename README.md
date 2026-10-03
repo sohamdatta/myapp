@@ -21,15 +21,17 @@ recorded in the Organization's own audit log, where its Org Admin can see it.
 
 Read this before relying on it.
 
-- **The Java build has not been run.** The environment this was written in
-  could not download from Maven Central, so `mvn` could not compile or test
-  the project. The backend code was instead compiled with `javac` against
-  Spring 4.3, Jackson and the PostgreSQL driver, the 22 backend tests passed
-  against PostgreSQL 16 when run with the JUnit console launcher, and the
-  screens were exercised in a browser through a stand-in HTTP server that
-  called the real controllers. The first `mvn test` and `./start.sh` in
-  Codespaces are therefore the first run on Spring Boot 3.5. HikariCP and the
-  Codespaces PostgreSQL setup are the parts that have never executed.
+- **The upgrade to Spring Boot 4.1.1 has not been built.** The environment
+  this was written in cannot download from Maven Central, so `mvn` cannot
+  compile or test the project there. The backend started and connected to
+  PostgreSQL in Codespaces on Spring Boot 3.5.6. It was then moved to 4.1.1,
+  which is a major upgrade (Spring Framework 7, Jackson 3, renamed starters),
+  and that version has not been compiled or run. If `./start.sh` fails after
+  pulling, the last commit that ran is `48d5be0`.
+- **How the code was tested.** The 22 backend tests passed against
+  PostgreSQL 16 with the JUnit console launcher, and the screens were
+  exercised in a browser through a stand-in HTTP server that called the real
+  controllers. `mvn test` has not been run.
 - **No email is sent.** Invitations produce a link that the screen shows for
   you to copy and send.
 - **Not built yet:** multi-factor sign-in, password reset, email change, seat
