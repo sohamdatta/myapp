@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { invitationLink, platform, startSupportSession } from '../api.js'
 import { formatDate, useAction, useLoad } from '../hooks.js'
-import { Badge, CopyLink, Empty, ErrorNote, StatusBadge, Tabs } from '../ui.jsx'
+import { Badge, CopyLink, Empty, ErrorNote, StatusBadge } from '../ui.jsx'
 
 function slugFrom(name) {
   return name
@@ -413,22 +413,12 @@ function SupportTab({ me, onEnteredSupport }) {
   )
 }
 
-export default function Console({ me, onEnteredSupport }) {
-  const isSuperAdmin = me.platformRole === 'super_admin'
-  const canSupport = isSuperAdmin || me.platformRole === 'support'
-  const tabs = [
-    { id: 'organizations', label: 'Organizations' },
-    isSuperAdmin && { id: 'users', label: 'Platform users' },
-    canSupport && { id: 'support', label: 'Support access' },
-  ].filter(Boolean)
-  const [tab, setTab] = useState('organizations')
-
+export default function Console({ me, page, onEnteredSupport }) {
   return (
     <>
-      <Tabs tabs={tabs} current={tab} onChange={setTab} />
-      {tab === 'organizations' && <OrganizationsTab me={me} />}
-      {tab === 'users' && <PlatformUsersTab me={me} />}
-      {tab === 'support' && <SupportTab me={me} onEnteredSupport={onEnteredSupport} />}
+      {page === 'organizations' && <OrganizationsTab me={me} />}
+      {page === 'users' && <PlatformUsersTab me={me} />}
+      {page === 'support' && <SupportTab me={me} onEnteredSupport={onEnteredSupport} />}
     </>
   )
 }

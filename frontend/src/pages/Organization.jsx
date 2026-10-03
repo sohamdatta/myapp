@@ -54,10 +54,25 @@ function UserRow({ user, me, roles, onChanged }) {
     <>
       <tr>
         <td>
-          {user.email}
-          {isSelf && <span className="you"> (you)</span>}
+          <div className="user-cell">
+            <span className="avatar" aria-hidden="true">
+              {user.email[0]}
+            </span>
+            <span>
+              {user.email}
+              {isSelf && <span className="you"> (you)</span>}
+            </span>
+          </div>
         </td>
-        <td>{user.roleNames.length ? user.roleNames.join(', ') : '—'}</td>
+        <td>
+          {user.roleNames.length
+            ? user.roleNames.map((name) => (
+                <span key={name} className="tag">
+                  {name}
+                </span>
+              ))
+            : '—'}
+        </td>
         <td>
           <StatusBadge status={user.status} />
         </td>
@@ -68,30 +83,35 @@ function UserRow({ user, me, roles, onChanged }) {
               {editing ? 'Cancel' : 'Edit roles'}
             </button>
           )}
-          {canManage && user.status === 'active' && (
-            <button type="button" className="quiet" disabled={busy} onClick={() => act(() => org.changeStatus(user.id, 'suspend'))}>
-              Suspend
-            </button>
-          )}
-          {canManage && user.status === 'suspended' && (
-            <button type="button" className="quiet" disabled={busy} onClick={() => act(() => org.changeStatus(user.id, 'reactivate'))}>
-              Reactivate
-            </button>
-          )}
           {canManage && user.status !== 'ended' && (
-            <button
-              type="button"
-              className="quiet danger"
-              disabled={busy}
-              onClick={() =>
-                act(
-                  () => org.changeStatus(user.id, 'end'),
-                  `End ${user.email}'s membership? Their roles are removed and they can no longer enter this Organization.`,
-                )
-              }
-            >
-              End
-            </button>
+            <details className="menu">
+              <summary aria-label={`More actions for ${user.email}`}>⋯</summary>
+              <div className="menu-items">
+                {user.status === 'active' && (
+                  <button type="button" className="quiet" disabled={busy} onClick={() => act(() => org.changeStatus(user.id, 'suspend'))}>
+                    Suspend
+                  </button>
+                )}
+                {user.status === 'suspended' && (
+                  <button type="button" className="quiet" disabled={busy} onClick={() => act(() => org.changeStatus(user.id, 'reactivate'))}>
+                    Reactivate
+                  </button>
+                )}
+                <button
+                  type="button"
+                  className="quiet danger"
+                  disabled={busy}
+                  onClick={() =>
+                    act(
+                      () => org.changeStatus(user.id, 'end'),
+                      `End ${user.email}'s membership? Their roles are removed and they can no longer enter this Organization.`,
+                    )
+                  }
+                >
+                  End membership
+                </button>
+              </div>
+            </details>
           )}
         </td>
       </tr>
@@ -114,21 +134,28 @@ function UserRow({ user, me, roles, onChanged }) {
   )
 }
 
-function UsersTab({ me }) {
+function UsersTab({ me, onInvite }) {
   const users = useLoad(org.users)
   const roles = useLoad(org.roles)
   const [filter, setFilter] = useState('active')
+  const [search, setSearch] = useState('')
+  const canInvite = me.permissions.includes('user.invite') && me.kind === 'tenant'
 
   if (users.loading || roles.loading) return <p className="muted">Loading…</p>
   if (users.error || roles.error) return <ErrorNote>{users.error || roles.error}</ErrorNote>
 
   const counts = { active: 0, suspended: 0, ended: 0 }
   users.data.forEach((u) => (counts[u.status] += 1))
-  const shown = users.data.filter((u) => u.status === filter)
+  const wanted = search.trim().toLowerCase()
+  const shown = users.data.filter((u) => u.status === filter && u.email.toLowerCase().includes(wanted))
 
   return (
     <>
       <div className="filters">
+        <label htmlFor="user-search" className="sr-only">
+          Search users
+        </label>
+        <input id="user-search" type="search" placeholder="Search by email" value={search} onChange={(e) => setSearch(e.target.value)} />
         {[
           ['active', 'Active'],
           ['suspended', 'Suspended'],
@@ -138,9 +165,15 @@ function UsersTab({ me }) {
             {label} <span className="count">{counts[id]}</span>
           </button>
         ))}
+        <span className="spacer" />
+        {canInvite && (
+          <button type="button" className="secondary" onClick={onInvite}>
+            Invite user
+          </button>
+        )}
       </div>
       {shown.length === 0 ? (
-        <Empty>No {filter === 'ended' ? 'former' : filter} users.</Empty>
+        <Empty>{wanted ? 'No users match that search.' : `No ${filter === 'ended' ? 'former' : filter} users.`}</Empty>
       ) : (
         <div className="table-wrap">
           <table>
@@ -342,24 +375,26 @@ function AuditTab() {
   )
 }
 
-export default function Organization({ me }) {
-  const canSeeUsers = me.permissions.includes('user.read')
-  const canSeeAudit = me.permissions.includes('audit.read')
-  const scopes = me.scopes || {}
-  // Punching is for users of the Organization, never for a support session.
-  const canPunch = me.permissions.includes('attendance.punch') && me.kind === 'tenant'
-  const seesOthersAttendance = Boolean(scopes['attendance.read']) && scopes['attendance.read'] !== 'self'
+/** Users, invitations and roles: one page with a tab for each. */
+function UserManagement({ me }) {
+  const [tab, setTab] = useState('users')
   const tabs = [
-    canSeeUsers && { id: 'users', label: 'Users' },
-    canSeeUsers && { id: 'invitations', label: 'Invitations' },
-    canSeeUsers && { id: 'roles', label: 'Roles' },
-    canPunch && { id: 'my-attendance', label: 'My attendance' },
-    seesOthersAttendance && { id: 'attendance', label: 'Attendance' },
-    canSeeAudit && { id: 'audit', label: 'Audit log' },
-  ].filter(Boolean)
-  const [tab, setTab] = useState(tabs.length ? tabs[0].id : null)
+    { id: 'users', label: 'Users' },
+    { id: 'invitations', label: 'Invitations' },
+    { id: 'roles', label: 'Roles' },
+  ]
+  return (
+    <>
+      <Tabs tabs={tabs} current={tab} onChange={setTab} />
+      {tab === 'users' && <UsersTab me={me} onInvite={() => setTab('invitations')} />}
+      {tab === 'invitations' && <InvitationsTab me={me} />}
+      {tab === 'roles' && <RolesTab />}
+    </>
+  )
+}
 
-  if (tabs.length === 0) {
+export default function Organization({ me, page }) {
+  if (!page) {
     return (
       <section className="panel">
         <h2>You are signed in</h2>
@@ -369,16 +404,12 @@ export default function Organization({ me }) {
       </section>
     )
   }
-
   return (
     <>
-      <Tabs tabs={tabs} current={tab} onChange={setTab} />
-      {tab === 'users' && <UsersTab me={me} />}
-      {tab === 'invitations' && <InvitationsTab me={me} />}
-      {tab === 'roles' && <RolesTab />}
-      {tab === 'my-attendance' && <MyAttendance />}
-      {tab === 'attendance' && <Attendance me={me} />}
-      {tab === 'audit' && <AuditTab />}
+      {page === 'my-attendance' && <MyAttendance />}
+      {page === 'attendance' && <Attendance me={me} />}
+      {page === 'users' && <UserManagement me={me} />}
+      {page === 'audit' && <AuditTab />}
     </>
   )
 }

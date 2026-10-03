@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { liveStatus } from './hooks.js'
 
 export function ErrorNote({ children }) {
   if (!children) return null
@@ -45,9 +46,9 @@ export function StatusBadge({ status }) {
  * premature, so today shows where things stand instead.
  */
 export function DayStatus({ day, isToday }) {
-  const unsettled = isToday && ['absent', 'half_day'].includes(day.status)
-  if (unsettled && day.incomplete) return <Badge tone="good">working</Badge>
-  if (unsettled && !day.firstIn) return <Badge>not in yet</Badge>
+  const live = liveStatus(day, isToday)
+  if (live === 'working') return <Badge tone="good">working</Badge>
+  if (live === 'not in yet') return <Badge>not in yet</Badge>
   return (
     <>
       <StatusBadge status={day.status} />

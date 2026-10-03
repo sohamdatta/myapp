@@ -1,10 +1,16 @@
 import { useState } from 'react'
 import { attendance } from '../api.js'
-import { formatDay, formatMinutes, formatTime, localToday, useAction, useLoad } from '../hooks.js'
-import { DayStatus, Empty, ErrorNote, StatusBadge, Trail } from '../ui.jsx'
+import { formatDay, formatMinutes, formatMonth, formatTime, liveStatus, localToday, shiftDay, useAction, useLoad } from '../hooks.js'
+import { Badge, DayStatus, Empty, ErrorNote, StatusBadge, Tabs, Trail } from '../ui.jsx'
 import { DeviceImport, People, Setup } from './AttendanceSetup.jsx'
 
 const KINDS = { regularization: 'Punch correction', on_duty: 'On duty', work_from_home: 'Work from home' }
+
+/** not_in_yet, work_from_home → Not in yet, Work from home. */
+function label(status) {
+  const words = status.replaceAll('_', ' ')
+  return words[0].toUpperCase() + words.slice(1)
+}
 
 function download(fileName, text) {
   const url = URL.createObjectURL(new Blob([text], { type: 'text/csv' }))
@@ -69,19 +75,30 @@ function Board({ date, canManage, onChanged }) {
     return <Empty>Nobody to show. A manager's team appears here once employee records carry reporting lines.</Empty>
   }
 
+  // Counted as the table shows them: today's unfinished days read "working" or "not in yet".
+  const isToday = date === localToday()
   const counts = {}
+  let late = 0
   board.data.forEach((r) => {
-    const key = r.status || 'not worked out'
+    const key = liveStatus(r, isToday) || r.status || 'not worked out'
     counts[key] = (counts[key] || 0) + 1
+    if (r.lateMinutes > 0) late += 1
   })
 
   return (
     <>
-      <p className="hint">
-        {Object.entries(counts)
-          .map(([status, n]) => `${n} ${status.replaceAll('_', ' ')}`)
-          .join(' · ')}
-      </p>
+      <div className="tiles">
+        {Object.entries(counts).map(([status, n]) => (
+          <div key={status} className="tile">
+            <div className="tile-label">{label(status)}</div>
+            <div className="tile-value">{n}</div>
+          </div>
+        ))}
+        <div className="tile">
+          <div className="tile-label">Late</div>
+          <div className="tile-value">{late}</div>
+        </div>
+      </div>
       <div className="table-wrap">
         <table>
           <thead>
@@ -132,7 +149,7 @@ function BoardRow({ row, date, canManage, open, onToggle, onChanged }) {
         <td>{formatTime(row.firstIn)}</td>
         <td>{formatTime(row.lastOut)}</td>
         <td>{formatMinutes(row.workedMinutes)}</td>
-        <td>{row.lateMinutes ? `${row.lateMinutes} min` : '—'}</td>
+        <td>{row.lateMinutes ? <Badge tone="warn">{row.lateMinutes} min</Badge> : '—'}</td>
         <td>{formatMinutes(row.overtimeMinutes)}</td>
         <td className="actions">
           <button type="button" className="quiet" aria-expanded={open} onClick={onToggle}>
@@ -164,20 +181,36 @@ function Daily({ canManage, canExport }) {
 
   return (
     <>
-      <div className="toolbar">
-        <div>
-          <label htmlFor="board-date">Date</label>
-          <input id="board-date" type="date" value={date} max={localToday()} onChange={(e) => setDate(e.target.value || localToday())} />
-        </div>
+      <div className="filters">
+        <button type="button" className="quiet plain icon-button" aria-label="Previous day" onClick={() => setDate(shiftDay(date, -1))}>
+          ‹
+        </button>
+        <label htmlFor="board-date" className="sr-only">
+          Date
+        </label>
+        <input id="board-date" type="date" value={date} max={localToday()} onChange={(e) => setDate(e.target.value || localToday())} />
+        <button
+          type="button"
+          className="quiet plain icon-button"
+          aria-label="Next day"
+          disabled={date >= localToday()}
+          onClick={() => setDate(shiftDay(date, 1))}
+        >
+          ›
+        </button>
+        <span className="you">{formatDay(date)}</span>
+        <span className="spacer" />
         {canExport && (
-          <button type="button" className="quiet" disabled={busy} onClick={exportRegister}>
-            {busy ? 'Preparing…' : `Download the register for ${date.slice(0, 7)}`}
+          <button type="button" className="outline" disabled={busy} onClick={exportRegister}>
+            {busy ? 'Preparing…' : `Download the ${formatMonth(date.slice(0, 7))} register`}
           </button>
         )}
       </div>
-      <p className="hint">{formatDay(date)}. Times are shown in your own time zone.</p>
       <ErrorNote>{error}</ErrorNote>
       <Board key={`${date}-${version}`} date={date} canManage={canManage} onChanged={() => setVersion((v) => v + 1)} />
+      <p className="hint" style={{ marginTop: 12 }}>
+        Times are shown in your own time zone.
+      </p>
     </>
   )
 }
@@ -305,27 +338,14 @@ export default function Attendance({ me }) {
     { id: 'daily', label: 'Daily' },
     canApprove && { id: 'requests', label: 'Requests' },
     everyone && { id: 'people', label: 'People' },
-    everyone && { id: 'setup', label: 'Locations, shifts and holidays' },
+    everyone && { id: 'setup', label: 'Setup' },
     everyone && { id: 'import', label: 'Device import' },
   ].filter(Boolean)
   const [view, setView] = useState('daily')
 
   return (
     <>
-      <div className="filters" role="tablist" aria-label="Attendance views">
-        {views.map((v) => (
-          <button
-            key={v.id}
-            type="button"
-            role="tab"
-            aria-selected={view === v.id}
-            className={view === v.id ? 'chip chip-current' : 'chip'}
-            onClick={() => setView(v.id)}
-          >
-            {v.label}
-          </button>
-        ))}
-      </div>
+      <Tabs tabs={views} current={view} onChange={setView} />
       {view === 'daily' && <Daily canManage={canManage && me.kind === 'tenant'} canExport={everyone} />}
       {view === 'requests' && <Requests canDecide={canDecide} />}
       {view === 'people' && <People canManage={canManage} />}

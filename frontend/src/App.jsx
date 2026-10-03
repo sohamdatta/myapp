@@ -4,6 +4,7 @@ import Console from './pages/Console.jsx'
 import Organization from './pages/Organization.jsx'
 import { AcceptInvitation, Chooser, LoginForm } from './pages/SignIn.jsx'
 import { formatDate } from './hooks.js'
+import { firstPage, navFor } from './nav.js'
 
 function inviteTokenFromUrl() {
   return new URLSearchParams(window.location.search).get('invite')
@@ -13,8 +14,9 @@ function clearInviteFromUrl() {
   window.history.replaceState(null, '', window.location.pathname)
 }
 
-function Shell({ me, onSwitch, onSignOut, onEndSupport, children }) {
+function Shell({ me, nav, page, onNavigate, onSwitch, onSignOut, onEndSupport, children }) {
   const where = me.kind === 'platform' ? 'Platform console' : me.organization.name
+  const title = nav.flatMap((section) => section.items).find((item) => item.id === page)?.label || where
   return (
     <div className="shell">
       {me.kind === 'support' && (
@@ -28,26 +30,70 @@ function Shell({ me, onSwitch, onSignOut, onEndSupport, children }) {
           </button>
         </div>
       )}
-      <header className="topbar">
-        <div>
-          <div className="where">{where}</div>
-          <div className="who">{me.email}</div>
-        </div>
-        {me.kind !== 'support' && (
-          <div className="topbar-actions">
-            {me.organizations.length + (me.console ? 1 : 0) > 1 && (
-              <button type="button" className="quiet" onClick={onSwitch}>
-                Switch
-              </button>
-            )}
-            <button type="button" className="quiet" onClick={onSignOut}>
-              Sign out
-            </button>
+      <div className="shell-body">
+        <nav className="sidebar" aria-label="Main">
+          <div className="brand">
+            <div className="brand-mark" aria-hidden="true">
+              {where[0].toUpperCase()}
+            </div>
+            <div>
+              <div className="where">{where}</div>
+              <div className="brand-sub">HRMS</div>
+            </div>
           </div>
-        )}
-      </header>
-      <div className="content">{children}</div>
+          {nav.map((section) => (
+            <div key={section.label} className="nav-section">
+              <div className="nav-label">{section.label}</div>
+              {section.items.map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  className={item.id === page ? 'nav-item nav-current' : 'nav-item'}
+                  aria-current={item.id === page ? 'page' : undefined}
+                  onClick={() => onNavigate(item.id)}
+                >
+                  {item.label}
+                </button>
+              ))}
+            </div>
+          ))}
+        </nav>
+        <main className="main">
+          <header className="topbar">
+            <h1 className="page-title">{title}</h1>
+            <div className="topbar-actions">
+              <span className="who">{me.email}</span>
+              {me.kind !== 'support' && me.organizations.length + (me.console ? 1 : 0) > 1 && (
+                <button type="button" className="quiet plain" onClick={onSwitch}>
+                  Switch
+                </button>
+              )}
+              {me.kind !== 'support' && (
+                <button type="button" className="quiet plain" onClick={onSignOut}>
+                  Sign out
+                </button>
+              )}
+            </div>
+          </header>
+          <div className="content">{children}</div>
+        </main>
+      </div>
     </div>
+  )
+}
+
+/** The signed-in app: the sidebar decides which page shows. Remounted when the person moves to another place. */
+function Workspace({ me, onSwitch, onSignOut, onEndSupport, onEnteredSupport }) {
+  const nav = navFor(me)
+  const [page, setPage] = useState(() => firstPage(nav))
+  return (
+    <Shell me={me} nav={nav} page={page} onNavigate={setPage} onSwitch={onSwitch} onSignOut={onSignOut} onEndSupport={onEndSupport}>
+      {me.kind === 'platform' ? (
+        <Console me={me} page={page} onEnteredSupport={onEnteredSupport} />
+      ) : (
+        <Organization me={me} page={page} onNavigate={setPage} />
+      )}
+    </Shell>
   )
 }
 
@@ -97,7 +143,7 @@ export default function App() {
 
   if (loading) {
     return (
-      <main>
+      <main className="centered">
         <p className="muted">Loading…</p>
       </main>
     )
@@ -105,7 +151,7 @@ export default function App() {
 
   if (inviteToken) {
     return (
-      <main>
+      <main className="centered">
         <AcceptInvitation
           token={inviteToken}
           me={me}
@@ -121,7 +167,7 @@ export default function App() {
 
   if (!me) {
     return (
-      <main>
+      <main className="centered">
         <LoginForm onSignedIn={setMe} />
       </main>
     )
@@ -129,7 +175,7 @@ export default function App() {
 
   if (me.kind === 'identity' || choosing) {
     return (
-      <main>
+      <main className="centered">
         <Chooser
           me={me}
           onEntered={entered}
@@ -141,8 +187,13 @@ export default function App() {
   }
 
   return (
-    <Shell me={me} onSwitch={() => setChoosing(true)} onSignOut={handleSignOut} onEndSupport={handleEndSupport}>
-      {me.kind === 'platform' ? <Console me={me} onEnteredSupport={entered} /> : <Organization key={me.organization.id} me={me} />}
-    </Shell>
+    <Workspace
+      key={me.kind === 'platform' ? 'console' : `${me.kind}-${me.organization.id}`}
+      me={me}
+      onSwitch={() => setChoosing(true)}
+      onSignOut={handleSignOut}
+      onEndSupport={handleEndSupport}
+      onEnteredSupport={entered}
+    />
   )
 }

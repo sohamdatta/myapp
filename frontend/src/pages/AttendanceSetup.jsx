@@ -90,7 +90,7 @@ export function People({ canManage }) {
     <>
       {canManage && (activeLocations.length === 0 || activeShifts.length === 0) && (
         <div className="notice" role="status">
-          <p>Add a work location and a shift first, under “Locations, shifts and holidays”. Then assign them to users here.</p>
+          <p>Add a work location and a shift first, under Setup. Then assign them to users here.</p>
         </div>
       )}
       {canManage && activeLocations.length > 0 && activeShifts.length > 0 && (

@@ -16,9 +16,16 @@ export function LoginForm({ onSignedIn }) {
   }
 
   return (
+    <>
+    <div className="brand">
+      <div className="brand-mark" aria-hidden="true">
+        H
+      </div>
+      <div className="brand-name">HRMS</div>
+    </div>
     <form className="card" onSubmit={handleSubmit} noValidate>
       <h1>Sign in</h1>
-      <p className="muted">Use your work email to continue.</p>
+      <p className="muted">Use your work email. You go straight to your Organization.</p>
 
       <label htmlFor="email">Email</label>
       <input
@@ -52,6 +59,8 @@ export function LoginForm({ onSignedIn }) {
         {busy ? 'Signing in…' : 'Sign in'}
       </button>
     </form>
+    <p className="muted">New here? Open the invitation link your administrator sent you.</p>
+    </>
   )
 }
 

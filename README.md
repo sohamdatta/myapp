@@ -78,7 +78,7 @@ platform users, the first Super Admin.
 
 ### Try attendance
 
-1. As the Org Admin, open **Attendance → Locations, shifts and holidays**. Add
+1. As the Org Admin, open **Attendance → Setup**. Add
    a work location (choose "No check" to try it from anywhere) and a shift.
 2. Under **People**, tick the users, choose the location and shift, and assign.
 3. Open **My attendance** and punch in and out. The month below shows each

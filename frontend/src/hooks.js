@@ -1,5 +1,15 @@
 import { useCallback, useEffect, useState } from 'react'
 
+/** The current time, refreshed every half minute, for figures that move while the page is open. */
+export function useNow() {
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 30000)
+    return () => clearInterval(timer)
+  }, [])
+  return now
+}
+
 /** Loads data on mount and whenever reload() is called. */
 export function useLoad(loader) {
   const [state, setState] = useState({ data: null, error: '', loading: true })
@@ -86,3 +96,24 @@ export function localToday() {
 }
 
 export const localMonth = () => localToday().slice(0, 7)
+
+/** A month such as 2026-10, shown as October 2026. */
+export function formatMonth(month) {
+  return new Date(`${month}-01T00:00:00`).toLocaleDateString(undefined, { month: 'long', year: 'numeric' })
+}
+
+/** The date a number of days before or after a date, both as 2026-10-03. */
+export function shiftDay(date, days) {
+  const d = new Date(`${date}T12:00:00`)
+  d.setDate(d.getDate() + days)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+/** What to call a day that is still going: working, not in yet, or null when its stored result stands. */
+export function liveStatus(day, isToday) {
+  if (!isToday) return null
+  // Punched in and not yet out, whatever kind of day it is.
+  if (day.incomplete && day.firstIn && !['on_duty', 'work_from_home'].includes(day.status)) return 'working'
+  if (['absent', 'half_day'].includes(day.status) && !day.firstIn) return 'not in yet'
+  return null
+}

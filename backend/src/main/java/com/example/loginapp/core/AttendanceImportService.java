@@ -289,7 +289,7 @@ public final class AttendanceImportService {
             out.put("devices", Sql.query(c,
                     "select min(device_label) as device_label, count(*) as files, max(uploaded_at) as last_upload, "
                             + "max(last_punch_at) as last_punch, sum(rows_imported) as rows_imported, sum(rows_rejected) as rows_rejected, "
-                            + "(current_date - max(last_punch_at)::date) as days_since_last_punch "
+                            + "((now() at time zone 'Asia/Kolkata')::date - (max(last_punch_at) at time zone 'Asia/Kolkata')::date) as days_since_last_punch "
                             + "from app.import_batch group by lower(device_label) order by 1"));
             out.put("batches", Sql.query(c,
                     "select b.id, b.device_label, b.file_name, b.rows_total, b.rows_imported, b.rows_duplicate, b.rows_rejected, "

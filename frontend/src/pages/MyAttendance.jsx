@@ -1,12 +1,19 @@
 import { useState } from 'react'
 import { attendance } from '../api.js'
-import { formatDay, formatMinutes, formatTime, localMonth, localToday, useAction, useLoad } from '../hooks.js'
+import { formatDay, formatMonth, formatMinutes, formatTime, localMonth, localToday, useAction, useLoad, useNow } from '../hooks.js'
 import { Badge, DayStatus, Empty, ErrorNote, StatusBadge, Trail } from '../ui.jsx'
 
 const KINDS = {
   regularization: 'Correct my punches',
   on_duty: 'On duty away from the office',
   work_from_home: 'Work from home',
+}
+
+const CHECKS = {
+  none: 'You can punch from anywhere',
+  ip: 'You must be on the office network',
+  location: 'Your browser will ask for your location',
+  either: 'Office network, or your location at the office',
 }
 
 const SOURCES = { web: 'punched here', import: 'from a device', manual: 'entered by HR', request: 'from a request' }
@@ -33,6 +40,7 @@ function currentPosition() {
 
 function PunchPanel({ today, onPunched }) {
   const { busy, error, run } = useAction()
+  const now = useNow()
   const data = today.data
 
   async function punch() {
@@ -53,27 +61,38 @@ function PunchPanel({ today, onPunched }) {
     )
   }
 
+  // While punched in, the time since the last punch in counts too, so the figure moves through the day.
+  const open = data.nextDirection === 'out' && data.punches.length > 0
+  const lastIn = open ? new Date(data.punches[data.punches.length - 1].at).getTime() : 0
+  const worked = (data.day?.workedMinutes || 0) + (open ? Math.max(0, Math.floor((now - lastIn) / 60000)) : 0)
+  const firstIn = data.punches.find((p) => p.direction === 'in')
+
   return (
-    <section className="panel">
-      <div className="punch-panel">
+    <section className="panel" style={{ padding: 0 }}>
+      <div className="hero">
         <div>
-          <h2>{formatDay(data.workDate)}</h2>
+          <div className="hero-label">Today · {formatDay(data.workDate)}</div>
+          <div className="hero-value">
+            {worked > 0 ? formatMinutes(worked) : '0 h 00 min'}
+            {data.day && <DayStatus day={data.day} isToday />}
+          </div>
           <p>
             {data.location} · {data.shift}
-          </p>
-          <p className="hint">
-            {data.punchCheck === 'none' && 'You can punch from anywhere.'}
-            {data.punchCheck === 'ip' && 'You must be on the office network to punch.'}
-            {data.punchCheck === 'location' && 'Your browser will ask for your location, to check you are at the office.'}
-            {data.punchCheck === 'either' &&
-              'You must be on the office network, or allow your browser to share your location at the office.'}
+            {firstIn && ` · In at ${formatTime(firstIn.at, data.timezone)}`}
           </p>
         </div>
-        <button type="button" className="secondary punch-button" disabled={busy} onClick={punch}>
-          {busy ? 'Checking…' : data.nextDirection === 'in' ? 'Punch in' : 'Punch out'}
-        </button>
+        <div className="hero-action">
+          <button type="button" className="secondary punch-button" disabled={busy} onClick={punch}>
+            {busy ? 'Checking…' : data.nextDirection === 'in' ? 'Punch in' : 'Punch out'}
+          </button>
+          <p className="hint">{CHECKS[data.punchCheck]}</p>
+        </div>
       </div>
-      <ErrorNote>{error}</ErrorNote>
+      {error && (
+        <div style={{ padding: '0 24px' }}>
+          <ErrorNote>{error}</ErrorNote>
+        </div>
+      )}
       {data.punches.length > 0 && (
         <ul className="punch-list" aria-label="Today's punches">
           {data.punches.map((p) => (
@@ -86,9 +105,6 @@ function PunchPanel({ today, onPunched }) {
           ))}
         </ul>
       )}
-      {data.day && data.day.workedMinutes > 0 && (
-        <p className="hint">Worked so far: {formatMinutes(data.day.workedMinutes)}</p>
-      )}
     </section>
   )
 }
@@ -99,7 +115,7 @@ export function DaysTable({ days, today, timeZone }) {
   if (days.length === 0) return <Empty>No days to show for this month.</Empty>
   return (
     <div className="table-wrap">
-      <table>
+      <table className="day-table">
         <thead>
           <tr>
             <th>Date</th>
@@ -125,14 +141,22 @@ function DayRow({ day, today, timeZone, open, onToggle }) {
   return (
     <>
       <tr>
-        <td>{formatDay(day.workDate)}</td>
-        <td>
+        <td className="day-date">{formatDay(day.workDate)}</td>
+        <td className="day-result">
           <DayStatus day={day} isToday={day.workDate === today} />
         </td>
-        <td>{formatTime(day.firstIn, timeZone)}</td>
-        <td>{formatTime(day.lastOut, timeZone)}</td>
-        <td>{formatMinutes(day.workedMinutes)}</td>
-        <td>{day.lateMinutes ? `${day.lateMinutes} min` : '—'}</td>
+        <td className="day-minor" data-label="In">
+          {formatTime(day.firstIn, timeZone)}
+        </td>
+        <td className="day-minor" data-label="Out">
+          {formatTime(day.lastOut, timeZone)}
+        </td>
+        <td className="day-minor" data-label="Worked">
+          {formatMinutes(day.workedMinutes)}
+        </td>
+        <td className="day-minor" data-label="Late">
+          {day.lateMinutes ? <Badge tone="warn">{day.lateMinutes} min</Badge> : '—'}
+        </td>
         <td className="actions">
           <button type="button" className="quiet" aria-expanded={open} onClick={onToggle}>
             {open ? 'Hide' : 'Why'}
@@ -171,7 +195,7 @@ function RequestForm({ onCreated }) {
 
   return (
     <form className="panel" onSubmit={submit} noValidate>
-      <h2>Raise a request</h2>
+      <h2>New request</h2>
       <div className="grid">
         <div>
           <label htmlFor="req-kind">What for</label>
@@ -274,7 +298,32 @@ function MyMonth({ month, today, timeZone }) {
   const days = useLoad(() => attendance.myDays(month))
   if (days.loading) return <p className="muted">Loading…</p>
   if (days.error) return <ErrorNote>{days.error}</ErrorNote>
-  return <DaysTable days={days.data} today={today} timeZone={timeZone} />
+  // Today is left out of the totals until it is over.
+  const settled = days.data.filter((d) => d.workDate !== today)
+  const count = (status) => settled.filter((d) => d.status === status).length
+  return (
+    <>
+      <div className="tiles">
+        <div className="tile">
+          <div className="tile-label">Present</div>
+          <div className="tile-value">{count('present') + count('on_duty') + count('work_from_home')}</div>
+        </div>
+        <div className="tile">
+          <div className="tile-label">Half days</div>
+          <div className="tile-value">{count('half_day')}</div>
+        </div>
+        <div className="tile">
+          <div className="tile-label">Absent</div>
+          <div className="tile-value">{count('absent')}</div>
+        </div>
+        <div className="tile">
+          <div className="tile-label">Late arrivals</div>
+          <div className="tile-value">{days.data.filter((d) => d.lateMinutes > 0).length}</div>
+        </div>
+      </div>
+      <DaysTable days={days.data} today={today} timeZone={timeZone} />
+    </>
+  )
 }
 
 /** The signed-in user's own attendance: punch, this month's days, and requests. */
@@ -283,6 +332,7 @@ export default function MyAttendance() {
   const requests = useLoad(attendance.myRequests)
   const [month, setMonth] = useState(localMonth())
   const [version, setVersion] = useState(0)
+  const [requesting, setRequesting] = useState(false)
 
   if (today.loading || requests.loading) return <p className="muted">Loading…</p>
   if (today.error || requests.error) return <ErrorNote>{today.error || requests.error}</ErrorNote>
@@ -298,9 +348,12 @@ export default function MyAttendance() {
     <>
       <PunchPanel today={today} onPunched={refresh} />
 
-      <div className="toolbar">
-        <div>
-          <label htmlFor="my-month">Month</label>
+      <div className="section-head">
+        <h2>{formatMonth(month)}</h2>
+        <div className="form-actions">
+          <label htmlFor="my-month" className="sr-only">
+            Month
+          </label>
           <input id="my-month" type="month" value={month} max={localMonth()} onChange={(e) => setMonth(e.target.value || localMonth())} />
         </div>
       </div>
@@ -308,8 +361,20 @@ export default function MyAttendance() {
 
       {today.data.assigned && (
         <>
-          <h2>Requests</h2>
-          <RequestForm onCreated={refresh} />
+          <div className="section-head">
+            <h2>My requests</h2>
+            <button type="button" className="outline" aria-expanded={requesting} onClick={() => setRequesting((v) => !v)}>
+              {requesting ? 'Close' : 'New request'}
+            </button>
+          </div>
+          {requesting && (
+            <RequestForm
+              onCreated={() => {
+                setRequesting(false)
+                refresh()
+              }}
+            />
+          )}
           <MyRequests requests={requests.data} timeZone={timeZone} onChanged={refresh} />
         </>
       )}

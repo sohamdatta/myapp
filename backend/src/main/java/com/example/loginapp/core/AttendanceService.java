@@ -120,7 +120,7 @@ public final class AttendanceService {
         return db.inTenant(ctx.tenantId(), c -> {
             if (!day.isAfter(today())) {
                 for (Map<String, Object> m : Sql.query(c,
-                        "select m.id from app.membership m where m.status = 'active' and m.joined_at::date <= ? "
+                        "select m.id from app.membership m where m.status = 'active' and (m.joined_at at time zone 'Asia/Kolkata')::date <= ? "
                                 + "and not exists (select 1 from app.attendance_day d where d.membership_id = m.id and d.work_date = ?)",
                         day, day)) {
                     recompute(c, ctx.tenantId(), AuthService.uuid(m.get("id")), day);
@@ -510,7 +510,7 @@ public final class AttendanceService {
     /** A user's stored days for a month, filling in any that have not been worked out yet. */
     static List<Map<String, Object>> monthOf(Connection c, UUID tenantId, UUID membershipId, YearMonth ym, LocalDate today)
             throws SQLException {
-        Map<String, Object> m = Sql.one(c, "select joined_at::date as joined from app.membership where id = ?", membershipId);
+        Map<String, Object> m = Sql.one(c, "select (joined_at at time zone 'Asia/Kolkata')::date as joined from app.membership where id = ?", membershipId);
         LocalDate first = ym.atDay(1);
         LocalDate joined = LocalDate.parse((String) m.get("joined"));
         if (joined.isAfter(first)) {

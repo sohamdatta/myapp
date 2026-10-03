@@ -214,16 +214,17 @@ public final class AttendanceSettingsService {
     /** Every current user with their employee code and the assignment in force today. */
     public List<Map<String, Object>> people(SessionCtx ctx) {
         requireView(ctx);
+        LocalDate today = LocalDate.now(AttendanceService.DEFAULT_ZONE);   // the database's own date is UTC
         return db.inTenant(ctx.tenantId(), c -> Sql.query(c,
                 "select m.id as membership_id, dir.email, m.status, m.employee_code, a.work_location_id, l.name as location_name, "
                         + "a.shift_id, s.name as shift_name, a.weekly_offs, a.effective_from, "
                         + "(select min(n.effective_from) from app.attendance_assignment n "
-                        + "  where n.membership_id = m.id and n.effective_from > current_date) as next_change "
+                        + "  where n.membership_id = m.id and n.effective_from > ?) as next_change "
                         + "from app.membership m join app.member_directory() dir on dir.membership_id = m.id "
                         + "left join lateral (select * from app.attendance_assignment x where x.membership_id = m.id "
-                        + "  and x.effective_from <= current_date order by x.effective_from desc, x.created_at desc limit 1) a on true "
+                        + "  and x.effective_from <= ? order by x.effective_from desc, x.created_at desc limit 1) a on true "
                         + "left join app.work_location l on l.id = a.work_location_id left join app.shift s on s.id = a.shift_id "
-                        + "where m.status in ('active','suspended') order by dir.email"));
+                        + "where m.status in ('active','suspended') order by dir.email", today, today));
     }
 
     /**
