@@ -55,8 +55,8 @@ export function LoginForm({ onSignedIn }) {
   )
 }
 
-/** After sign-in: pick an Organization, or the console for platform users. */
-export function Chooser({ me, onEntered, onSignOut }) {
+/** Shown only when someone asks to switch, or has nowhere to go. Sign-in itself goes straight in. */
+export function Chooser({ me, onEntered, onSignOut, onCancel }) {
   const { busy, error, run } = useAction()
   const nothing = me.organizations.length === 0 && !me.console
 
@@ -67,7 +67,7 @@ export function Chooser({ me, onEntered, onSignOut }) {
 
   return (
     <div className="card">
-      <h1>{nothing ? 'No access yet' : 'Where to?'}</h1>
+      <h1>{nothing ? 'No access yet' : 'Switch to'}</h1>
       <p className="muted">
         {nothing
           ? `${me.email} does not belong to an Organization. Ask your administrator for an invitation.`
@@ -97,6 +97,11 @@ export function Chooser({ me, onEntered, onSignOut }) {
 
       <ErrorNote>{error}</ErrorNote>
 
+      {onCancel && (
+        <button type="button" className="quiet" onClick={onCancel}>
+          Back
+        </button>
+      )}
       <button type="button" className="quiet" onClick={onSignOut}>
         Sign out
       </button>

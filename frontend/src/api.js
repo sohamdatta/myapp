@@ -1,5 +1,6 @@
 const TOKEN_KEY = 'hrms-token'
 const CONSOLE_TOKEN_KEY = 'hrms-console-token'
+const LAST_DESTINATION_KEY = 'hrms-last-destination'
 
 function read(key) {
   try {
@@ -15,6 +16,23 @@ function write(key, value) {
     else sessionStorage.removeItem(key)
   } catch {
     // Storage is unavailable: the user simply signs in again after a reload.
+  }
+}
+
+/** Remembers an Organization id, or 'console', so the next sign-in on this browser goes straight there. */
+function rememberDestination(destination) {
+  try {
+    localStorage.setItem(LAST_DESTINATION_KEY, destination)
+  } catch {
+    // Without storage, the next sign-in simply uses the default destination.
+  }
+}
+
+function lastDestination() {
+  try {
+    return localStorage.getItem(LAST_DESTINATION_KEY)
+  } catch {
+    return null
   }
 }
 
@@ -76,14 +94,15 @@ const put = (path, body) => request('PUT', path, body)
 export async function login(email, password) {
   const me = await post('/auth/login', { email, password })
   setToken(me.token)
-  return me
+  return enterDefault(me)
 }
 
 /** The signed-in person, or null when there is no valid session. */
 export async function currentUser() {
   if (!getToken()) return null
   try {
-    return await get('/auth/me')
+    const me = await get('/auth/me')
+    return me.kind === 'identity' ? await enterDefault(me) : me
   } catch (err) {
     if (err.status === 401 || err.status === 403) setToken(null)
     return null
@@ -93,12 +112,34 @@ export async function currentUser() {
 export async function enterOrganization(organizationId) {
   const me = await post('/auth/enter', { organizationId })
   setToken(me.token)
+  rememberDestination(organizationId)
   return me
 }
 
 export async function enterConsole() {
   const me = await post('/auth/enter', { console: true })
   setToken(me.token)
+  rememberDestination('console')
+  return me
+}
+
+/**
+ * Takes a newly signed-in person straight to where they work, with no screen
+ * to choose from: the place they last used on this browser if they still have
+ * access to it, otherwise their Organization, otherwise the console. Someone
+ * with nowhere to go, or whose entry fails, is returned unchanged.
+ */
+async function enterDefault(me) {
+  const organizationIds = me.organizations.map((o) => o.tenantId)
+  const last = lastDestination()
+  try {
+    if (last === 'console' && me.console) return await enterConsole()
+    if (last && organizationIds.includes(last)) return await enterOrganization(last)
+    if (organizationIds.length > 0) return await enterOrganization(organizationIds[0])
+    if (me.console) return await enterConsole()
+  } catch {
+    // Fall through to the screen that lists where this person can go.
+  }
   return me
 }
 
@@ -120,6 +161,7 @@ export const previewInvitation = (token) =>
 export async function acceptInvitation(token, password) {
   const me = await post('/invitations/accept', { token, password })
   setToken(me.token)
+  rememberDestination(me.organization.id)
   return me
 }
 

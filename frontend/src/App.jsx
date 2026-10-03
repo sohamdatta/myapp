@@ -130,7 +130,12 @@ export default function App() {
   if (me.kind === 'identity' || choosing) {
     return (
       <main>
-        <Chooser me={me} onEntered={entered} onSignOut={handleSignOut} />
+        <Chooser
+          me={me}
+          onEntered={entered}
+          onSignOut={handleSignOut}
+          onCancel={me.kind === 'identity' ? undefined : () => setChoosing(false)}
+        />
       </main>
     )
   }

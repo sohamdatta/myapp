@@ -58,8 +58,9 @@ platform users, the first Super Admin.
 
 ### Try the whole flow
 
-1. As the Super Admin, choose **Platform console**, create an Organization and
-   give the email of its first Org Admin. Copy the invitation link.
+1. Sign in as the Super Admin. You land in the platform console. Create an
+   Organization and give the email of its first Org Admin. Copy the invitation
+   link.
 2. Sign out, open the link, and set a password. You are now the Org Admin.
 3. Under **Invitations**, invite a user with the HR Admin role, and open that
    link in a private window. The HR Admin can invite employees and managers,
@@ -67,6 +68,11 @@ platform users, the first Super Admin.
 4. Back in the console, request **Support access** to the Organization and
    start a session. Then look at the Organization's **Audit log** as its Org
    Admin: the support session is there, with its reason.
+
+Signing in takes each person straight to where they work: their Organization,
+or the console for a platform user. Nobody is asked to choose. Someone who
+belongs to more than one Organization goes to the one they used last on that
+browser, and has a **Switch** button in the header.
 
 ## Run it elsewhere
 
