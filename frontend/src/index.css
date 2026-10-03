@@ -568,3 +568,105 @@ td .hint {
     white-space: normal;
   }
 }
+
+/* attendance */
+.punch-panel {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.punch-panel p {
+  margin: 4px 0;
+}
+
+.punch-button {
+  min-width: 160px;
+  padding: 14px 24px;
+  font-size: 1.05rem;
+}
+
+.punch-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.trail {
+  margin: 0;
+  padding-left: 20px;
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+
+.trail li:last-child {
+  font-weight: 600;
+  color: var(--text);
+}
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.toolbar label {
+  margin-bottom: 4px;
+}
+
+.toolbar input,
+.toolbar select {
+  width: auto;
+  margin-bottom: 0;
+}
+
+.form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+textarea {
+  width: 100%;
+  margin-bottom: 16px;
+  padding: 10px 12px;
+  font: inherit;
+  color: var(--text);
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+td input.cell-input {
+  width: 110px;
+  margin: 0;
+  padding: 4px 8px;
+}
+
+.days {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  margin: 0 0 16px;
+  padding: 0;
+  border: none;
+}
+
+.days legend {
+  padding: 0;
+  margin-bottom: 6px;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.sample {
+  font-size: 0.82rem;
+}

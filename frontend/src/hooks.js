@@ -56,3 +56,33 @@ export function formatDate(iso) {
     minute: '2-digit',
   })
 }
+
+/** A time of day, in the given time zone when one is known, otherwise the browser's. */
+export function formatTime(iso, timeZone) {
+  if (!iso) return '—'
+  return new Date(iso).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', timeZone })
+}
+
+/** A calendar date such as 2026-10-03, shown with its weekday. */
+export function formatDay(date) {
+  if (!date) return '—'
+  return new Date(`${date}T00:00:00`).toLocaleDateString(undefined, {
+    weekday: 'short',
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  })
+}
+
+export function formatMinutes(minutes) {
+  if (!minutes) return '—'
+  return `${Math.floor(minutes / 60)} h ${String(minutes % 60).padStart(2, '0')} min`
+}
+
+/** Today's date, or this month, as the browser sees it: 2026-10-03 or 2026-10. */
+export function localToday() {
+  const now = new Date()
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+}
+
+export const localMonth = () => localToday().slice(0, 7)

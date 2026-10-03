@@ -21,7 +21,7 @@ final class Json {
         return out.append('}').toString();
     }
 
-    private static String quote(String s) {
+    static String quote(String s) {
         StringBuilder out = new StringBuilder("\"");
         for (char ch : s.toCharArray()) {
             switch (ch) {

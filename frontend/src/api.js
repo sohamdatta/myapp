@@ -183,6 +183,45 @@ export const org = {
   changeStatus: (id, action) => post(`/org/users/${id}/${action}`),
 }
 
+// ── attendance, inside an Organization ──────────────────────────────
+
+const query = (params) => {
+  const filled = Object.entries(params).filter(([, value]) => value)
+  return filled.length ? `?${new URLSearchParams(filled)}` : ''
+}
+
+export const attendance = {
+  today: () => get('/org/attendance/me/today'),
+  punch: (position) => post('/org/attendance/me/punch', position || {}),
+  myDays: (month) => get(`/org/attendance/me/days${query({ month })}`),
+  myRequests: () => get('/org/attendance/me/requests'),
+  createRequest: (body) => post('/org/attendance/me/requests', body),
+  cancelRequest: (id) => post(`/org/attendance/me/requests/${id}/cancel`),
+
+  board: (date) => get(`/org/attendance/days${query({ date })}`),
+  userDays: (id, month) => get(`/org/attendance/users/${id}/days${query({ month })}`),
+  manualPunch: (id, body) => post(`/org/attendance/users/${id}/punches`, body),
+  requests: (status) => get(`/org/attendance/requests${query({ status })}`),
+  decideRequest: (id, action, note) => post(`/org/attendance/requests/${id}/${action}`, { note }),
+  register: (month) => get(`/org/attendance/register${query({ month })}`),
+
+  locations: () => get('/org/attendance/locations'),
+  saveLocation: (id, body) =>
+    id ? put(`/org/attendance/locations/${id}`, body) : post('/org/attendance/locations', body),
+  shifts: () => get('/org/attendance/shifts'),
+  saveShift: (id, body) => (id ? put(`/org/attendance/shifts/${id}`, body) : post('/org/attendance/shifts', body)),
+  holidays: (year) => get(`/org/attendance/holidays${query({ year })}`),
+  addHoliday: (body) => post('/org/attendance/holidays', body),
+  removeHoliday: (id) => post(`/org/attendance/holidays/${id}/delete`),
+  people: () => get('/org/attendance/assignments'),
+  assign: (body) => post('/org/attendance/assignments', body),
+  setEmployeeCode: (id, code) => put(`/org/attendance/users/${id}/employee-code`, { code }),
+
+  importHealth: () => get('/org/attendance/imports'),
+  previewImport: (body) => post('/org/attendance/imports/preview', body),
+  importFile: (body) => post('/org/attendance/imports', body),
+}
+
 // ── the platform console ────────────────────────────────────────────
 
 export const platform = {

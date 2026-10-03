@@ -6,6 +6,9 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
+import com.example.loginapp.core.AttendanceImportService;
+import com.example.loginapp.core.AttendanceService;
+import com.example.loginapp.core.AttendanceSettingsService;
 import com.example.loginapp.core.AuthService;
 import com.example.loginapp.core.Db;
 import com.example.loginapp.core.InvitationService;
@@ -43,6 +46,21 @@ public class AppConfig {
     @Bean
     public UserService userService(Db db) {
         return new UserService(db);
+    }
+
+    @Bean
+    public AttendanceService attendanceService(Db db) {
+        return new AttendanceService(db);
+    }
+
+    @Bean
+    public AttendanceSettingsService attendanceSettingsService(Db db) {
+        return new AttendanceSettingsService(db);
+    }
+
+    @Bean
+    public AttendanceImportService attendanceImportService(Db db) {
+        return new AttendanceImportService(db);
     }
 
     @Bean

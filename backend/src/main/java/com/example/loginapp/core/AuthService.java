@@ -133,7 +133,16 @@ public final class AuthService {
         me.put("organization", ctx.inOrganization() ? Map.of("id", ctx.tenantId().toString(), "name", ctx.tenantName()) : null);
         me.put("membershipId", ctx.membershipId() == null ? null : ctx.membershipId().toString());
         me.put("platformRole", ctx.platformRole());
-        me.put("permissions", ctx.permissions().stream().map(Perm::code).distinct().sorted().toList());
+        List<String> codes = ctx.permissions().stream().map(Perm::code).distinct().sorted().toList();
+        me.put("permissions", codes);
+        Map<String, Object> scopes = new LinkedHashMap<>();
+        for (String code : codes) {
+            String scope = ctx.scopeOf(code);
+            if (scope != null) {
+                scopes.put(code, scope);
+            }
+        }
+        me.put("scopes", scopes);   // the widest scope held for each permission
         if (ctx.isSupport()) {
             me.put("support", Map.of("mode", ctx.grantMode(), "expiresAt", ctx.grantExpiresAt()));
         }

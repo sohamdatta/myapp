@@ -59,6 +59,29 @@ public record SessionCtx(
         return permissions.stream().anyMatch(p -> p.code().equals(permission) && p.scope().equals("tenant"));
     }
 
+    /**
+     * The widest scope at which the permission is held: tenant, assigned, team
+     * or self, in that order. Null when it is not held at all.
+     */
+    public String scopeOf(String permission) {
+        if (!inOrganization() || (isSupport() && NEVER_UNDER_SUPPORT.contains(permission))) {
+            return null;
+        }
+        String widest = null;
+        for (String scope : List.of("self", "team", "assigned", "tenant")) {
+            if (permissions.stream().anyMatch(p -> p.code().equals(permission) && p.scope().equals(scope))) {
+                widest = scope;
+            }
+        }
+        return widest;
+    }
+
+    /** True when the permission reaches every user of the Organization (tenant, or assigned until entity scoping exists). */
+    public boolean reachesEveryone(String permission) {
+        String scope = scopeOf(permission);
+        return "tenant".equals(scope) || "assigned".equals(scope);
+    }
+
     public void require(String permission) {
         if (!inOrganization()) {
             throw new ApiException(403, "tenant.required", "Choose an Organization first");

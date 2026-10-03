@@ -1,7 +1,7 @@
-# HRMS user module
+# HRMS
 
-The user and access module of a multi-tenant HRMS: a React frontend and a Java
-(Spring Boot) backend on PostgreSQL.
+A multi-tenant HRMS: a React frontend and a Java (Spring Boot) backend on
+PostgreSQL. Two modules are built: **users and access**, and **attendance**.
 
 There are three levels:
 
@@ -28,15 +28,22 @@ Read this before relying on it.
   which is a major upgrade (Spring Framework 7, Jackson 3, renamed starters),
   and that version has not been compiled or run. If `./start.sh` fails after
   pulling, the last commit that ran is `48d5be0`.
-- **How the code was tested.** The 22 backend tests passed against
-  PostgreSQL 16 with the JUnit console launcher, and the screens were
-  exercised in a browser through a stand-in HTTP server that called the real
-  controllers. `mvn test` has not been run.
+- **The attendance module has not been built with Maven either**, for the
+  same reason. It adds no new dependencies. The last commit before it is
+  `2aff0c3`.
+- **How the code was tested.** The 59 backend tests (22 for users, 37 for
+  attendance) passed against PostgreSQL 16 with the JUnit console launcher,
+  and the screens were exercised in a browser through a stand-in HTTP server
+  that called the real controllers. `mvn test` has not been run.
+- **The office-network punch check has not been tried behind a real proxy.**
+  It was tested with the address passed in directly. See "Attendance" below
+  before relying on it.
 - **No email is sent.** Invitations produce a link that the screen shows for
   you to copy and send.
 - **Not built yet:** multi-factor sign-in, password reset, email change, seat
   limits, custom roles, and limiting a user to particular legal entities or
-  departments.
+  departments. In attendance: leave, overtime pay, a manager's team view
+  (it needs employee records with reporting lines), and anything for payroll.
 
 ## Run it in GitHub Codespaces
 
@@ -69,6 +76,19 @@ platform users, the first Super Admin.
    start a session. Then look at the Organization's **Audit log** as its Org
    Admin: the support session is there, with its reason.
 
+### Try attendance
+
+1. As the Org Admin, open **Attendance → Locations, shifts and holidays**. Add
+   a work location (choose "No check" to try it from anywhere) and a shift.
+2. Under **People**, tick the users, choose the location and shift, and assign.
+3. Open **My attendance** and punch in and out. The month below shows each
+   day's result; **Why** shows how it was worked out.
+4. Raise a request (a punch correction, on duty, or work from home) as one
+   user and decide it as another under **Attendance → Requests**. Nobody can
+   decide their own.
+5. Under **Device import**, give each user an employee code on the People
+   view first, then upload a file exported from a biometric device.
+
 Signing in takes each person straight to where they work: their Organization,
 or the console for a platform user. Nobody is asked to choose. Someone who
 belongs to more than one Organization goes to the one they used last on that
@@ -94,6 +114,7 @@ Set these environment variables for anything beyond local development.
 | `APP_DB_OWNER_USER` / `APP_DB_OWNER_PASSWORD` | `postgres` / `postgres` | Runs the migrations at startup and creates the application's database roles. Needs permission to create roles |
 | `APP_DB_ROLE_PASSWORD` | `dev-only-change-me` | Password given to the three application roles |
 | `APP_SUPERADMIN_EMAIL` / `APP_SUPERADMIN_PASSWORD` | `admin@example.com` / `ChangeMe-12345` | The first Super Admin, created only when there are no platform users |
+| `APP_TRUST_FORWARDED_FOR` | `false` | Set to `true` only when the backend sits behind exactly one proxy that sets `X-Forwarded-For`. The office-network punch check then uses the address that proxy reports |
 
 ## How isolation works
 
@@ -118,6 +139,43 @@ The database also enforces these rules itself:
   unless nobody else can approve and it is flagged as auto-approved.
 - Users are suspended or ended, never deleted.
 
+## Attendance
+
+- **Punching.** A user punches in and out from the browser. The server sets
+  the time and the direction. Each work location says what a punch needs:
+  the office network, a position within a radius of the office, either, or
+  nothing. A punch that fails the check is refused and not stored.
+- **The office-network check and proxies.** The backend compares the address
+  the request came from with the location's list. Behind a proxy that address
+  is the proxy's, so set `APP_TRUST_FORWARDED_FOR=true` there. With the Vite
+  dev server in front (as `./start.sh` runs it) and in Codespaces, the backend
+  does not see the user's real address, so use "No check" or the location
+  check when trying it out.
+- **Day results.** Each day is worked out from the punches, the shift, weekly
+  offs, holidays and approved requests: present, half day, absent, holiday,
+  weekly off, on duty or work from home, with late, early and overtime
+  minutes. The steps are kept with the result and shown under **Why**.
+  Results are recalculated whenever something they depend on changes; there
+  is no nightly job.
+- **Punches are never edited or deleted.** A correction is a request; when it
+  is approved, its two times are added and used instead, and the originals
+  stay. HR can add a punch for someone with a reason, which is audited. The
+  database role the application uses cannot update or delete a punch.
+- **Assignments are dated.** A user's location, shift and weekly offs apply
+  from a date. To correct one, assign again from the same date.
+- **Night shifts** count to the day they start. A punch up to four hours
+  after the shift ends still belongs to that day.
+- **Device files.** CSV, semicolon or tab-separated. You say once which
+  column holds the employee code, the date and time, and in/out (or none:
+  punches then alternate through the day); this is remembered per device.
+  Uploading the same file again adds nothing. Rows that could not be used are
+  listed with the reason.
+- **Who sees what.** Employees see their own days. HR Admin, Org Admin and
+  Auditor see everyone. A Manager's team is empty until employee records
+  carry reporting lines.
+
+The schema is in `backend/src/main/resources/db/migration/V3__attendance.sql`.
+
 ## Roles
 
 | Role | Can |
@@ -135,9 +193,10 @@ an HR Admin can invite employees and managers but cannot hand out payroll or
 admin roles, and cannot suspend or remove an Org Admin. Nobody can change
 their own roles or status.
 
-Only the user-management permissions are used by screens today. The employee,
-compensation and payroll permissions are defined and assigned to roles, ready
-for those modules.
+The user-management and attendance permissions are used by screens today. The
+employee, compensation and payroll permissions are defined and assigned to
+roles, ready for those modules. An HR Admin who should punch also needs the
+Employee role.
 
 ## Layout
 
@@ -172,6 +231,28 @@ Every call except sign-in and the invitation page needs
 | GET, POST | `/api/platform/users` | Platform users |
 | GET, POST | `/api/platform/grants` | Support access requests |
 | POST | `/api/platform/grants/{id}/approve`, `/reject`, `/revoke`, `/start` | Decides one, or starts the session |
+
+Attendance, all under `/api/org/attendance`:
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/me/today` | Today's punches, what the next punch will be, and what the location checks |
+| POST | `/me/punch` | Punches in or out; the body may carry `latitude`, `longitude`, `accuracyM` |
+| GET | `/me/days?month=` | The caller's days for a month, each with its trail |
+| GET, POST | `/me/requests` | The caller's requests; raises one |
+| POST | `/me/requests/{id}/cancel` | Withdraws a pending request |
+| GET | `/days?date=` | Everyone the caller can see, on one date |
+| GET | `/users/{id}/days?month=` | One user's month |
+| POST | `/users/{id}/punches` | HR adds a punch, with a reason |
+| GET | `/requests?status=` | Requests to decide |
+| POST | `/requests/{id}/approve`, `/reject` | Decides one |
+| GET | `/register?month=` | The month's register as CSV text |
+| GET, POST | `/locations`, `/shifts` | Lists and creates; `PUT /{id}` changes one |
+| GET, POST | `/holidays` | Lists a year's holidays, adds one; `POST /{id}/delete` removes one |
+| GET, POST | `/assignments` | Users with what is assigned to them; assigns a location and shift |
+| PUT | `/users/{id}/employee-code` | Sets the code device files use |
+| POST | `/imports/preview` | Shows a file's columns and the remembered mapping |
+| GET, POST | `/imports` | Device health and recent files; imports a file |
 
 The Organization a request acts on always comes from the server-side session.
 It is never read from the URL, a header or the request body.

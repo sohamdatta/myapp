@@ -93,6 +93,25 @@ public final class Db {
         if (state.equals("23505") && message.contains("invitation_pending_uq")) {
             return new ApiException(409, "membership.exists", "A pending invitation already exists for this email");
         }
+        if (state.equals("23505") && message.contains("attendance_request_open_uq")) {
+            return new ApiException(409, "attendance.request_exists", "A request for that day is already waiting for a decision");
+        }
+        if (state.equals("23514") && message.contains("attendance_request_not_own")) {
+            return new ApiException(409, "attendance.own_request", "You cannot decide your own request");
+        }
+        if (state.equals("23505") && message.contains("membership_employee_code_uq")) {
+            return new ApiException(409, "attendance.code_taken", "That employee code is already used by another user");
+        }
+        if (state.equals("23505") && (message.contains("work_location_name_uq") || message.contains("shift_name_uq")
+                || message.contains("holiday_uq"))) {
+            return new ApiException(409, "request.refused", "One with that name or date already exists");
+        }
+        if (state.equals("22P02") || state.equals("22007") || state.equals("22008")) {
+            return new ApiException(400, "request.invalid", "One of the values is not in a valid format");
+        }
+        if (state.equals("23514")) {
+            return new ApiException(400, "request.invalid", "One of the values is outside the allowed range");
+        }
         if (state.equals("23505") && message.contains("tenant_slug_key")) {
             return new ApiException(409, "tenant.slug_taken", "That slug is already in use");
         }

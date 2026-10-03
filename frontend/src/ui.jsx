@@ -23,10 +23,54 @@ const STATUS_TONES = {
   closed: 'neutral',
   rejected: 'neutral',
   revoked: 'neutral',
+  present: 'good',
+  on_duty: 'good',
+  work_from_home: 'good',
+  half_day: 'warn',
+  absent: 'warn',
+  pending: 'warn',
+  holiday: 'neutral',
+  weekly_off: 'neutral',
+  not_assigned: 'neutral',
+  cancelled: 'neutral',
 }
 
 export function StatusBadge({ status }) {
-  return <Badge tone={STATUS_TONES[status] || 'neutral'}>{status}</Badge>
+  if (!status) return <Badge>—</Badge>
+  return <Badge tone={STATUS_TONES[status] || 'neutral'}>{status.replaceAll('_', ' ')}</Badge>
+}
+
+/**
+ * A day's result. While the day is still going, "absent" would be alarming and
+ * premature, so today shows where things stand instead.
+ */
+export function DayStatus({ day, isToday }) {
+  const unsettled = isToday && ['absent', 'half_day'].includes(day.status)
+  if (unsettled && day.incomplete) return <Badge tone="good">working</Badge>
+  if (unsettled && !day.firstIn) return <Badge>not in yet</Badge>
+  return (
+    <>
+      <StatusBadge status={day.status} />
+      {day.incomplete && (
+        <>
+          {' '}
+          <Badge tone="warn">missing punch</Badge>
+        </>
+      )}
+    </>
+  )
+}
+
+/** The steps that led to a day's result, oldest first. */
+export function Trail({ steps }) {
+  if (!steps || steps.length === 0) return <p className="hint">Nothing has been worked out for this day yet.</p>
+  return (
+    <ol className="trail">
+      {steps.map((step, index) => (
+        <li key={index}>{step}</li>
+      ))}
+    </ol>
+  )
 }
 
 /** A link the user needs to pass on by hand, with a copy button. */

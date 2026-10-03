@@ -15,6 +15,8 @@ export default defineConfig({
       '/api': {
         target: process.env.BACKEND_URL || 'http://localhost:8080',
         changeOrigin: true,
+        // Pass on the address the browser connected from, for the attendance office-network check.
+        xfwd: true,
       },
     },
   },

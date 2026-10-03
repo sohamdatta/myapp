@@ -16,7 +16,8 @@ public final class Migrator {
 
     private static final List<String> FILES = List.of(
             "V1__user_module.sql",
-            "V2__seed_roles_and_permissions.sql");
+            "V2__seed_roles_and_permissions.sql",
+            "V3__attendance.sql");
 
     private Migrator() {}
 

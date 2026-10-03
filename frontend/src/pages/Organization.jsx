@@ -2,6 +2,8 @@ import { useState } from 'react'
 import { invitationLink, org } from '../api.js'
 import { formatDate, useAction, useLoad } from '../hooks.js'
 import { Badge, CopyLink, Empty, ErrorNote, StatusBadge, Tabs } from '../ui.jsx'
+import Attendance from './Attendance.jsx'
+import MyAttendance from './MyAttendance.jsx'
 
 /** Checkboxes for roles. A role the signed-in user may not grant is shown but cannot be changed. */
 function RolePicker({ roles, selected, onChange }) {
@@ -343,10 +345,16 @@ function AuditTab() {
 export default function Organization({ me }) {
   const canSeeUsers = me.permissions.includes('user.read')
   const canSeeAudit = me.permissions.includes('audit.read')
+  const scopes = me.scopes || {}
+  // Punching is for users of the Organization, never for a support session.
+  const canPunch = me.permissions.includes('attendance.punch') && me.kind === 'tenant'
+  const seesOthersAttendance = Boolean(scopes['attendance.read']) && scopes['attendance.read'] !== 'self'
   const tabs = [
     canSeeUsers && { id: 'users', label: 'Users' },
     canSeeUsers && { id: 'invitations', label: 'Invitations' },
     canSeeUsers && { id: 'roles', label: 'Roles' },
+    canPunch && { id: 'my-attendance', label: 'My attendance' },
+    seesOthersAttendance && { id: 'attendance', label: 'Attendance' },
     canSeeAudit && { id: 'audit', label: 'Audit log' },
   ].filter(Boolean)
   const [tab, setTab] = useState(tabs.length ? tabs[0].id : null)
@@ -356,8 +364,7 @@ export default function Organization({ me }) {
       <section className="panel">
         <h2>You are signed in</h2>
         <p>
-          {me.email} is a member of {me.organization.name}. User management is limited to administrators, and
-          there is nothing else to show for your roles yet.
+          {me.email} is a member of {me.organization.name}. There is nothing to show for your roles yet.
         </p>
       </section>
     )
@@ -369,6 +376,8 @@ export default function Organization({ me }) {
       {tab === 'users' && <UsersTab me={me} />}
       {tab === 'invitations' && <InvitationsTab me={me} />}
       {tab === 'roles' && <RolesTab />}
+      {tab === 'my-attendance' && <MyAttendance />}
+      {tab === 'attendance' && <Attendance me={me} />}
       {tab === 'audit' && <AuditTab />}
     </>
   )
