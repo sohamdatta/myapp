@@ -216,8 +216,8 @@ public final class AttendanceSettingsService {
         requireView(ctx);
         LocalDate today = LocalDate.now(AttendanceService.DEFAULT_ZONE);   // the database's own date is UTC
         return db.inTenant(ctx.tenantId(), c -> Sql.query(c,
-                "select m.id as membership_id, dir.email, m.status, m.employee_code, a.work_location_id, l.name as location_name, "
-                        + "a.shift_id, s.name as shift_name, a.weekly_offs, a.effective_from, "
+                "select m.id as membership_id, dir.email, m.status, m.employee_code, m.wfh_allowed, a.work_location_id, "
+                        + "l.name as location_name, a.shift_id, s.name as shift_name, a.weekly_offs, a.remote_days, a.effective_from, "
                         + "(select min(n.effective_from) from app.attendance_assignment n "
                         + "  where n.membership_id = m.id and n.effective_from > ?) as next_change "
                         + "from app.membership m join app.member_directory() dir on dir.membership_id = m.id "
@@ -233,6 +233,14 @@ public final class AttendanceSettingsService {
      */
     public void assign(SessionCtx ctx, List<String> membershipIds, UUID locationId, UUID shiftId,
                        List<Integer> weeklyOffs, String effectiveFrom) {
+        assign(ctx, membershipIds, locationId, shiftId, weeklyOffs, List.of(), effectiveFrom);
+    }
+
+    /**
+     * @param remoteDays days of the week the users regularly work away from the office; no request is needed on those days
+     */
+    public void assign(SessionCtx ctx, List<String> membershipIds, UUID locationId, UUID shiftId,
+                       List<Integer> weeklyOffs, List<Integer> remoteDays, String effectiveFrom) {
         ctx.require("attendance.manage");
         if (membershipIds == null || membershipIds.isEmpty()) {
             throw ApiException.badRequest("Choose at least one user");
@@ -243,6 +251,13 @@ public final class AttendanceSettingsService {
         TreeSet<Integer> offs = new TreeSet<>(weeklyOffs == null ? List.of() : weeklyOffs);
         if (offs.stream().anyMatch(d -> d == null || d < 0 || d > 6) || offs.size() > 6) {
             throw ApiException.badRequest("Weekly offs are days 0 (Sunday) to 6 (Saturday), at most six of them");
+        }
+        TreeSet<Integer> remote = new TreeSet<>(remoteDays == null ? List.of() : remoteDays);
+        if (remote.stream().anyMatch(d -> d == null || d < 0 || d > 6)) {
+            throw ApiException.badRequest("Remote days are days 0 (Sunday) to 6 (Saturday)");
+        }
+        if (remote.stream().anyMatch(offs::contains)) {
+            throw ApiException.badRequest("A weekly off cannot also be a remote day");
         }
         if (effectiveFrom == null || effectiveFrom.isBlank()) {
             throw ApiException.badRequest("Choose the date the assignment starts");
@@ -257,6 +272,7 @@ public final class AttendanceSettingsService {
             }
         }
         String[] offArray = offs.stream().map(String::valueOf).toArray(String[]::new);
+        String[] remoteArray = remote.stream().map(String::valueOf).toArray(String[]::new);
         db.inTenant(ctx.tenantId(), c -> {
             Map<String, Object> location = Sql.one(c, "select name from app.work_location where id = ? and active", locationId);
             Map<String, Object> shift = Sql.one(c, "select name from app.shift where id = ? and active", shiftId);
@@ -271,8 +287,8 @@ public final class AttendanceSettingsService {
                     throw ApiException.notFound("The user");
                 }
                 Sql.update(c, "insert into app.attendance_assignment (tenant_id, membership_id, work_location_id, shift_id, "
-                                + "weekly_offs, effective_from, created_by) values (?, ?, ?, ?, ?::smallint[], ?, ?)",
-                        ctx.tenantId(), membershipId, locationId, shiftId, offArray, from, ctx.membershipId());
+                                + "weekly_offs, remote_days, effective_from, created_by) values (?, ?, ?, ?, ?::smallint[], ?::smallint[], ?, ?)",
+                        ctx.tenantId(), membershipId, locationId, shiftId, offArray, remoteArray, from, ctx.membershipId());
                 AttendanceService.invalidateFrom(c, membershipId, from.minusDays(1));   // a night shift's day can start the evening before
                 Map<String, Object> detail = new LinkedHashMap<>();
                 detail.put("location", location.get("name"));
@@ -282,6 +298,80 @@ public final class AttendanceSettingsService {
             }
             return null;
         });
+    }
+
+    // ── Organization settings and work from home ─────────────────────────
+
+    public record SettingsInput(Integer leaveYearStartMonth, Boolean wfhEnabled, Boolean wfhRequiresPunch,
+                                Integer wfhLimitPerWeek, Integer wfhLimitPerMonth) {}
+
+    /** The leave year and the work-from-home rules. Anyone who uses attendance or leave may read them. */
+    public Map<String, Object> settings(SessionCtx ctx) {
+        if (ctx.scopeOf("attendance.read") == null && ctx.scopeOf("leave.read") == null) {
+            throw ApiException.denied("attendance.read");
+        }
+        return db.inTenant(ctx.tenantId(), c -> view(AttendanceService.settings(c)));
+    }
+
+    public Map<String, Object> saveSettings(SessionCtx ctx, SettingsInput in) {
+        ctx.require("attendance.manage");
+        return db.inTenant(ctx.tenantId(), c -> {
+            AttendanceService.Settings old = AttendanceService.settings(c);
+            int startMonth = in.leaveYearStartMonth() == null ? old.leaveYearStartMonth() : in.leaveYearStartMonth();
+            if (startMonth != 1 && startMonth != 4) {
+                throw ApiException.badRequest("The leave year starts in January or April");
+            }
+            if (startMonth != old.leaveYearStartMonth() && Sql.one(c, "select 1 from app.leave_year_end_run limit 1") != null) {
+                throw new ApiException(409, "leave.year_closed", "The leave year cannot be changed once a year has been closed");
+            }
+            boolean enabled = in.wfhEnabled() == null ? old.wfhEnabled() : in.wfhEnabled();
+            boolean punch = in.wfhRequiresPunch() == null ? old.wfhRequiresPunch() : in.wfhRequiresPunch();
+            Integer perWeek = in.wfhLimitPerWeek();
+            Integer perMonth = in.wfhLimitPerMonth();
+            if ((perWeek != null && (perWeek < 1 || perWeek > 7)) || (perMonth != null && (perMonth < 1 || perMonth > 31))) {
+                throw ApiException.badRequest("A weekly limit is 1 to 7 days and a monthly limit 1 to 31; leave one empty for no limit");
+            }
+            Sql.update(c, "insert into app.attendance_settings (tenant_id, leave_year_start_month, wfh_enabled, wfh_requires_punch, "
+                            + "wfh_limit_per_week, wfh_limit_per_month) values (?, ?, ?, ?, ?, ?) "
+                            + "on conflict (tenant_id) do update set leave_year_start_month = excluded.leave_year_start_month, "
+                            + "wfh_enabled = excluded.wfh_enabled, wfh_requires_punch = excluded.wfh_requires_punch, "
+                            + "wfh_limit_per_week = excluded.wfh_limit_per_week, wfh_limit_per_month = excluded.wfh_limit_per_month, "
+                            + "updated_at = now()", ctx.tenantId(), startMonth, enabled, punch, perWeek, perMonth);
+            if (punch != old.wfhRequiresPunch()) {
+                Sql.update(c, "delete from app.attendance_day where remote");   // remote days are judged differently now
+                Sql.update(c, "delete from app.attendance_day where status = 'work_from_home'");
+            }
+            Map<String, Object> detail = new LinkedHashMap<>();
+            detail.put("leaveYearStartsIn", startMonth == 1 ? "January" : "April");
+            detail.put("workFromHome", enabled ? "on" : "off");
+            detail.put("remoteDaysNeedPunches", punch ? "yes" : "no");
+            detail.put("limitPerWeek", perWeek);
+            detail.put("limitPerMonth", perMonth);
+            UserService.audit(c, ctx, "attendance.settings_changed", "tenant", ctx.tenantId(), detail);
+            return view(AttendanceService.settings(c));
+        });
+    }
+
+    /** Switches work from home on or off for one user. */
+    public void setWfhAllowed(SessionCtx ctx, UUID membershipId, boolean allowed) {
+        ctx.require("attendance.manage");
+        db.inTenant(ctx.tenantId(), c -> {
+            if (Sql.update(c, "update app.membership set wfh_allowed = ? where id = ?", allowed, membershipId) == 0) {
+                throw ApiException.notFound("The user");
+            }
+            UserService.audit(c, ctx, "attendance.wfh_allowed_set", "membership", membershipId, Map.of("allowed", allowed ? "yes" : "no"));
+            return null;
+        });
+    }
+
+    private static Map<String, Object> view(AttendanceService.Settings s) {
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("leaveYearStartMonth", s.leaveYearStartMonth());
+        out.put("wfhEnabled", s.wfhEnabled());
+        out.put("wfhRequiresPunch", s.wfhRequiresPunch());
+        out.put("wfhLimitPerWeek", s.wfhLimitPerWeek());
+        out.put("wfhLimitPerMonth", s.wfhLimitPerMonth());
+        return out;
     }
 
     /** Sets or clears the code that device files use for a user. */

@@ -3,7 +3,9 @@ import { invitationLink, org } from '../api.js'
 import { formatDate, useAction, useLoad } from '../hooks.js'
 import { Badge, CopyLink, Empty, ErrorNote, StatusBadge, Tabs } from '../ui.jsx'
 import Attendance from './Attendance.jsx'
+import Leave from './Leave.jsx'
 import MyAttendance from './MyAttendance.jsx'
+import MyLeave from './MyLeave.jsx'
 
 /** Checkboxes for roles. A role the signed-in user may not grant is shown but cannot be changed. */
 function RolePicker({ roles, selected, onChange }) {
@@ -407,7 +409,9 @@ export default function Organization({ me, page }) {
   return (
     <>
       {page === 'my-attendance' && <MyAttendance />}
+      {page === 'my-leave' && <MyLeave me={me} />}
       {page === 'attendance' && <Attendance me={me} />}
+      {page === 'leave' && <Leave me={me} />}
       {page === 'users' && <UserManagement me={me} />}
       {page === 'audit' && <AuditTab />}
     </>

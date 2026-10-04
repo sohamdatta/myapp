@@ -34,10 +34,35 @@ public final class DayCalculator {
      * @param awayRequest on_duty or work_from_home when such a request is approved, otherwise null
      * @param punches     the day's punches, oldest first
      */
-    public record Input(LocalDate date, Schedule schedule, String holidayName, String awayRequest, List<Punch> punches) {}
+    public record Input(LocalDate date, Schedule schedule, String holidayName, String awayRequest, List<Punch> punches,
+                        Leave leave, String awayHalf, boolean remote, boolean remoteNeedsPunches) {
 
+        /** A day with no leave and no remote working, as before those existed. */
+        public Input(LocalDate date, Schedule schedule, String holidayName, String awayRequest, List<Punch> punches) {
+            this(date, schedule, holidayName, awayRequest, punches, null, null, "work_from_home".equals(awayRequest), false);
+        }
+    }
+
+    /**
+     * Approved leave that counts on the day.
+     *
+     * @param half null for the whole day, otherwise first or second
+     */
+    public record Leave(String typeName, String half, boolean unpaid) {}
+
+    /**
+     * @param leaveDays 0, 0.5 or 1: how much of the day is leave
+     * @param remote    true when the day was worked, or counted, away from the office by arrangement
+     */
     public record Result(String status, Instant firstIn, Instant lastOut, int workedMinutes, int lateMinutes,
-                         int earlyMinutes, int overtimeMinutes, boolean incomplete, List<String> trail) {}
+                         int earlyMinutes, int overtimeMinutes, boolean incomplete, List<String> trail,
+                         double leaveDays, boolean leaveUnpaid, boolean remote) {
+
+        Result(String status, Instant firstIn, Instant lastOut, int workedMinutes, int lateMinutes,
+               int earlyMinutes, int overtimeMinutes, boolean incomplete, List<String> trail) {
+            this(status, firstIn, lastOut, workedMinutes, lateMinutes, earlyMinutes, overtimeMinutes, incomplete, trail, 0, false, false);
+        }
+    }
 
     public static Result calculate(Input in) {
         List<String> trail = new ArrayList<>();
@@ -86,10 +111,26 @@ public final class DayCalculator {
         }
         int worked = (int) (workedSeconds / 60);
 
-        if (in.awayRequest() != null) {
-            trail.add(in.awayRequest().equals("on_duty") ? "Approved on-duty request" : "Approved work-from-home request");
-            trail.add("Result: " + label(in.awayRequest()) + ", counted as a full day");
-            return new Result(in.awayRequest(), firstIn, lastOut, worked, 0, 0, 0, false, trail);
+        // Leave for the whole day decides the day, whatever else happened on it.
+        Leave leave = in.leave();
+        if (leave != null && leave.half() == null) {
+            trail.add(leave.typeName() + ", approved" + (leave.unpaid() ? " as unpaid" : ""));
+            if (!punches.isEmpty()) {
+                trail.add("Punched on a leave day; the punches are recorded but not counted");
+            }
+            trail.add("Result: on leave");
+            return new Result("on_leave", firstIn, lastOut, worked, 0, 0, 0, false, trail, 1, leave.unpaid(), false);
+        }
+        if ("on_duty".equals(in.awayRequest())) {
+            trail.add("Approved on-duty request");
+            trail.add("Result: on duty, counted as a full day");
+            return new Result("on_duty", firstIn, lastOut, worked, 0, 0, 0, false, trail);
+        }
+        boolean wholeDayRemote = in.remote() && in.awayHalf() == null;
+        if (wholeDayRemote && !in.remoteNeedsPunches()) {
+            trail.add("work_from_home".equals(in.awayRequest()) ? "Approved work-from-home request" : "Regular remote day");
+            trail.add("Result: work from home, counted as a full day");
+            return new Result("work_from_home", firstIn, lastOut, worked, 0, 0, 0, false, trail, 0, false, true);
         }
         boolean weeklyOff = s.weeklyOffs().contains(in.date().getDayOfWeek().getValue() % 7);
         if (in.holidayName() != null || weeklyOff) {
@@ -101,10 +142,28 @@ public final class DayCalculator {
             trail.add("Result: " + label(status));
             return new Result(status, firstIn, lastOut, worked, 0, 0, worked, incomplete, trail);
         }
+
+        // Half the day may already be accounted for: by leave, or by a half day at home that needs no punches.
+        String creditedHalf = null;
+        double leaveDays = 0;
+        boolean leaveUnpaid = false;
+        if (leave != null) {
+            creditedHalf = leave.half();
+            leaveDays = 0.5;
+            leaveUnpaid = leave.unpaid();
+            trail.add(leave.typeName() + " for the " + leave.half() + " half, approved" + (leave.unpaid() ? " as unpaid" : ""));
+        } else if (in.remote() && in.awayHalf() != null && !in.remoteNeedsPunches()) {
+            creditedHalf = in.awayHalf();
+            trail.add("Working from home for the " + in.awayHalf() + " half, approved");
+        } else if (in.remote()) {
+            trail.add(wholeDayRemote ? "Remote day, judged on its punches" : "Working from home for the " + in.awayHalf() + " half");
+        }
+
         if (punches.isEmpty()) {
             trail.add("No punches");
-            trail.add("Result: absent");
-            return new Result("absent", null, null, 0, 0, 0, 0, false, trail);
+            String status = creditedHalf != null ? "half_day" : "absent";
+            trail.add("Result: " + label(status) + (creditedHalf != null ? ", only the " + creditedHalf + " half counts" : ""));
+            return new Result(status, null, null, 0, 0, 0, 0, false, trail, leaveDays, leaveUnpaid, in.remote());
         }
 
         Instant shiftStart = in.date().atTime(s.start()).atZone(s.zone()).toInstant();
@@ -114,12 +173,12 @@ public final class DayCalculator {
         int late = 0;
         if (firstIn != null) {
             long afterGrace = Duration.between(shiftStart.plus(Duration.ofMinutes(s.graceMinutes())), firstIn).toMinutes();
-            late = (int) Math.max(0, afterGrace);
+            late = "first".equals(creditedHalf) ? 0 : (int) Math.max(0, afterGrace);
             trail.add("First in " + local(firstIn, s.zone()) + (late > 0 ? ", " + late + " min late" : ", on time"));
         }
         int early = 0;
         if (lastOut != null && !incomplete) {
-            early = (int) Math.max(0, Duration.between(lastOut, shiftEnd).toMinutes());
+            early = "second".equals(creditedHalf) ? 0 : (int) Math.max(0, Duration.between(lastOut, shiftEnd).toMinutes());
             trail.add("Last out " + local(lastOut, s.zone()) + (early > 0 ? ", " + early + " min before shift end" : ""));
         }
         if (incomplete) {
@@ -127,7 +186,15 @@ public final class DayCalculator {
         }
 
         String status;
-        if (worked >= s.fullDayMinutes()) {
+        if (creditedHalf != null) {
+            if (worked >= s.halfDayMinutes()) {
+                status = "present";
+                trail.add("Worked " + hours(worked) + " in the other half, a half day is " + hours(s.halfDayMinutes()));
+            } else {
+                status = "half_day";
+                trail.add("Worked " + hours(worked) + " in the other half, below a half day of " + hours(s.halfDayMinutes()));
+            }
+        } else if (worked >= s.fullDayMinutes()) {
             status = "present";
             trail.add("Worked " + hours(worked) + ", a full day is " + hours(s.fullDayMinutes()));
         } else if (worked >= s.halfDayMinutes()) {
@@ -142,7 +209,7 @@ public final class DayCalculator {
             trail.add("Overtime " + hours(overtime));
         }
         trail.add("Result: " + label(status));
-        return new Result(status, firstIn, lastOut, worked, late, early, overtime, incomplete, trail);
+        return new Result(status, firstIn, lastOut, worked, late, early, overtime, incomplete, trail, leaveDays, leaveUnpaid, in.remote());
     }
 
     private static String local(Instant at, ZoneId zone) {

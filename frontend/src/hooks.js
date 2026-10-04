@@ -117,3 +117,30 @@ export function liveStatus(day, isToday) {
   if (['absent', 'half_day'].includes(day.status) && !day.firstIn) return 'not in yet'
   return null
 }
+
+/** A number of leave days: 1 day, 2.5 days, 0 days. */
+export function formatDays(value) {
+  if (value === null || value === undefined) return '—'
+  const n = Number(value)
+  return `${n} ${Math.abs(n) === 1 ? 'day' : 'days'}`
+}
+
+/** A date range as one date, or "3 Oct to 5 Oct", with the half when only half a day is meant. */
+export function formatRange(from, to, half) {
+  const range = !to || from === to ? formatDay(from) : `${formatDay(from)} to ${formatDay(to)}`
+  return half ? `${range}, ${half} half` : range
+}
+
+/** An empty leave request form, and the request body made from one. */
+export const newLeave = () => ({ leaveTypeId: '', fromDate: localToday(), toDate: localToday(), half: '', reason: '' })
+
+export function leaveBody(value) {
+  const single = !value.toDate || value.toDate === value.fromDate
+  return {
+    leaveTypeId: value.leaveTypeId,
+    fromDate: value.fromDate,
+    toDate: value.toDate || value.fromDate,
+    half: single && value.half ? value.half : null,
+    reason: value.reason,
+  }
+}

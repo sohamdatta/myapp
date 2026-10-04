@@ -34,6 +34,7 @@ import com.example.loginapp.core.AttendanceImportService.Mapping;
 import com.example.loginapp.core.AttendanceService;
 import com.example.loginapp.core.AttendanceSettingsService;
 import com.example.loginapp.core.AttendanceSettingsService.LocationInput;
+import com.example.loginapp.core.AttendanceSettingsService.SettingsInput;
 import com.example.loginapp.core.AttendanceSettingsService.ShiftInput;
 import com.example.loginapp.core.AuthService;
 import com.example.loginapp.core.Db;
@@ -393,7 +394,7 @@ class AttendanceTest {
         assertTrue(attendance.requests(org.admin, "pending").isEmpty());
 
         assertError(400, "attendance.request_window", () -> attendance.createRequest(emp, "on_duty",
-                MONDAY.plusDays(3).toString(), null, null, "A day that has not come"));
+                MONDAY.plusDays(70).toString(), null, null, "Too far ahead to plan"));
         assertError(400, "attendance.request_window", () -> attendance.createRequest(emp, "on_duty",
                 MONDAY.minusDays(40).toString(), null, null, "Too long ago to correct"));
         assertError(400, "request.invalid", () -> attendance.createRequest(emp, "on_duty", MONDAY.toString(), null, null, "Hm"));
@@ -444,7 +445,7 @@ class AttendanceTest {
 
         String csv = (String) attendance.register(hr, month(MONDAY)).get("csv");
         assertTrue(csv.startsWith("Email,Employee code,Date,Status"), csv);
-        assertTrue(csv.contains("emp@" + org.slug + ".test,," + MONDAY + ",present,09:30,18:30,540,0,60,no\n"), csv);
+        assertTrue(csv.contains("emp@" + org.slug + ".test,," + MONDAY + ",present,09:30,18:30,540,0,60,no,0,no,no\n"), csv);
     }
 
     @Test
@@ -508,6 +509,117 @@ class AttendanceTest {
         assertError(403, "permission.denied", () -> settings.addHoliday(support, MONDAY.toString(), "No", null));
         assertError(403, "permission.denied", () -> attendance.today(support));
         assertError(403, "permission.denied", () -> attendance.decideRequest(support, UUID.randomUUID(), true, null));
+    }
+
+    // ── work from home ──────────────────────────────────────────────────
+
+    @Test
+    void workFromHomeCanBePlannedAheadWithinLimitsAndCancelled() {
+        Org org = newOrg();
+        SessionCtx emp = join(org, "emp", List.of("employee"));
+        assign(org, emp, location(org, "Office", "none"), shift(org, "General", "09:30", "18:30"));
+        settings.saveSettings(org.admin, new SettingsInput(null, true, false, 2, 5));
+        now(MONDAY.minusDays(3), "10:00");                      // the Friday before
+
+        // a week, Monday to Sunday: five working days are asked for, two are allowed
+        assertError(409, "attendance.wfh_limit", () -> attendance.createRequests(emp, "work_from_home",
+                MONDAY.toString(), SUNDAY.toString(), null, null, null, "Working from home all week"));
+        List<?> made = (List<?>) attendance.createRequests(emp, "work_from_home", MONDAY.toString(),
+                MONDAY.plusDays(1).toString(), null, null, null, "Two days at home").get("requests");
+        assertEquals(2, made.size());
+        assertError(409, "attendance.wfh_limit", () -> attendance.createRequests(emp, "work_from_home",
+                MONDAY.plusDays(2).toString(), null, "first", null, null, "A morning at home"));
+        Map<String, Object> state = attendance.homeWorking(emp);
+        assertEquals(true, state.get("allowed"));
+        assertEquals(2, state.get("limitPerWeek"));
+
+        UUID monday = UUID.fromString((String) ((Map<?, ?>) made.get(0)).get("id"));
+        UUID tuesday = UUID.fromString((String) ((Map<?, ?>) made.get(1)).get("id"));
+        attendance.decideRequest(org.admin, monday, true, null);
+        attendance.decideRequest(org.admin, tuesday, true, null);
+        now(MONDAY.plusDays(1), "09:00");
+        assertEquals("work_from_home", day(emp, MONDAY).get("status"));
+        assertEquals(true, day(emp, MONDAY).get("remote"));
+
+        // an approved day that has not passed can be withdrawn, and is then an ordinary day again
+        attendance.cancelRequest(emp, tuesday);
+        assertError(409, "attendance.cannot_cancel", () -> attendance.cancelRequest(emp, monday));
+        now(MONDAY.plusDays(2), "09:00");
+        assertEquals("absent", day(emp, MONDAY.plusDays(1)).get("status"));
+        assertTrue(actions(org).contains("attendance.request_cancelled"));
+
+        // switched off for the user, then for the Organization
+        settings.setWfhAllowed(org.admin, emp.membershipId(), false);
+        assertError(403, "attendance.wfh_not_allowed", () -> attendance.createRequests(emp, "work_from_home",
+                MONDAY.plusDays(3).toString(), null, null, null, null, "Not allowed any more"));
+        assertEquals(false, attendance.homeWorking(emp).get("allowed"));
+        // on duty is not work from home and is not limited
+        assertEquals(1, ((List<?>) attendance.createRequests(emp, "on_duty", MONDAY.plusDays(3).toString(), null, null, null, null,
+                "Client visit in Howrah").get("requests")).size());
+        assertError(403, "permission.denied", () -> settings.saveSettings(emp, new SettingsInput(null, true, false, null, null)));
+    }
+
+    @Test
+    void aRemoteDayAcceptsAPunchFromAnywhereAndOtherDaysDoNot() {
+        Org org = newOrg();
+        SessionCtx emp = join(org, "emp", List.of("employee"));
+        UUID office = UUID.fromString((String) settings.saveLocation(org.admin, null, new LocationInput(
+                "Office", null, null, null, null, null, List.of("203.0.113.0/24"), "ip", true)).get("id"));
+        UUID general = shift(org, "General", "09:30", "18:30");
+        // Wednesday is a regular remote day
+        settings.assign(org.admin, List.of(emp.membershipId().toString()), office, general, List.of(0), List.of(3),
+                MONDAY.minusDays(60).toString());
+        assertError(400, "request.invalid", () -> settings.assign(org.admin, List.of(emp.membershipId().toString()), office, general,
+                List.of(0), List.of(0), MONDAY.toString()));
+        settings.saveSettings(org.admin, new SettingsInput(null, true, true, null, null));   // remote days need punches
+
+        now(MONDAY, "09:30");
+        assertEquals(false, attendance.today(emp).get("remote"));
+        assertError(403, "attendance.outside_network", () -> attendance.punch(emp, null, null, null, "192.0.2.50"));
+
+        LocalDate wednesday = MONDAY.plusDays(2);
+        now(wednesday, "09:30");
+        Map<String, Object> today = attendance.today(emp);
+        assertEquals(true, today.get("remote"));
+        assertEquals(false, today.get("wantsPosition"));
+        Map<String, Object> in = attendance.punch(emp, 12.97, 77.59, 10, "192.0.2.50");
+        assertEquals("remote", ((Map<?, ?>) ((List<?>) in.get("punches")).get(0)).get("checkResult"));
+        // no position is kept for a remote punch
+        assertNull(db.inTenant(org.id, c -> Sql.one(c, "select latitude from app.punch where membership_id = ?", emp.membershipId()))
+                .get("latitude"));
+        now(wednesday, "18:30");
+        attendance.punch(emp, null, null, null, "192.0.2.50");
+        Map<String, Object> day = day(emp, wednesday);
+        assertEquals("present", day.get("status"));
+        assertEquals(true, day.get("remote"));
+        assertEquals(540, number(day, "workedMinutes"));
+        // a regular remote day needs no request
+        assertError(400, "request.invalid", () -> attendance.createRequests(emp, "work_from_home", wednesday.toString(), null, null,
+                null, null, "Already a remote day"));
+
+        // with punches not needed, the same day counts in full without them
+        settings.saveSettings(org.admin, new SettingsInput(null, true, false, null, null));
+        assertEquals("work_from_home", day(emp, wednesday).get("status"));
+    }
+
+    @Test
+    void aHalfDayAtHomeCountsThatHalf() {
+        Org org = newOrg();
+        SessionCtx emp = join(org, "emp", List.of("employee"));
+        assign(org, emp, location(org, "Office", "none"), shift(org, "General", "09:30", "18:30"));
+        now(MONDAY, "09:00");
+        UUID id = UUID.fromString((String) ((Map<?, ?>) ((List<?>) attendance.createRequests(emp, "work_from_home", MONDAY.toString(),
+                null, "first", null, null, "Morning at home").get("requests")).get(0)).get("id"));
+        assertError(400, "request.invalid", () -> attendance.createRequests(emp, "on_duty", MONDAY.plusDays(1).toString(), null,
+                "first", null, null, "Half a day on duty"));
+        attendance.decideRequest(org.admin, id, true, null);
+        punch(emp, MONDAY, "14:00");
+        punch(emp, MONDAY, "18:30");
+        now(MONDAY.plusDays(1), "09:00");
+        Map<String, Object> day = day(emp, MONDAY);
+        assertEquals("present", day.get("status"));
+        assertEquals(0, number(day, "lateMinutes"));
+        assertEquals(270, number(day, "workedMinutes"));
     }
 
     // ── device import ───────────────────────────────────────────────────

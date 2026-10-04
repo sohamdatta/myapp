@@ -236,7 +236,7 @@ function RequestRow({ request, canDecide, onDecided }) {
           <div className="hint">{formatDay(request.workDate)}</div>
         </td>
         <td>
-          {request.requestedIn ? `${formatTime(request.requestedIn)} to ${formatTime(request.requestedOut)}` : 'Whole day'}
+          {request.requestedIn ? `${formatTime(request.requestedIn)} to ${formatTime(request.requestedOut)}` : request.half ? `${request.half[0].toUpperCase()}${request.half.slice(1)} half` : 'Whole day'}
           <div className="hint">
             The day now: {request.dayStatus ? request.dayStatus.replaceAll('_', ' ') : 'not worked out'}
             {request.dayFirstIn && `, in ${formatTime(request.dayFirstIn)}`}

@@ -18,6 +18,7 @@ import org.junit.jupiter.api.Test;
 
 import com.example.loginapp.core.DayCalculator;
 import com.example.loginapp.core.DayCalculator.Input;
+import com.example.loginapp.core.DayCalculator.Leave;
 import com.example.loginapp.core.DayCalculator.Punch;
 import com.example.loginapp.core.DayCalculator.Result;
 import com.example.loginapp.core.DayCalculator.Schedule;
@@ -138,6 +139,81 @@ class DayCalculatorTest {
         assertEquals(490, r.workedMinutes());
         assertEquals(0, r.lateMinutes());
         assertEquals(0, r.earlyMinutes());
+    }
+
+    // ── leave and remote days ───────────────────────────────────────────
+
+    @Test
+    void fullDayLeaveDecidesTheDayWhateverElseHappened() {
+        Leave earned = new Leave("Earned leave", null, false);
+        Result r = DayCalculator.calculate(new Input(THURSDAY, GENERAL, null, "work_from_home",
+                punches(THURSDAY, GENERAL, "09:30 in", "18:30 out"), earned, null, true, false));
+        assertEquals("on_leave", r.status());
+        assertEquals(1.0, r.leaveDays());
+        assertFalse(r.leaveUnpaid());
+        assertEquals(0, r.overtimeMinutes());
+        assertTrue(r.trail().contains("Earned leave, approved"));
+        assertTrue(r.trail().contains("Punched on a leave day; the punches are recorded but not counted"));
+
+        Result unpaid = DayCalculator.calculate(new Input(THURSDAY, GENERAL, null, null, List.of(),
+                new Leave("Unpaid leave", null, true), null, false, false));
+        assertEquals("on_leave", unpaid.status());
+        assertTrue(unpaid.leaveUnpaid());
+    }
+
+    @Test
+    void halfDayLeaveNeedsHalfADaysHoursInTheOtherHalf() {
+        Leave morning = new Leave("Casual leave", "first", false);
+        Result enough = DayCalculator.calculate(new Input(THURSDAY, GENERAL, null, null,
+                punches(THURSDAY, GENERAL, "14:00 in", "18:30 out"), morning, null, false, false));
+        assertEquals("present", enough.status());
+        assertEquals(0.5, enough.leaveDays());
+        assertEquals(0, enough.lateMinutes());                 // the morning is leave, so arriving at 14:00 is not late
+
+        Result tooFew = DayCalculator.calculate(new Input(THURSDAY, GENERAL, null, null,
+                punches(THURSDAY, GENERAL, "15:00 in", "17:00 out"), morning, null, false, false));
+        assertEquals("half_day", tooFew.status());
+        assertEquals(90, tooFew.earlyMinutes());
+
+        Leave afternoon = new Leave("Casual leave", "second", false);
+        Result early = DayCalculator.calculate(new Input(THURSDAY, GENERAL, null, null,
+                punches(THURSDAY, GENERAL, "09:30 in", "13:45 out"), afternoon, null, false, false));
+        assertEquals("present", early.status());
+        assertEquals(0, early.earlyMinutes());
+
+        Result nothing = DayCalculator.calculate(new Input(THURSDAY, GENERAL, null, null, List.of(), morning, null, false, false));
+        assertEquals("half_day", nothing.status());
+    }
+
+    @Test
+    void aRemoteDayIsAFullDayUnlessPunchesAreRequired() {
+        Result regular = DayCalculator.calculate(new Input(THURSDAY, GENERAL, null, null, List.of(), null, null, true, false));
+        assertEquals("work_from_home", regular.status());
+        assertTrue(regular.remote());
+        assertTrue(regular.trail().contains("Regular remote day"));
+
+        Result noPunches = DayCalculator.calculate(new Input(THURSDAY, GENERAL, null, "work_from_home", List.of(), null, null, true, true));
+        assertEquals("absent", noPunches.status());
+        assertTrue(noPunches.remote());
+
+        Result punched = DayCalculator.calculate(new Input(THURSDAY, GENERAL, null, "work_from_home",
+                punches(THURSDAY, GENERAL, "10:00 in", "18:30 out"), null, null, true, true));
+        assertEquals("present", punched.status());
+        assertEquals(20, punched.lateMinutes());
+        assertTrue(punched.remote());
+    }
+
+    @Test
+    void onDutyBeatsRemoteAndAHolidayBeatsPunchRequiredRemote() {
+        assertEquals("on_duty", DayCalculator.calculate(new Input(THURSDAY, GENERAL, null, "on_duty", List.of(),
+                null, null, true, false)).status());
+        assertEquals("holiday", DayCalculator.calculate(new Input(THURSDAY, GENERAL, "Gandhi Jayanti", null, List.of(),
+                null, null, true, true)).status());
+        // a half day at home that needs no punches counts that half
+        Result r = DayCalculator.calculate(new Input(THURSDAY, GENERAL, null, "work_from_home",
+                punches(THURSDAY, GENERAL, "14:00 in", "18:30 out"), null, "first", true, false));
+        assertEquals("present", r.status());
+        assertEquals(0, r.lateMinutes());
     }
 
     @Test

@@ -46,6 +46,39 @@ function CodeCell({ person, canManage, onSaved }) {
   )
 }
 
+/** Whether a user may ask to work from home, with their regular days at home if any. */
+function HomeCell({ person, canManage, onSaved }) {
+  const { busy, error, run } = useAction()
+
+  async function change(event) {
+    const allowed = event.target.checked
+    const done = await run(async () => {
+      await attendance.setHomeWorking(person.membershipId, allowed)
+      return true
+    })
+    if (done) onSaved()
+  }
+
+  return (
+    <>
+      <label className="check">
+        <input
+          type="checkbox"
+          aria-label={`${person.email} may work from home`}
+          checked={Boolean(person.wfhAllowed)}
+          disabled={!canManage || busy}
+          onChange={change}
+        />
+        {person.wfhAllowed ? 'Can request' : 'Not allowed'}
+      </label>
+      {person.remoteDays?.length > 0 && (
+        <div className="hint">Regular: {person.remoteDays.map((d) => WEEKDAYS[Number(d)].slice(0, 3)).join(', ')}</div>
+      )}
+      <ErrorNote>{error}</ErrorNote>
+    </>
+  )
+}
+
 export function People({ canManage }) {
   const people = useLoad(attendance.people)
   const locations = useLoad(attendance.locations)
@@ -54,6 +87,7 @@ export function People({ canManage }) {
   const [locationId, setLocationId] = useState('')
   const [shiftId, setShiftId] = useState('')
   const [offs, setOffs] = useState([0])
+  const [remote, setRemote] = useState([])
   const [from, setFrom] = useState(localToday())
   const { busy, error, run } = useAction()
 
@@ -76,6 +110,7 @@ export function People({ canManage }) {
         workLocationId: locationId || null,
         shiftId: shiftId || null,
         weeklyOffs: offs,
+        remoteDays: remote.filter((d) => !offs.includes(d)),
         effectiveFrom: from,
       })
       return true
@@ -134,6 +169,20 @@ export function People({ canManage }) {
               </label>
             ))}
           </fieldset>
+          <fieldset className="days">
+            <legend>Regular days at home (optional)</legend>
+            {WEEKDAYS.map((name, day) => (
+              <label key={name} className={offs.includes(day) ? 'check check-disabled' : 'check'}>
+                <input
+                  type="checkbox"
+                  disabled={offs.includes(day)}
+                  checked={remote.includes(day) && !offs.includes(day)}
+                  onChange={() => setRemote(toggle(remote, day))}
+                />
+                {name}
+              </label>
+            ))}
+          </fieldset>
           <ErrorNote>{error}</ErrorNote>
           <button type="submit" className="secondary" disabled={busy || selected.length === 0}>
             {busy ? 'Assigning…' : `Assign to ${selected.length} selected`}
@@ -151,6 +200,7 @@ export function People({ canManage }) {
               <th>Work location</th>
               <th>Shift</th>
               <th>Weekly offs</th>
+              <th>Work from home</th>
               <th>Since</th>
             </tr>
           </thead>
@@ -174,6 +224,9 @@ export function People({ canManage }) {
                 <td>{p.locationName || <Badge tone="warn">not assigned</Badge>}</td>
                 <td>{p.shiftName || '—'}</td>
                 <td>{p.weeklyOffs ? p.weeklyOffs.map((d) => WEEKDAYS[d].slice(0, 3)).join(', ') || 'None' : '—'}</td>
+                <td>
+                  <HomeCell person={p} canManage={canManage} onSaved={people.reload} />
+                </td>
                 <td>
                   {p.effectiveFrom ? formatDay(p.effectiveFrom) : '—'}
                   {p.nextChange && <div className="hint">Changes on {formatDay(p.nextChange)}</div>}
@@ -473,6 +526,111 @@ function Holidays({ locations, canManage }) {
   )
 }
 
+/** The Organization's rules for working from home. */
+function HomeWorking({ canManage }) {
+  const settings = useLoad(attendance.settings)
+  const [form, setForm] = useState(null)
+  const [saved, setSaved] = useState(false)
+  const { busy, error, run } = useAction()
+
+  if (settings.loading) return <p className="muted">Loading…</p>
+  if (settings.error) return <ErrorNote>{settings.error}</ErrorNote>
+  const s = form || {
+    wfhEnabled: settings.data.wfhEnabled,
+    wfhRequiresPunch: settings.data.wfhRequiresPunch,
+    wfhLimitPerWeek: settings.data.wfhLimitPerWeek ?? '',
+    wfhLimitPerMonth: settings.data.wfhLimitPerMonth ?? '',
+  }
+  const set = (patch) => {
+    setSaved(false)
+    setForm({ ...s, ...patch })
+  }
+
+  async function submit(event) {
+    event.preventDefault()
+    const done = await run(() =>
+      attendance.saveSettings({
+        leaveYearStartMonth: settings.data.leaveYearStartMonth,
+        wfhEnabled: s.wfhEnabled,
+        wfhRequiresPunch: s.wfhRequiresPunch,
+        wfhLimitPerWeek: number(s.wfhLimitPerWeek),
+        wfhLimitPerMonth: number(s.wfhLimitPerMonth),
+      }),
+    )
+    if (done) {
+      setForm(null)
+      setSaved(true)
+      settings.reload()
+    }
+  }
+
+  return (
+    <>
+      <h2>Work from home</h2>
+      <form className="panel" onSubmit={submit} noValidate>
+        <div className="days">
+          <label className="check">
+            <input type="checkbox" checked={s.wfhEnabled} disabled={!canManage} onChange={(e) => set({ wfhEnabled: e.target.checked })} />
+            Users can work from home
+          </label>
+          <label className="check">
+            <input
+              type="checkbox"
+              checked={s.wfhRequiresPunch}
+              disabled={!canManage || !s.wfhEnabled}
+              onChange={(e) => set({ wfhRequiresPunch: e.target.checked })}
+            />
+            A day at home still needs a punch in and out
+          </label>
+        </div>
+        <div className="grid">
+          <div>
+            <label htmlFor="wfh-week">Requested days a week, at most</label>
+            <input
+              id="wfh-week"
+              type="number"
+              min="1"
+              max="7"
+              placeholder="No limit"
+              value={s.wfhLimitPerWeek}
+              disabled={!canManage || !s.wfhEnabled}
+              onChange={(e) => set({ wfhLimitPerWeek: e.target.value })}
+            />
+          </div>
+          <div>
+            <label htmlFor="wfh-month">Requested days a month, at most</label>
+            <input
+              id="wfh-month"
+              type="number"
+              min="1"
+              max="31"
+              placeholder="No limit"
+              value={s.wfhLimitPerMonth}
+              disabled={!canManage || !s.wfhEnabled}
+              onChange={(e) => set({ wfhLimitPerMonth: e.target.value })}
+            />
+          </div>
+        </div>
+        <p className="hint">
+          Who may ask is set per user under People, where regular days at home are also assigned. Regular days need no request and do not count
+          towards these limits. A punch from home is not checked against the office network or position, and no position is stored.
+        </p>
+        <ErrorNote>{error}</ErrorNote>
+        {saved && (
+          <p className="hint" role="status">
+            Saved.
+          </p>
+        )}
+        {canManage && (
+          <button type="submit" className="secondary" disabled={busy}>
+            {busy ? 'Saving…' : 'Save work-from-home rules'}
+          </button>
+        )}
+      </form>
+    </>
+  )
+}
+
 export function Setup({ canManage }) {
   const locations = useLoad(attendance.locations)
   const shifts = useLoad(attendance.shifts)
@@ -583,6 +741,7 @@ export function Setup({ canManage }) {
       {canManage && !editing && <ShiftForm key={`new-shift-${shifts.data.length}`} onSaved={saved} />}
 
       <Holidays locations={locations.data} canManage={canManage} />
+      <HomeWorking canManage={canManage} />
     </>
   )
 }

@@ -16,6 +16,8 @@ const CHECKS = {
   either: 'Office network, or your location at the office',
 }
 
+const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
+
 const SOURCES = { web: 'punched here', import: 'from a device', manual: 'entered by HR', request: 'from a request' }
 
 /** Asks the browser where the device is. Resolves to null when it cannot or may not say. */
@@ -77,7 +79,7 @@ function PunchPanel({ today, onPunched }) {
             {data.day && <DayStatus day={data.day} isToday />}
           </div>
           <p>
-            {data.location} · {data.shift}
+            {data.remote ? 'Working from home' : data.location} · {data.shift}
             {firstIn && ` · In at ${formatTime(firstIn.at, data.timezone)}`}
           </p>
         </div>
@@ -85,7 +87,7 @@ function PunchPanel({ today, onPunched }) {
           <button type="button" className="secondary punch-button" disabled={busy} onClick={punch}>
             {busy ? 'Checking…' : data.nextDirection === 'in' ? 'Punch in' : 'Punch out'}
           </button>
-          <p className="hint">{CHECKS[data.punchCheck]}</p>
+          <p className="hint">{data.remote ? 'Working from home today: no location check' : CHECKS[data.punchCheck]}</p>
         </div>
       </div>
       {error && (
@@ -174,18 +176,30 @@ function DayRow({ day, today, timeZone, open, onToggle }) {
   )
 }
 
-function RequestForm({ onCreated }) {
+/** How many work-from-home days are used against a limit, or nothing when there is no limit. */
+function used(count, limit, period) {
+  return limit ? `${Number(count)} of ${limit} used this ${period}` : null
+}
+
+function RequestForm({ home, onCreated }) {
   const [kind, setKind] = useState('regularization')
-  const [workDate, setWorkDate] = useState(localToday())
+  const [fromDate, setFromDate] = useState(localToday())
+  const [toDate, setToDate] = useState(localToday())
+  const [half, setHalf] = useState('')
   const [inTime, setInTime] = useState('09:30')
   const [outTime, setOutTime] = useState('18:30')
   const [reason, setReason] = useState('')
   const { busy, error, run } = useAction()
+  const correction = kind === 'regularization'
+  const atHome = kind === 'work_from_home'
+  const single = correction || toDate === fromDate
+  const limits = [used(home.usedThisWeek, home.limitPerWeek, 'week'), used(home.usedThisMonth, home.limitPerMonth, 'month')].filter(Boolean)
 
   async function submit(event) {
     event.preventDefault()
-    const body = { kind, workDate, reason }
-    if (kind === 'regularization') Object.assign(body, { inTime, outTime })
+    const body = correction
+      ? { kind, workDate: fromDate, inTime, outTime, reason }
+      : { kind, fromDate, toDate, half: atHome && single && half ? half : null, reason }
     const created = await run(() => attendance.createRequest(body))
     if (created) {
       setReason('')
@@ -200,18 +214,45 @@ function RequestForm({ onCreated }) {
         <div>
           <label htmlFor="req-kind">What for</label>
           <select id="req-kind" value={kind} onChange={(e) => setKind(e.target.value)}>
-            {Object.entries(KINDS).map(([id, label]) => (
-              <option key={id} value={id}>
-                {label}
-              </option>
-            ))}
+            {Object.entries(KINDS)
+              .filter(([id]) => id !== 'work_from_home' || home.allowed)
+              .map(([id, label]) => (
+                <option key={id} value={id}>
+                  {label}
+                </option>
+              ))}
           </select>
         </div>
         <div>
-          <label htmlFor="req-date">Date</label>
-          <input id="req-date" type="date" value={workDate} max={localToday()} onChange={(e) => setWorkDate(e.target.value)} />
+          <label htmlFor="req-date">{correction ? 'Date' : 'From'}</label>
+          <input
+            id="req-date"
+            type="date"
+            value={fromDate}
+            max={correction ? localToday() : undefined}
+            onChange={(e) => {
+              setFromDate(e.target.value)
+              if (toDate < e.target.value) setToDate(e.target.value)
+            }}
+          />
         </div>
-        {kind === 'regularization' && (
+        {!correction && (
+          <div>
+            <label htmlFor="req-to">To</label>
+            <input id="req-to" type="date" value={toDate} min={fromDate} onChange={(e) => setToDate(e.target.value)} />
+          </div>
+        )}
+        {atHome && (
+          <div>
+            <label htmlFor="req-half">How much of the day</label>
+            <select id="req-half" value={single ? half : ''} disabled={!single} onChange={(e) => setHalf(e.target.value)}>
+              <option value="">Whole day</option>
+              <option value="first">First half</option>
+              <option value="second">Second half</option>
+            </select>
+          </div>
+        )}
+        {correction && (
           <>
             <div>
               <label htmlFor="req-in">Came in at</label>
@@ -226,7 +267,15 @@ function RequestForm({ onCreated }) {
       </div>
       <label htmlFor="req-reason">Reason</label>
       <input id="req-reason" value={reason} onChange={(e) => setReason(e.target.value)} />
-      <p className="hint">A request can be for today or the last 31 days. HR decides it; your original punches are kept.</p>
+      <p className="hint">
+        {correction
+          ? 'A correction can be for today or the last 31 days. HR decides it; your original punches are kept.'
+          : atHome
+            ? `One request is made for each working day in the range.${limits.length ? ` ${limits.join(', ')}.` : ''}${
+                home.requiresPunch ? ' You still punch in and out on a day at home.' : ''
+              }`
+            : 'One request is made for each working day in the range, up to 31 days at a time.'}
+      </p>
       <ErrorNote>{error}</ErrorNote>
       <button type="submit" className="secondary" disabled={busy}>
         {busy ? 'Sending…' : 'Send request'}
@@ -267,6 +316,7 @@ function MyRequests({ requests, timeZone, onChanged }) {
                 <td>{formatDay(r.workDate)}</td>
                 <td>
                   {KINDS[r.kind]}
+                  {r.half && <div className="hint">{r.half} half</div>}
                   {r.requestedIn && (
                     <div className="hint">
                       {formatTime(r.requestedIn, timeZone)} to {formatTime(r.requestedOut, timeZone)}
@@ -279,7 +329,7 @@ function MyRequests({ requests, timeZone, onChanged }) {
                   {r.decisionNote && <div className="hint">{r.decisionNote}</div>}
                 </td>
                 <td className="actions">
-                  {r.status === 'pending' && (
+                  {r.canCancel && (
                     <button type="button" className="quiet danger" disabled={busy} onClick={() => cancel(r.id)}>
                       Cancel
                     </button>
@@ -313,6 +363,10 @@ function MyMonth({ month, today, timeZone }) {
           <div className="tile-value">{count('half_day')}</div>
         </div>
         <div className="tile">
+          <div className="tile-label">Leave</div>
+          <div className="tile-value">{settled.reduce((sum, d) => sum + Number(d.leaveDays || 0), 0)}</div>
+        </div>
+        <div className="tile">
           <div className="tile-label">Absent</div>
           <div className="tile-value">{count('absent')}</div>
         </div>
@@ -330,17 +384,19 @@ function MyMonth({ month, today, timeZone }) {
 export default function MyAttendance() {
   const today = useLoad(attendance.today)
   const requests = useLoad(attendance.myRequests)
+  const home = useLoad(attendance.homeWorking)
   const [month, setMonth] = useState(localMonth())
   const [version, setVersion] = useState(0)
   const [requesting, setRequesting] = useState(false)
 
-  if (today.loading || requests.loading) return <p className="muted">Loading…</p>
-  if (today.error || requests.error) return <ErrorNote>{today.error || requests.error}</ErrorNote>
+  if (today.loading || requests.loading || home.loading) return <p className="muted">Loading…</p>
+  if (today.error || requests.error || home.error) return <ErrorNote>{today.error || requests.error || home.error}</ErrorNote>
   const timeZone = today.data.timezone
 
   function refresh() {
     today.reload()
     requests.reload()
+    home.reload()
     setVersion((v) => v + 1)
   }
 
@@ -361,6 +417,11 @@ export default function MyAttendance() {
 
       {today.data.assigned && (
         <>
+          {home.data.remoteDays.length > 0 && (
+            <p className="hint">
+              Your regular days at home: {home.data.remoteDays.map((d) => WEEKDAYS[d]).join(', ')}. They need no request.
+            </p>
+          )}
           <div className="section-head">
             <h2>My requests</h2>
             <button type="button" className="outline" aria-expanded={requesting} onClick={() => setRequesting((v) => !v)}>
@@ -369,6 +430,7 @@ export default function MyAttendance() {
           </div>
           {requesting && (
             <RequestForm
+              home={home.data}
               onCreated={() => {
                 setRequesting(false)
                 refresh()

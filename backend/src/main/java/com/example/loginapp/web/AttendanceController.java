@@ -28,7 +28,9 @@ public class AttendanceController {
 
     public record PunchRequest(Double latitude, Double longitude, Integer accuracyM) {}
 
-    public record NewRequest(String kind, String workDate, String inTime, String outTime, String reason) {}
+    /** workDate is a single day; fromDate and toDate give a range of days on duty or at home. */
+    public record NewRequest(String kind, String workDate, String fromDate, String toDate, String half,
+                             String inTime, String outTime, String reason) {}
 
     public record Decision(String note) {}
 
@@ -65,6 +67,11 @@ public class AttendanceController {
         return attendance.myDays(Requests.session(auth, authorization), month);
     }
 
+    @GetMapping("/me/wfh")
+    public Map<String, Object> homeWorking(@RequestHeader(value = "Authorization", required = false) String authorization) {
+        return attendance.homeWorking(Requests.session(auth, authorization));
+    }
+
     @GetMapping("/me/requests")
     public List<Map<String, Object>> myRequests(@RequestHeader(value = "Authorization", required = false) String authorization) {
         return attendance.myRequests(Requests.session(auth, authorization));
@@ -73,8 +80,9 @@ public class AttendanceController {
     @PostMapping("/me/requests")
     public Map<String, Object> createRequest(@RequestHeader(value = "Authorization", required = false) String authorization,
                                              @RequestBody NewRequest request) {
-        return attendance.createRequest(Requests.session(auth, authorization), request.kind(), request.workDate(),
-                request.inTime(), request.outTime(), request.reason());
+        String from = request.fromDate() != null ? request.fromDate() : request.workDate();
+        return attendance.createRequests(Requests.session(auth, authorization), request.kind(), from,
+                request.toDate() != null ? request.toDate() : from, request.half(), request.inTime(), request.outTime(), request.reason());
     }
 
     @PostMapping("/me/requests/{id}/cancel")

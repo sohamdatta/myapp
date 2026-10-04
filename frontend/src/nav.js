@@ -22,12 +22,19 @@ export function navFor(me) {
   // Punching is for users of the Organization, never for a support session.
   const canPunch = me.permissions.includes('attendance.punch') && me.kind === 'tenant'
   const seesOthersAttendance = Boolean(scopes['attendance.read']) && scopes['attendance.read'] !== 'self'
+  // A support session has no leave of its own; a former employee can still look at theirs.
+  const hasOwnLeave = Boolean(scopes['leave.read']) && me.kind === 'tenant' && (scopes['leave.read'] === 'self' || me.permissions.includes('leave.apply'))
+  const seesOthersLeave = Boolean(scopes['leave.read']) && scopes['leave.read'] !== 'self'
   return [
-    { label: 'My work', items: [canPunch && { id: 'my-attendance', label: 'My attendance' }].filter(Boolean) },
+    {
+      label: 'My work',
+      items: [canPunch && { id: 'my-attendance', label: 'My attendance' }, hasOwnLeave && { id: 'my-leave', label: 'My leave' }].filter(Boolean),
+    },
     {
       label: 'Organization',
       items: [
         seesOthersAttendance && { id: 'attendance', label: 'Attendance' },
+        seesOthersLeave && { id: 'leave', label: 'Leave' },
         me.permissions.includes('user.read') && { id: 'users', label: 'User management' },
         me.permissions.includes('audit.read') && { id: 'audit', label: 'Audit log' },
       ].filter(Boolean),

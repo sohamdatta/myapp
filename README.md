@@ -31,10 +31,15 @@ Read this before relying on it.
 - **The attendance module has not been built with Maven either**, for the
   same reason. It adds no new dependencies. The last commit before it is
   `2aff0c3`.
-- **How the code was tested.** The 59 backend tests (22 for users, 37 for
-  attendance) passed against PostgreSQL 16 with the JUnit console launcher,
-  and the screens were exercised in a browser through a stand-in HTTP server
-  that called the real controllers. `mvn test` has not been run.
+- **Leave and work from home have not been built with Maven either.** They
+  add no Java dependencies. The migration needs the PostgreSQL `btree_gist`
+  extension, which ships with PostgreSQL and is created by the migration
+  itself. The last commit before them is `4eb18e3`.
+- **How the code was tested.** The 88 backend tests (22 for users, 54 for
+  attendance and work from home, 12 for leave) passed against PostgreSQL 16
+  with the JUnit console launcher, and the screens were exercised in a
+  browser through a stand-in HTTP server that called the real controllers.
+  `mvn test` has not been run.
 - **The office-network punch check has not been tried behind a real proxy.**
   It was tested with the address passed in directly. See "Attendance" below
   before relying on it.
@@ -42,8 +47,12 @@ Read this before relying on it.
   you to copy and send.
 - **Not built yet:** multi-factor sign-in, password reset, email change, seat
   limits, custom roles, and limiting a user to particular legal entities or
-  departments. In attendance: leave, overtime pay, a manager's team view
-  (it needs employee records with reporting lines), and anything for payroll.
+  departments. In attendance and leave: overtime pay, a manager's team view
+  (it needs employee records with reporting lines), approval chains beyond
+  one approver, leave or work-from-home requests raised by HR for someone
+  else's future days at home, comp-off claims raised by the employee, and
+  anything for payroll. Leave that is unpaid or marked for encashment is
+  recorded; nothing pays or deducts it yet.
 
 ## Run it in GitHub Codespaces
 
@@ -88,6 +97,21 @@ platform users, the first Super Admin.
    decide their own.
 5. Under **Device import**, give each user an employee code on the People
    view first, then upload a file exported from a biometric device.
+
+### Try leave and work from home
+
+1. As the Org Admin, open **Leave → Setup** and add leave types, for example
+   Casual leave with 12 days a year. Users need a work location and shift
+   (step 2 above) before leave days can be counted.
+2. As a user with the Employee role, open **My leave**, apply, and watch the
+   form say how many days it takes. Approve it as someone else under
+   **Leave → Requests**.
+3. Under **Leave → Balances**, add an opening balance with **Adjust**, or
+   record leave for someone with **Record leave**. **History** shows every
+   entry behind a balance.
+4. Under **Attendance → Setup → Work from home**, set the limits. Under
+   **People**, choose who may ask and assign regular days at home. A user
+   then asks under **My attendance → New request**.
 
 Signing in takes each person straight to where they work: their Organization,
 or the console for a platform user. Nobody is asked to choose. Someone who
@@ -176,6 +200,58 @@ The database also enforces these rules itself:
 
 The schema is in `backend/src/main/resources/db/migration/V3__attendance.sql`.
 
+## Leave
+
+- **Leave types** are set per Organization: paid with a yearly quota credited
+  at the start of the leave year or month by month, paid with days added only
+  by HR, unpaid, or comp-off. Each paid type says how much carries forward and
+  whether the rest lapses or is marked for encashment.
+- **A balance is a sum.** Every credit, leave taken, leave returned,
+  adjustment, lapse and expiry is one entry that is never changed. The
+  balance is their total, and **History** lists them. Credits that are due
+  are written the next time the balance is read; there is no nightly job.
+- **Counting days.** The server counts the days of a request from the user's
+  shift, weekly offs and holidays on each date. A leave type can say that
+  days off inside a leave count too. A half day is the first or second half
+  of a single date.
+- **Applying.** A request can start up to 31 days back and end up to 365 days
+  ahead. Days already asked for are held against the balance. When the
+  balance is short the request is refused, or the rest is taken as unpaid if
+  the leave type allows it. Two leaves cannot overlap.
+- **Deciding.** Nobody decides their own request. The user can cancel a
+  pending request, or an approved one before it starts; HR can cancel
+  any approved leave in an open leave year. Cancelling returns the days.
+- **On someone's behalf.** HR can record leave as approved for any date in an
+  open leave year, and add to or take from a balance with a reason.
+- **Comp-off.** Days off that were worked for at least a half day are listed
+  under Balances; HR grants a half or whole day, which expires after the
+  number of days the comp-off type gives.
+- **Year end.** The leave year runs January to December or April to March.
+  Closing a year is previewed first and run once: whatever each user holds
+  above the carry-forward limit is written off as a lapse or for encashment.
+  A closed year accepts no more changes; corrections are adjustments in the
+  current year.
+- **Attendance.** A day of approved leave shows as on leave; a half day of
+  leave needs only a half day of work to be complete.
+
+## Work from home
+
+- **Who may ask** is set per user under Attendance → People, and the whole
+  feature can be switched off under Setup.
+- **A request** covers a date range, one request per working day, or a half
+  day on a single date. Limits per week (Monday to Sunday) and per month can
+  be set; pending and approved days both count. An approved day can be
+  cancelled by the user until it has passed.
+- **Regular days at home** are part of a user's assignment. They need no
+  request and do not count towards the limits.
+- **Punching from home.** On an approved or regular day at home the punch is
+  not checked against the office network or position, and no position is
+  stored. Whether such a day still needs punches is a setting; when it does
+  not, the day is complete without them.
+
+The schema for both is in
+`backend/src/main/resources/db/migration/V4__leave_and_wfh.sql`.
+
 ## Roles
 
 | Role | Can |
@@ -193,10 +269,10 @@ an HR Admin can invite employees and managers but cannot hand out payroll or
 admin roles, and cannot suspend or remove an Org Admin. Nobody can change
 their own roles or status.
 
-The user-management and attendance permissions are used by screens today. The
+The user-management, attendance and leave permissions are used by screens today. The
 employee, compensation and payroll permissions are defined and assigned to
-roles, ready for those modules. An HR Admin who should punch also needs the
-Employee role.
+roles, ready for those modules. An HR Admin who should punch or apply for
+leave also needs the Employee role.
 
 ## Layout
 
@@ -239,8 +315,9 @@ Attendance, all under `/api/org/attendance`:
 | GET | `/me/today` | Today's punches, what the next punch will be, and what the location checks |
 | POST | `/me/punch` | Punches in or out; the body may carry `latitude`, `longitude`, `accuracyM` |
 | GET | `/me/days?month=` | The caller's days for a month, each with its trail |
-| GET, POST | `/me/requests` | The caller's requests; raises one |
-| POST | `/me/requests/{id}/cancel` | Withdraws a pending request |
+| GET, POST | `/me/requests` | The caller's requests; raises one, or one per working day of `fromDate` to `toDate` |
+| POST | `/me/requests/{id}/cancel` | Withdraws a pending request, or an approved day away that has not passed |
+| GET | `/me/wfh` | Whether the caller may work from home, the limits, and what is used |
 | GET | `/days?date=` | Everyone the caller can see, on one date |
 | GET | `/users/{id}/days?month=` | One user's month |
 | POST | `/users/{id}/punches` | HR adds a punch, with a reason |
@@ -251,8 +328,32 @@ Attendance, all under `/api/org/attendance`:
 | GET, POST | `/holidays` | Lists a year's holidays, adds one; `POST /{id}/delete` removes one |
 | GET, POST | `/assignments` | Users with what is assigned to them; assigns a location and shift |
 | PUT | `/users/{id}/employee-code` | Sets the code device files use |
+| PUT | `/users/{id}/wfh` | Whether a user may ask to work from home |
+| GET, PUT | `/settings` | The leave year and the work-from-home rules |
 | POST | `/imports/preview` | Shows a file's columns and the remembered mapping |
 | GET, POST | `/imports` | Device health and recent files; imports a file |
+
+Leave, all under `/api/org/leave`:
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/types` | The Organization's leave types |
+| GET | `/me/balances`, `/me/ledger?type=` | The caller's balances, and the entries behind one |
+| GET, POST | `/me/requests` | The caller's leave requests; applies for leave |
+| POST | `/me/requests/preview` | Counts the days of a request without making it |
+| POST | `/me/requests/{id}/cancel` | Withdraws a pending request, or approved leave that has not started |
+| GET | `/requests?status=` | Requests to decide |
+| POST | `/requests/{id}/approve`, `/reject`, `/cancel` | Decides one; HR cancels approved leave |
+| GET | `/calendar?from=&to=` | Who is away: leave, on duty and work from home |
+| GET | `/balances` | Every user's balances |
+| GET | `/users/{id}/balances`, `/users/{id}/ledger?type=` | One user's balances and entries |
+| POST | `/users/{id}/requests` | HR records leave for a user, approved |
+| POST | `/users/{id}/adjustments` | Adds to or takes from a balance, with a reason |
+| GET | `/comp-off/candidates` | Days off that were worked and have no comp-off yet |
+| POST | `/users/{id}/comp-off` | Grants comp-off for one of them |
+| POST | `/types` | Adds a leave type; `PUT /types/{id}` changes one |
+| GET | `/year-end/preview?year=` | What closing a leave year would write |
+| POST | `/year-end` | Closes a leave year |
 
 The Organization a request acts on always comes from the server-side session.
 It is never read from the URL, a header or the request body.

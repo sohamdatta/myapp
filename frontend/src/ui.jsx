@@ -27,6 +27,7 @@ const STATUS_TONES = {
   present: 'good',
   on_duty: 'good',
   work_from_home: 'good',
+  on_leave: 'neutral',
   half_day: 'warn',
   absent: 'warn',
   pending: 'warn',
@@ -47,11 +48,35 @@ export function StatusBadge({ status }) {
  */
 export function DayStatus({ day, isToday }) {
   const live = liveStatus(day, isToday)
-  if (live === 'working') return <Badge tone="good">working</Badge>
+  if (live === 'working') {
+    return (
+      <>
+        <Badge tone="good">working</Badge>
+        {day.remote && (
+          <>
+            {' '}
+            <Badge>remote</Badge>
+          </>
+        )}
+      </>
+    )
+  }
   if (live === 'not in yet') return <Badge>not in yet</Badge>
   return (
     <>
       <StatusBadge status={day.status} />
+      {day.remote && day.status !== 'work_from_home' && (
+        <>
+          {' '}
+          <Badge>remote</Badge>
+        </>
+      )}
+      {Number(day.leaveDays) === 0.5 && (
+        <>
+          {' '}
+          <Badge>half day leave</Badge>
+        </>
+      )}
       {day.incomplete && (
         <>
           {' '}

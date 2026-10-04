@@ -106,6 +106,18 @@ public final class Db {
                 || message.contains("holiday_uq"))) {
             return new ApiException(409, "request.refused", "One with that name or date already exists");
         }
+        if (state.equals("23P01") && message.contains("leave_request_no_overlap")) {
+            return new ApiException(409, "leave.overlap", "There is already leave on one of those dates");
+        }
+        if (state.equals("23514") && message.contains("leave_request_not_own")) {
+            return new ApiException(409, "leave.own_request", "You cannot decide your own leave");
+        }
+        if (state.equals("23505") && message.contains("leave_type_name_uq")) {
+            return new ApiException(409, "request.refused", "A leave type with that name already exists");
+        }
+        if (state.equals("23505") && message.contains("leave_year_end_run")) {
+            return new ApiException(409, "leave.year_closed", "This leave year has already been closed");
+        }
         if (state.equals("22P02") || state.equals("22007") || state.equals("22008")) {
             return new ApiException(400, "request.invalid", "One of the values is not in a valid format");
         }

@@ -1,5 +1,6 @@
 package com.example.loginapp.core;
 
+import java.math.BigDecimal;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.sql.Timestamp;
@@ -27,10 +28,12 @@ import java.util.UUID;
  * them by {@link DayCalculator} and stored in attendance_day, which can be
  * deleted and rebuilt at any time: deleting a row is how it is invalidated.
  */
+@SuppressWarnings("unchecked")
 public final class AttendanceService {
 
     static final ZoneId DEFAULT_ZONE = ZoneId.of("Asia/Kolkata");
     private static final int REQUEST_WINDOW_DAYS = 31;
+    private static final int FUTURE_WINDOW_DAYS = 60;
 
     private final Db db;
     private final Clock clock;
@@ -47,10 +50,35 @@ public final class AttendanceService {
 
     /** The location, shift and weekly offs in force for a user on a date. */
     record Assigned(UUID locationId, String locationName, String punchCheck, Double latitude, Double longitude,
-                    Integer radiusM, UUID shiftId, DayCalculator.Schedule schedule) {
+                    Integer radiusM, UUID shiftId, DayCalculator.Schedule schedule, Set<Integer> remoteDays) {
         ZoneId zone() {
             return schedule.zone();
         }
+
+        boolean weeklyOff(LocalDate day) {
+            return schedule.weeklyOffs().contains(day.getDayOfWeek().getValue() % 7);
+        }
+
+        /** A regular remote day: named in the assignment, and not a weekly off. */
+        boolean regularRemote(LocalDate day) {
+            return remoteDays.contains(day.getDayOfWeek().getValue() % 7) && !weeklyOff(day);
+        }
+    }
+
+    /** An Organization's attendance and leave settings. The defaults apply until someone saves them. */
+    record Settings(int leaveYearStartMonth, boolean wfhEnabled, boolean wfhRequiresPunch,
+                    Integer wfhLimitPerWeek, Integer wfhLimitPerMonth) {}
+
+    static Settings settings(Connection c) throws SQLException {
+        Map<String, Object> r = Sql.one(c, "select leave_year_start_month, wfh_enabled, wfh_requires_punch, "
+                + "wfh_limit_per_week, wfh_limit_per_month from app.attendance_settings");
+        if (r == null) {
+            return new Settings(1, true, false, null, null);
+        }
+        return new Settings(((Number) r.get("leaveYearStartMonth")).intValue(), (Boolean) r.get("wfhEnabled"),
+                (Boolean) r.get("wfhRequiresPunch"),
+                r.get("wfhLimitPerWeek") == null ? null : ((Number) r.get("wfhLimitPerWeek")).intValue(),
+                r.get("wfhLimitPerMonth") == null ? null : ((Number) r.get("wfhLimitPerMonth")).intValue());
     }
 
     // ── the signed-in user's own attendance ─────────────────────────────
@@ -87,11 +115,13 @@ public final class AttendanceService {
                     direction = "out";
                 }
             }
-            String check = verify(c, a, latitude, longitude, accuracyM, ip);
+            // On a remote day the office checks do not apply. The server decides that from the day, not from the browser.
+            boolean remote = remoteOn(c, ctx.membershipId(), workDate, a) != null;
+            String check = remote ? "remote" : verify(c, a, latitude, longitude, accuracyM, ip);
             Sql.update(c, "insert into app.punch (tenant_id, membership_id, at, direction, source, work_location_id, "
                             + "latitude, longitude, accuracy_m, ip, check_result) values (?, ?, ?, ?, 'web', ?, ?, ?, ?, ?::inet, ?)",
                     ctx.tenantId(), ctx.membershipId(), Timestamp.from(now), direction, a.locationId(),
-                    latitude, longitude, accuracyM, ip, check);
+                    remote ? null : latitude, remote ? null : longitude, remote ? null : accuracyM, ip, check);
             recompute(c, ctx.tenantId(), ctx.membershipId(), workDate);
             return today(c, ctx, now);
         });
@@ -128,7 +158,8 @@ public final class AttendanceService {
             }
             return Sql.query(c,
                     "select m.id as membership_id, dir.email, m.employee_code, d.status, d.first_in, d.last_out, "
-                            + "d.worked_minutes, d.late_minutes, d.early_minutes, d.overtime_minutes, d.incomplete, d.trail "
+                            + "d.worked_minutes, d.late_minutes, d.early_minutes, d.overtime_minutes, d.incomplete, d.trail, "
+                            + "d.leave_days, d.leave_unpaid, d.remote "
                             + "from app.membership m join app.member_directory() dir on dir.membership_id = m.id "
                             + "left join app.attendance_day d on d.membership_id = m.id and d.work_date = ? "
                             + "where m.status = 'active' order by dir.email", day);
@@ -192,7 +223,7 @@ public final class AttendanceService {
         YearMonth ym = monthOrCurrent(month);
         String csv = db.inTenant(ctx.tenantId(), c -> {
             StringBuilder out = new StringBuilder(
-                    "Email,Employee code,Date,Status,First in,Last out,Worked minutes,Late minutes,Overtime minutes,Missing punch\n");
+                    "Email,Employee code,Date,Status,First in,Last out,Worked minutes,Late minutes,Overtime minutes,Missing punch,Leave days,Unpaid leave,Remote\n");
             for (Map<String, Object> m : Sql.query(c,
                     "select m.id, dir.email, m.employee_code from app.membership m "
                             + "join app.member_directory() dir on dir.membership_id = m.id "
@@ -208,7 +239,10 @@ public final class AttendanceService {
                             .append(localTime(d.get("firstIn"), zone)).append(',').append(localTime(d.get("lastOut"), zone)).append(',')
                             .append(d.get("workedMinutes")).append(',').append(d.get("lateMinutes")).append(',')
                             .append(d.get("overtimeMinutes")).append(',')
-                            .append(Boolean.TRUE.equals(d.get("incomplete")) ? "yes" : "no").append('\n');
+                            .append(Boolean.TRUE.equals(d.get("incomplete")) ? "yes" : "no").append(',')
+                            .append(LeaveService.plain((BigDecimal) d.get("leaveDays"))).append(',')
+                            .append(Boolean.TRUE.equals(d.get("leaveUnpaid")) ? "yes" : "no").append(',')
+                            .append(Boolean.TRUE.equals(d.get("remote")) ? "yes" : "no").append('\n');
                 }
             }
             return out.toString();
@@ -221,11 +255,21 @@ public final class AttendanceService {
 
     // ── requests ────────────────────────────────────────────────────────
 
-    /**
-     * Raises a correction (regularization), on-duty or work-from-home request for a day.
-     * Times are local to the work location, as HH:mm; an out time at or before the in time means the next day.
-     */
+    /** Raises a request for one day. Kept for callers that have a single date. */
     public Map<String, Object> createRequest(SessionCtx ctx, String kind, String workDate, String inTime, String outTime, String reason) {
+        Map<String, Object> made = createRequests(ctx, kind, workDate, workDate, null, inTime, outTime, reason);
+        return (Map<String, Object>) ((List<?>) made.get("requests")).get(0);
+    }
+
+    /**
+     * Raises a correction (regularization) for one day, or on-duty or work-from-home requests for a range of dates:
+     * one request per working day in the range, so each can be decided and cancelled on its own.
+     * Times are local to the work location, as HH:mm; an out time at or before the in time means the next day.
+     *
+     * @param half first or second, for half a day at home on a single date; otherwise null
+     */
+    public Map<String, Object> createRequests(SessionCtx ctx, String kind, String fromDate, String toDate, String half,
+                                              String inTime, String outTime, String reason) {
         requirePunch(ctx);
         if (kind == null || !List.of("regularization", "on_duty", "work_from_home").contains(kind)) {
             throw ApiException.badRequest("The kind must be regularization, on_duty or work_from_home");
@@ -233,47 +277,151 @@ public final class AttendanceService {
         if (reason == null || reason.trim().length() < 5) {
             throw ApiException.badRequest("Give a reason of at least 5 characters");
         }
-        LocalDate day = workDate == null || workDate.isBlank() ? today() : date(workDate);
+        boolean correction = kind.equals("regularization");
+        boolean home = kind.equals("work_from_home");
+        LocalDate from = fromDate == null || fromDate.isBlank() ? today() : date(fromDate);
+        LocalDate to = toDate == null || toDate.isBlank() ? from : date(toDate);
+        String halfDay = half == null || half.isBlank() ? null : half;
+        if (to.isBefore(from)) {
+            throw ApiException.badRequest("The last date is before the first");
+        }
+        if (correction && !to.equals(from)) {
+            throw ApiException.badRequest("A punch correction is for one day");
+        }
+        if (halfDay != null && (!home || !to.equals(from) || !List.of("first", "second").contains(halfDay))) {
+            throw ApiException.badRequest("A half day is for work from home on a single date, first or second half");
+        }
+        if (from.plusDays(30).isBefore(to)) {
+            throw ApiException.badRequest("Ask for at most 31 days at a time");
+        }
         return db.inTenant(ctx.tenantId(), c -> {
-            Assigned a = assigned(c, ctx.membershipId(), day);
-            if (a == null) {
+            UUID me = ctx.membershipId();
+            Assigned first = assigned(c, me, from);
+            if (first == null) {
                 throw notAssigned();
             }
-            LocalDate today = LocalDate.now(clock.withZone(a.zone()));
-            if (day.isAfter(today) || day.isBefore(today.minusDays(REQUEST_WINDOW_DAYS))) {
-                throw new ApiException(400, "attendance.request_window",
-                        "A request can be for today or the last " + REQUEST_WINDOW_DAYS + " days");
+            LocalDate today = LocalDate.now(clock.withZone(first.zone()));
+            LocalDate latest = correction ? today : today.plusDays(FUTURE_WINDOW_DAYS);
+            if (from.isBefore(today.minusDays(REQUEST_WINDOW_DAYS)) || to.isAfter(latest)) {
+                throw new ApiException(400, "attendance.request_window", correction
+                        ? "A correction can be for today or the last " + REQUEST_WINDOW_DAYS + " days"
+                        : "A request can be for the last " + REQUEST_WINDOW_DAYS + " days or the next " + FUTURE_WINDOW_DAYS);
             }
+            Settings settings = settings(c);
+            if (home) {
+                Map<String, Object> m = Sql.one(c, "select wfh_allowed from app.membership where id = ?", me);
+                if (!settings.wfhEnabled() || !Boolean.TRUE.equals(m.get("wfhAllowed"))) {
+                    throw new ApiException(403, "attendance.wfh_not_allowed", settings.wfhEnabled()
+                            ? "Work from home is not switched on for you. Ask HR"
+                            : "Work from home is not in use in this Organization");
+                }
+            }
+
+            // Which dates need a request: working days, and for work from home not the regular remote days.
+            List<LocalDate> days = new ArrayList<>();
+            for (LocalDate d = from; !d.isAfter(to); d = d.plusDays(1)) {
+                Assigned a = assigned(c, me, d);
+                if (a == null) {
+                    continue;
+                }
+                if (!correction && (dayOff(c, a, d) != null || (home && a.regularRemote(d)))) {
+                    continue;
+                }
+                days.add(d);
+            }
+            if (days.isEmpty()) {
+                throw ApiException.badRequest(home
+                        ? "None of those dates needs a request: they are days off or already your regular remote days"
+                        : "None of those dates is a working day");
+            }
+            for (LocalDate d : days) {
+                if (!correction && LeaveService.hasLeave(c, me, d)) {
+                    throw new ApiException(409, "attendance.leave_on_date", "You have leave on " + d + ". Cancel the leave first");
+                }
+                if (Sql.one(c, "select 1 from app.attendance_request where membership_id = ? and work_date = ? and kind = ? "
+                        + "and status = 'approved'", me, d, kind) != null) {
+                    throw new ApiException(409, "attendance.request_exists", "A request for " + d + " is already approved");
+                }
+            }
+            if (home) {
+                checkHomeLimits(c, me, days, halfDay == null ? 1.0 : 0.5, settings);
+            }
+
             Timestamp in = null;
             Timestamp out = null;
-            if (kind.equals("regularization")) {
+            if (correction) {
                 LocalTime start = time(inTime);
                 LocalTime end = time(outTime);
-                LocalDate endDay = end.isAfter(start) ? day : day.plusDays(1);
-                in = Timestamp.from(day.atTime(start).atZone(a.zone()).toInstant());
-                out = Timestamp.from(endDay.atTime(end).atZone(a.zone()).toInstant());
+                LocalDate endDay = end.isAfter(start) ? from : from.plusDays(1);
+                in = Timestamp.from(from.atTime(start).atZone(first.zone()).toInstant());
+                out = Timestamp.from(endDay.atTime(end).atZone(first.zone()).toInstant());
             }
-            return Sql.one(c,
-                    "insert into app.attendance_request (tenant_id, membership_id, kind, work_date, requested_in, requested_out, reason) "
-                            + "values (?, ?, ?, ?, ?, ?, ?) returning id, kind, work_date, requested_in, requested_out, reason, status, created_at",
-                    ctx.tenantId(), ctx.membershipId(), kind, day, in, out, reason.trim());
+            List<Map<String, Object>> made = new ArrayList<>();
+            for (LocalDate d : days) {
+                made.add(Sql.one(c,
+                        "insert into app.attendance_request (tenant_id, membership_id, kind, work_date, half, requested_in, requested_out, reason) "
+                                + "values (?, ?, ?, ?, ?, ?, ?, ?) "
+                                + "returning id, kind, work_date, half, requested_in, requested_out, reason, status, created_at",
+                        ctx.tenantId(), me, kind, d, halfDay, in, out, reason.trim()));
+            }
+            Map<String, Object> result = new LinkedHashMap<>();
+            result.put("requests", made);
+            return result;
+        });
+    }
+
+    /** Whether the caller may work from home, the limits, and how much of each is used in the current week and month. */
+    public Map<String, Object> homeWorking(SessionCtx ctx) {
+        requirePunch(ctx);
+        return db.inTenant(ctx.tenantId(), c -> {
+            Settings settings = settings(c);
+            LocalDate today = today();
+            Map<String, Object> m = Sql.one(c, "select wfh_allowed from app.membership where id = ?", ctx.membershipId());
+            Assigned a = assigned(c, ctx.membershipId(), today);
+            Map<String, Object> out = new LinkedHashMap<>();
+            out.put("allowed", settings.wfhEnabled() && Boolean.TRUE.equals(m.get("wfhAllowed")));
+            out.put("requiresPunch", settings.wfhRequiresPunch());
+            out.put("limitPerWeek", settings.wfhLimitPerWeek());
+            out.put("limitPerMonth", settings.wfhLimitPerMonth());
+            out.put("usedThisWeek", homeDays(c, ctx.membershipId(), weekStart(today), weekStart(today).plusDays(6)));
+            out.put("usedThisMonth", homeDays(c, ctx.membershipId(), today.withDayOfMonth(1), YearMonth.from(today).atEndOfMonth()));
+            out.put("remoteDays", a == null ? List.of() : a.remoteDays().stream().sorted().toList());
+            return out;
         });
     }
 
     public List<Map<String, Object>> myRequests(SessionCtx ctx) {
         requirePunch(ctx);
         return db.inTenant(ctx.tenantId(), c -> Sql.query(c,
-                "select id, kind, work_date, requested_in, requested_out, reason, status, decision_note, decided_at, created_at "
-                        + "from app.attendance_request where membership_id = ? order by created_at desc limit 100", ctx.membershipId()));
+                "select id, kind, work_date, half, requested_in, requested_out, reason, status, decision_note, decided_at, created_at, "
+                        + "(status = 'pending' or (status = 'approved' and kind <> 'regularization' and work_date >= ?)) as can_cancel "
+                        + "from app.attendance_request where membership_id = ? order by work_date desc, created_at desc limit 100",
+                today(), ctx.membershipId()));
     }
 
+    /** Withdraws the caller's own request: a pending one, or an approved day away that has not passed. */
     public void cancelRequest(SessionCtx ctx, UUID requestId) {
         requirePunch(ctx);
         db.inTenant(ctx.tenantId(), c -> {
-            if (Sql.update(c, "update app.attendance_request set status = 'cancelled' "
-                    + "where id = ? and membership_id = ? and status = 'pending'", requestId, ctx.membershipId()) == 0) {
-                throw ApiException.notFound("The pending request");
+            Map<String, Object> r = Sql.one(c, "select kind, work_date, status from app.attendance_request "
+                    + "where id = ? and membership_id = ? for update", requestId, ctx.membershipId());
+            if (r == null || !List.of("pending", "approved").contains((String) r.get("status"))) {
+                throw ApiException.notFound("The request");
             }
+            if (r.get("status").equals("pending")) {
+                Sql.update(c, "update app.attendance_request set status = 'cancelled', cancelled_at = now() where id = ?", requestId);
+                return null;
+            }
+            LocalDate day = LocalDate.parse((String) r.get("workDate"));
+            if (r.get("kind").equals("regularization") || day.isBefore(today())) {
+                throw new ApiException(409, "attendance.cannot_cancel", r.get("kind").equals("regularization")
+                        ? "An approved correction cannot be withdrawn. Ask HR to add the right punches"
+                        : "That day has passed. Ask HR to correct it");
+            }
+            Sql.update(c, "update app.attendance_request set status = 'cancelled', cancelled_at = now() where id = ?", requestId);
+            forget(c, ctx.membershipId(), day, day);
+            UserService.audit(c, ctx, "attendance.request_cancelled", "attendance_request", requestId,
+                    Map.of("kind", r.get("kind"), "date", day.toString()));
             return null;
         });
     }
@@ -289,7 +437,7 @@ public final class AttendanceService {
         String wanted = status == null || status.isBlank() ? "pending" : status;
         return db.inTenant(ctx.tenantId(), c -> Sql.query(c,
                 "select r.id, r.membership_id, dir.email, r.kind, r.work_date, r.requested_in, r.requested_out, r.reason, "
-                        + "r.status, r.decision_note, r.decided_at, r.created_at, "
+                        + "r.half, r.status, r.decision_note, r.decided_at, r.created_at, "
                         + "d.status as day_status, d.first_in as day_first_in, d.last_out as day_last_out, "
                         + "(r.membership_id = ?) as own "
                         + "from app.attendance_request r join app.member_directory() dir on dir.membership_id = r.membership_id "
@@ -316,6 +464,9 @@ public final class AttendanceService {
             Sql.update(c, "update app.attendance_request set status = ?, decided_by = ?, decided_at = now(), decision_note = ? where id = ?",
                     approve ? "approved" : "rejected", ctx.membershipId(), note == null || note.isBlank() ? null : note.trim(), requestId);
             LocalDate day = LocalDate.parse((String) r.get("workDate"));
+            if (approve && !"regularization".equals(r.get("kind")) && LeaveService.hasLeave(c, owner, day)) {
+                throw new ApiException(409, "attendance.leave_on_date", "The user has leave on that date");
+            }
             if (approve && "regularization".equals(r.get("kind"))) {
                 for (String[] p : new String[][] {{"in", "requestedIn"}, {"out", "requestedOut"}}) {
                     Sql.update(c, "insert into app.punch (tenant_id, membership_id, at, direction, source, request_id) "
@@ -324,7 +475,7 @@ public final class AttendanceService {
                 }
             }
             if (approve) {
-                recompute(c, ctx.tenantId(), owner, day);
+                forget(c, owner, day, day);
             }
             UserService.audit(c, ctx, approve ? "attendance.request_approved" : "attendance.request_rejected",
                     "attendance_request", requestId, Map.of("kind", r.get("kind"), "date", day.toString()));
@@ -346,8 +497,9 @@ public final class AttendanceService {
                     "select name from app.holiday where on_date = ? and (work_location_id is null or work_location_id = ?) "
                             + "order by work_location_id nulls last limit 1", day, a.locationId());
             Map<String, Object> away = Sql.one(c,
-                    "select kind from app.attendance_request where membership_id = ? and work_date = ? and status = 'approved' "
-                            + "and kind in ('on_duty','work_from_home') order by decided_at desc limit 1", membershipId, day);
+                    "select kind, half from app.attendance_request where membership_id = ? and work_date = ? and status = 'approved' "
+                            + "and kind in ('on_duty','work_from_home') order by (kind = 'on_duty') desc, decided_at desc limit 1",
+                    membershipId, day);
             Instant from = PunchChecks.dayStart(day, s.zone(), s.start(), s.end());
             Instant to = PunchChecks.dayStart(day.plusDays(1), s.zone(), s.start(), s.end());
             List<DayCalculator.Punch> punches = new ArrayList<>();
@@ -360,27 +512,106 @@ public final class AttendanceService {
                 punches.add(new DayCalculator.Punch(Instant.parse((String) p.get("at")),
                         (String) p.get("direction"), (String) p.get("source")));
             }
-            input = new DayCalculator.Input(day, s, holiday == null ? null : (String) holiday.get("name"),
-                    away == null ? null : (String) away.get("kind"), punches);
+            String awayKind = away == null ? null : (String) away.get("kind");
+            boolean dayOff = holiday != null || a.weeklyOff(day);
+            boolean remote = "work_from_home".equals(awayKind) || (awayKind == null && a.regularRemote(day));
+            input = new DayCalculator.Input(day, s, holiday == null ? null : (String) holiday.get("name"), awayKind, punches,
+                    LeaveService.leaveOn(c, membershipId, day, dayOff),
+                    "work_from_home".equals(awayKind) ? (String) away.get("half") : null,
+                    remote, settings(c).wfhRequiresPunch());
         }
         DayCalculator.Result r = DayCalculator.calculate(input);
         Sql.update(c, "insert into app.attendance_day (tenant_id, membership_id, work_date, status, shift_id, first_in, last_out, "
-                        + "worked_minutes, late_minutes, early_minutes, overtime_minutes, incomplete, trail, computed_at) "
-                        + "values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, now()) "
+                        + "worked_minutes, late_minutes, early_minutes, overtime_minutes, incomplete, trail, leave_days, leave_unpaid, remote, "
+                        + "computed_at) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, now()) "
                         + "on conflict (membership_id, work_date) do update set status = excluded.status, shift_id = excluded.shift_id, "
                         + "first_in = excluded.first_in, last_out = excluded.last_out, worked_minutes = excluded.worked_minutes, "
                         + "late_minutes = excluded.late_minutes, early_minutes = excluded.early_minutes, "
                         + "overtime_minutes = excluded.overtime_minutes, incomplete = excluded.incomplete, trail = excluded.trail, "
+                        + "leave_days = excluded.leave_days, leave_unpaid = excluded.leave_unpaid, remote = excluded.remote, "
                         + "computed_at = now()",
                 tenantId, membershipId, day, r.status(), a == null ? null : a.shiftId(),
                 r.firstIn() == null ? null : Timestamp.from(r.firstIn()), r.lastOut() == null ? null : Timestamp.from(r.lastOut()),
                 r.workedMinutes(), r.lateMinutes(), r.earlyMinutes(), r.overtimeMinutes(), r.incomplete(),
-                r.trail().toArray(new String[0]));
+                r.trail().toArray(new String[0]), java.math.BigDecimal.valueOf(r.leaveDays()), r.leaveUnpaid(), r.remote());
     }
 
     /** Forgets stored results so they are worked out again when next read. */
     static void invalidateFrom(Connection c, UUID membershipId, LocalDate from) throws SQLException {
         Sql.update(c, "delete from app.attendance_day where membership_id = ? and work_date >= ?", membershipId, from);
+    }
+
+    /** Forgets one user's stored results for a range of dates. */
+    static void forget(Connection c, UUID membershipId, LocalDate from, LocalDate to) throws SQLException {
+        Sql.update(c, "delete from app.attendance_day where membership_id = ? and work_date between ? and ?", membershipId, from, to);
+    }
+
+    /** The holiday's name, "Weekly off", or null when the date is a working day for the user. */
+    static String dayOff(Connection c, Assigned a, LocalDate day) throws SQLException {
+        Map<String, Object> holiday = Sql.one(c,
+                "select name from app.holiday where on_date = ? and (work_location_id is null or work_location_id = ?) limit 1",
+                day, a.locationId());
+        if (holiday != null) {
+            return (String) holiday.get("name");
+        }
+        return a.weeklyOff(day) ? "Weekly off" : null;
+    }
+
+    /**
+     * Whether the user works away from the office on the date by arrangement:
+     * null when not, otherwise full, first or second.
+     */
+    static String remoteOn(Connection c, UUID membershipId, LocalDate day, Assigned a) throws SQLException {
+        Map<String, Object> r = Sql.one(c, "select half from app.attendance_request where membership_id = ? and work_date = ? "
+                + "and kind = 'work_from_home' and status = 'approved' limit 1", membershipId, day);
+        if (r != null) {
+            return r.get("half") == null ? "full" : (String) r.get("half");
+        }
+        return a.regularRemote(day) ? "full" : null;
+    }
+
+    static LocalDate weekStart(LocalDate day) {
+        return day.minusDays(day.getDayOfWeek().getValue() - 1L);
+    }
+
+    /** Work-from-home days asked for or approved in a period; a half day counts as half. */
+    static double homeDays(Connection c, UUID membershipId, LocalDate from, LocalDate to) throws SQLException {
+        Map<String, Object> r = Sql.one(c, "select coalesce(sum(case when half is null then 1 else 0.5 end), 0) as used "
+                + "from app.attendance_request where membership_id = ? and kind = 'work_from_home' "
+                + "and status in ('pending','approved') and work_date between ? and ?", membershipId, from, to);
+        return ((Number) r.get("used")).doubleValue();
+    }
+
+    private static void checkHomeLimits(Connection c, UUID membershipId, List<LocalDate> days, double each, Settings settings)
+            throws SQLException {
+        Map<LocalDate, Double> perWeek = new LinkedHashMap<>();
+        Map<LocalDate, Double> perMonth = new LinkedHashMap<>();
+        for (LocalDate d : days) {
+            perWeek.merge(weekStart(d), each, Double::sum);
+            perMonth.merge(d.withDayOfMonth(1), each, Double::sum);
+        }
+        if (settings.wfhLimitPerWeek() != null) {
+            for (Map.Entry<LocalDate, Double> w : perWeek.entrySet()) {
+                double used = homeDays(c, membershipId, w.getKey(), w.getKey().plusDays(6));
+                if (used + w.getValue() > settings.wfhLimitPerWeek()) {
+                    throw new ApiException(409, "attendance.wfh_limit", "The limit is " + settings.wfhLimitPerWeek()
+                            + " work-from-home days a week; " + trim(used) + " already used in the week of " + w.getKey());
+                }
+            }
+        }
+        if (settings.wfhLimitPerMonth() != null) {
+            for (Map.Entry<LocalDate, Double> m : perMonth.entrySet()) {
+                double used = homeDays(c, membershipId, m.getKey(), YearMonth.from(m.getKey()).atEndOfMonth());
+                if (used + m.getValue() > settings.wfhLimitPerMonth()) {
+                    throw new ApiException(409, "attendance.wfh_limit", "The limit is " + settings.wfhLimitPerMonth()
+                            + " work-from-home days a month; " + trim(used) + " already used in " + YearMonth.from(m.getKey()));
+                }
+            }
+        }
+    }
+
+    private static String trim(double days) {
+        return days == Math.rint(days) ? String.valueOf((long) days) : String.valueOf(days);
     }
 
     static void invalidateDate(Connection c, LocalDate day) throws SQLException {
@@ -392,7 +623,7 @@ public final class AttendanceService {
         Map<String, Object> r = Sql.one(c,
                 "select l.id as location_id, l.name as location_name, l.timezone, l.punch_check, l.latitude, l.longitude, l.radius_m, "
                         + "s.id as shift_id, s.name as shift_name, s.start_time, s.end_time, s.grace_minutes, s.full_day_minutes, "
-                        + "s.half_day_minutes, a.weekly_offs "
+                        + "s.half_day_minutes, a.weekly_offs, a.remote_days "
                         + "from app.attendance_assignment a join app.work_location l on l.id = a.work_location_id "
                         + "join app.shift s on s.id = a.shift_id "
                         + "where a.membership_id = ? and a.effective_from <= ? "
@@ -408,11 +639,15 @@ public final class AttendanceService {
                 LocalTime.parse((String) r.get("startTime")), LocalTime.parse((String) r.get("endTime")),
                 ((Number) r.get("graceMinutes")).intValue(), ((Number) r.get("fullDayMinutes")).intValue(),
                 ((Number) r.get("halfDayMinutes")).intValue(), offs, zone((String) r.get("timezone")));
+        Set<Integer> remoteDays = new HashSet<>();
+        for (Object o : (List<?>) r.get("remoteDays")) {
+            remoteDays.add(Integer.parseInt(o.toString()));
+        }
         return new Assigned(AuthService.uuid(r.get("locationId")), (String) r.get("locationName"), (String) r.get("punchCheck"),
                 r.get("latitude") == null ? null : ((Number) r.get("latitude")).doubleValue(),
                 r.get("longitude") == null ? null : ((Number) r.get("longitude")).doubleValue(),
                 r.get("radiusM") == null ? null : ((Number) r.get("radiusM")).intValue(),
-                AuthService.uuid(r.get("shiftId")), schedule);
+                AuthService.uuid(r.get("shiftId")), schedule, remoteDays);
     }
 
     static ZoneId zone(String id) {
@@ -456,11 +691,13 @@ public final class AttendanceService {
         out.put("location", a.locationName());
         out.put("shift", s.shiftName() + " " + s.start() + " to " + s.end());
         out.put("punchCheck", a.punchCheck());
-        out.put("wantsPosition", a.latitude() != null && List.of("location", "either").contains(a.punchCheck()));
+        boolean remote = remoteOn(c, ctx.membershipId(), workDate, a) != null;
+        out.put("remote", remote);
+        out.put("wantsPosition", !remote && a.latitude() != null && List.of("location", "either").contains(a.punchCheck()));
         out.put("nextDirection", in ? "out" : "in");
         out.put("punches", punches);
         out.put("day", Sql.one(c, "select status, first_in, last_out, worked_minutes, late_minutes, early_minutes, "
-                + "overtime_minutes, incomplete, trail from app.attendance_day where membership_id = ? and work_date = ?",
+                + "overtime_minutes, incomplete, trail, leave_days, leave_unpaid, remote from app.attendance_day where membership_id = ? and work_date = ?",
                 ctx.membershipId(), workDate));
         return out;
     }
@@ -533,7 +770,7 @@ public final class AttendanceService {
         }
         return Sql.query(c,
                 "select work_date, status, first_in, last_out, worked_minutes, late_minutes, early_minutes, overtime_minutes, "
-                        + "incomplete, trail from app.attendance_day where membership_id = ? and work_date between ? and ? "
+                        + "incomplete, trail, leave_days, leave_unpaid, remote from app.attendance_day where membership_id = ? and work_date between ? and ? "
                         + "order by work_date desc", membershipId, ym.atDay(1), ym.atEndOfMonth());
     }
 

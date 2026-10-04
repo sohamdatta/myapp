@@ -27,7 +27,9 @@ public class AttendanceSettingsController {
     public record HolidayRequest(String date, String name, String workLocationId) {}
 
     public record AssignRequest(List<String> membershipIds, String workLocationId, String shiftId,
-                                List<Integer> weeklyOffs, String effectiveFrom) {}
+                                List<Integer> weeklyOffs, List<Integer> remoteDays, String effectiveFrom) {}
+
+    public record AllowedRequest(Boolean allowed) {}
 
     public record CodeRequest(String code) {}
 
@@ -122,7 +124,7 @@ public class AttendanceSettingsController {
         settings.assign(Requests.session(auth, authorization), request.membershipIds(),
                 request.workLocationId() == null ? null : Requests.id(request.workLocationId()),
                 request.shiftId() == null ? null : Requests.id(request.shiftId()),
-                request.weeklyOffs(), request.effectiveFrom());
+                request.weeklyOffs(), request.remoteDays(), request.effectiveFrom());
         return ResponseEntity.noContent().build();
     }
 
@@ -130,6 +132,24 @@ public class AttendanceSettingsController {
     public ResponseEntity<Void> employeeCode(@RequestHeader(value = "Authorization", required = false) String authorization,
                                              @PathVariable("id") String id, @RequestBody CodeRequest request) {
         settings.setEmployeeCode(Requests.session(auth, authorization), Requests.id(id), request.code());
+        return ResponseEntity.noContent().build();
+    }
+
+    @GetMapping("/settings")
+    public Map<String, Object> settings(@RequestHeader(value = "Authorization", required = false) String authorization) {
+        return settings.settings(Requests.session(auth, authorization));
+    }
+
+    @PutMapping("/settings")
+    public Map<String, Object> saveSettings(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                            @RequestBody AttendanceSettingsService.SettingsInput request) {
+        return settings.saveSettings(Requests.session(auth, authorization), request);
+    }
+
+    @PutMapping("/users/{id}/wfh")
+    public ResponseEntity<Void> wfhAllowed(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                           @PathVariable("id") String id, @RequestBody AllowedRequest request) {
+        settings.setWfhAllowed(Requests.session(auth, authorization), Requests.id(id), Boolean.TRUE.equals(request.allowed()));
         return ResponseEntity.noContent().build();
     }
 

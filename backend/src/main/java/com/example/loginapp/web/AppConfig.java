@@ -12,6 +12,8 @@ import com.example.loginapp.core.AttendanceSettingsService;
 import com.example.loginapp.core.AuthService;
 import com.example.loginapp.core.Db;
 import com.example.loginapp.core.InvitationService;
+import com.example.loginapp.core.LeaveAdminService;
+import com.example.loginapp.core.LeaveService;
 import com.example.loginapp.core.Migrator;
 import com.example.loginapp.core.PlatformService;
 import com.example.loginapp.core.UserService;
@@ -61,6 +63,16 @@ public class AppConfig {
     @Bean
     public AttendanceImportService attendanceImportService(Db db) {
         return new AttendanceImportService(db);
+    }
+
+    @Bean
+    public LeaveService leaveService(Db db) {
+        return new LeaveService(db);
+    }
+
+    @Bean
+    public LeaveAdminService leaveAdminService(Db db) {
+        return new LeaveAdminService(db);
     }
 
     @Bean

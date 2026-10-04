@@ -197,6 +197,7 @@ export const attendance = {
   myRequests: () => get('/org/attendance/me/requests'),
   createRequest: (body) => post('/org/attendance/me/requests', body),
   cancelRequest: (id) => post(`/org/attendance/me/requests/${id}/cancel`),
+  homeWorking: () => get('/org/attendance/me/wfh'),
 
   board: (date) => get(`/org/attendance/days${query({ date })}`),
   userDays: (id, month) => get(`/org/attendance/users/${id}/days${query({ month })}`),
@@ -216,10 +217,39 @@ export const attendance = {
   people: () => get('/org/attendance/assignments'),
   assign: (body) => post('/org/attendance/assignments', body),
   setEmployeeCode: (id, code) => put(`/org/attendance/users/${id}/employee-code`, { code }),
+  settings: () => get('/org/attendance/settings'),
+  saveSettings: (body) => put('/org/attendance/settings', body),
+  setHomeWorking: (id, allowed) => put(`/org/attendance/users/${id}/wfh`, { allowed }),
 
   importHealth: () => get('/org/attendance/imports'),
   previewImport: (body) => post('/org/attendance/imports/preview', body),
   importFile: (body) => post('/org/attendance/imports', body),
+}
+
+// ── leave, inside an Organization ───────────────────────────────────
+
+export const leave = {
+  types: () => get('/org/leave/types'),
+  myBalances: () => get('/org/leave/me/balances'),
+  myLedger: (type) => get(`/org/leave/me/ledger${query({ type })}`),
+  myRequests: () => get('/org/leave/me/requests'),
+  preview: (body) => post('/org/leave/me/requests/preview', body),
+  apply: (body) => post('/org/leave/me/requests', body),
+  cancel: (id) => post(`/org/leave/me/requests/${id}/cancel`),
+
+  requests: (status) => get(`/org/leave/requests${query({ status })}`),
+  decide: (id, action, note) => post(`/org/leave/requests/${id}/${action}`, { note }),
+  calendar: (from, to) => get(`/org/leave/calendar${query({ from, to })}`),
+  balances: () => get('/org/leave/balances'),
+  userLedger: (id, type) => get(`/org/leave/users/${id}/ledger${query({ type })}`),
+
+  applyFor: (id, body) => post(`/org/leave/users/${id}/requests`, body),
+  adjust: (id, body) => post(`/org/leave/users/${id}/adjustments`, body),
+  compOffCandidates: () => get('/org/leave/comp-off/candidates'),
+  grantCompOff: (id, body) => post(`/org/leave/users/${id}/comp-off`, body),
+  saveType: (id, body) => (id ? put(`/org/leave/types/${id}`, body) : post('/org/leave/types', body)),
+  yearEndPreview: (year) => get(`/org/leave/year-end/preview${query({ year })}`),
+  yearEndRun: (year) => post('/org/leave/year-end', { year }),
 }
 
 // ── the platform console ────────────────────────────────────────────
