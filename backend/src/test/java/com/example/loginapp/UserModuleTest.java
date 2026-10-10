@@ -223,7 +223,7 @@ class UserModuleTest {
         assertError(403, "grant.not_allowed", () -> users.end(hr, admin));
         Map<String, Boolean> grantable = new java.util.HashMap<>();
         users.roles(hr).forEach(r -> grantable.put((String) r.get("code"), (Boolean) r.get("grantable")));
-        assertEquals(Map.of("auditor", false, "employee", true, "ex_employee", false, "hr_admin", true, "manager", true,
+        assertEquals(Map.of("auditor", false, "employee", true, "ex_employee", false, "hr_admin", true, "joiner", false, "manager", true,
                 "owner", false, "payroll_approver", false, "payroll_operator", false), grantable);
     }
 

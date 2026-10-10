@@ -118,6 +118,18 @@ public final class Db {
         if (state.equals("23505") && message.contains("leave_year_end_run")) {
             return new ApiException(409, "leave.year_closed", "This leave year has already been closed");
         }
+        if (state.equals("23505") && message.contains("statutory_id_value_uq")) {
+            return new ApiException(409, "employee.duplicate_identifier", "That number is already recorded for another person");
+        }
+        if (state.equals("23505") && message.contains("employment_code_uq")) {
+            return new ApiException(409, "attendance.code_taken", "That employee code is already used by another employee");
+        }
+        if (state.equals("23505") && message.contains("department_name_uq")) {
+            return new ApiException(409, "request.refused", "A department with that name already exists there");
+        }
+        if (state.equals("23505") && message.contains("employment_live_uq")) {
+            return new ApiException(409, "employee.already_employed", "This person already has a current employment");
+        }
         if (state.equals("22P02") || state.equals("22007") || state.equals("22008")) {
             return new ApiException(400, "request.invalid", "One of the values is not in a valid format");
         }

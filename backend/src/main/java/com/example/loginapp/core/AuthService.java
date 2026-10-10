@@ -2,6 +2,8 @@ package com.example.loginapp.core;
 
 import java.sql.Connection;
 import java.sql.SQLException;
+import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -101,8 +103,19 @@ public final class AuthService {
             if (!"active".equals(s.get("tenantStatus"))) {
                 throw new ApiException(403, "tenant.unavailable", "This Organization is suspended or closed");
             }
-            permissions = db.inTenant(tenantId, c -> permissions(c,
-                    "select permission_code, scope from app.effective_permissions(?)", membershipId));
+            try {
+                // An employee whose last working day has passed loses their roles now, keeping Ex-employee.
+                permissions = db.inTenant(tenantId, c -> {
+                    EmployeeService.endIfLeft(c, tenantId, membershipId, LocalDate.now(ZoneId.of("Asia/Kolkata")));
+                    return permissions(c, "select permission_code, scope from app.effective_permissions(?)", membershipId);
+                });
+            } catch (ApiException e) {
+                if (!e.code().equals("membership.last_owner")) {
+                    throw e;
+                }
+                permissions = db.inTenant(tenantId, c -> permissions(c,
+                        "select permission_code, scope from app.effective_permissions(?)", membershipId));
+            }
             if (permissions.isEmpty()) {
                 throw ApiException.notSignedIn();   // suspended, or ended with no roles left
             }

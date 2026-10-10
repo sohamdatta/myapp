@@ -6,6 +6,7 @@ import Attendance from './Attendance.jsx'
 import Leave from './Leave.jsx'
 import MyAttendance from './MyAttendance.jsx'
 import MyLeave from './MyLeave.jsx'
+import People from './People.jsx'
 
 /** Checkboxes for roles. A role the signed-in user may not grant is shown but cannot be changed. */
 function RolePicker({ roles, selected, onChange }) {
@@ -412,6 +413,7 @@ export default function Organization({ me, page }) {
       {page === 'my-leave' && <MyLeave me={me} />}
       {page === 'attendance' && <Attendance me={me} />}
       {page === 'leave' && <Leave me={me} />}
+      {page === 'people' && <People me={me} />}
       {page === 'users' && <UserManagement me={me} />}
       {page === 'audit' && <AuditTab />}
     </>

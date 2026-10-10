@@ -33,6 +33,13 @@ test.describe('phone width', () => {
     await expect(owner.locator('td', { hasText: HR })).toBeVisible();
     await expectNoSidewaysScroll(owner);
 
+    await nav(owner, 'People');
+    await expect(owner.locator('td', { hasText: 'Harish Rao' })).toBeVisible();
+    await expectNoSidewaysScroll(owner);
+    await owner.getByRole('button', { name: 'Harish Rao' }).click();
+    await expect(owner.locator('.panels')).toContainText('•••• 234F');
+    await expectNoSidewaysScroll(owner);
+
     await nav(owner, 'Leave');
     await tab(owner, 'Balances');
     await expect(owner.locator('tr', { hasText: HR })).toBeVisible();

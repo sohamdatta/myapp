@@ -479,10 +479,10 @@ class LeaveTest {
         assertEquals(1, leave.userBalances(emp, emp.membershipId()).size());
         assertEquals(1, leave.types(emp).size());
 
-        // a manager's team is empty until employee records carry reporting lines
+        // a manager with nobody reporting to them sees nobody's leave, and others' requests do not exist for them
         assertTrue(leave.requests(manager, null).isEmpty());
         assertTrue(leave.calendar(manager, MONDAY.toString(), SUNDAY.toString()).isEmpty());
-        assertError(403, "permission.denied", () -> leave.decide(manager, id, true, null));
+        assertError(404, "not_found", () -> leave.decide(manager, id, true, null));
         assertError(404, "not_found", () -> leave.ledger(manager, emp.membershipId(), casual));
 
         // the auditor reads everything and changes nothing

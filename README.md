@@ -3,8 +3,9 @@
 [![CI](https://github.com/sohamdatta/myapp/actions/workflows/ci.yml/badge.svg)](https://github.com/sohamdatta/myapp/actions/workflows/ci.yml)
 
 A multi-tenant HRMS: a React frontend and a Java (Spring Boot) backend on
-PostgreSQL. Three modules are built: **users and access**, **attendance**, and
-**leave and work from home**. Design documents are in [`docs/`](docs/README.md).
+PostgreSQL. Built so far: **users and access**, **attendance**, **leave and
+work from home**, and the **employee record** (the first milestone of
+onboarding). Design documents are in [`docs/`](docs/README.md).
 
 There are three levels:
 
@@ -29,6 +30,9 @@ Read this before relying on it.
   Spring Boot 4.1.1, passed all 88 backend tests against PostgreSQL 16, and
   passed the 23 browser tests against the app started from that build.
   The badge at the top shows the latest result.
+- **Set `APP_DATA_KEY` before storing real employee data.** Without it, PAN
+  and bank account numbers are encrypted with a fixed development key that is
+  public in this repository. See "Configuration".
 - **Leave needs the PostgreSQL `btree_gist` extension.** It ships with
   PostgreSQL and the migration creates it.
 - **The office-network punch check has not been tried behind a real proxy.**
@@ -38,12 +42,12 @@ Read this before relying on it.
   you to copy and send.
 - **Not built yet:** multi-factor sign-in, password reset, email change, seat
   limits, custom roles, and limiting a user to particular legal entities or
-  departments. In attendance and leave: overtime pay, a manager's team view
-  (it needs employee records with reporting lines), approval chains beyond
+  departments. In attendance and leave: overtime pay, approval chains beyond
   one approver, leave or work-from-home requests raised by HR for someone
   else's future days at home, comp-off claims raised by the employee, and
   anything for payroll. Leave that is unpaid or marked for encashment is
-  recorded; nothing pays or deducts it yet.
+  recorded; nothing pays or deducts it yet. Onboarding of new joiners
+  (milestones 2 to 6 of `docs/onboarding/implementation-plan.md`).
 
 ## Run it in GitHub Codespaces
 
@@ -129,6 +133,9 @@ Set these environment variables for anything beyond local development.
 | `APP_DB_OWNER_USER` / `APP_DB_OWNER_PASSWORD` | `postgres` / `postgres` | Runs the migrations at startup and creates the application's database roles. Needs permission to create roles |
 | `APP_DB_ROLE_PASSWORD` | `dev-only-change-me` | Password given to the three application roles |
 | `APP_SUPERADMIN_EMAIL` / `APP_SUPERADMIN_PASSWORD` | `admin@example.com` / `ChangeMe-12345` | The first Super Admin, created only when there are no platform users |
+| `APP_DATA_KEY` | none: a fixed development key, with a warning in the log | Encrypts PAN, UAN, bank account numbers and, later, documents. 32 random bytes, base64: `openssl rand -base64 32`. Keep a copy somewhere safe; values encrypted with a lost key cannot be read again |
+| `APP_REQUIRE_DATA_KEY` | `false` | Set to `true` in production, so the app refuses to start without `APP_DATA_KEY` rather than use the development key |
+| `APP_DATA_KEY_ID`, `APP_DATA_KEY_PREVIOUS` | `1`, none | Rotating the key: give the new key a new id, and put the old one in `APP_DATA_KEY_PREVIOUS` as `id:key` so existing values can still be read |
 | `APP_TRUST_FORWARDED_FOR` | `false` | Set to `true` only when the backend sits behind exactly one proxy that sets `X-Forwarded-For`. The office-network punch check then uses the address that proxy reports |
 
 ## How isolation works
@@ -243,6 +250,46 @@ The schema is in `backend/src/main/resources/db/migration/V3__attendance.sql`.
 The schema for both is in
 `backend/src/main/resources/db/migration/V4__leave_and_wfh.sql`.
 
+## People
+
+HR keeps a record for each employee under **People**: the person (legal and
+preferred name, date of birth, gender, contact), their employment (joining
+date, type, employee code), their job (designation, department, reporting
+manager), identifiers and bank account.
+
+- **Existing staff are added directly**, with "Add employee". New joiners will
+  go through onboarding instead, once it is built. An employee record can be
+  linked to a user account; the employee code then also becomes the code
+  attendance uses to match device files.
+- **Job changes are dated.** A change of designation, department or manager
+  adds a row from a date; the earlier ones stay as history, and a future date
+  takes effect on that day. Nobody can report to themselves, directly or
+  through others, and a department cannot sit inside its own sub-department.
+- **Reporting lines make the Manager role work.** A Manager sees and decides
+  the attendance and leave requests of the people who report to them, sees
+  them on the daily board and the leave calendar, and sees their records
+  under People → My team. Nobody else's.
+- **Identifiers are encrypted.** PAN, UAN, previous PF member id, ESI number
+  and bank account numbers are encrypted with AES-256-GCM before they reach
+  the database, with the Organization's id bound in, so a value copied to
+  another Organization's row cannot be read. Screens and API responses carry
+  the last four characters only. The full value is shown to someone with
+  `employee.sensitive` (Org Admin, HR Admin, Payroll Operator, and each
+  employee for their own) only on request, with a reason, and every such view
+  is in the audit log. Support sessions never see full values.
+- **Aadhaar is optional** and only its last four digits are kept; the full
+  number is checked (12 digits, Verhoeff check digit) and discarded. A PAN
+  must be a person's (fourth letter P) and is unique within an Organization;
+  it can be recorded as pending with a reason.
+- **Leaving.** "Record exit" sets the last working day. The day after it, the
+  person's roles are replaced by Ex-employee, so they can still sign in to see
+  their own records and nothing else. The record is kept. The only Org Admin
+  cannot be exited.
+
+The schema is `backend/src/main/resources/db/migration/V5__employee_record.sql`.
+It also adds the `employee.sensitive` permission and the Joiner role that
+onboarding will use.
+
 ## Roles
 
 | Role | Can |
@@ -251,7 +298,7 @@ The schema for both is in
 | HR Admin | Manage people and invite users. No access to other people's pay |
 | Payroll Operator | Prepare payroll. Cannot approve it |
 | Payroll Approver | Approve payroll and release payment. Cannot prepare it |
-| Manager | See their own team |
+| Manager | See their team (the people who report to them): records, attendance and leave, and decide their requests |
 | Employee | See their own record |
 | Auditor | Read-only, including the audit log |
 
@@ -260,8 +307,8 @@ an HR Admin can invite employees and managers but cannot hand out payroll or
 admin roles, and cannot suspend or remove an Org Admin. Nobody can change
 their own roles or status.
 
-The user-management, attendance and leave permissions are used by screens today. The
-employee, compensation and payroll permissions are defined and assigned to
+The user-management, attendance, leave and employee permissions are used by screens today. The
+compensation and payroll permissions are defined and assigned to
 roles, ready for those modules. An HR Admin who should punch or apply for
 leave also needs the Employee role.
 
@@ -347,6 +394,21 @@ Leave, all under `/api/org/leave`:
 | GET | `/year-end/preview?year=` | What closing a leave year would write |
 | POST | `/year-end` | Closes a leave year |
 
+People, under `/api/org/people`:
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET, POST | `/employees` | Lists employees (`?status=active\|exited\|all`, `q`, `department`); adds one |
+| GET | `/employees/{id}` | One employee, with job history; identifiers as last four only |
+| POST | `/employees/{id}/reveal` | `{field, reason}`: one full value, audited. Fields `pan`, `uan`, `pf_member`, `esi_ip`, `bank_account` |
+| POST | `/employees/{id}/job` | A dated change of designation, department or manager |
+| POST | `/employees/{id}/exit` | `{lastWorkingDay, reason}` |
+| POST | `/employees/{id}/link` | Links the record to a user account |
+| PUT | `/employees/{id}/identifiers`, `/employees/{id}/bank` | Sets or corrects an identifier; records a new bank account from a date |
+| GET | `/unlinked-users` | Users with no employee record yet |
+| GET, POST | `/departments`; PUT `/departments/{id}` | Departments |
+| GET | `/states` | States and union territories |
+
 The Organization a request acts on always comes from the server-side session.
 It is never read from the URL, a header or the request body.
 
@@ -358,7 +420,7 @@ on GitHub and emails whoever pushed it.
 
 | Job | What it checks | Where the tests are |
 |---|---|---|
-| Backend build and tests | Maven builds the backend; 88 JUnit tests run against a real PostgreSQL 16: business rules, permissions, and isolation between Organizations | `backend/src/test/` |
+| Backend build and tests | Maven builds the backend; 122 JUnit tests run against a real PostgreSQL 16: business rules, permissions, and isolation between Organizations | `backend/src/test/` |
 | Frontend lint and build | `oxlint` finds no problems and the production build succeeds | `frontend/` |
 | Browser tests | The app is started from the backend jar, and Playwright clicks through it as the Super Admin, an Org Admin and an HR Admin | `e2e/tests/` |
 
@@ -368,7 +430,8 @@ The browser tests tell one story in order, each step depending on the one before
 2. `02-attendance`: locations, shifts, holidays and assignments; punches refused and accepted by the office-network check; requests and approval; a manual punch; the register download; a device import, twice.
 3. `03-leave`: leave types, applying with the day preview, approval, the who-is-away calendar, balance adjustment, leave recorded on someone's behalf, cancelling, closing last year.
 4. `04-work-from-home`: a range of future days, the weekly limit, cancelling an approved day.
-5. `05-phone`: the main screens at 390 px wide, with no sideways scrolling.
+5. `05-people`: departments, adding employees with identifiers, last four on screen and the full PAN only with a reason, a dated job change, a duplicate PAN refused, an exit.
+6. `06-phone`: the main screens at 390 px wide, with no sideways scrolling.
 
 Every browser test also fails on any error in the browser console.
 

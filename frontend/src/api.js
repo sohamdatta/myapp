@@ -252,6 +252,23 @@ export const leave = {
   yearEndRun: (year) => post('/org/leave/year-end', { year }),
 }
 
+// ── people: employee records and departments ────────────────────────
+
+export const people = {
+  employees: (params) => get(`/org/people/employees${query(params || {})}`),
+  employee: (id) => get(`/org/people/employees/${id}`),
+  addEmployee: (body) => post('/org/people/employees', body),
+  changeJob: (id, body) => post(`/org/people/employees/${id}/job`, body),
+  exit: (id, body) => post(`/org/people/employees/${id}/exit`, body),
+  link: (id, membershipId) => post(`/org/people/employees/${id}/link`, { membershipId }),
+  reveal: (id, field, reason) => post(`/org/people/employees/${id}/reveal`, { field, reason }),
+  setIdentifier: (id, body) => put(`/org/people/employees/${id}/identifiers`, body),
+  setBank: (id, body) => put(`/org/people/employees/${id}/bank`, body),
+  unlinkedUsers: () => get('/org/people/unlinked-users'),
+  departments: () => get('/org/people/departments'),
+  saveDepartment: (id, body) => (id ? put(`/org/people/departments/${id}`, body) : post('/org/people/departments', body)),
+}
+
 // ── the platform console ────────────────────────────────────────────
 
 export const platform = {

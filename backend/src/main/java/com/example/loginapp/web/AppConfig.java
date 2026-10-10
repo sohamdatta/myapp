@@ -1,6 +1,12 @@
 package com.example.loginapp.web;
 
+import java.util.LinkedHashMap;
+import java.util.Map;
+
 import javax.sql.DataSource;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
@@ -10,7 +16,9 @@ import com.example.loginapp.core.AttendanceImportService;
 import com.example.loginapp.core.AttendanceService;
 import com.example.loginapp.core.AttendanceSettingsService;
 import com.example.loginapp.core.AuthService;
+import com.example.loginapp.core.Crypto;
 import com.example.loginapp.core.Db;
+import com.example.loginapp.core.EmployeeService;
 import com.example.loginapp.core.InvitationService;
 import com.example.loginapp.core.LeaveAdminService;
 import com.example.loginapp.core.LeaveService;
@@ -25,6 +33,8 @@ import com.zaxxer.hikari.HikariDataSource;
  */
 @Configuration
 public class AppConfig {
+
+    private static final Logger LOG = LoggerFactory.getLogger(AppConfig.class);
 
     @Bean
     public Db db(@Value("${app.db.url}") String url,
@@ -73,6 +83,38 @@ public class AppConfig {
     @Bean
     public LeaveAdminService leaveAdminService(Db db) {
         return new LeaveAdminService(db);
+    }
+
+    /** The key that encrypts sensitive values. See application.properties. */
+    @Bean
+    public Crypto crypto(@Value("${app.data-key}") String key,
+                         @Value("${app.data-key.id}") int keyId,
+                         @Value("${app.data-key.previous}") String previous,
+                         @Value("${app.data-key.required}") boolean required) {
+        if (key == null || key.isBlank()) {
+            if (required) {
+                throw new IllegalStateException("APP_DATA_KEY is not set, and APP_REQUIRE_DATA_KEY is true. "
+                        + "Set it to 32 random bytes, base64 (openssl rand -base64 32)");
+            }
+            LOG.warn("APP_DATA_KEY is not set: sensitive values are encrypted with the fixed DEVELOPMENT key. "
+                    + "Set APP_DATA_KEY and APP_REQUIRE_DATA_KEY=true before any real use");
+            return Crypto.withKey(Crypto.DEVELOPMENT_KEY);
+        }
+        Map<Integer, String> keys = new LinkedHashMap<>();
+        keys.put(keyId, key);
+        if (previous != null && !previous.isBlank()) {
+            String[] parts = previous.trim().split(":", 2);
+            if (parts.length != 2) {
+                throw new IllegalStateException("APP_DATA_KEY_PREVIOUS must be id:key, like 1:base64...");
+            }
+            keys.put(Integer.parseInt(parts[0]), parts[1]);
+        }
+        return new Crypto(keyId, keys);
+    }
+
+    @Bean
+    public EmployeeService employeeService(Db db, Crypto crypto) {
+        return new EmployeeService(db, crypto);
     }
 
     @Bean

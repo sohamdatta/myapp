@@ -144,15 +144,14 @@ public final class AttendanceService {
             throw ApiException.denied("attendance.read");
         }
         LocalDate day = date == null || date.isBlank() ? today() : date(date);
-        if (!ctx.reachesEveryone("attendance.read")) {
-            return List.of();   // team scope: nobody until employee records carry reporting lines
-        }
         return db.inTenant(ctx.tenantId(), c -> {
+            UUID[] team = Team.reach(c, ctx, "attendance.read", today());   // null: everyone
+            String only = team == null ? "" : " and m.id = any(?)";
             if (!day.isAfter(today())) {
                 for (Map<String, Object> m : Sql.query(c,
                         "select m.id from app.membership m where m.status = 'active' and (m.joined_at at time zone 'Asia/Kolkata')::date <= ? "
-                                + "and not exists (select 1 from app.attendance_day d where d.membership_id = m.id and d.work_date = ?)",
-                        day, day)) {
+                                + "and not exists (select 1 from app.attendance_day d where d.membership_id = m.id and d.work_date = ?)" + only,
+                        team == null ? new Object[] {day, day} : new Object[] {day, day, team})) {
                     recompute(c, ctx.tenantId(), AuthService.uuid(m.get("id")), day);
                 }
             }
@@ -162,19 +161,21 @@ public final class AttendanceService {
                             + "d.leave_days, d.leave_unpaid, d.remote "
                             + "from app.membership m join app.member_directory() dir on dir.membership_id = m.id "
                             + "left join app.attendance_day d on d.membership_id = m.id and d.work_date = ? "
-                            + "where m.status = 'active' order by dir.email", day);
+                            + "where m.status = 'active'" + only + " order by dir.email",
+                    team == null ? new Object[] {day} : new Object[] {day, team});
         });
     }
 
     /** One user's month, if the caller can see that user. */
     public List<Map<String, Object>> userDays(SessionCtx ctx, UUID membershipId, String month) {
         boolean own = membershipId.equals(ctx.membershipId()) && ctx.scopeOf("attendance.read") != null;
-        if (!own && !ctx.reachesEveryone("attendance.read")) {
+        if (!own && !canSeeOthers(ctx, "attendance.read")) {
             throw ApiException.notFound("The user");
         }
         YearMonth ym = monthOrCurrent(month);
         return db.inTenant(ctx.tenantId(), c -> {
-            if (Sql.one(c, "select 1 from app.membership where id = ?", membershipId) == null) {
+            if (Sql.one(c, "select 1 from app.membership where id = ?", membershipId) == null
+                    || (!own && !Team.reaches(c, ctx, "attendance.read", membershipId, today()))) {
                 throw ApiException.notFound("The user");
             }
             return monthOf(c, ctx.tenantId(), membershipId, ym, today());
@@ -431,23 +432,26 @@ public final class AttendanceService {
         if (!canSeeOthers(ctx, "attendance.approve")) {
             throw ApiException.denied("attendance.approve");
         }
-        if (!ctx.reachesEveryone("attendance.approve")) {
-            return List.of();
-        }
         String wanted = status == null || status.isBlank() ? "pending" : status;
-        return db.inTenant(ctx.tenantId(), c -> Sql.query(c,
+        return db.inTenant(ctx.tenantId(), c -> {
+            UUID[] team = Team.reach(c, ctx, "attendance.approve", today());
+            return Sql.query(c,
                 "select r.id, r.membership_id, dir.email, r.kind, r.work_date, r.requested_in, r.requested_out, r.reason, "
                         + "r.half, r.status, r.decision_note, r.decided_at, r.created_at, "
                         + "d.status as day_status, d.first_in as day_first_in, d.last_out as day_last_out, "
                         + "(r.membership_id = ?) as own "
                         + "from app.attendance_request r join app.member_directory() dir on dir.membership_id = r.membership_id "
                         + "left join app.attendance_day d on d.membership_id = r.membership_id and d.work_date = r.work_date "
-                        + "where r.status = ? order by r.created_at desc limit 200", ctx.membershipId(), wanted));
+                        + "where r.status = ?" + (team == null ? "" : " and (r.membership_id = any(?) or r.membership_id = ?)")
+                        + " order by r.created_at desc limit 200",
+                    team == null ? new Object[] {ctx.membershipId(), wanted}
+                            : new Object[] {ctx.membershipId(), wanted, team, ctx.membershipId()});
+        });
     }
 
     /** Approves or rejects a request. An approved correction adds its two punches; the originals stay. */
     public void decideRequest(SessionCtx ctx, UUID requestId, boolean approve, String note) {
-        if (!ctx.reachesEveryone("attendance.approve") || ctx.membershipId() == null) {
+        if (!canSeeOthers(ctx, "attendance.approve") || ctx.membershipId() == null) {
             throw ApiException.denied("attendance.approve");
         }
         db.inTenant(ctx.tenantId(), c -> {
@@ -458,6 +462,9 @@ public final class AttendanceService {
                 throw ApiException.notFound("The pending request");
             }
             UUID owner = AuthService.uuid(r.get("membershipId"));
+            if (!owner.equals(ctx.membershipId()) && !Team.reaches(c, ctx, "attendance.approve", owner, today())) {
+                throw ApiException.notFound("The pending request");
+            }
             if (owner.equals(ctx.membershipId())) {
                 throw new ApiException(409, "attendance.own_request", "You cannot decide your own request");
             }

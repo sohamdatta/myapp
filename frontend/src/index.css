@@ -810,7 +810,8 @@ td input.cell-input {
 
 .toolbar input,
 .toolbar select,
-.filters input {
+.filters input,
+.filters select {
   width: auto;
   margin-bottom: 0;
 }
@@ -932,6 +933,78 @@ td input.cell-input {
   font-size: 0.9rem;
 }
 
+/* ── people: an employee's details ─────────────────────────────────── */
+
+.panels {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 0 20px;
+}
+
+.panels .panel h3,
+.panel > h3 {
+  margin: 0 0 12px;
+}
+
+.panel .section-head {
+  margin: 0 0 12px;
+}
+
+.panel .section-head h3 {
+  margin: 0;
+}
+
+.facts {
+  display: grid;
+  grid-template-columns: minmax(120px, 40%) 1fr;
+  gap: 8px 16px;
+  margin: 0;
+}
+
+.facts dt {
+  color: var(--muted);
+}
+
+.facts dd {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.fact {
+  display: contents;
+}
+
+.facts .toolbar {
+  margin-top: 8px;
+}
+
+.mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+.name-link {
+  padding: 0;
+  font: inherit;
+  font-weight: 500;
+  color: var(--accent-text);
+  text-align: left;
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+
+.name-link:hover {
+  text-decoration: underline;
+}
+
+.secondary.danger {
+  color: var(--on-accent);
+  background: var(--error);
+  border-color: var(--error);
+}
+
 /* ── phones ────────────────────────────────────────────────────────── */
 
 @media (max-width: 760px) {
@@ -980,6 +1053,19 @@ td input.cell-input {
 
   td.actions {
     white-space: normal;
+  }
+
+  .panels {
+    grid-template-columns: 1fr;
+  }
+
+  .facts {
+    grid-template-columns: 1fr;
+    gap: 2px 0;
+  }
+
+  .facts dd {
+    margin-bottom: 8px;
   }
 
   /* A day table becomes a list: one block per day, nothing scrolls sideways. */

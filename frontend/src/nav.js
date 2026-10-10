@@ -25,6 +25,7 @@ export function navFor(me) {
   // A support session has no leave of its own; a former employee can still look at theirs.
   const hasOwnLeave = Boolean(scopes['leave.read']) && me.kind === 'tenant' && (scopes['leave.read'] === 'self' || me.permissions.includes('leave.apply'))
   const seesOthersLeave = Boolean(scopes['leave.read']) && scopes['leave.read'] !== 'self'
+  const seesPeople = Boolean(scopes['employee.read']) && scopes['employee.read'] !== 'self'
   return [
     {
       label: 'My work',
@@ -33,6 +34,7 @@ export function navFor(me) {
     {
       label: 'Organization',
       items: [
+        seesPeople && { id: 'people', label: 'People' },
         seesOthersAttendance && { id: 'attendance', label: 'Attendance' },
         seesOthersLeave && { id: 'leave', label: 'Leave' },
         me.permissions.includes('user.read') && { id: 'users', label: 'User management' },

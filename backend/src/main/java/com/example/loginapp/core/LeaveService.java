@@ -69,11 +69,8 @@ public final class LeaveService {
     /** The entries behind one balance, newest first. */
     public List<Map<String, Object>> ledger(SessionCtx ctx, UUID membershipId, UUID leaveTypeId) {
         UUID member = membershipId == null ? ctx.membershipId() : membershipId;
-        requireReach(ctx, member);
         return db.inTenant(ctx.tenantId(), c -> {
-            if (Sql.one(c, "select 1 from app.membership where id = ?", member) == null) {
-                throw ApiException.notFound("The user");
-            }
+            requireReach(c, ctx, member);
             accrue(c, ctx.tenantId(), member, today());
             return Sql.query(c, "select g.id, g.on_date, g.days, g.kind, g.reason, g.expires_on, g.created_at, "
                     + "r.from_date, r.to_date, dir.email as entered_by "
@@ -86,11 +83,8 @@ public final class LeaveService {
 
     /** One user's balances, for someone who can see that user. */
     public List<Map<String, Object>> userBalances(SessionCtx ctx, UUID membershipId) {
-        requireReach(ctx, membershipId);
         return db.inTenant(ctx.tenantId(), c -> {
-            if (Sql.one(c, "select 1 from app.membership where id = ?", membershipId) == null) {
-                throw ApiException.notFound("The user");
-            }
+            requireReach(c, ctx, membershipId);
             return balancesOf(c, ctx.tenantId(), membershipId, today());
         });
     }
@@ -162,11 +156,10 @@ public final class LeaveService {
         if (scope == null || scope.equals("self")) {
             throw ApiException.denied("leave.approve");
         }
-        if (!ctx.reachesEveryone("leave.approve")) {
-            return List.of();   // team scope: nobody until employee records carry reporting lines
-        }
         String wanted = status == null || status.isBlank() ? "pending" : status;
-        return db.inTenant(ctx.tenantId(), c -> Sql.query(c,
+        return db.inTenant(ctx.tenantId(), c -> {
+            UUID[] team = Team.reach(c, ctx, "leave.approve", today());
+            return Sql.query(c,
                 "select r.id, r.membership_id, dir.email, t.name as leave_type, t.paid, r.from_date, r.to_date, r.half, r.days, "
                         + "r.unpaid_days, r.reason, r.status, r.decision_note, r.decided_at, r.created_at, (r.membership_id = ?) as own, "
                         + "(select coalesce(sum(g.days), 0) from app.leave_ledger g "
@@ -176,11 +169,16 @@ public final class LeaveService {
                         + "  and o.from_date <= r.to_date and o.to_date >= r.from_date order by d2.email) as also_away "
                         + "from app.leave_request r join app.leave_type t on t.id = r.leave_type_id "
                         + "join app.member_directory() dir on dir.membership_id = r.membership_id "
-                        + "where r.status = ? order by r.from_date, r.created_at limit 200", ctx.membershipId(), wanted));
+                        + "where r.status = ?" + (team == null ? "" : " and (r.membership_id = any(?) or r.membership_id = ?)")
+                        + " order by r.from_date, r.created_at limit 200",
+                    team == null ? new Object[] {ctx.membershipId(), wanted}
+                            : new Object[] {ctx.membershipId(), wanted, team, ctx.membershipId()});
+        });
     }
 
     public void decide(SessionCtx ctx, UUID requestId, boolean approve, String note) {
-        if (!ctx.reachesEveryone("leave.approve") || ctx.membershipId() == null) {
+        String scope = ctx.scopeOf("leave.approve");
+        if (scope == null || scope.equals("self") || ctx.membershipId() == null) {
             throw ApiException.denied("leave.approve");
         }
         db.inTenant(ctx.tenantId(), c -> {
@@ -189,6 +187,9 @@ public final class LeaveService {
                 throw ApiException.notFound("The pending leave request");
             }
             UUID owner = AuthService.uuid(r.get("membershipId"));
+            if (!owner.equals(ctx.membershipId()) && !Team.reaches(c, ctx, "leave.approve", owner, today())) {
+                throw ApiException.notFound("The pending leave request");
+            }
             if (owner.equals(ctx.membershipId())) {
                 throw new ApiException(409, "leave.own_request", "You cannot decide your own leave");
             }
@@ -239,15 +240,14 @@ public final class LeaveService {
         if (scope == null || scope.equals("self")) {
             throw ApiException.denied("leave.read");
         }
-        if (!ctx.reachesEveryone("leave.read")) {
-            return List.of();
-        }
         LocalDate from = AttendanceService.date(fromDate);
         LocalDate to = AttendanceService.date(toDate);
         if (to.isBefore(from) || from.plusDays(92).isBefore(to)) {
             throw ApiException.badRequest("Choose a period of up to three months");
         }
-        return db.inTenant(ctx.tenantId(), c -> Sql.query(c,
+        return db.inTenant(ctx.tenantId(), c -> {
+            UUID[] team = Team.reach(c, ctx, "leave.read", today());
+            List<Map<String, Object>> rows = Sql.query(c,
                 "select r.membership_id, dir.email, 'leave' as kind, t.name as label, r.from_date, r.to_date, r.half, r.status "
                         + "from app.leave_request r join app.leave_type t on t.id = r.leave_type_id "
                         + "join app.member_directory() dir on dir.membership_id = r.membership_id "
@@ -257,7 +257,17 @@ public final class LeaveService {
                         + "a.work_date, a.work_date, a.half, a.status "
                         + "from app.attendance_request a join app.member_directory() dir on dir.membership_id = a.membership_id "
                         + "where a.kind in ('on_duty','work_from_home') and a.status in ('pending','approved') and a.work_date between ? and ? "
-                        + "order by 5, 2", to, from, from, to));
+                        + "order by 5, 2", to, from, from, to);
+            if (team == null) {
+                return rows;
+            }
+            Set<String> visible = new HashSet<>();
+            for (UUID id : team) {
+                visible.add(id.toString());
+            }
+            visible.add(String.valueOf(ctx.membershipId()));
+            return rows.stream().filter(r -> visible.contains(String.valueOf(r.get("membershipId")))).toList();
+        });
     }
 
     // ── shared with the admin service and with attendance ───────────────
@@ -634,10 +644,11 @@ public final class LeaveService {
         }
     }
 
-    /** The caller may see their own leave, or anyone's when leave.read reaches everyone. Otherwise the user does not exist for them. */
-    private static void requireReach(SessionCtx ctx, UUID membershipId) {
+    /** The caller may see their own leave, their team's, or anyone's when leave.read reaches everyone. Otherwise the user does not exist for them. */
+    private void requireReach(Connection c, SessionCtx ctx, UUID membershipId) throws SQLException {
         boolean own = membershipId != null && membershipId.equals(ctx.membershipId()) && ctx.scopeOf("leave.read") != null;
-        if (!own && !ctx.reachesEveryone("leave.read")) {
+        if (membershipId == null || Sql.one(c, "select 1 from app.membership where id = ?", membershipId) == null
+                || (!own && !Team.reaches(c, ctx, "leave.read", membershipId, today()))) {
             throw ApiException.notFound("The user");
         }
     }

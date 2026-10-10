@@ -34,6 +34,7 @@ export default defineConfig({
     { name: 'attendance', testMatch: /02-attendance\.spec\.ts/, use: desktop, dependencies: ['users'] },
     { name: 'leave', testMatch: /03-leave\.spec\.ts/, use: desktop, dependencies: ['attendance'] },
     { name: 'wfh', testMatch: /04-work-from-home\.spec\.ts/, use: desktop, dependencies: ['leave'] },
-    { name: 'phone', testMatch: /05-phone\.spec\.ts/, use: desktop, dependencies: ['wfh'] },
+    { name: 'people', testMatch: /05-people\.spec\.ts/, use: desktop, dependencies: ['wfh'] },
+    { name: 'phone', testMatch: /06-phone\.spec\.ts/, use: desktop, dependencies: ['people'] },
   ],
 });

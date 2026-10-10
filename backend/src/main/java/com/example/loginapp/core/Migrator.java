@@ -18,7 +18,8 @@ public final class Migrator {
             "V1__user_module.sql",
             "V2__seed_roles_and_permissions.sql",
             "V3__attendance.sql",
-            "V4__leave_and_wfh.sql");
+            "V4__leave_and_wfh.sql",
+            "V5__employee_record.sql");
 
     private Migrator() {}
 
