@@ -283,6 +283,7 @@ leave also needs the Employee role.
 | `backend/src/main/java/.../web/` | Spring controllers and configuration |
 | `backend/src/main/resources/db/migration/` | The schema and seed data, applied at startup |
 | `.devcontainer/` | Codespaces configuration, including PostgreSQL |
+| `docs/` | Design documents, schemas and plans for each module; start at `docs/README.md` |
 
 ## API
 
