@@ -228,3 +228,14 @@ Five decisions shape milestone 1 and should be settled before it starts; the rel
 - [ ] README: onboarding section, API table, test count, status.
 - [ ] The onboarding design and this plan record what was built and what changed.
 - [ ] The consultant has reviewed the India rules table, with the date of review written in the design.
+
+## Progress
+
+**Milestone 1, foundations: done** (commit `fd52e1d`, 11 Oct 2026; CI green). Where the build differs from the plan above:
+
+- The migration is `V5__employee_record.sql`: the record and document tables only. The configuration and onboarding tables follow in V6 with milestone 2, as planned, together with the `onboarding.configure` permission.
+- Without `APP_DATA_KEY` the app starts with a fixed development key and logs a warning, instead of refusing, so Codespaces and CI run with no setup. `APP_REQUIRE_DATA_KEY=true` gives the refusal for production.
+- The exit date is the **last working day**: access ends the day after it, applied when anyone next reads employees and on the person's next request.
+- The reveal call is `POST /employees/{id}/reveal` with `{field, reason}`, so the reason stays out of URLs and access logs.
+- Also added beyond the plan: setting or correcting an identifier, a new bank account from a date, and linking a record to a user account later.
+- Decisions taken as proposed: activation without a PAN allowed with a reason (a pending PAN is recorded); documents in PostgreSQL.
