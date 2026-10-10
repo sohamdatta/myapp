@@ -1,7 +1,10 @@
 # HRMS
 
+[![CI](https://github.com/sohamdatta/myapp/actions/workflows/ci.yml/badge.svg)](https://github.com/sohamdatta/myapp/actions/workflows/ci.yml)
+
 A multi-tenant HRMS: a React frontend and a Java (Spring Boot) backend on
-PostgreSQL. Two modules are built: **users and access**, and **attendance**.
+PostgreSQL. Three modules are built: **users and access**, **attendance**, and
+**leave and work from home**. Design documents are in [`docs/`](docs/README.md).
 
 There are three levels:
 
@@ -21,25 +24,13 @@ recorded in the Organization's own audit log, where its Org Admin can see it.
 
 Read this before relying on it.
 
-- **The upgrade to Spring Boot 4.1.1 has not been built.** The environment
-  this was written in cannot download from Maven Central, so `mvn` cannot
-  compile or test the project there. The backend started and connected to
-  PostgreSQL in Codespaces on Spring Boot 3.5.6. It was then moved to 4.1.1,
-  which is a major upgrade (Spring Framework 7, Jackson 3, renamed starters),
-  and that version has not been compiled or run. If `./start.sh` fails after
-  pulling, the last commit that ran is `48d5be0`.
-- **The attendance module has not been built with Maven either**, for the
-  same reason. It adds no new dependencies. The last commit before it is
-  `2aff0c3`.
-- **Leave and work from home have not been built with Maven either.** They
-  add no Java dependencies. The migration needs the PostgreSQL `btree_gist`
-  extension, which ships with PostgreSQL and is created by the migration
-  itself. The last commit before them is `4eb18e3`.
-- **How the code was tested.** The 88 backend tests (22 for users, 54 for
-  attendance and work from home, 12 for leave) passed against PostgreSQL 16
-  with the JUnit console launcher, and the screens were exercised in a
-  browser through a stand-in HTTP server that called the real controllers.
-  `mvn test` has not been run.
+- **Every push is built and tested automatically** (see "Automated tests"
+  below). The first run, on commit `6f303d5`, built the backend with Maven on
+  Spring Boot 4.1.1, passed all 88 backend tests against PostgreSQL 16, and
+  passed the 23 browser tests against the app started from that build.
+  The badge at the top shows the latest result.
+- **Leave needs the PostgreSQL `btree_gist` extension.** It ships with
+  PostgreSQL and the migration creates it.
 - **The office-network punch check has not been tried behind a real proxy.**
   It was tested with the address passed in directly. See "Attendance" below
   before relying on it.
@@ -359,11 +350,59 @@ Leave, all under `/api/org/leave`:
 The Organization a request acts on always comes from the server-side session.
 It is never read from the URL, a header or the request body.
 
+## Automated tests
+
+Three kinds of test, all run by GitHub Actions on every push to `main` and on
+every pull request (`.github/workflows/ci.yml`). A failure turns the commit red
+on GitHub and emails whoever pushed it.
+
+| Job | What it checks | Where the tests are |
+|---|---|---|
+| Backend build and tests | Maven builds the backend; 88 JUnit tests run against a real PostgreSQL 16: business rules, permissions, and isolation between Organizations | `backend/src/test/` |
+| Frontend lint and build | `oxlint` finds no problems and the production build succeeds | `frontend/` |
+| Browser tests | The app is started from the backend jar, and Playwright clicks through it as the Super Admin, an Org Admin and an HR Admin | `e2e/tests/` |
+
+The browser tests tell one story in order, each step depending on the one before:
+
+1. `01-users`: create an Organization, accept invitations, the grant rule, suspend and reactivate, support access shown in the audit log.
+2. `02-attendance`: locations, shifts, holidays and assignments; punches refused and accepted by the office-network check; requests and approval; a manual punch; the register download; a device import, twice.
+3. `03-leave`: leave types, applying with the day preview, approval, the who-is-away calendar, balance adjustment, leave recorded on someone's behalf, cancelling, closing last year.
+4. `04-work-from-home`: a range of future days, the weekly limit, cancelling an approved day.
+5. `05-phone`: the main screens at 390 px wide, with no sideways scrolling.
+
+Every browser test also fails on any error in the browser console.
+
+**When a browser test fails in CI**, open the run on the Actions tab and download
+the `playwright-report` artifact. It holds a screenshot, a video and a
+step-by-step trace of the failing test, plus the backend and frontend logs.
+Open the trace with `npx playwright show-trace <file>.zip`.
+
+**To run the browser tests yourself** (in Codespaces, for example), start the
+app on an empty database, then:
+
+```bash
+./start.sh                            # in one terminal; the database must be empty
+cd e2e && npm install
+npx playwright install --with-deps chromium   # first time only
+npx playwright test                   # all suites, in order
+npx playwright test --ui              # watch each step in a browser window
+```
+
+They create an Organization called Globex Ltd, so they need a fresh database
+each time. In Codespaces, reset it with
+`psql -h localhost -U postgres -c "drop database hrms with (force)" -c "create database hrms"`
+(password `postgres`) and restart the backend.
+
+**Every new feature adds its tests in the same commit**: JUnit tests for the
+rules, and a step in the matching browser suite (or a new numbered suite) for
+the screens.
+
 ## Useful commands
 
 ```bash
 ./restart.sh                        # stop the app if running, pull the latest code, start again
 cd backend && mvn test              # backend tests; skipped when PostgreSQL is not reachable
+cd e2e && npx playwright test       # browser tests; the app must be running on an empty database
 cd backend && mvn spring-boot:run   # backend only
 cd frontend && npm run dev          # frontend only
 cd frontend && npm run lint && npm run build
