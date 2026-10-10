@@ -133,6 +133,7 @@ public final class EmployeeService {
                             + "order by effective_from desc, created_at desc limit 1",
                     personId, today, e.get("joiningDate")));
             e.put("canReveal", canReveal(c, ctx, e, today));
+            e.put("customFields", customFieldValues(c, ctx, e, today));
             e.put("canWrite", ctx.canAcrossOrganization("employee.write"));
             e.put("own", ctx.membershipId() != null && ctx.membershipId().toString().equals(e.get("membershipId")));
             return e;
@@ -141,8 +142,9 @@ public final class EmployeeService {
 
     /** The full value of one identifier, for someone with employee.sensitive; every reveal is audited with its reason. */
     public Map<String, Object> reveal(SessionCtx ctx, UUID employmentId, String field, String reason) {
-        if (!REVEALABLE.contains(field == null ? "" : field)) {
-            throw ApiException.badRequest("Only pan, uan, pf_member, esi_ip and bank_account can be shown in full");
+        boolean custom = field != null && field.startsWith("custom.");
+        if (!custom && !REVEALABLE.contains(field == null ? "" : field)) {
+            throw ApiException.badRequest("Only pan, uan, pf_member, esi_ip, bank_account and sensitive custom fields can be shown in full");
         }
         if (reason == null || reason.trim().length() < 5) {
             throw ApiException.badRequest("Say why you need the full value, in at least 5 characters");
@@ -156,14 +158,15 @@ public final class EmployeeService {
             if (!canReveal(c, ctx, e, today)) {
                 throw ApiException.denied("employee.sensitive");
             }
-            byte[] sealed = bytes(c, field, AuthService.uuid(e.get("personId")));
+            byte[] sealed = custom ? customBytes(c, field.substring("custom.".length()), AuthService.uuid(e.get("personId")))
+                    : bytes(c, field, AuthService.uuid(e.get("personId")));
             if (sealed == null) {
                 throw ApiException.notFound("That value");
             }
             String value = crypto.decryptText(ctx.tenantId(), sealed);
             UserService.audit(c, ctx, "employee.revealed", "employment", employmentId,
                     Map.of("field", field, "reason", reason.trim()));
-            return Map.of("field", field, "value", value);
+            return Map.of("field", field, "value", custom ? String.valueOf(Json.parse(value)) : value);
         });
     }
 
@@ -546,6 +549,105 @@ public final class EmployeeService {
         Object membership = e.get("membershipId");
         return "self".equals(ctx.scopeOf("employee.sensitive")) && membership != null && ctx.membershipId() != null
                 && ctx.membershipId().toString().equals(membership);
+    }
+
+    private static byte[] customBytes(Connection c, String key, UUID personId) throws SQLException {
+        try (var ps = c.prepareStatement("select v.value_enc from app.custom_field_value v join app.custom_field f on f.id = v.field_id "
+                + "where v.person_id = ? and f.field_key = ? and f.sensitive")) {
+            ps.setObject(1, personId);
+            ps.setString(2, key);
+            try (var rs = ps.executeQuery()) {
+                return rs.next() ? rs.getBytes(1) : null;
+            }
+        }
+    }
+
+    /** What the rules know about an employee: department, work location, type and designation, today. */
+    static AppliesTo.Subject subjectOf(Connection c, UUID employmentId, LocalDate today) throws SQLException {
+        Map<String, Object> s = Sql.one(c, "select e.employment_type, j.department_id, j.designation, "
+                + "(select a.work_location_id from app.attendance_assignment a where a.membership_id = e.membership_id "
+                + "  and a.effective_from <= ? order by a.effective_from desc, a.created_at desc limit 1) as work_location_id "
+                + "from app.employment e left join lateral (select * from app.job_assignment j where j.employment_id = e.id "
+                + "  and j.effective_from <= greatest(?::date, e.joining_date) order by j.effective_from desc, j.created_at desc limit 1) j on true "
+                + "where e.id = ?", today, today, employmentId);
+        return s == null ? AppliesTo.Subject.UNKNOWN : new AppliesTo.Subject(AuthService.uuid(s.get("departmentId")),
+                AuthService.uuid(s.get("workLocationId")), (String) s.get("employmentType"), (String) s.get("designation"));
+    }
+
+    /**
+     * The Organization's own fields that apply to this employee, with their values. Sensitive
+     * values are never in the response; a manager reading their team sees only fields marked for managers.
+     */
+    private List<Map<String, Object>> customFieldValues(Connection c, SessionCtx ctx, Map<String, Object> e, LocalDate today)
+            throws SQLException {
+        UUID employmentId = AuthService.uuid(e.get("id"));
+        UUID personId = AuthService.uuid(e.get("personId"));
+        boolean full = ctx.reachesEveryone("employee.read") || Boolean.TRUE.equals(isOwn(ctx, e));
+        AppliesTo.Subject subject = subjectOf(c, employmentId, today);
+        Map<String, Map<String, Object>> values = new java.util.HashMap<>();
+        for (Map<String, Object> v : Sql.query(c, "select field_id, value, (value_enc is not null) as has_secret, updated_at "
+                + "from app.custom_field_value where person_id = ?", personId)) {
+            values.put((String) v.get("fieldId"), v);
+        }
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (FieldCatalog.CustomField f : OnboardingConfigService.customFieldDefs(c)) {
+            if (!f.active() || !f.appliesTo().matches(subject) || (!full && !f.managerCanSee())) {
+                continue;
+            }
+            Map<String, Object> row = FieldCatalog.customField(f);
+            row.put("section", f.section());
+            Map<String, Object> v = values.get(f.id().toString());
+            row.put("hasValue", v != null && (v.get("value") != null || Boolean.TRUE.equals(v.get("hasSecret"))));
+            row.put("value", f.sensitive() || v == null || v.get("value") == null ? null : Json.parse((String) v.get("value")));
+            out.add(row);
+        }
+        return out;
+    }
+
+    private static Object isOwn(SessionCtx ctx, Map<String, Object> e) {
+        return ctx.membershipId() != null && ctx.membershipId().toString().equals(e.get("membershipId"));
+    }
+
+    /**
+     * Sets values of the Organization's own fields on an employee, by key. A null or empty value clears
+     * it. Each value is checked against its field; sensitive ones are stored encrypted.
+     */
+    public void saveCustomValues(SessionCtx ctx, UUID employmentId, Map<String, Object> values) {
+        ctx.require("employee.write");
+        if (values == null || values.isEmpty()) {
+            throw ApiException.badRequest("Give at least one value");
+        }
+        LocalDate today = today();
+        db.inTenant(ctx.tenantId(), c -> {
+            Map<String, Object> e = lockEmployment(c, employmentId);
+            UUID personId = AuthService.uuid(e.get("personId"));
+            AppliesTo.Subject subject = subjectOf(c, employmentId, today);
+            Map<String, FieldCatalog.CustomField> byKey = new java.util.HashMap<>();
+            for (FieldCatalog.CustomField f : OnboardingConfigService.customFieldDefs(c)) {
+                byKey.put(f.key(), f);
+            }
+            List<String> changed = new ArrayList<>();
+            for (Map.Entry<String, Object> entry : values.entrySet()) {
+                String key = entry.getKey().startsWith("custom.") ? entry.getKey().substring(7) : entry.getKey();
+                FieldCatalog.CustomField f = byKey.get(key);
+                if (f == null || !f.active()) {
+                    throw new ApiException(400, "field.unknown", "Unknown field: " + entry.getKey());
+                }
+                if (!f.appliesTo().matches(subject)) {
+                    throw new ApiException(400, "field.not_applicable", f.label() + " does not apply to this employee");
+                }
+                Object clean = CustomValues.normalize(f, entry.getValue());
+                String plain = clean == null || f.sensitive() ? null : Json.write(clean);
+                byte[] secret = clean == null || !f.sensitive() ? null : crypto.encrypt(ctx.tenantId(), Json.write(clean));
+                Sql.update(c, "insert into app.custom_field_value (tenant_id, person_id, field_id, value, value_enc, updated_by) "
+                                + "values (?, ?, ?, ?::jsonb, ?, ?) on conflict (person_id, field_id) do update set value = excluded.value, "
+                                + "value_enc = excluded.value_enc, updated_by = excluded.updated_by, updated_at = now()",
+                        ctx.tenantId(), personId, f.id(), plain, secret, ctx.membershipId());
+                changed.add(f.key());
+            }
+            UserService.audit(c, ctx, "employee.custom_fields_set", "employment", employmentId, Map.of("fields", String.join(",", changed)));
+            return null;
+        });
     }
 
     private byte[] bytes(Connection c, String field, UUID personId) throws SQLException {

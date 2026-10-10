@@ -23,6 +23,7 @@ import com.example.loginapp.core.InvitationService;
 import com.example.loginapp.core.LeaveAdminService;
 import com.example.loginapp.core.LeaveService;
 import com.example.loginapp.core.Migrator;
+import com.example.loginapp.core.OnboardingConfigService;
 import com.example.loginapp.core.PlatformService;
 import com.example.loginapp.core.UserService;
 import com.zaxxer.hikari.HikariDataSource;
@@ -115,6 +116,11 @@ public class AppConfig {
     @Bean
     public EmployeeService employeeService(Db db, Crypto crypto) {
         return new EmployeeService(db, crypto);
+    }
+
+    @Bean
+    public OnboardingConfigService onboardingConfigService(Db db) {
+        return new OnboardingConfigService(db);
     }
 
     @Bean

@@ -35,6 +35,8 @@ public class PeopleController {
 
     public record Department(String name, String parentId, Boolean active) {}
 
+    public record CustomValuesInput(Map<String, Object> values) {}
+
     private final AuthService auth;
     private final EmployeeService employees;
 
@@ -104,6 +106,13 @@ public class PeopleController {
                                      @PathVariable("id") String id, @RequestBody Bank request) {
         employees.setBank(Requests.session(auth, authorization), Requests.id(id), request.holderName(), request.accountNumber(),
                 request.ifsc(), request.bankName(), request.branch(), request.effectiveFrom());
+        return ResponseEntity.noContent().build();
+    }
+
+    @PutMapping("/employees/{id}/custom-fields")
+    public ResponseEntity<Void> customFields(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                             @PathVariable("id") String id, @RequestBody CustomValuesInput request) {
+        employees.saveCustomValues(Requests.session(auth, authorization), Requests.id(id), request.values());
         return ResponseEntity.noContent().build();
     }
 

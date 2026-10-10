@@ -4,8 +4,8 @@
 
 A multi-tenant HRMS: a React frontend and a Java (Spring Boot) backend on
 PostgreSQL. Built so far: **users and access**, **attendance**, **leave and
-work from home**, and the **employee record** (the first milestone of
-onboarding). Design documents are in [`docs/`](docs/README.md).
+work from home**, the **employee record**, and each Organization's
+**onboarding configuration** (milestones 1 and 2 of onboarding). Design documents are in [`docs/`](docs/README.md).
 
 There are three levels:
 
@@ -47,7 +47,8 @@ Read this before relying on it.
   else's future days at home, comp-off claims raised by the employee, and
   anything for payroll. Leave that is unpaid or marked for encashment is
   recorded; nothing pays or deducts it yet. Onboarding of new joiners
-  (milestones 2 to 6 of `docs/onboarding/implementation-plan.md`).
+  (milestones 3 to 6 of `docs/onboarding/implementation-plan.md`); the
+  onboarding configuration exists but has no screens yet, only the API.
 
 ## Run it in GitHub Codespaces
 
@@ -290,6 +291,44 @@ The schema is `backend/src/main/resources/db/migration/V5__employee_record.sql`.
 It also adds the `employee.sensitive` permission and the Joiner role that
 onboarding will use.
 
+## Onboarding configuration
+
+Every Organization configures onboarding its own way; nothing in the code
+names a customer. The configuration is in place now and can be changed
+through the API under `/api/org/people/setup`. The screens to change it come
+with milestone 6, and the joiner flow that uses it with milestone 3.
+
+- **Defaults.** The first time anything reads an Organization's configuration,
+  it gets working defaults: settings (invite by hand, links valid 14 days,
+  automatic activation, activation without a PAN allowed with a reason), a
+  privacy notice to edit, one flow called Everyone with every section and one
+  level of verification by HR Admin, five document types, a joining
+  checklist of eight tasks, plain message wording and an appointment letter.
+- **Flows.** Named flows, each chosen by rules on department, work location,
+  employment type and designation. The first active flow, in order, whose
+  rules match a joiner is theirs. A new flow with rules goes before the first
+  flow for everyone; one flow for everyone must always stay active.
+- **Rules** use one syntax everywhere: `{"employment_type": ["intern"],
+  "department": ["<id>"]}`. Every attribute listed must match; values within
+  one are alternatives; `{}` means everyone.
+- **Sections and verification** per flow: which sections show, their order,
+  title and introduction, whether each is verified, and 0 to 3 levels of
+  verifiers (a role, a named user, or the joiner's manager). Employment,
+  Personal and Statutory cannot be switched off.
+- **Fields.** Each built-in field can be hidden, optional or required,
+  relabelled and given help, for the Organization and overridden per flow.
+  Legal name, date of birth, joining date and PAN are always required.
+- **Custom fields** of any of nine types (text, long text, number, date, one
+  or several choices, yes or no, email, phone), in any section, with rules,
+  limits and a pattern. Sensitive ones are encrypted like PAN and shown only
+  on request. Their values can already be set on employee records.
+- **Preview.** `GET /setup/preview?employmentType=intern` returns the form an
+  intern would see: the flow the rules pick and every visible field.
+
+Changing configuration needs the `onboarding.configure` permission (Org Admin
+and HR Admin); reading it needs `employee.read` across the Organization. Every
+change is in the audit log with its before and after values.
+
 ## Roles
 
 | Role | Can |
@@ -408,6 +447,19 @@ People, under `/api/org/people`:
 | GET | `/unlinked-users` | Users with no employee record yet |
 | GET, POST | `/departments`; PUT `/departments/{id}` | Departments |
 | GET | `/states` | States and union territories |
+| PUT | `/employees/{id}/custom-fields` | `{values: {key: value}}`: sets the Organization's own fields on an employee |
+
+Onboarding configuration, under `/api/org/people/setup`:
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET, PUT | `/settings` | Invitation, activation, rehire matching, retention, offer stage |
+| POST | `/notice` | Publishes a new version of the privacy notice |
+| GET, POST | `/flows`; PUT `/flows/{id}` | Flows with rules, welcome content, sections and verification steps |
+| PUT | `/flows/order` | The order flows are tried in |
+| GET, PUT | `/fields`, `/flows/{id}/fields` | Built-in field settings for the Organization, or one flow's overrides |
+| GET, POST | `/custom-fields`; PUT `/custom-fields/{id}` | The Organization's own fields |
+| GET | `/preview?flow=&employmentType=&department=&workLocation=&designation=` | The form a joiner would see |
 
 The Organization a request acts on always comes from the server-side session.
 It is never read from the URL, a header or the request body.
@@ -420,7 +472,7 @@ on GitHub and emails whoever pushed it.
 
 | Job | What it checks | Where the tests are |
 |---|---|---|
-| Backend build and tests | Maven builds the backend; 122 JUnit tests run against a real PostgreSQL 16: business rules, permissions, and isolation between Organizations | `backend/src/test/` |
+| Backend build and tests | Maven builds the backend; 148 JUnit tests run against a real PostgreSQL 16: business rules, permissions, and isolation between Organizations | `backend/src/test/` |
 | Frontend lint and build | `oxlint` finds no problems and the production build succeeds | `frontend/` |
 | Browser tests | The app is started from the backend jar, and Playwright clicks through it as the Super Admin, an Org Admin and an HR Admin | `e2e/tests/` |
 

@@ -239,3 +239,12 @@ Five decisions shape milestone 1 and should be settled before it starts; the rel
 - The reveal call is `POST /employees/{id}/reveal` with `{field, reason}`, so the reason stays out of URLs and access logs.
 - Also added beyond the plan: setting or correcting an identifier, a new bank account from a date, and linking a record to a user account later.
 - Decisions taken as proposed: activation without a PAN allowed with a reason (a pending PAN is recorded); documents in PostgreSQL.
+
+**Milestone 2, configuration core: done** (11 Oct 2026). Differences:
+
+- The migration is `V6__onboarding.sql`: all configuration and onboarding tables, as planned, with `onboarding.configure`.
+- Defaults are written the first time anything reads an Organization's configuration, for new and existing Organizations alike, guarded by the settings row so they are written once.
+- A new flow with rules is placed before the first flow for everyone, so it is tried before the catch-all; one active flow for everyone must always remain, so every joiner has a flow.
+- Every verification level needs a verifier for all sections (a step with no section), so nothing can wait for nobody.
+- The core reads and writes JSON with its own small `Json` class rather than a library, since Spring Boot 4 moved to Jackson 3.
+- Custom field values can already be set on an employee record (`PUT /people/employees/{id}/custom-fields`), sensitive ones encrypted and revealed like PAN.
