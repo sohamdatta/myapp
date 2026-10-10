@@ -66,6 +66,9 @@ class UserModuleTest {
         } catch (Exception e) {
             reachable = false;
         }
+        if (!reachable && "true".equals(System.getenv("APP_TEST_DB_REQUIRED"))) {
+            throw new IllegalStateException("PostgreSQL is not reachable on " + host + " and APP_TEST_DB_REQUIRED is set");
+        }
         assumeTrue(reachable, "PostgreSQL is not reachable on " + host + "; skipping the user module tests");
 
         String url = "jdbc:postgresql://" + host + "/hrms_test";

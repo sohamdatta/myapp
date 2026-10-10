@@ -1,0 +1,14 @@
+{
+  "name": "hrms-e2e",
+  "private": true,
+  "description": "Browser tests for the HRMS. Needs the app running; see README.",
+  "scripts": {
+    "test": "playwright test",
+    "test:ui": "playwright test --ui",
+    "report": "playwright show-report"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.56.0",
+    "@types/node": "^22.0.0"
+  }
+}
