@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { ORG, OWNER, HR, PASSWORD, SUPER_ADMIN, newPage, signIn, nav, tab, expectNoConsoleErrors } from './helpers';
+import { ORG, OWNER, HR, PASSWORD, SUPER_ADMIN, newPage, signIn, nav, tab, expectNoConsoleErrors, shot } from './helpers';
 
 // Users and access: the Super Admin creates an Organization, its Org Admin joins
 // and invites an HR Admin, roles are changed, a member is suspended and
@@ -18,6 +18,7 @@ test.describe.serial('users and access', () => {
     await admin.goto('/');
     await admin.fill('#email', SUPER_ADMIN.email);
     await admin.fill('#password', 'wrong-password');
+    await shot(admin, '01-sign-in');
     await admin.click('button.primary');
     await expect(admin.locator('.error')).toBeVisible();
 
@@ -30,10 +31,12 @@ test.describe.serial('users and access', () => {
     await expect(admin.locator('#org-slug')).toHaveValue('globex-ltd');
     await admin.selectOption('#org-plan', 'growth');
     await admin.fill('#org-admin', OWNER);
+    await shot(admin, '02-console-create');
     await admin.click('text=Create and invite');
     inviteLink = await admin.locator('.copy-row input').inputValue();
     expect(inviteLink).toContain('/?invite=');
     await expect(admin.locator('td', { hasText: ORG })).toBeVisible();
+    await shot(admin, '03-console-created');
     await admin.click('text=Sign out');
     await expect(admin.locator('#email')).toBeVisible();
     await admin.context().close();
@@ -43,6 +46,7 @@ test.describe.serial('users and access', () => {
     owner = await newPage(browser);
     await owner.goto(inviteLink);
     await expect(owner.getByText(`Join ${ORG}`)).toBeVisible();
+    await shot(owner, '04-accept-invite');
     await owner.fill('#new-password', 'short');
     await owner.fill('#confirm-password', 'short');
     await owner.click('button.primary');
@@ -54,12 +58,14 @@ test.describe.serial('users and access', () => {
     await expect(owner.locator('.sidebar')).toBeVisible();
     await nav(owner, 'User management');
     await expect(owner.locator('td', { hasText: OWNER })).toBeVisible();
+    await shot(owner, '05-user-management');
   });
 
   test('the Org Admin invites an HR Admin; a second invitation is refused', async () => {
     await tab(owner, 'Invitations');
     await owner.fill('#invite-email', HR);
     await owner.check("label:has-text('HR Admin') input");
+    await shot(owner, '06-invite-hr');
     await owner.click('text=Create invitation');
     hrLink = await owner.locator('.copy-row input').inputValue();
     expect(hrLink).toContain('/?invite=');
@@ -101,6 +107,7 @@ test.describe.serial('users and access', () => {
     const hrRow = owner.locator('tr', { hasText: HR });
     await hrRow.getByText('Edit roles').click();
     await owner.check(".detail-row label:has-text('Manager') input");
+    await shot(owner, '07-edit-roles');
     await owner.click('text=Save roles');
     await expect(hrRow.locator('td').nth(1)).toContainText('Manager');
 
@@ -119,9 +126,11 @@ test.describe.serial('users and access', () => {
 
     await tab(owner, 'Roles');
     await expect(owner.locator('td.permissions').first()).toBeVisible();
+    await shot(owner, '08-roles');
     await nav(owner, 'Audit log');
     await expect(owner.locator('code', { hasText: 'role.granted' }).first()).toBeVisible();
     await expect(owner.locator('code', { hasText: 'membership.suspended' }).first()).toBeVisible();
+    await shot(owner, '09-audit-log');
     await hr.context().close();
   });
 
@@ -130,6 +139,7 @@ test.describe.serial('users and access', () => {
     await nav(support, 'Support access');
     await support.selectOption('#g-org', { label: ORG });
     await support.fill('#g-reason', 'Ticket 42: check the user list');
+    await shot(support, '10-support-request');
     await support.click('text=Request access');
     await support.click('text=Start session');
     await expect(support.locator('.support-banner')).toBeVisible();
@@ -137,6 +147,7 @@ test.describe.serial('users and access', () => {
     await nav(support, 'User management');
     await expect(support.locator('td', { hasText: OWNER })).toBeVisible();
     await expect(support.locator('td.actions button')).toHaveCount(0);
+    await shot(support, '11-support-session');
     await support.click('text=End session');
     await expect(support.getByText('Create an Organization')).toBeVisible();
 

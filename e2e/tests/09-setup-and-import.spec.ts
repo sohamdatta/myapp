@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { HR, PASSWORD, ORG, signIn, newPage, nav, tab, isoDay, expectNoSidewaysScroll, expectNoConsoleErrors } from './helpers';
+import { HR, PASSWORD, ORG, signIn, newPage, nav, tab, isoDay, expectNoSidewaysScroll, expectNoConsoleErrors, shot } from './helpers';
 
 // Setup on screen and the employee import: HR configures a flow for interns
 // entirely from People → Setup (a field made required, a field of their own,
@@ -36,12 +36,14 @@ test.describe.serial('setup and import', () => {
     await hr.getByRole('button', { name: 'Add a flow' }).click();
     await hr.fill('#fl-name', 'Interns');
     await hr.locator('.rule-editor').first().getByLabel('Intern', { exact: true }).check();
+    await shot(hr, '65-flow-editor', true);
     await hr.getByRole('button', { name: 'Save flow' }).click();
     // A flow with rules goes before the flow for everyone, so interns get it.
     await expect(hr.locator('.setup-item').first()).toContainText('1. Interns');
     await expect(hr.locator('.setup-item').first()).toContainText('Intern');
     await expect(hr.locator('.setup-item').nth(1)).toContainText('2. Everyone');
     await expect(hr.locator('.hint', { hasText: 'Last changed by hr@globex.test' })).toBeVisible();
+    await shot(hr, '66-flows');
   });
 
   test('a field made required for interns, and a field of their own', async () => {
@@ -49,6 +51,7 @@ test.describe.serial('setup and import', () => {
     await hr.selectOption('#form-scope', { label: 'Only the flow Interns' });
     const blood = hr.locator('[data-field="person.blood_group"]');
     await blood.locator('label', { hasText: /^Required$/ }).click();
+    await shot(hr, '67-form');
     // Legal name cannot be anything but required.
     await expect(hr.locator('[data-field="person.legal_name"] input[value="hidden"]')).toBeDisabled();
     await hr.getByRole('button', { name: 'Save 1 change' }).click();
@@ -61,6 +64,7 @@ test.describe.serial('setup and import', () => {
     await hr.selectOption('#cf-section', 'personal');
     await hr.selectOption('#cf-visibility', 'required');
     await hr.locator('.setup-editor .rule-editor').getByLabel('Intern', { exact: true }).check();
+    await shot(hr, '68-own-field', true);
     await hr.getByRole('button', { name: 'Save field' }).click();
     await expect(hr.locator('[data-item="College"]')).toContainText('Short text in Personal · required · Employment type intern');
 
@@ -72,12 +76,17 @@ test.describe.serial('setup and import', () => {
     await expect(personal).toBeVisible();
     await expect(personal.locator('label', { hasText: /^College$/ })).toBeVisible();
     await expect(personal.locator('label', { hasText: /^Blood group$/ })).toBeVisible();
+    await shot(hr, '69-preview', true);
     await hr.selectOption('#pv-type', 'permanent');
     await expect(hr.locator('.phone-frame')).toContainText('Flow: Everyone');
     await expect(hr.locator('[data-preview="personal"] label', { hasText: /^College/ })).toHaveCount(0);
   });
 
   test('a code series for interns, and a message reworded', async () => {
+    for (const [area, name] of [['Documents', '70-setup-documents'], ['Checklists', '71-setup-checklists'], ['Letters', '72-setup-letters'], ['Policies', '73-setup-policies'], ['Settings', '74-setup-settings']]) {
+    await tab(hr, area);
+    await shot(hr, name, true);
+    }
     await tab(hr, 'Employee codes');
     await hr.getByRole('button', { name: 'Add a series' }).click();
     await hr.fill('#ser-name', 'Interns');
@@ -85,6 +94,7 @@ test.describe.serial('setup and import', () => {
     await hr.fill('#ser-digits', '3');
     const yy = isoDay(0).slice(2, 4);
     await expect(hr.getByTestId('series-example')).toHaveText(`INT-${yy}-001`);
+    await shot(hr, '75-code-series', true);
     await hr.locator('.setup-editor .rule-editor').getByLabel('Intern', { exact: true }).check();
     await hr.getByRole('button', { name: 'Save', exact: true }).click();
     await expect(hr.locator('[data-item="Interns"]')).toContainText(`Next code: INT-${yy}-001`);
@@ -101,6 +111,7 @@ test.describe.serial('setup and import', () => {
     await expect(hr.locator('#msg-body')).toHaveValue('{{task.title}}');
     await hr.fill('#msg-body', '{{task.title}} for {{joiner.name}}, please');
     await expect(hr.locator('.setup-editor')).toContainText('Prepare laptop and accounts for Asha Rao, please');
+    await shot(hr, '76-message', true);
     await hr.getByRole('button', { name: 'Save', exact: true }).click();
     await expect(assigned).toContainText('for Asha Rao, please');
   });
@@ -128,13 +139,16 @@ test.describe.serial('setup and import', () => {
     await hr.locator('#import-file').setInputFiles({ name: 'staff.csv', mimeType: 'text/csv', buffer: Buffer.from(CSV) });
     await expect(hr.locator('#map-legal_name')).toHaveValue('1');
     await expect(hr.locator('#map-manager')).toHaveValue('5');
+    await shot(hr, '77-import-columns', true);
     await hr.getByRole('button', { name: 'Check every row' }).click();
     await expect(hr.getByRole('heading', { name: '2 ready to import · 2 cannot be used' })).toBeVisible();
     await expect(hr.locator('tr[data-line="4"]')).toContainText('The employee code E001 is already in use');
     await expect(hr.locator('tr[data-line="5"]')).toContainText('is not a date');
     await expect(hr.locator('tr[data-line="3"]')).toContainText('Adds the department Design');
+    await shot(hr, '78-import-check', true);
     await hr.getByRole('button', { name: 'Import 2 employees' }).click();
     await expect(hr.getByRole('heading', { name: 'Imported 2 employees; 2 rows left out' })).toBeVisible();
+    await shot(hr, '79-import-done', true);
 
     await tab(hr, 'Employees');
     const row = (name: string) => hr.locator('tbody tr').filter({ has: hr.getByRole('button', { name, exact: true }) });
@@ -153,6 +167,7 @@ test.describe.serial('setup and import', () => {
     await hr.getByRole('button', { name: 'Invite 1 chosen' }).click();
     const link = await hr.locator('.invite-links .copy-row input').inputValue();
     expect(link).toContain('/?invite=');
+    await shot(hr, '80-invite-imported', true);
     await expect(hr.locator('tr[data-invitee="Priya Shah"]')).toHaveCount(0);
 
     const priya = await newPage(browser, 390);

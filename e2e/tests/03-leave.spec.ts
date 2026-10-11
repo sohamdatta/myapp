@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { OWNER, HR, signIn, nav, tab, isoDay, currentYear, daysToNextMonday, expectNoConsoleErrors } from './helpers';
+import { OWNER, HR, signIn, nav, tab, isoDay, currentYear, daysToNextMonday, expectNoConsoleErrors, shot } from './helpers';
 
 // Leave: the Org Admin sets up leave types, the HR Admin applies (with a live
 // preview of the days), the Org Admin approves, adjusts a balance, records leave
@@ -52,6 +52,7 @@ test.describe.serial('leave', () => {
     await addType('Earned leave', { accrual: 'monthly', quota: '18', cap: '30', short: 'unpaid' });
     await addType('Loss of pay', { kind: 'unpaid' });
     await addType('Comp-off', { kind: 'comp_off' });
+    await shot(owner, '20-leave-types');
   });
 
   test('apply for leave with a live preview of the days', async () => {
@@ -64,6 +65,9 @@ test.describe.serial('leave', () => {
     await hr.fill('#apply-from', isoDay(1));
     await hr.fill('#apply-to', isoDay(2));
     await expect(hr.locator('form [role=status]')).toContainText('This takes 2 days');
+    await hr.fill('#apply-reason', 'Family function in Durgapur');
+    await shot(hr, '21-apply-leave');
+    await hr.fill('#apply-reason', '');
 
     await hr.click('text=Send for approval');
     await expect(hr.locator('form .error')).toBeVisible(); // a reason is needed
@@ -84,11 +88,13 @@ test.describe.serial('leave', () => {
     await tab(owner, 'Requests');
     await expect(owner.locator('td', { hasText: 'Family function' })).toBeVisible();
     await owner.getByLabel(`Note for ${HR}`).fill('Enjoy');
+    await shot(owner, '22-leave-approve');
     await owner.getByRole('button', { name: 'Approve', exact: true }).click();
     await expect(owner.getByText('No pending leave requests.')).toBeVisible();
 
     await tab(owner, 'Who is away');
     await expect(owner.locator('tbody tr', { hasText: HR }).first()).toBeVisible();
+    await shot(owner, '23-who-is-away');
   });
 
   test('HR adjusts a balance and records leave on someone else’s behalf', async () => {
@@ -100,6 +106,7 @@ test.describe.serial('leave', () => {
     await owner.selectOption('#adj-type', { label: 'Earned leave' });
     await owner.fill('#adj-days', '4.5');
     await owner.fill('#adj-reason', 'Opening balance from the old system');
+    await shot(owner, '24-adjust-balance');
     await owner.click('text=Save adjustment');
     await expect(owner.locator('.detail-row')).toHaveCount(0);
 
@@ -109,12 +116,14 @@ test.describe.serial('leave', () => {
     await owner.fill('#behalf-from', lopDay);
     await owner.fill('#behalf-to', lopDay);
     await owner.fill('#behalf-reason', 'Was away, told by phone');
+    await shot(owner, '25-record-leave');
     await owner.click(`text=Record leave for ${HR}`);
     await expect(owner.locator('.detail-row')).toHaveCount(0);
 
     await hrRow.getByText('History').click();
     await owner.locator('.detail-row .chip', { hasText: 'Earned leave' }).click();
     await expect(owner.locator('.detail-row').getByRole('cell', { name: /^Adjusted by HR/ })).toBeVisible();
+    await shot(owner, '26-balance-history');
 
     // Nobody adjusts their own balance.
     await expect(owner.locator('tr', { hasText: OWNER }).locator('td.actions').getByText('Adjust')).toHaveCount(0);
@@ -124,6 +133,7 @@ test.describe.serial('leave', () => {
     await nav(hr, 'My leave');
     const row = hr.locator('tr', { hasText: 'Family function' });
     await expect(row).toContainText('approved');
+    await shot(hr, '27-my-leave');
     await expect(tile(hr, 'Casual leave')).not.toHaveText(casualBefore); // two days taken
     await row.getByText('Cancel').click();
     await expect(row).toContainText('cancelled');
@@ -136,6 +146,7 @@ test.describe.serial('leave', () => {
     await owner.fill('#ye-year', String(currentYear() - 1));
     await owner.click('text=Preview');
     await expect(owner.locator('.panel .tiles')).toBeVisible();
+    await shot(owner, '28-close-year', true);
     await owner.click('text=Close this leave year…');
     await owner.click('text=Yes, close the year');
     await expect(owner.getByText('This leave year has been closed.')).toBeVisible();

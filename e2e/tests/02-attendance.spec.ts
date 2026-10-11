@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { OWNER, HR, signIn, nav, tab, isoDay, todayDmy, expectNoConsoleErrors } from './helpers';
+import { OWNER, HR, signIn, nav, tab, isoDay, todayDmy, expectNoConsoleErrors, shot } from './helpers';
 
 // Attendance: the Org Admin sets up an office, shift and holiday, assigns people,
 // the HR Admin punches (refused off the office network, accepted on it), raises a
@@ -41,6 +41,7 @@ test.describe.serial('attendance', () => {
     await owner.fill('#hol-name', 'Founders day');
     await owner.click('text=Add holiday');
     await expect(owner.locator('td', { hasText: 'Founders day' })).toBeVisible();
+    await shot(owner, '12-attendance-setup', true);
   });
 
   test('assign people, set an employee code and allow work from home', async () => {
@@ -61,6 +62,7 @@ test.describe.serial('attendance', () => {
 
     await owner.getByLabel(`${HR} may work from home`).check();
     await expect(owner.getByText('Can request').first()).toBeVisible();
+    await shot(owner, '13-attendance-people', true);
   });
 
   test('a punch off the office network is refused, and accepted once the network is added', async ({ browser }) => {
@@ -83,11 +85,14 @@ test.describe.serial('attendance', () => {
     // Every day explains itself.
     await hr.locator('tbody tr').first().getByText('Why').click();
     await expect(hr.locator('.trail')).toBeVisible();
+    await shot(hr, '14-my-attendance', true);
   });
 
   test('a work-from-home request is checked, sent and approved by someone else', async () => {
     await hr.click('text=New request');
     await hr.selectOption('#req-kind', 'work_from_home');
+    await hr.fill('#req-reason', 'Plumber visiting at home');
+    await shot(hr, '15-attendance-request');
     await hr.fill('#req-reason', 'Hm');
     await hr.click('text=Send request');
     await expect(hr.locator('form .error')).toBeVisible(); // reason too short
@@ -106,6 +111,7 @@ test.describe.serial('attendance', () => {
     await tab(owner, 'Requests');
     await expect(owner.locator('td', { hasText: 'Plumber visiting' })).toBeVisible();
     await owner.getByLabel(`Note for ${HR}`).fill('Fine');
+    await shot(owner, '16-attendance-approve');
     await owner.getByRole('button', { name: 'Approve', exact: true }).click();
     await expect(owner.getByText('No pending requests.')).toBeVisible();
   });
@@ -118,6 +124,7 @@ test.describe.serial('attendance', () => {
     await owner.fill('.detail-row input[type=time]', '00:05');
     await owner.selectOption('.detail-row select', 'in');
     await owner.fill('.detail-row input[id^=mp-reason]', 'Turnstile was broken');
+    await shot(owner, '17-daily-board');
     await owner.click('text=Add punch');
     await expect(owner.locator('tr', { hasText: OWNER }).locator('td', { hasText: 'working' })).toBeVisible();
 
@@ -140,12 +147,14 @@ test.describe.serial('attendance', () => {
 
     await owner.setInputFiles('#imp-file', file);
     await expect(owner.locator('#map-code')).toBeVisible();
+    await shot(owner, '18-device-import', true);
     await owner.click('text=Import 3 rows');
     const first = owner.locator('.notice');
     await expect(first).toBeVisible();
     await expect(first).toContainText('2 of 3 rows imported.');
     await expect(first).toContainText('0 were already here and 1 could not be used');
     await expect(owner.locator('td', { hasText: 'gate.csv' }).first()).toBeVisible();
+    await shot(owner, '19-device-imported');
 
     await owner.setInputFiles('#imp-file', file);
     await expect(owner.locator('#map-code')).toBeVisible();

@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { OWNER, HR, signIn, nav, tab, isoDay, expectNoConsoleErrors } from './helpers';
+import { OWNER, HR, signIn, nav, tab, isoDay, expectNoConsoleErrors, shot } from './helpers';
 
 // Employee records: departments, adding existing staff with identifiers that
 // are shown as last four only, revealing a full value with a reason, a dated
@@ -30,6 +30,7 @@ test.describe.serial('people', () => {
     await owner.selectOption('#dep-parent', { label: 'Engineering' });
     await owner.click('text=Add department');
     await expect(owner.locator('tr', { hasText: 'Web' })).toContainText('Engineering');
+    await shot(owner, '31-departments');
 
     // Engineering cannot be put inside its own sub-department.
     await owner.locator('tr', { hasText: 'Engineering' }).first().getByRole('button', { name: 'Change' }).click();
@@ -75,6 +76,7 @@ test.describe.serial('people', () => {
     await owner.click('button:has-text("Add employee")');
     await expect(owner.locator('form .error')).toContainText('fourth letter');
     await owner.fill('#ne-pan', PAN);
+    await shot(owner, '32-add-employee', true);
     await owner.click('button:has-text("Add employee")');
     await expect(owner.getByRole('heading', { name: /Harish Rao/ })).toBeVisible();
   });
@@ -97,6 +99,7 @@ test.describe.serial('people', () => {
     await owner.fill('#why-pan', 'Checking the Form 16 details');
     await pan.getByRole('button', { name: 'Show' }).click();
     await expect(pan).toContainText(PAN);
+    await shot(owner, '33-employee-profile', true);
     await pan.getByRole('button', { name: 'Hide' }).click();
     await expect(pan).not.toContainText(PAN);
   });
@@ -106,12 +109,14 @@ test.describe.serial('people', () => {
     await owner.fill('#job-designation', 'HR manager');
     await owner.selectOption('#job-department', { label: 'Engineering › Web' });
     await owner.fill('#job-reason', 'Promotion');
+    await shot(owner, '34-change-job');
     await owner.click('text=Save change');
     await expect(owner.locator('.section-head .muted')).toContainText('HR manager');
 
     await tab(owner, 'Job history');
     await expect(owner.locator('tbody tr')).toHaveCount(2);
     await expect(owner.locator('tbody tr').first()).toContainText('Promotion');
+    await shot(owner, '35-job-history');
   });
 
   test('the same PAN cannot be given to a second person', async () => {
@@ -134,6 +139,7 @@ test.describe.serial('people', () => {
     await owner.click('text=Record exit');
     await owner.fill('#exit-date', isoDay(-1));
     await owner.fill('#exit-reason', 'Resigned');
+    await shot(owner, '36-record-exit');
     await owner.click('button:has-text("Record exit")');
     await expect(owner.locator('.section-head h2')).toContainText('ended');
 

@@ -84,3 +84,14 @@ export function daysToNextMonday(): number {
 export function currentYear(): number {
   return istToday().getUTCFullYear();
 }
+
+/**
+ * Saves a screenshot for the setup and user guide when E2E_SHOTS names a folder;
+ * does nothing otherwise. `full` captures the whole page, not just the window.
+ */
+export async function shot(page: Page, name: string, full = false) {
+  const dir = process.env.E2E_SHOTS;
+  if (!dir) return;
+  await page.waitForTimeout(300); // let lists and transitions settle
+  await page.screenshot({ path: `${dir}/${name}.png`, fullPage: full });
+}

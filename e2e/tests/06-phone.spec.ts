@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { OWNER, HR, signIn, nav, tab, expectNoSidewaysScroll, expectNoConsoleErrors } from './helpers';
+import { OWNER, HR, signIn, nav, tab, expectNoSidewaysScroll, expectNoConsoleErrors, shot } from './helpers';
 
 // The main screens at phone width (390 px): they must load, show their data and
 // never scroll sideways.
@@ -14,11 +14,13 @@ test.describe('phone width', () => {
     await nav(hr, 'My attendance');
     await expect(hr.locator('.punch-button')).toBeVisible();
     await expect(hr.locator('tbody tr').first()).toBeVisible();
+    await shot(hr, '37-phone-attendance');
     await expectNoSidewaysScroll(hr);
 
     await nav(hr, 'My leave');
     await expect(hr.locator('.tiles')).toBeVisible();
     await expect(hr.locator('tbody tr').first()).toBeVisible();
+    await shot(hr, '38-phone-leave');
     await expectNoSidewaysScroll(hr);
     await hr.context().close();
   });

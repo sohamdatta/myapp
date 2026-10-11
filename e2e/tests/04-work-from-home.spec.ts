@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { OWNER, HR, signIn, nav, tab, isoDay, daysToNextMonday, expectNoConsoleErrors } from './helpers';
+import { OWNER, HR, signIn, nav, tab, isoDay, daysToNextMonday, expectNoConsoleErrors, shot } from './helpers';
 
 // Work from home: a request for a range of future days, a weekly limit set by
 // the Org Admin, approval, and cancelling an approved day to free the limit.
@@ -32,6 +32,7 @@ test.describe.serial('work from home', () => {
     await nav(hr, 'My attendance');
     await requestWfh(isoDay(monday), isoDay(monday + 1), 'Painters at the flat');
     await expect(hr.locator('form p.hint')).toBeVisible(); // shows how many days are left
+    await shot(hr, '29-wfh-range');
     await hr.click('text=Send request');
     await expect(hr.locator('tbody tr', { hasText: 'Painters' })).toHaveCount(2); // one request per day
   });
@@ -42,6 +43,8 @@ test.describe.serial('work from home', () => {
     await owner.fill('#wfh-week', '2');
     await owner.click('text=Save work-from-home rules');
     await expect(owner.getByText('Saved.')).toBeVisible();
+    await owner.locator('#wfh-week').scrollIntoViewIfNeeded();
+    await shot(owner, '30-wfh-rules');
 
     await hr.reload();
     await nav(hr, 'My attendance');

@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { HR, PASSWORD, ORG, signIn, newPage, nav, tab, isoDay, expectNoSidewaysScroll, expectNoConsoleErrors } from './helpers';
+import { HR, PASSWORD, ORG, signIn, newPage, nav, tab, isoDay, expectNoSidewaysScroll, expectNoConsoleErrors, shot } from './helpers';
 
 // The offer stage, policies, employee codes and the bell: HR sets up a code series
 // and two policies, issues an offer letter, the joiner reads and accepts it on a
@@ -76,10 +76,12 @@ test.describe.serial('offer, policies and employee codes', () => {
     await hr.getByRole('button', { name: 'Preview' }).click();
     await expect(hr.locator('.letter-preview')).toContainText('Dear Nina Paul,');
     await expect(hr.locator('.letter-preview')).toContainText('position of Analyst, in the Engineering department');
+    await shot(hr, '58-letter-preview', true);
     await hr.getByRole('button', { name: 'Issue letter' }).click();
     await expect(hr.locator('.letter-row[data-letter="Offer letter"]')).toContainText('Waiting for an answer');
     await expect(hr.locator('.section-head h2')).toContainText('offered');
     await expect(hr.locator('[data-policy="Code of conduct"]')).toContainText('Not acknowledged');
+    await shot(hr, '59-letter-issued', true);
   });
 
   test('the joiner reads the offer on a phone and accepts it, then acknowledges the policies', async ({ browser }) => {
@@ -93,6 +95,7 @@ test.describe.serial('offer, policies and employee codes', () => {
     // Only the offer, until it is answered.
     await expect(joiner.getByRole('heading', { name: `${ORG} has an offer for you, Nina` })).toBeVisible();
     await expect(joiner.locator('.section-card')).toHaveCount(0);
+    await shot(joiner, '60-offer-phone', true);
     const offer = joiner.locator('[data-letter="Offer letter"]');
     await offer.getByRole('button', { name: 'Read the letter' }).click();
     await expect(joiner.getByRole('dialog').locator('iframe')).toBeVisible();
@@ -109,6 +112,7 @@ test.describe.serial('offer, policies and employee codes', () => {
     for (const name of ['Code of conduct', 'IT use']) {
       const policy = joiner.locator(`[data-policy="${name}"]`);
       await policy.getByRole('button', { name: 'Read' }).click();
+      if (name === 'Code of conduct') await shot(joiner, '62-policy');
       await policy.getByRole('button', { name: 'I have read and accept this policy' }).click();
       await expect(policy).toContainText('Acknowledged');
     }
@@ -122,6 +126,7 @@ test.describe.serial('offer, policies and employee codes', () => {
     await bell.click();
     const item = hr.locator('.bell-item', { hasText: 'New task: Send the welcome note and invitation' }).filter({ hasText: 'Nina Paul' });
     await expect(item).toBeVisible();
+    await shot(hr, '63-bell');
     await item.click();
     await expect(hr.locator('.page-title')).toHaveText('My tasks');
     await expect(hr.locator('.task-row[data-task="Send the welcome note and invitation"]')).toContainText('Nina Paul');
@@ -170,5 +175,6 @@ test.describe.serial('offer, policies and employee codes', () => {
     await joiner.reload();
     await joiner.locator('.bell-button').click();
     await expect(joiner.locator('.bell-item', { hasText: `Your employee code is GLX-${yy}-0001` })).toBeVisible();
+    await shot(joiner, '64-joiner-bell');
   });
 });

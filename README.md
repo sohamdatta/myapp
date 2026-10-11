@@ -655,6 +655,7 @@ cd e2e && npm install
 npx playwright install --with-deps chromium   # first time only
 npx playwright test                   # all suites, in order
 npx playwright test --ui              # watch each step in a browser window
+E2E_SHOTS=../shots npx playwright test  # also save the screenshots used in the setup and user guide
 ```
 
 They create an Organization called Globex Ltd, so they need a fresh database

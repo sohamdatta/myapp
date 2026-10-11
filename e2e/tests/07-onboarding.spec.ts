@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { HR, OWNER, PASSWORD, ORG, signIn, newPage, nav, tab, isoDay, expectNoSidewaysScroll, expectNoConsoleErrors } from './helpers';
+import { HR, OWNER, PASSWORD, ORG, signIn, newPage, nav, tab, isoDay, expectNoSidewaysScroll, expectNoConsoleErrors, shot } from './helpers';
 
 // Onboarding a joiner: HR adds and invites them, the joiner accepts on a phone,
 // reads the notice and fills each section, HR returns one section with a note,
@@ -47,6 +47,7 @@ test.describe.serial('onboarding', () => {
     await hr.fill('#nj-code', 'E050');
     await hr.selectOption('#nj-location', { index: 1 });
     await hr.selectOption('#nj-shift', { index: 1 });
+    await shot(hr, '39-add-joiner', true);
     await hr.getByRole('button', { name: 'Save and invite' }).click();
 
     await expect(hr.getByRole('heading', { name: /Meera Iyer/ })).toBeVisible();
@@ -55,6 +56,7 @@ test.describe.serial('onboarding', () => {
     // HR gave everything the Employment section needs, so it waits to be checked; the rest waits for the joiner.
     await expect(sectionCard(hr, 'Employment')).toContainText('submitted');
     await expect(hr.locator('.blockers')).toContainText('Personal details: waiting for the joiner');
+    await shot(hr, '40-joiner-invited', true);
   });
 
   test('the joiner accepts on a phone and sees only their onboarding', async ({ browser }) => {
@@ -63,6 +65,7 @@ test.describe.serial('onboarding', () => {
     await expect(joiner.getByText(`Join ${ORG}`)).toBeVisible();
     await joiner.fill('#new-password', PASSWORD);
     await joiner.fill('#confirm-password', PASSWORD);
+    await shot(joiner, '41-joiner-accept');
     await joiner.click('button.primary');
     await expect(joiner.getByRole('heading', { name: `Welcome to ${ORG}, Meera` })).toBeVisible();
     await expect(joiner.locator('button.nav-item')).toHaveCount(1);
@@ -70,8 +73,10 @@ test.describe.serial('onboarding', () => {
 
     // The notice comes first.
     await expect(joiner.locator('.notice-body')).toContainText('Why we ask for this information');
+    await shot(joiner, '42-joiner-notice');
     await joiner.getByRole('button', { name: 'I have read this' }).click();
     await expect(joiner.getByRole('progressbar')).toBeVisible();
+    await shot(joiner, '43-joiner-home', true);
     await expectNoSidewaysScroll(joiner);
   });
 
@@ -87,6 +92,9 @@ test.describe.serial('onboarding', () => {
     await expect(card('Personal details').locator('.error')).toContainText('18 or older');
     await joiner.fill('#f-person-date_of_birth', '1998-05-01');
     await joiner.selectOption('#f-person-gender', 'female');
+    await card('Personal details').scrollIntoViewIfNeeded();
+    await joiner.locator('#f-person-gender').scrollIntoViewIfNeeded();
+    await shot(joiner, '44-joiner-personal');
     await joiner.getByRole('button', { name: 'Send for checking' }).click();
     await expect(card('Personal details')).toContainText('submitted');
 
@@ -118,6 +126,8 @@ test.describe.serial('onboarding', () => {
     await joiner.getByRole('button', { name: 'Send for checking' }).click();
     await expect(card('Family and nominees').locator('.error')).toContainText('must add up to 100%');
     await joiner.fill('#f-family-nominations-0-sharePct', '100');
+    await card('Family and nominees').scrollIntoViewIfNeeded();
+    await shot(joiner, '45-joiner-family');
     await joiner.getByRole('button', { name: 'Send for checking' }).click();
     await expect(card('Family and nominees')).toContainText('submitted');
 
@@ -150,6 +160,8 @@ test.describe.serial('onboarding', () => {
     await expect(address).toContainText('Waiting to be checked');
     await expect(docs.locator('.section-toggle')).toContainText('submitted');
     await expect(joiner.locator('.progress-row')).toContainText('8 of 8 sent');
+    await docs.scrollIntoViewIfNeeded();
+    await shot(joiner, '46-joiner-documents');
 
     // Sent sections are read-only and show identifiers as the last four only.
     await card('PAN, Aadhaar and PF').locator('.section-toggle').click();
@@ -163,6 +175,7 @@ test.describe.serial('onboarding', () => {
     await nav(hr, 'People');
     await tab(hr, 'Joiners');
     await expect(hr.locator('.tile', { hasText: 'Waiting on HR' })).toContainText('1');
+    await shot(hr, '47-joiners-list');
     await hr.getByRole('button', { name: 'Meera Iyer' }).click();
 
     const bank = sectionCard(hr, 'Bank account');
@@ -170,12 +183,15 @@ test.describe.serial('onboarding', () => {
     await expect(bank).toContainText('•••• 3004');
     await bank.getByRole('button', { name: 'Return with a note' }).click();
     await bank.locator('textarea').fill('Please give the IFSC of your home branch');
+    await shot(hr, '48-return-section');
     await bank.getByRole('button', { name: 'Return to joiner' }).click();
     await expect(bank.locator('.section-toggle')).toContainText('returned');
 
     await joiner.reload();
     const card = sectionCard(joiner, 'Bank account');
     await expect(card).toContainText('HR asks: Please give the IFSC of your home branch');
+    await card.scrollIntoViewIfNeeded();
+    await shot(joiner, '49-joiner-returned');
     await card.locator('.section-toggle').click();
     await joiner.fill('#f-bank-ifsc', 'HDFC0000123');
     await joiner.getByRole('button', { name: 'Send for checking' }).click();
@@ -199,6 +215,7 @@ test.describe.serial('onboarding', () => {
     const address = hr.locator('.doc-row[data-type="Address proof"]');
     await address.getByRole('button', { name: 'Reject' }).click();
     await address.locator('input[id^="reject-"]').fill('The bill must be from the last three months');
+    await shot(hr, '51-documents-tab');
     await address.getByRole('button', { name: 'Reject' }).click();
     await expect(address).toContainText('Rejected');
 
@@ -226,6 +243,7 @@ test.describe.serial('onboarding', () => {
     await tab(hr, 'Checklist');
     await expect(hr.locator('.task-group')).toHaveCount(4); // HR, IT, Manager, Joiner
     await expect(hr.locator('.blockers')).toContainText('Task: Prepare laptop and accounts');
+    await shot(hr, '52-checklist', true);
 
     // IT has nobody yet; HR gives the laptop task to the Org Admin, who finds it under My tasks.
     const laptop = hr.locator('.task-row[data-task="Prepare laptop and accounts"]');
@@ -239,6 +257,7 @@ test.describe.serial('onboarding', () => {
     await nav(owner, 'My tasks');
     const task = owner.locator('.task-row[data-task="Prepare laptop and accounts"]');
     await expect(task).toContainText('Meera Iyer, joining');
+    await shot(owner, '53-my-tasks');
     await task.getByRole('button', { name: 'Mark done' }).click();
     await expect(task).toHaveCount(0);
     // The Org Admin is also Meera's manager, so the manager's tasks are here too.
@@ -273,6 +292,7 @@ test.describe.serial('onboarding', () => {
     for (const title of titles) {
       const card = sectionCard(hr, title);
       await card.locator('.section-toggle').click();
+      if (title === 'Personal details') await shot(hr, '54-verify-section');
       await card.getByRole('button', { name: 'Verify' }).click();
       await expect(card.locator('.section-toggle')).toContainText('verified');
       await card.locator('.section-toggle').click();
@@ -283,12 +303,14 @@ test.describe.serial('onboarding', () => {
     await tab(hr, 'Joiners');
     await hr.getByRole('button', { name: 'Joined', exact: true }).click();
     await expect(hr.locator('tbody tr', { hasText: 'Meera Iyer' })).toContainText('active');
+    await shot(hr, '55-joined');
     await tab(hr, 'Employees');
     await expect(hr.locator('tbody tr', { hasText: 'Meera Iyer' })).toContainText('E050');
 
     await joiner.reload();
     await expect(joiner.locator('button.nav-item', { hasText: 'My attendance' })).toBeVisible();
     await expect(joiner.locator('button.nav-item', { hasText: 'My onboarding' })).toHaveCount(0);
+    await shot(joiner, '56-joiner-now-employee');
 
     await hr.getByRole('button', { name: 'Meera Iyer' }).click();
     await expect(hr.locator('.panels')).toContainText('•••• 321M');
@@ -307,6 +329,7 @@ test.describe.serial('onboarding', () => {
 
     await hr.getByRole('button', { name: 'Withdraw' }).click();
     await hr.fill('#withdraw-reason', 'Took another offer');
+    await shot(hr, '57-withdraw');
     await hr.locator('form').getByRole('button', { name: 'Withdraw' }).click();
     await expect(hr.locator('.section-head h2')).toContainText('withdrawn');
     await hr.getByRole('button', { name: '← All joiners' }).click();
