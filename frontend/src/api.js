@@ -267,6 +267,32 @@ export const people = {
   unlinkedUsers: () => get('/org/people/unlinked-users'),
   departments: () => get('/org/people/departments'),
   saveDepartment: (id, body) => (id ? put(`/org/people/departments/${id}`, body) : post('/org/people/departments', body)),
+  states: () => get('/org/people/states'),
+}
+
+// ── onboarding: HR's joiners, and the joiner's own onboarding ───────
+
+export const joiners = {
+  list: (status) => get(`/org/people/joiners${query({ status })}`),
+  add: (body) => post('/org/people/joiners', body),
+  get: (id) => get(`/org/people/joiners/${id}`),
+  section: (id, section) => get(`/org/people/joiners/${id}/sections/${section}`),
+  saveSection: (id, section, values) => put(`/org/people/joiners/${id}/sections/${section}`, values),
+  submit: (id, section) => post(`/org/people/joiners/${id}/sections/${section}/submit`),
+  verify: (id, section, note) => post(`/org/people/joiners/${id}/sections/${section}/verify`, { note }),
+  returnSection: (id, section, note) => post(`/org/people/joiners/${id}/sections/${section}/return`, { note }),
+  invite: (id) => post(`/org/people/joiners/${id}/invite`),
+  activate: (id) => post(`/org/people/joiners/${id}/activate`),
+  withdraw: (id, reason) => post(`/org/people/joiners/${id}/withdraw`, { reason }),
+  history: (id) => get(`/org/people/joiners/${id}/history`),
+}
+
+export const onboarding = {
+  mine: () => get('/org/onboarding/me'),
+  acceptNotice: (noticeId) => post('/org/onboarding/me/notice', { noticeId }),
+  section: (section) => get(`/org/onboarding/me/sections/${section}`),
+  save: (section, values) => put(`/org/onboarding/me/sections/${section}`, values),
+  submit: (section) => post(`/org/onboarding/me/sections/${section}/submit`),
 }
 
 // ── the platform console ────────────────────────────────────────────

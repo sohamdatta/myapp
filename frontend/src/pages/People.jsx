@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { people } from '../api.js'
 import { formatDay, localToday, useAction, useLoad } from '../hooks.js'
 import { Badge, Empty, ErrorNote, StatusBadge, Tabs } from '../ui.jsx'
+import { AddJoiner, JoinerList, JoinerPage } from './Joiners.jsx'
 
 const TYPES = {
   permanent: 'Permanent',
@@ -244,8 +245,8 @@ function AddEmployee({ onSaved, onCancel }) {
     <form className="panel" onSubmit={submit} noValidate>
       <h2>Add an employee</h2>
       <p className="hint">
-        For someone already working here. People who are still to join will go through onboarding instead, once it is
-        available.
+        For someone already working here. Add people who are still to join under Joiners, so they fill in their own
+        details.
       </p>
 
       <h3>Person</h3>
@@ -1099,12 +1100,21 @@ export default function People({ me }) {
   const scopes = me.scopes || {}
   const everyone = ['tenant', 'assigned'].includes(scopes['employee.read'])
   const canWrite = scopes['employee.write'] === 'tenant'
-  const views = [{ id: 'employees', label: everyone ? 'Employees' : 'My team' }, everyone && { id: 'departments', label: 'Departments' }].filter(
-    Boolean,
-  )
+  const views = [
+    { id: 'employees', label: everyone ? 'Employees' : 'My team' },
+    everyone && { id: 'joiners', label: 'Joiners' },
+    everyone && { id: 'departments', label: 'Departments' },
+  ].filter(Boolean)
   const [view, setView] = useState('employees')
   const [open, setOpen] = useState(null) // an employment id, or 'new'
+  const [joiner, setJoiner] = useState(null) // { id, invitation } of the joiner open, or 'new'
 
+  if (joiner === 'new') {
+    return <AddJoiner onSaved={(id, invitation) => setJoiner({ id, invitation })} onCancel={() => setJoiner(null)} />
+  }
+  if (joiner) {
+    return <JoinerPage key={joiner.id} id={joiner.id} initialInvitation={joiner.invitation} onBack={() => setJoiner(null)} />
+  }
   if (open === 'new') {
     return <AddEmployee onSaved={(id) => setOpen(id)} onCancel={() => setOpen(null)} />
   }
@@ -1115,6 +1125,7 @@ export default function People({ me }) {
     <>
       <Tabs tabs={views} current={view} onChange={setView} />
       {view === 'employees' && <EmployeeList canWrite={canWrite} onOpen={setOpen} onAdd={() => setOpen('new')} />}
+      {view === 'joiners' && <JoinerList canWrite={canWrite} onOpen={(id) => setJoiner({ id })} onAdd={() => setJoiner('new')} />}
       {view === 'departments' && <Departments canWrite={canWrite} />}
     </>
   )

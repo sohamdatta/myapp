@@ -18,6 +18,11 @@ export function navFor(me) {
     ]
   }
 
+  // A joiner who has not started yet sees only their onboarding.
+  if ((me.roles || []).includes('joiner')) {
+    return [{ label: 'Joining', items: [{ id: 'my-onboarding', label: 'My onboarding' }] }]
+  }
+
   const scopes = me.scopes || {}
   // Punching is for users of the Organization, never for a support session.
   const canPunch = me.permissions.includes('attendance.punch') && me.kind === 'tenant'

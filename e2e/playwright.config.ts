@@ -36,5 +36,6 @@ export default defineConfig({
     { name: 'wfh', testMatch: /04-work-from-home\.spec\.ts/, use: desktop, dependencies: ['leave'] },
     { name: 'people', testMatch: /05-people\.spec\.ts/, use: desktop, dependencies: ['wfh'] },
     { name: 'phone', testMatch: /06-phone\.spec\.ts/, use: desktop, dependencies: ['people'] },
+    { name: 'onboarding', testMatch: /07-onboarding\.spec\.ts/, use: desktop, dependencies: ['phone'] },
   ],
 });

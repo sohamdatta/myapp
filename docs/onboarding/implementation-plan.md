@@ -248,3 +248,14 @@ Five decisions shape milestone 1 and should be settled before it starts; the rel
 - Every verification level needs a verifier for all sections (a step with no section), so nothing can wait for nobody.
 - The core reads and writes JSON with its own small `Json` class rather than a library, since Spring Boot 4 moved to Jackson 3.
 - Custom field values can already be set on an employee record (`PUT /people/employees/{id}/custom-fields`), sensitive ones encrypted and revealed like PAN.
+
+**Milestone 3, the joiner flow: done** (11 Oct 2026). The first usable release. Differences:
+
+- `V7__joiner_flow.sql` adds the work location, shift and weekly offs HR chooses for a joiner (applied as an attendance assignment on activation), salary from a previous employer this year, and the official email.
+- There is no draft store: every save writes straight to the record tables, and a section's status says whether it has been sent. Sections are copied to the joiner when they are added, so later configuration changes leave them as they were.
+- Documents, policies, letters and file fields (bank proof, photo) are off until milestones 4 and 5; the default flow ships with those sections switched off.
+- The Org Admin can always verify, besides the verifiers the flow names.
+- Automatic and scheduled invitations create the link, but nobody sees it until HR presses New invitation link, since no email is sent yet.
+- Activation sets the login's joining date to the joining date, so leave accrues from that day. Due activations and scheduled invitations are applied when joiners are read and on the joiner's own requests, not by a background job.
+- The rehire check matches personal email and mobile; PAN is not known when a joiner is added.
+

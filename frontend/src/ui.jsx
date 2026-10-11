@@ -35,6 +35,14 @@ const STATUS_TONES = {
   weekly_off: 'neutral',
   not_assigned: 'neutral',
   cancelled: 'neutral',
+  verified: 'good',
+  submitted: 'warn',
+  returned: 'warn',
+  invited: 'neutral',
+  in_progress: 'neutral',
+  draft: 'neutral',
+  not_started: 'neutral',
+  withdrawn: 'neutral',
 }
 
 export function StatusBadge({ status }) {
@@ -100,7 +108,7 @@ export function Trail({ steps }) {
 }
 
 /** A link the user needs to pass on by hand, with a copy button. */
-export function CopyLink({ label, link, onDismiss }) {
+export function CopyLink({ label, link, onDismiss, note = 'It works once and expires in 7 days.' }) {
   const [copied, setCopied] = useState(false)
 
   async function copy() {
@@ -115,8 +123,7 @@ export function CopyLink({ label, link, onDismiss }) {
   return (
     <div className="notice" role="status">
       <p>
-        <strong>{label}</strong> No email is sent yet, so copy this link and send it yourself. It works once
-        and expires in 7 days.
+        <strong>{label}</strong> No email is sent yet, so copy this link and send it yourself. {note}
       </p>
       <div className="copy-row">
         <input readOnly value={link} aria-label="Invitation link" onFocus={(e) => e.target.select()} />

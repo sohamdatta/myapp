@@ -296,7 +296,7 @@ onboarding will use.
 Every Organization configures onboarding its own way; nothing in the code
 names a customer. The configuration is in place now and can be changed
 through the API under `/api/org/people/setup`. The screens to change it come
-with milestone 6, and the joiner flow that uses it with milestone 3.
+with milestone 6; the joiner flow below already uses it.
 
 - **Defaults.** The first time anything reads an Organization's configuration,
   it gets working defaults: settings (invite by hand, links valid 14 days,
@@ -328,6 +328,35 @@ with milestone 6, and the joiner flow that uses it with milestone 3.
 Changing configuration needs the `onboarding.configure` permission (Org Admin
 and HR Admin); reading it needs `employee.read` across the Organization. Every
 change is in the audit log with its before and after values.
+
+## Onboarding joiners
+
+HR adds a joiner under **People → Joiners** with what they know (name,
+personal email, mobile, joining date, job, and the location, shift and weekly
+offs attendance will use) and invites them. No email is sent yet: HR copies
+the link, which stays valid until at least a week after the joining date.
+
+- **The joiner** signs in with the Joiner role and sees only **My
+  onboarding**: a welcome, the privacy notice to accept first, and one form per
+  section (personal, contact, addresses, emergency contact, family and
+  nominees, bank, PAN and tax). Each section is saved as they go and sent for
+  checking; required fields are checked on sending. PAN, Aadhaar and the bank
+  account are stored encrypted and shown as the last four.
+- **Verification.** Each sent section is verified, or returned with a note, at
+  each level the flow sets; the joiner fixes a returned section and sends it
+  again. Nobody verifies their own details. HR can also fill or correct any
+  section; correcting a verified one sends it back for checking.
+- **Activation.** Once every section is verified (and the PAN is given, if the
+  Organization insists), the joiner becomes an employee on the joining date:
+  the Joiner role becomes Employee, the employee code and joining date carry
+  over (leave accrues from that date), and attendance is assigned from that
+  day. With automatic activation this happens by itself; otherwise HR presses
+  Activate.
+- **Rehires.** A joiner whose email or mobile matches an earlier person is
+  offered to HR as a possible rehire before anything is created.
+- **Withdrawal** ends the link and login; the joiner's data is deleted after
+  the Organization's retention period (90 days by default).
+- Documents, policies and letters come with the next milestones.
 
 ## Roles
 
@@ -461,6 +490,21 @@ Onboarding configuration, under `/api/org/people/setup`:
 | GET, POST | `/custom-fields`; PUT `/custom-fields/{id}` | The Organization's own fields |
 | GET | `/preview?flow=&employmentType=&department=&workLocation=&designation=` | The form a joiner would see |
 
+Joiners (HR), under `/api/org/people/joiners`:
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `?status=open\|active\|withdrawn\|all` | Joiners, with tiles for the week |
+| POST | `/` | Adds a joiner; may answer `{possibleRehire: [...]}` first |
+| GET | `/{id}`, `/{id}/history` | One joiner with sections and blockers; their history |
+| GET, PUT | `/{id}/sections/{section}` | A section's form and values; HR fills or corrects it |
+| POST | `/{id}/sections/{section}/submit`, `/verify`, `/return` | Sends, verifies, or returns with `{note}` |
+| POST | `/{id}/invite`, `/{id}/activate`, `/{id}/withdraw` | Invitation link, activation, withdrawal with `{reason}` |
+
+The joiner's own onboarding, under `/api/org/onboarding/me`: GET for the
+welcome and sections, POST `/notice` with `{noticeId}`, GET and PUT
+`/sections/{section}`, POST `/sections/{section}/submit`.
+
 The Organization a request acts on always comes from the server-side session.
 It is never read from the URL, a header or the request body.
 
@@ -472,7 +516,7 @@ on GitHub and emails whoever pushed it.
 
 | Job | What it checks | Where the tests are |
 |---|---|---|
-| Backend build and tests | Maven builds the backend; 148 JUnit tests run against a real PostgreSQL 16: business rules, permissions, and isolation between Organizations | `backend/src/test/` |
+| Backend build and tests | Maven builds the backend; 154 JUnit tests run against a real PostgreSQL 16: business rules, permissions, and isolation between Organizations | `backend/src/test/` |
 | Frontend lint and build | `oxlint` finds no problems and the production build succeeds | `frontend/` |
 | Browser tests | The app is started from the backend jar, and Playwright clicks through it as the Super Admin, an Org Admin and an HR Admin | `e2e/tests/` |
 
@@ -484,6 +528,7 @@ The browser tests tell one story in order, each step depending on the one before
 4. `04-work-from-home`: a range of future days, the weekly limit, cancelling an approved day.
 5. `05-people`: departments, adding employees with identifiers, last four on screen and the full PAN only with a reason, a dated job change, a duplicate PAN refused, an exit.
 6. `06-phone`: the main screens at 390 px wide, with no sideways scrolling.
+7. `07-onboarding`: HR adds and invites a joiner; the joiner accepts on a phone, reads the notice and fills every section; HR returns one with a note, the joiner fixes it, HR verifies all, and the joiner becomes an employee; a joiner is withdrawn.
 
 Every browser test also fails on any error in the browser console.
 
