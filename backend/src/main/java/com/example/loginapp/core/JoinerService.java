@@ -221,7 +221,7 @@ public final class JoinerService {
             if (l.sections().containsKey("employment")) {
                 Sql.update(c, "update app.onboarding_section set status = 'draft' where onboarding_id = ? and section = 'employment'",
                         onboardingId);
-                if (sections.missing(c, l.joiner(), "employment", fieldsOf(c, l, "employment")).isEmpty()) {
+                if (missing(c, load(c, onboardingId), "employment").isEmpty()) {
                     submit(c, ctx, load(c, onboardingId), "employment");
                 }
             }
@@ -373,6 +373,13 @@ public final class JoinerService {
             }
             audit(c, ctx, verified ? "joiner.section_verified" : "joiner.section_returned", onboardingId,
                     detail("section", section, "level", level, "note", clean));
+            if (verified) {
+                noteIfReady(c, onboardingId);
+            } else {
+                Notifications.aboutJoiner(c, l, l.membershipId(), "section_returned",
+                        Map.of("section.title", String.valueOf(sectionRows(c, l).stream().filter(r -> section.equals(r.get("section")))
+                                .findFirst().map(r -> r.get("title")).orElse(section)), "note", clean), "my-onboarding");
+            }
             return sectionView(c, load(c, onboardingId), section);
         });
     }
@@ -617,6 +624,14 @@ public final class JoinerService {
             membership = m == null ? null : AuthService.uuid(m.get("id"));
         }
         Map<String, Object> e = Sql.one(c, "select employee_code from app.employment where id = ?", l.employmentId());
+        if (e.get("employeeCode") == null) {
+            // No code was typed: the series that matches the joiner gives the next one.
+            String code = NumberSeries.draw(c, l);
+            if (code != null) {
+                Sql.update(c, "update app.employment set employee_code = ? where id = ?", code, l.employmentId());
+                e = Sql.one(c, "select employee_code from app.employment where id = ?", l.employmentId());
+            }
+        }
         if (membership != null) {
             Sql.update(c, "update app.employment set membership_id = ? where id = ?", membership, l.employmentId());
             Sql.update(c, "delete from app.membership_role mr using app.role r where r.id = mr.role_id and mr.membership_id = ? "
@@ -638,7 +653,25 @@ public final class JoinerService {
         Sql.update(c, "insert into app.audit_event (tenant_id, actor_kind, actor_membership_id, actor_label, action, target_type, target_id, detail) "
                 + "values (?, ?, ?, ?, 'joiner.activated', 'onboarding', ?, ?::jsonb)", tenantId,
                 ctx == null ? "system" : ctx.actorKind(), ctx == null ? null : ctx.membershipId(), ctx == null ? "system" : ctx.email(),
-                l.id(), Json.object(Map.of("joiningDate", l.joiningDate().toString(), "login", membership == null ? "none" : "linked")));
+                l.id(), Json.object(Map.of("joiningDate", l.joiningDate().toString(), "login", membership == null ? "none" : "linked",
+                        "employeeCode", e.get("employeeCode") == null ? "" : e.get("employeeCode"))));
+        Loaded now = load(c, l.id());
+        Notifications.aboutJoiner(c, now, membership, "activated", null, null);
+        Map<String, Object> boss = Sql.one(c, "select boss.membership_id from app.job_assignment j join app.employment boss on boss.id = j.manager_id "
+                + "where j.employment_id = ? order by j.effective_from desc, j.created_at desc limit 1", l.employmentId());
+        if (boss != null) {
+            Notifications.aboutJoiner(c, now, AuthService.uuid(boss.get("membershipId")), "welcome_team", null, null);
+        }
+    }
+
+    /** Tells whoever added the joiner, once, when nothing blocks activation any more. */
+    static void noteIfReady(Connection c, UUID onboardingId) throws SQLException {
+        Loaded l = load(c, onboardingId);
+        if (!l.open() || l.row().get("readyNotifiedAt") != null || !blockers(c, l).isEmpty()) {
+            return;
+        }
+        Sql.update(c, "update app.onboarding set ready_notified_at = now() where id = ?", onboardingId);
+        Notifications.aboutJoiner(c, l, AuthService.uuid(l.row().get("createdBy")), "joiner_ready", null, "people");
     }
 
     // ── blockers and status ─────────────────────────────────────────────
@@ -659,6 +692,8 @@ public final class JoinerService {
         }
         out.addAll(DocumentService.blockers(c, l));
         out.addAll(ChecklistService.blockers(c, l));
+        out.addAll(LetterService.blockers(c, l));
+        out.addAll(PolicyService.blockers(c, l));
         Map<String, Object> settings = settings(c);
         if (!Boolean.TRUE.equals(settings.get("allowActivationWithoutPan"))
                 && Sql.one(c, "select 1 from app.statutory_id where person_id = ? and kind = 'pan' and replaced_at is null "
@@ -684,6 +719,9 @@ public final class JoinerService {
                 }
             }
         }
+        if (!LetterService.blockers(c, l).isEmpty() || !PolicyService.blockers(c, l).isEmpty()) {
+            joiner = true;   // a letter to answer or a policy to acknowledge
+        }
         if (!joiner && !hr && !ChecklistService.blockers(c, l).isEmpty()) {
             hr = true;   // only tasks are left
         }
@@ -692,7 +730,7 @@ public final class JoinerService {
 
     private void submit(Connection c, SessionCtx ctx, Loaded l, String section) throws SQLException {
         refuseDocuments(section);
-        List<String> missing = sections.missing(c, l.joiner(), section, fieldsOf(c, l, section));
+        List<String> missing = missing(c, l, section);
         if (!missing.isEmpty()) {
             throw new ApiException(400, "onboarding.missing", "Still needed: " + String.join(", ", missing));
         }
@@ -706,6 +744,15 @@ public final class JoinerService {
                 + "where onboarding_id = ? and section = ?", verified ? "verified" : "submitted",
                 ctx.membershipId() != null ? ctx.membershipId() : l.membershipId(), l.id(), section);
         audit(c, ctx, "joiner.section_submitted", l.id(), Map.of("section", section));
+    }
+
+    /** Required fields with no value; the employee code is not needed when a series will give one at activation. */
+    private List<String> missing(Connection c, Loaded l, String section) throws SQLException {
+        List<Map<String, Object>> fields = fieldsOf(c, l, section);
+        if (section.equals("employment") && NumberSeries.applies(c, subject(c, l))) {
+            fields = fields.stream().filter(f -> !"employment.employee_code".equals(f.get("key"))).toList();
+        }
+        return sections.missing(c, l.joiner(), section, fields);
     }
 
     /** How many levels verify this section: the flow's levels, or none when the section is set not to be verified. */
@@ -765,7 +812,7 @@ public final class JoinerService {
     }
 
     private static boolean joinerCanEdit(Loaded l, String section) {
-        if (!l.open() || section.equals("employment") || l.row().get("noticeId") == null) {
+        if (!l.open() || "offered".equals(l.row().get("status")) || section.equals("employment") || l.row().get("noticeId") == null) {
             return false;
         }
         String status = (String) l.sections().get(section).get("status");

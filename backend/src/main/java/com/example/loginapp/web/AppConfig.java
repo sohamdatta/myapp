@@ -24,10 +24,14 @@ import com.example.loginapp.core.EmployeeService;
 import com.example.loginapp.core.InvitationService;
 import com.example.loginapp.core.JoinerService;
 import com.example.loginapp.core.LeaveAdminService;
+import com.example.loginapp.core.LetterService;
 import com.example.loginapp.core.LeaveService;
 import com.example.loginapp.core.Migrator;
+import com.example.loginapp.core.Notifications;
+import com.example.loginapp.core.NumberSeries;
 import com.example.loginapp.core.OnboardingConfigService;
 import com.example.loginapp.core.PlatformService;
+import com.example.loginapp.core.PolicyService;
 import com.example.loginapp.core.UserService;
 import com.zaxxer.hikari.HikariDataSource;
 
@@ -129,6 +133,26 @@ public class AppConfig {
     @Bean
     public ChecklistService checklistService(Db db, DocumentService documents) {
         return new ChecklistService(db, documents);
+    }
+
+    @Bean
+    public LetterService letterService(Db db, Crypto crypto, DocumentService documents) {
+        return new LetterService(db, crypto, documents);
+    }
+
+    @Bean
+    public PolicyService policyService(Db db) {
+        return new PolicyService(db);
+    }
+
+    @Bean
+    public Notifications notifications(Db db) {
+        return new Notifications(db);
+    }
+
+    @Bean
+    public NumberSeries numberSeries(Db db) {
+        return new NumberSeries(db);
     }
 
     @Bean

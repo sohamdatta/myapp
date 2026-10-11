@@ -79,6 +79,7 @@ public final class ChecklistService {
         Sql.update(c, "update app.onboarding_task t set due_date = case tt.trigger_event "
                 + "  when 'added' then (o.created_at at time zone 'Asia/Kolkata')::date + tt.offset_days::int "
                 + "  when 'invited' then (o.invited_at at time zone 'Asia/Kolkata')::date + tt.offset_days::int "
+                + "  when 'offer_accepted' then (o.offer_accepted_at at time zone 'Asia/Kolkata')::date + tt.offset_days::int "
                 + "  when 'joining_date' then e.joining_date + tt.offset_days::int "
                 + "  when 'activated' then (o.activated_at at time zone 'Asia/Kolkata')::date + tt.offset_days::int "
                 + "  else null end "
@@ -95,6 +96,7 @@ public final class ChecklistService {
                 UUID who = resolve(c, l, (String) t.get("owner"), t.get("ownerRoleId"), t.get("ownerMembershipId"));
                 if (who != null) {
                     Sql.update(c, "update app.onboarding_task set assignee_id = ? where id = ?::uuid", who, t.get("id"));
+                    notifyAssigned(c, l, who, t.get("id"));
                 }
             }
             if (t.get("approver") != null && t.get("approverId") == null) {
@@ -104,6 +106,13 @@ public final class ChecklistService {
                 }
             }
         }
+    }
+
+    private static void notifyAssigned(Connection c, JoinerService.Loaded l, UUID who, Object taskId) throws SQLException {
+        Map<String, Object> t = Sql.one(c, "select title, due_date from app.onboarding_task where id = ?::uuid", taskId.toString());
+        Notifications.aboutJoiner(c, l, who, "task_assigned", Map.of("task.title", (String) t.get("title"), "task.due_date",
+                t.get("dueDate") == null ? "when it falls due" : TemplateValues.DATE.format(LocalDate.parse((String) t.get("dueDate")))),
+                "my-tasks");
     }
 
     /** Who an owner or approver kind means for this joiner, or null when nobody fits yet. */
@@ -262,6 +271,7 @@ public final class ChecklistService {
                 throw ApiException.badRequest("Choose a user of the Organization");
             }
             Sql.update(c, "update app.onboarding_task set assignee_id = ? where id = ?", membershipId, taskId);
+            notifyAssigned(c, JoinerService.load(c, AuthService.uuid(t.get("onboardingId"))), membershipId, taskId);
             return "joiner.task_reassigned";
         });
     }
@@ -276,6 +286,7 @@ public final class ChecklistService {
                 throw new ApiException(409, "task.not_waiting", "This task is not waiting for approval");
             }
             Sql.update(c, "update app.onboarding_task set approved_at = now() where id = ?", taskId);
+            JoinerService.noteIfReady(c, AuthService.uuid(t.get("onboardingId")));
             UserService.audit(c, ctx, "joiner.task_approved", "onboarding", AuthService.uuid(t.get("onboardingId")),
                     Map.of("task", t.get("title")));
             return one(c, ctx, taskId);
@@ -322,6 +333,9 @@ public final class ChecklistService {
                     l.tenantId(), onboardingId, in.title().trim(), blankToNull(in.instructions()), assignee, due,
                     !Boolean.FALSE.equals(in.required()), ctx.membershipId()).get("id"));
             UserService.audit(c, ctx, "joiner.task_added", "onboarding", onboardingId, Map.of("task", in.title().trim()));
+            if (!assignee.equals(ctx.membershipId())) {
+                notifyAssigned(c, l, assignee, id);
+            }
             return one(c, ctx, id);
         });
     }
@@ -353,6 +367,7 @@ public final class ChecklistService {
             }
             String event = action.apply(c, t);
             UserService.audit(c, ctx, event, "onboarding", AuthService.uuid(t.get("onboardingId")), Map.of("task", t.get("title")));
+            JoinerService.noteIfReady(c, AuthService.uuid(t.get("onboardingId")));
             return one(c, ctx, taskId);
         });
     }
