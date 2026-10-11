@@ -615,8 +615,15 @@ public final class JoinerService {
      * date), and attendance assigned from the joining date with the location, shift and offs HR set.
      */
     private static void activateNow(Connection c, UUID tenantId, Loaded l, SessionCtx ctx) throws SQLException {
+        // Claim the onboarding first, conditionally: two requests arriving together (a page load fires several)
+        // both see it due; the second waits on the row lock, then finds it active and does nothing, so the
+        // joiner is activated, numbered and told only once.
+        int claimed = Sql.update(c, "update app.onboarding set status = 'active', activated_at = now() "
+                + "where id = ? and status in ('draft','invited','in_progress','offered')", l.id());
+        if (claimed == 0) {
+            return;
+        }
         Sql.update(c, "update app.employment set status = 'active', activated_at = now() where id = ?", l.employmentId());
-        Sql.update(c, "update app.onboarding set status = 'active', activated_at = now() where id = ?", l.id());
         ChecklistService.schedule(c, l.id());
         UUID membership = l.membershipId();
         if (membership == null) {

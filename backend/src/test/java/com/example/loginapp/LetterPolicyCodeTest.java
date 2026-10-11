@@ -21,6 +21,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
@@ -317,6 +318,41 @@ class LetterPolicyCodeTest {
         assertTrue(codes.contains("P-001") && codes.contains("P-020"));
     }
 
+    @Test
+    @SuppressWarnings("unchecked")
+    void manyRequestsAtOnceFromTheJoinerActivateThemOnce() throws Exception {
+        Setup s = setup();
+        Map<String, Object> glx = series.save(s.org.admin, null, new SeriesInput("Everyone", "R-", "", 3, 1, "never", null, 0, true));
+        NewJoiner base = joiner(s, "Vani Rao", "vani@mail.test", "9123400107", TODAY, true);
+        NewJoiner noCode = new NewJoiner(base.legalName(), base.personalEmail(), base.mobile(), base.joiningDate(), base.employmentType(),
+                base.designation(), base.departmentId(), base.managerId(), base.workLocationId(), base.shiftId(), base.weeklyOffs(), null, null,
+                true, null, null);
+        Map<String, Object> added = joiners.add(s.org.admin, noCode);
+        UUID id = UUID.fromString((String) added.get("id"));
+        String token = invitations.accept((String) ((Map<String, Object>) added.get("invitation")).get("token"), PASSWORD, null);
+        makeReady(s, id, false);
+
+        // A page load sends several requests together; each one, signing the joiner in, finds them due.
+        ExecutorService pool = Executors.newFixedThreadPool(8);
+        CountDownLatch go = new CountDownLatch(1);
+        List<Future<SessionCtx>> calls = new ArrayList<>();
+        for (int i = 0; i < 8; i++) {
+            calls.add(pool.submit(() -> {
+                go.await();
+                return auth.resolve(token);
+            }));
+        }
+        go.countDown();
+        for (Future<SessionCtx> call : calls) {
+            call.get();
+        }
+        pool.shutdown();
+        assertEquals(1L, count(s.org.id, "select count(*) from app.audit_event where action = 'joiner.activated' and target_id = '" + id + "'"));
+        assertEquals(1L, count(s.org.id, "select count(*) from app.notification where body like 'Hello Vani, your account is now active%'"));
+        assertEquals("R-001", joiners.get(s.org.admin, id).get("employeeCode"));
+        assertEquals("R-002", series.example(s.org.admin, UUID.fromString((String) glx.get("id")), null, null, null, null).get("code"));
+    }
+
     // ── notifications ───────────────────────────────────────────────────
 
     @Test
@@ -365,6 +401,12 @@ class LetterPolicyCodeTest {
 
     @SuppressWarnings("unchecked")
     private static void makeReady(Setup s, UUID id) {
+        makeReady(s, id, true);
+    }
+
+    /** Fills, verifies and completes everything; reading the joiner at the end (check) activates them when due. */
+    @SuppressWarnings("unchecked")
+    private static void makeReady(Setup s, UUID id, boolean check) {
         joiners.saveSection(s.org.admin, id, "personal", Map.of("person.date_of_birth", "1990-02-02", "person.gender", "female"));
         joiners.saveSection(s.org.admin, id, "address", Map.of("address.current",
                 Map.of("line1", "4 Park Street", "city", "Kolkata", "stateCode", "WB", "pin", "700016")));
@@ -391,7 +433,9 @@ class LetterPolicyCodeTest {
                 checklists.done(s.org.admin, UUID.fromString((String) t.get("id")));
             }
         }
-        assertEquals(List.of(), joiners.get(s.org.admin, id).get("blockers"));
+        if (check) {
+            assertEquals(List.of(), joiners.get(s.org.admin, id).get("blockers"));
+        }
     }
 
     @SuppressWarnings("unchecked")
