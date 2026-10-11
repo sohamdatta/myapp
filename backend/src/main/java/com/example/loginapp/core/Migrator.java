@@ -20,7 +20,8 @@ public final class Migrator {
             "V3__attendance.sql",
             "V4__leave_and_wfh.sql",
             "V5__employee_record.sql",
-            "V6__onboarding.sql");
+            "V6__onboarding.sql",
+            "V7__joiner_flow.sql");
 
     private Migrator() {}
 

@@ -106,7 +106,10 @@ public final class AuthService {
             try {
                 // An employee whose last working day has passed loses their roles now, keeping Ex-employee.
                 permissions = db.inTenant(tenantId, c -> {
-                    EmployeeService.endIfLeft(c, tenantId, membershipId, LocalDate.now(ZoneId.of("Asia/Kolkata")));
+                    LocalDate today = LocalDate.now(ZoneId.of("Asia/Kolkata"));
+                    EmployeeService.endIfLeft(c, tenantId, membershipId, today);
+                    // A joiner whose joining date has come, with nothing blocking, becomes an employee now.
+                    JoinerService.activateIfDue(c, tenantId, membershipId, today);
                     return permissions(c, "select permission_code, scope from app.effective_permissions(?)", membershipId);
                 });
             } catch (ApiException e) {
@@ -156,6 +159,9 @@ public final class AuthService {
             }
         }
         me.put("scopes", scopes);   // the widest scope held for each permission
+        me.put("roles", ctx.membershipId() == null ? List.of() : db.inTenant(ctx.tenantId(), c -> Sql.query(c,
+                "select r.code from app.membership_role mr join app.role r on r.id = mr.role_id where mr.membership_id = ? order by r.code",
+                ctx.membershipId()).stream().map(r -> (String) r.get("code")).toList()));
         if (ctx.isSupport()) {
             me.put("support", Map.of("mode", ctx.grantMode(), "expiresAt", ctx.grantExpiresAt()));
         }

@@ -20,6 +20,7 @@ import com.example.loginapp.core.Crypto;
 import com.example.loginapp.core.Db;
 import com.example.loginapp.core.EmployeeService;
 import com.example.loginapp.core.InvitationService;
+import com.example.loginapp.core.JoinerService;
 import com.example.loginapp.core.LeaveAdminService;
 import com.example.loginapp.core.LeaveService;
 import com.example.loginapp.core.Migrator;
@@ -116,6 +117,11 @@ public class AppConfig {
     @Bean
     public EmployeeService employeeService(Db db, Crypto crypto) {
         return new EmployeeService(db, crypto);
+    }
+
+    @Bean
+    public JoinerService joinerService(Db db, Crypto crypto) {
+        return new JoinerService(db, crypto);
     }
 
     @Bean

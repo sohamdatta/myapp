@@ -137,12 +137,15 @@ public final class OnboardingDefaults {
         return true;
     }
 
-    /** Every section, in the default order, enabled and verified. */
+    /**
+     * Every section, in the default order, verified. Documents, policies and letters start switched
+     * off: the joiner flow handles them once uploads, checklists and letters exist.
+     */
     static void insertSections(Connection c, UUID tenantId, UUID flowId) throws SQLException {
         List<String> sections = FieldCatalog.SECTIONS;
         for (int i = 0; i < sections.size(); i++) {
-            Sql.update(c, "insert into app.section_setting (tenant_id, flow_id, section, position) values (?, ?, ?, ?)",
-                    tenantId, flowId, sections.get(i), (short) (i + 1));
+            Sql.update(c, "insert into app.section_setting (tenant_id, flow_id, section, position, enabled) values (?, ?, ?, ?, ?)",
+                    tenantId, flowId, sections.get(i), (short) (i + 1), !FieldCatalog.LATER.contains(sections.get(i)));
         }
     }
 }

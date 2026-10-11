@@ -28,6 +28,12 @@ public final class FieldCatalog {
     /** The record cannot exist without these sections, so they cannot be switched off. */
     public static final Set<String> ALWAYS_ON = Set.of("employment", "personal", "statutory");
 
+    /** Sections the joiner flow does not handle yet: they arrive with documents (milestone 4) and letters (milestone 5). */
+    public static final Set<String> LATER = Set.of("documents", "policies", "letters");
+
+    /** Fields of these types arrive with uploads (milestone 4); until then they are not asked for. */
+    public static final Set<String> LATER_TYPES = Set.of("file");
+
     /** Sections custom fields can be placed in (policies and letters have no fields of their own). */
     public static final List<String> FIELD_SECTIONS = SECTIONS.subList(0, 9);
 
@@ -63,6 +69,7 @@ public final class FieldCatalog {
             hr("employment.manager", "employment", "Reporting manager", "employee", "required", false, null),
             hr("employment.employment_type", "employment", "Employment type", "select", "required", false, TYPES),
             hr("employment.probation_end", "employment", "Probation ends", "date", "optional", false, null),
+            hr("employment.contract_end", "employment", "Contract ends", "date", "optional", false, null),
             hr("employment.work_location", "employment", "Work location", "work_location", "required", false, null),
             hr("employment.shift", "employment", "Shift", "shift", "required", false, null),
             hr("employment.weekly_offs", "employment", "Weekly offs", "weekdays", "required", false, null),
