@@ -159,6 +159,7 @@ public final class AuthService {
             }
         }
         me.put("scopes", scopes);   // the widest scope held for each permission
+        me.put("openTasks", ctx.membershipId() == null ? 0 : db.inTenant(ctx.tenantId(), c -> ChecklistService.openCount(c, ctx.membershipId())));
         me.put("roles", ctx.membershipId() == null ? List.of() : db.inTenant(ctx.tenantId(), c -> Sql.query(c,
                 "select r.code from app.membership_role mr join app.role r on r.id = mr.role_id where mr.membership_id = ? order by r.code",
                 ctx.membershipId()).stream().map(r -> (String) r.get("code")).toList()));

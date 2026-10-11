@@ -17,7 +17,9 @@ import org.springframework.web.bind.annotation.RestController;
 import com.example.loginapp.core.AppliesTo;
 import com.example.loginapp.core.AuthService;
 import com.example.loginapp.core.OnboardingConfigService;
+import com.example.loginapp.core.OnboardingConfigService.ChecklistInput;
 import com.example.loginapp.core.OnboardingConfigService.CustomFieldInput;
+import com.example.loginapp.core.OnboardingConfigService.DocumentTypeInput;
 import com.example.loginapp.core.OnboardingConfigService.FieldInput;
 import com.example.loginapp.core.OnboardingConfigService.FlowInput;
 import com.example.loginapp.core.OnboardingConfigService.SettingsInput;
@@ -140,5 +142,39 @@ public class PeopleSetupController {
 
     private static boolean blank(String value) {
         return value == null || value.isBlank();
+    }
+
+    @GetMapping("/document-types")
+    public List<Map<String, Object>> documentTypes(@RequestHeader(value = "Authorization", required = false) String authorization) {
+        return config.documentTypes(Requests.session(auth, authorization));
+    }
+
+    @PostMapping("/document-types")
+    public Map<String, Object> createDocumentType(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                                  @RequestBody DocumentTypeInput request) {
+        return config.saveDocumentType(Requests.session(auth, authorization), null, request);
+    }
+
+    @PutMapping("/document-types/{id}")
+    public Map<String, Object> saveDocumentType(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                                @PathVariable("id") String id, @RequestBody DocumentTypeInput request) {
+        return config.saveDocumentType(Requests.session(auth, authorization), Requests.id(id), request);
+    }
+
+    @GetMapping("/checklists")
+    public List<Map<String, Object>> checklists(@RequestHeader(value = "Authorization", required = false) String authorization) {
+        return config.checklists(Requests.session(auth, authorization));
+    }
+
+    @PostMapping("/checklists")
+    public Map<String, Object> createChecklist(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                               @RequestBody ChecklistInput request) {
+        return config.saveChecklist(Requests.session(auth, authorization), null, request);
+    }
+
+    @PutMapping("/checklists/{id}")
+    public Map<String, Object> saveChecklist(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                             @PathVariable("id") String id, @RequestBody ChecklistInput request) {
+        return config.saveChecklist(Requests.session(auth, authorization), Requests.id(id), request);
     }
 }

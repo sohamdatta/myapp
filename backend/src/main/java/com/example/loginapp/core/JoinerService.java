@@ -78,7 +78,8 @@ public final class JoinerService {
             int waitingJoiner = 0;
             int waitingHr = 0;
             int ready = 0;
-            for (Map<String, Object> o : Sql.query(c, LIST_SELECT + filter + " order by e.joining_date, p.legal_name limit 500", today)) {
+            int overdue = 0;
+            for (Map<String, Object> o : Sql.query(c, LIST_SELECT + filter + " order by e.joining_date, p.legal_name limit 500", today, today)) {
                 Map<String, Object> row = new LinkedHashMap<>(o);
                 boolean open = Set.of("draft", "offered", "invited", "in_progress").contains((String) o.get("status"));
                 if (open) {
@@ -90,6 +91,7 @@ public final class JoinerService {
                     if (!joining.isBefore(today) && joining.isBefore(today.plusDays(7))) {
                         week++;
                     }
+                    overdue += ((Number) o.get("overdueTasks")).intValue();
                     switch ((String) row.get("waitingOn")) {
                         case "joiner" -> waitingJoiner++;
                         case "hr" -> waitingHr++;
@@ -100,7 +102,7 @@ public final class JoinerService {
             }
             Map<String, Object> result = new LinkedHashMap<>();
             result.put("tiles", Map.of("joiningThisWeek", week, "waitingOnJoiner", waitingJoiner, "waitingOnHr", waitingHr,
-                    "ready", ready));
+                    "ready", ready, "overdueTasks", overdue));
             result.put("joiners", rows);
             return result;
         });
@@ -223,6 +225,7 @@ public final class JoinerService {
                     submit(c, ctx, load(c, onboardingId), "employment");
                 }
             }
+            ChecklistService.createTasks(c, load(c, onboardingId));
             audit(c, ctx, "joiner.added", onboardingId, detail("name", name, "joiningDate", joining.toString(),
                     "flow", Sql.one(c, "select name from app.onboarding_flow where id = ?", flowId).get("name"),
                     "rehireOf", rehire == null || rehire.equals("new") ? null : rehire));
@@ -244,7 +247,7 @@ public final class JoinerService {
             applyDue(c, ctx.tenantId(), today, ctx);
             Loaded l = load(c, onboardingId);
             requireSee(c, ctx, l);
-            Map<String, Object> out = new LinkedHashMap<>(Sql.one(c, LIST_SELECT + " where o.id = ?", today, onboardingId));
+            Map<String, Object> out = new LinkedHashMap<>(Sql.one(c, LIST_SELECT + " where o.id = ?", today, today, onboardingId));
             out.put("flow", Sql.one(c, "select id, name, verification_levels from app.onboarding_flow where id = ?", l.flowId()));
             List<Map<String, Object>> list = new ArrayList<>();
             for (Map<String, Object> s : sectionRows(c, l)) {
@@ -291,10 +294,16 @@ public final class JoinerService {
             requireSection(l, section);
             sections.save(c, ctx, l.joiner(), section, values == null ? Map.of() : values, allKeys(c, l, section), true);
             Map<String, Object> s = l.sections().get(section);
-            if ("not_started".equals(s.get("status")) || "verified".equals(s.get("status"))) {
+            if (!section.equals("documents") && ("not_started".equals(s.get("status")) || "verified".equals(s.get("status")))) {
                 // A correction to a verified section sends it back through verification.
                 Sql.update(c, "update app.onboarding_section set status = 'draft', level = 0 where onboarding_id = ? and section = ?",
                         onboardingId, section);
+            }
+            if (section.equals("employment")) {
+                ChecklistService.schedule(c, onboardingId);   // the joining date or manager may have changed
+            }
+            if (section.equals("documents")) {
+                DocumentService.refreshSection(c, load(c, onboardingId));
             }
             audit(c, ctx, "joiner.section_filled_by_hr", onboardingId,
                     Map.of("section", section, "fields", String.join(",", values == null ? List.of() : values.keySet())));
@@ -328,6 +337,7 @@ public final class JoinerService {
     }
 
     private Map<String, Object> decide(SessionCtx ctx, UUID onboardingId, String section, boolean verified, String note) {
+        refuseDocuments(section);
         if (ctx.membershipId() == null) {
             throw new ApiException(403, "permission.denied", "Only a user of the Organization can verify");
         }
@@ -457,7 +467,7 @@ public final class JoinerService {
             Map<String, Object> f = Sql.one(c, "select f.name, f.welcome_message, f.welcome_video_url, f.day_one_note, d.email as hr_contact "
                     + "from app.onboarding_flow f left join app.member_directory() d on d.membership_id = f.hr_contact_id where f.id = ?",
                     l.flowId());
-            Map<String, Object> job = Sql.one(c, LIST_SELECT + " where o.id = ?", today, l.id());
+            Map<String, Object> job = Sql.one(c, LIST_SELECT + " where o.id = ?", today, today, l.id());
             out.put("id", l.id().toString());
             out.put("status", l.row().get("status"));
             out.put("organization", ctx.tenantName());
@@ -600,6 +610,7 @@ public final class JoinerService {
     private static void activateNow(Connection c, UUID tenantId, Loaded l, SessionCtx ctx) throws SQLException {
         Sql.update(c, "update app.employment set status = 'active', activated_at = now() where id = ?", l.employmentId());
         Sql.update(c, "update app.onboarding set status = 'active', activated_at = now() where id = ?", l.id());
+        ChecklistService.schedule(c, l.id());
         UUID membership = l.membershipId();
         if (membership == null) {
             Map<String, Object> m = Sql.one(c, "select id from app.membership where person_id = ? and status = 'active'", l.personId());
@@ -637,7 +648,7 @@ public final class JoinerService {
         List<String> out = new ArrayList<>();
         for (Map<String, Object> s : sectionRows(c, l)) {
             String status = (String) s.get("status");
-            if (!"verified".equals(status)) {
+            if (!"verified".equals(status) && !s.get("section").equals("documents")) {
                 String who = switch (status) {
                     case "submitted" -> "waiting to be verified";
                     case "returned" -> "returned for a correction";
@@ -646,6 +657,8 @@ public final class JoinerService {
                 out.add(s.get("title") + ": " + who);
             }
         }
+        out.addAll(DocumentService.blockers(c, l));
+        out.addAll(ChecklistService.blockers(c, l));
         Map<String, Object> settings = settings(c);
         if (!Boolean.TRUE.equals(settings.get("allowActivationWithoutPan"))
                 && Sql.one(c, "select 1 from app.statutory_id where person_id = ? and kind = 'pan' and replaced_at is null "
@@ -671,10 +684,14 @@ public final class JoinerService {
                 }
             }
         }
+        if (!joiner && !hr && !ChecklistService.blockers(c, l).isEmpty()) {
+            hr = true;   // only tasks are left
+        }
         return joiner ? "joiner" : hr ? "hr" : "nobody";
     }
 
     private void submit(Connection c, SessionCtx ctx, Loaded l, String section) throws SQLException {
+        refuseDocuments(section);
         List<String> missing = sections.missing(c, l.joiner(), section, fieldsOf(c, l, section));
         if (!missing.isEmpty()) {
             throw new ApiException(400, "onboarding.missing", "Still needed: " + String.join(", ", missing));
@@ -705,7 +722,7 @@ public final class JoinerService {
      * Whether the caller verifies this section at this level: named in a step for the level
      * (by role, as the named user, or as the joiner's reporting manager), or the Org Admin.
      */
-    private static boolean canVerify(Connection c, SessionCtx ctx, Loaded l, String section, int level) throws SQLException {
+    static boolean canVerify(Connection c, SessionCtx ctx, Loaded l, String section, int level) throws SQLException {
         if (ctx.membershipId() == null || ctx.membershipId().equals(l.membershipId())) {
             return false;
         }
@@ -736,12 +753,12 @@ public final class JoinerService {
         return false;
     }
 
-    private static boolean hasRole(Connection c, UUID membershipId, String code) throws SQLException {
+    static boolean hasRole(Connection c, UUID membershipId, String code) throws SQLException {
         return Sql.one(c, "select 1 from app.membership_role mr join app.role r on r.id = mr.role_id join app.membership m on m.id = mr.membership_id "
                 + "where mr.membership_id = ? and r.code = ? and m.status = 'active'", membershipId, code) != null;
     }
 
-    private static boolean isManager(Connection c, UUID membershipId, Loaded l) throws SQLException {
+    static boolean isManager(Connection c, UUID membershipId, Loaded l) throws SQLException {
         return Sql.one(c, "select 1 from app.job_assignment j join app.employment boss on boss.id = j.manager_id "
                 + "where j.id = (select id from app.job_assignment where employment_id = ? order by effective_from desc, created_at desc limit 1) "
                 + "and boss.membership_id = ?", l.employmentId(), membershipId) != null;
@@ -757,7 +774,7 @@ public final class JoinerService {
 
     // ── loading ─────────────────────────────────────────────────────────
 
-    private record Loaded(UUID id, UUID personId, UUID employmentId, UUID flowId, UUID membershipId, LocalDate joiningDate,
+    record Loaded(UUID id, UUID personId, UUID employmentId, UUID flowId, UUID membershipId, LocalDate joiningDate,
                           Map<String, Object> row, Map<String, Map<String, Object>> sections, UUID tenantId) {
 
         boolean open() {
@@ -769,7 +786,7 @@ public final class JoinerService {
         }
     }
 
-    private static Loaded load(Connection c, UUID onboardingId) throws SQLException {
+    static Loaded load(Connection c, UUID onboardingId) throws SQLException {
         Map<String, Object> o = Sql.one(c, "select o.*, e.joining_date, e.membership_id as employment_membership_id, "
                 + "(select m.id from app.membership m where m.person_id = o.person_id and m.status <> 'ended' limit 1) as person_membership_id "
                 + "from app.onboarding o join app.employment e on e.id = o.employment_id where o.id = ?", onboardingId);
@@ -785,6 +802,8 @@ public final class JoinerService {
         if (membership != null && o.get("employmentMembershipId") == null) {
             // The joiner accepted the invitation: their login now belongs to this employment.
             Sql.update(c, "update app.employment set membership_id = ? where id = ?::uuid", membership, o.get("employmentId"));
+            Sql.update(c, "update app.onboarding_task set assignee_id = ? where onboarding_id = ? and owner = 'joiner' and assignee_id is null",
+                    membership, onboardingId);
             if ("invited".equals(o.get("status")) || "draft".equals(o.get("status"))) {
                 Sql.update(c, "update app.onboarding set invited_at = coalesce(invited_at, now()), "
                         + "status = case when status = 'draft' then 'invited' else status end where id = ?", onboardingId);
@@ -795,7 +814,7 @@ public final class JoinerService {
                 AuthService.uuid(o.get("tenantId")));
     }
 
-    private static Loaded mineLoaded(Connection c, SessionCtx ctx) throws SQLException {
+    static Loaded mineLoaded(Connection c, SessionCtx ctx) throws SQLException {
         if (ctx.membershipId() == null) {
             throw ApiException.notFound("Your onboarding");
         }
@@ -893,7 +912,7 @@ public final class JoinerService {
         return out;
     }
 
-    private static AppliesTo.Subject subject(Connection c, Loaded l) throws SQLException {
+    static AppliesTo.Subject subject(Connection c, Loaded l) throws SQLException {
         Map<String, Object> s = Sql.one(c, "select e.employment_type, o.work_location_id, j.department_id, j.designation "
                 + "from app.onboarding o join app.employment e on e.id = o.employment_id "
                 + "left join lateral (select * from app.job_assignment j where j.employment_id = e.id "
@@ -902,7 +921,7 @@ public final class JoinerService {
                 (String) s.get("employmentType"), (String) s.get("designation"));
     }
 
-    private static Map<String, Object> settings(Connection c) throws SQLException {
+    static Map<String, Object> settings(Connection c) throws SQLException {
         return Sql.one(c, "select * from app.onboarding_settings");
     }
 
@@ -942,6 +961,7 @@ public final class JoinerService {
         }
         Sql.update(c, "update app.onboarding set status = case when status = 'draft' then 'invited' else status end, "
                 + "invited_at = now() where id = ?", l.id());
+        ChecklistService.schedule(c, l.id());
         if (ctx != null) {
             audit(c, ctx, "joiner.invited", l.id(), Map.of("email", email, "validDays", valid));
         } else {
@@ -1008,14 +1028,14 @@ public final class JoinerService {
                     "delete from app.section_review where onboarding_id in (select id from app.onboarding where person_id = ?)",
                     "delete from app.onboarding_section where onboarding_id in (select id from app.onboarding where person_id = ?)",
                     "delete from app.onboarding_task where onboarding_id in (select id from app.onboarding where person_id = ?)",
-                    "delete from app.onboarding where person_id = ?",
-                    "delete from app.job_assignment where employment_id in (select id from app.employment where person_id = ?)",
-                    "delete from app.employment where person_id = ?",
                     "delete from app.issued_letter where person_id = ?",
                     "delete from app.policy_acknowledgement where person_id = ?",
                     "update app.person set photo_document_id = null where id = ?",
                     "delete from app.document_content where document_id in (select id from app.document where person_id = ?)",
                     "delete from app.document where person_id = ?",
+                    "delete from app.onboarding where person_id = ?",
+                    "delete from app.job_assignment where employment_id in (select id from app.employment where person_id = ?)",
+                    "delete from app.employment where person_id = ?",
                     "update app.membership set person_id = null where person_id = ?",
                     "update app.invitation set person_id = null where person_id = ?",
                     "delete from app.person where id = ?",
@@ -1039,7 +1059,11 @@ public final class JoinerService {
                     + "p.mobile, e.joining_date, e.employment_type, e.employee_code, j.designation, d.name as department_name, "
                     + "mp.legal_name as manager_name, wl.name as work_location, f.name as flow_name, "
                     + "(select count(*) from app.onboarding_section s where s.onboarding_id = o.id and s.status = 'verified') as verified, "
-                    + "(select count(*) from app.onboarding_section s where s.onboarding_id = o.id) as section_count "
+                    + "(select count(*) from app.onboarding_section s where s.onboarding_id = o.id) as section_count, "
+                    + "(select count(*) from app.onboarding_task k where k.onboarding_id = o.id and k.done_at is not null) as tasks_done, "
+                    + "(select count(*) from app.onboarding_task k where k.onboarding_id = o.id) as task_count, "
+                    + "(select count(*) from app.onboarding_task k where k.onboarding_id = o.id and k.done_at is null "
+                    + "  and k.due_date < ?::date) as overdue_tasks "
                     + "from app.onboarding o join app.person p on p.id = o.person_id join app.employment e on e.id = o.employment_id "
                     + "join app.onboarding_flow f on f.id = o.flow_id "
                     + "left join lateral (select * from app.job_assignment j where j.employment_id = e.id "
@@ -1062,7 +1086,7 @@ public final class JoinerService {
     }
 
     /** HR sees every joiner; a verifier or the joiner's manager sees theirs. Anyone else is told the joiner does not exist. */
-    private static void requireSee(Connection c, SessionCtx ctx, Loaded l) throws SQLException {
+    static void requireSee(Connection c, SessionCtx ctx, Loaded l) throws SQLException {
         if (ctx.reachesEveryone("employee.read")) {
             return;
         }
@@ -1081,7 +1105,13 @@ public final class JoinerService {
         throw ApiException.notFound("The joiner");
     }
 
-    private static void requireOpen(Loaded l) {
+    private static void refuseDocuments(String section) {
+        if ("documents".equals(section)) {
+            throw new ApiException(409, "onboarding.documents", "Documents are sent and checked one at a time, not as a section");
+        }
+    }
+
+    static void requireOpen(Loaded l) {
         if (!l.open()) {
             throw new ApiException(409, "onboarding.closed", "This onboarding is " + l.row().get("status") + " and can no longer change");
         }

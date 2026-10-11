@@ -29,7 +29,9 @@ import com.example.loginapp.core.AttendanceSettingsService.LocationInput;
 import com.example.loginapp.core.AttendanceSettingsService.ShiftInput;
 import com.example.loginapp.core.AuthService;
 import com.example.loginapp.core.Crypto;
+import com.example.loginapp.core.ChecklistService;
 import com.example.loginapp.core.Db;
+import com.example.loginapp.core.DocumentService;
 import com.example.loginapp.core.EmployeeService;
 import com.example.loginapp.core.EmployeeService.NewEmployee;
 import com.example.loginapp.core.InvitationService;
@@ -69,6 +71,9 @@ class JoinerFlowTest {
     private static AttendanceSettingsService attendanceSettings;
     private static OnboardingConfigService config;
     private static JoinerService joiners;
+    private static DocumentService documents;
+    private static ChecklistService checklists;
+    static final byte[] PDF = "%PDF-1.4\n%test\n1 0 obj <<>> endobj\ntrailer <<>>\n%%EOF\n".getBytes(java.nio.charset.StandardCharsets.US_ASCII);
     private static SessionCtx superAdmin;
     private static String ownerUrl;
     private static String ownerUser;
@@ -107,6 +112,8 @@ class JoinerFlowTest {
         attendanceSettings = new AttendanceSettingsService(db);
         config = new OnboardingConfigService(db);
         joiners = new JoinerService(db, crypto);
+        documents = new DocumentService(db, crypto);
+        checklists = new ChecklistService(db, documents);
         platform.ensureFirstSuperAdmin("root@platform.test", PASSWORD);
         superAdmin = auth.resolve(auth.enterConsole(auth.resolve(auth.login("root@platform.test", PASSWORD))));
     }
@@ -216,8 +223,12 @@ class JoinerFlowTest {
 
         // Verify everything; a section can only be verified once it is waiting.
         for (Map<String, Object> section : (List<Map<String, Object>>) joiners.get(s.org.admin, id).get("sections")) {
-            joiners.verify(s.org.admin, id, (String) section.get("section"), null);
+            if (!section.get("section").equals("documents")) {
+                joiners.verify(s.org.admin, id, (String) section.get("section"), null);
+            }
         }
+        assertTrue(((List<String>) joiners.get(s.org.admin, id).get("blockers")).contains("PAN card: not uploaded yet"));
+        documentsAndTasks(s, id);
         assertError(409, "onboarding.not_submitted", () -> joiners.verify(s.org.admin, id, "personal", null));
         Map<String, Object> history = joiners.section(s.org.admin, id, "bank");
         assertEquals(2, ((List<?>) history.get("reviews")).size());
@@ -428,8 +439,25 @@ class JoinerFlowTest {
     @SuppressWarnings("unchecked")
     private static void verifyAll(Setup s, UUID id) {
         for (Map<String, Object> section : (List<Map<String, Object>>) joiners.get(s.org.admin, id).get("sections")) {
-            if ("submitted".equals(section.get("status"))) {
+            if ("submitted".equals(section.get("status")) && !section.get("section").equals("documents")) {
                 joiners.verify(s.org.admin, id, (String) section.get("section"), null);
+            }
+        }
+        documentsAndTasks(s, id);
+    }
+
+    /** HR uploads and verifies the documents needed before activation, and ticks every task. */
+    @SuppressWarnings("unchecked")
+    private static void documentsAndTasks(Setup s, UUID id) {
+        for (Map<String, Object> t : (List<Map<String, Object>>) documents.forJoiner(s.org.admin, id).get("types")) {
+            if ("before_activation".equals(t.get("required")) && ((List<?>) t.get("documents")).isEmpty()) {
+                String doc = (String) documents.uploadForJoiner(s.org.admin, id, (String) t.get("id"), "scan.pdf", PDF).get("id");
+                documents.verify(s.org.admin, id, UUID.fromString(doc));
+            }
+        }
+        for (Map<String, Object> t : (List<Map<String, Object>>) checklists.forJoiner(s.org.admin, id).get("tasks")) {
+            if (t.get("doneAt") == null) {
+                checklists.done(s.org.admin, UUID.fromString((String) t.get("id")));
             }
         }
     }

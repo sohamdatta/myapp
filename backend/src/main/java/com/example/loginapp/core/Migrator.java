@@ -21,7 +21,8 @@ public final class Migrator {
             "V4__leave_and_wfh.sql",
             "V5__employee_record.sql",
             "V6__onboarding.sql",
-            "V7__joiner_flow.sql");
+            "V7__joiner_flow.sql",
+            "V8__documents_and_checklists.sql");
 
     private Migrator() {}
 

@@ -16,8 +16,10 @@ import com.example.loginapp.core.AttendanceImportService;
 import com.example.loginapp.core.AttendanceService;
 import com.example.loginapp.core.AttendanceSettingsService;
 import com.example.loginapp.core.AuthService;
+import com.example.loginapp.core.ChecklistService;
 import com.example.loginapp.core.Crypto;
 import com.example.loginapp.core.Db;
+import com.example.loginapp.core.DocumentService;
 import com.example.loginapp.core.EmployeeService;
 import com.example.loginapp.core.InvitationService;
 import com.example.loginapp.core.JoinerService;
@@ -117,6 +119,16 @@ public class AppConfig {
     @Bean
     public EmployeeService employeeService(Db db, Crypto crypto) {
         return new EmployeeService(db, crypto);
+    }
+
+    @Bean
+    public DocumentService documentService(Db db, Crypto crypto) {
+        return new DocumentService(db, crypto);
+    }
+
+    @Bean
+    public ChecklistService checklistService(Db db, DocumentService documents) {
+        return new ChecklistService(db, documents);
     }
 
     @Bean

@@ -28,8 +28,8 @@ public final class FieldCatalog {
     /** The record cannot exist without these sections, so they cannot be switched off. */
     public static final Set<String> ALWAYS_ON = Set.of("employment", "personal", "statutory");
 
-    /** Sections the joiner flow does not handle yet: they arrive with documents (milestone 4) and letters (milestone 5). */
-    public static final Set<String> LATER = Set.of("documents", "policies", "letters");
+    /** Sections the joiner flow does not handle yet: policies and letters arrive with milestone 5. */
+    public static final Set<String> LATER = Set.of("policies", "letters");
 
     /** Fields of these types arrive with uploads (milestone 4); until then they are not asked for. */
     public static final Set<String> LATER_TYPES = Set.of("file");

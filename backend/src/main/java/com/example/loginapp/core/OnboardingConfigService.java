@@ -44,6 +44,16 @@ public final class OnboardingConfigService {
                                    Boolean managerCanSee, Map<String, Object> appliesTo, String visibility, String editableBy,
                                    Integer position, Boolean active) {}
 
+    public record DocumentTypeInput(String name, String required, Integer withinDays, String instructions,
+                                    Map<String, Object> appliesTo, Integer position, Boolean active) {}
+
+    /** A checklist template and its tasks. A task with an id changes that task; one without is added; one left out is removed. */
+    public record ChecklistInput(String name, Map<String, Object> appliesTo, Boolean active, List<TaskInput> tasks) {}
+
+    public record TaskInput(String id, String title, String instructions, String owner, String ownerRoleCode, String ownerMembershipId,
+                            String triggerEvent, Integer offsetDays, Boolean required, Boolean needsAttachment, String approver,
+                            String approverRoleCode, String approverMembershipId, Map<String, Object> appliesTo) {}
+
     private static final Set<String> INVITE_WHEN = Set.of("manual", "on_create", "on_offer_accepted", "days_before_joining");
     private static final Set<String> REHIRE = Set.of("pan", "personal_email", "mobile", "aadhaar_last4");
 
@@ -421,6 +431,227 @@ public final class OnboardingConfigService {
             after.put("appliesTo", rules.rules());
             return after;
         });
+    }
+
+    // ── document types and checklists ───────────────────────────────────
+
+    public List<Map<String, Object>> documentTypes(SessionCtx ctx) {
+        requireRead(ctx);
+        return db.inTenant(ctx.tenantId(), c -> {
+            OnboardingDefaults.ensure(c, ctx.tenantId());
+            Map<UUID, String> names = names(c);
+            List<Map<String, Object>> out = new ArrayList<>();
+            for (Map<String, Object> row : Sql.query(c, "select * from app.document_type order by position, lower(name)")) {
+                AppliesTo rules = AppliesTo.parse((String) row.get("appliesTo"));
+                row.put("rules", rules.describe(names::get));
+                row.put("appliesTo", rules.rules());
+                out.add(row);
+            }
+            return out;
+        });
+    }
+
+    public Map<String, Object> saveDocumentType(SessionCtx ctx, UUID id, DocumentTypeInput in) {
+        requireConfigure(ctx);
+        return db.inTenant(ctx.tenantId(), c -> {
+            OnboardingDefaults.ensure(c, ctx.tenantId());
+            Map<String, Object> current = null;
+            if (id != null) {
+                current = Sql.one(c, "select * from app.document_type where id = ? for update", id);
+                if (current == null) {
+                    throw ApiException.notFound("The document type");
+                }
+            }
+            String name = in.name() != null ? text(in.name(), "the name", 80, true)
+                    : current == null ? text(null, "the name", 80, true) : (String) current.get("name");
+            String required = in.required() != null ? in.required().trim() : current == null ? "optional" : (String) current.get("required");
+            if (!Set.of("before_activation", "within_days", "optional").contains(required)) {
+                throw bad("Required must be before_activation, within_days or optional");
+            }
+            Integer within = null;
+            if (required.equals("within_days")) {
+                Integer given = in.withinDays() != null ? in.withinDays()
+                        : current == null || current.get("withinDays") == null ? null : number(current.get("withinDays"));
+                within = range(given, 1, 365, "Within days");
+            }
+            String instructions = in.instructions() != null ? text(in.instructions(), "the instructions", 500, false)
+                    : current == null ? null : (String) current.get("instructions");
+            AppliesTo rules = in.appliesTo() != null ? checkedRules(c, AppliesTo.from(in.appliesTo()))
+                    : current == null ? AppliesTo.EVERYONE : AppliesTo.parse((String) current.get("appliesTo"));
+            int position = in.position() != null ? range(in.position(), 0, 999, "Position") : current == null ? 0 : number(current.get("position"));
+            boolean active = in.active() != null ? in.active() : current == null || (Boolean) current.get("active");
+            UUID saved;
+            if (id == null) {
+                saved = AuthService.uuid(Sql.one(c, "insert into app.document_type (tenant_id, name, required, within_days, instructions, "
+                        + "applies_to, position, active) values (?, ?, ?, ?, ?, ?::jsonb, ?, ?) returning id", ctx.tenantId(), name, required,
+                        within == null ? null : within.shortValue(), instructions, rules.toJson(), (short) position, active).get("id"));
+            } else {
+                saved = id;
+                Sql.update(c, "update app.document_type set name = ?, required = ?, within_days = ?, instructions = ?, applies_to = ?::jsonb, "
+                        + "position = ?, active = ? where id = ?", name, required, within == null ? null : within.shortValue(), instructions,
+                        rules.toJson(), (short) position, active, id);
+            }
+            Map<String, Object> after = Sql.one(c, "select * from app.document_type where id = ?", saved);
+            audit(c, ctx, id == null ? "onboarding.document_type_created" : "onboarding.document_type_changed", "document_type", saved,
+                    current, after);
+            after.put("appliesTo", rules.rules());
+            return after;
+        });
+    }
+
+    public List<Map<String, Object>> checklists(SessionCtx ctx) {
+        requireRead(ctx);
+        return db.inTenant(ctx.tenantId(), c -> {
+            OnboardingDefaults.ensure(c, ctx.tenantId());
+            Map<UUID, String> names = names(c);
+            List<Map<String, Object>> out = new ArrayList<>();
+            for (Map<String, Object> row : Sql.query(c, "select * from app.checklist_template order by lower(name)")) {
+                out.add(checklistDetail(c, row, names));
+            }
+            return out;
+        });
+    }
+
+    private static final Set<String> OWNERS = Set.of("hr", "it", "manager", "buddy", "joiner", "role", "user");
+    private static final Set<String> TRIGGERS = Set.of("added", "offer_accepted", "invited", "joining_date", "activated");
+    private static final Set<String> APPROVERS = Set.of("hr", "manager", "role", "user");
+
+    public Map<String, Object> saveChecklist(SessionCtx ctx, UUID id, ChecklistInput in) {
+        requireConfigure(ctx);
+        return db.inTenant(ctx.tenantId(), c -> {
+            OnboardingDefaults.ensure(c, ctx.tenantId());
+            Map<String, Object> current = null;
+            if (id != null) {
+                current = Sql.one(c, "select * from app.checklist_template where id = ? for update", id);
+                if (current == null) {
+                    throw ApiException.notFound("The checklist");
+                }
+            }
+            Map<UUID, String> names = names(c);
+            Map<String, Object> before = current == null ? null : checklistDetail(c, current, names);
+            String name = in.name() != null ? text(in.name(), "the name", 80, true)
+                    : current == null ? text(null, "the name", 80, true) : (String) current.get("name");
+            AppliesTo rules = in.appliesTo() != null ? checkedRules(c, AppliesTo.from(in.appliesTo()))
+                    : current == null ? AppliesTo.EVERYONE : AppliesTo.parse((String) current.get("appliesTo"));
+            boolean active = in.active() != null ? in.active() : current == null || (Boolean) current.get("active");
+            UUID saved;
+            if (id == null) {
+                saved = AuthService.uuid(Sql.one(c, "insert into app.checklist_template (tenant_id, name, applies_to, active) "
+                        + "values (?, ?, ?::jsonb, ?) returning id", ctx.tenantId(), name, rules.toJson(), active).get("id"));
+            } else {
+                saved = id;
+                Sql.update(c, "update app.checklist_template set name = ?, applies_to = ?::jsonb, active = ? where id = ?",
+                        name, rules.toJson(), active, id);
+            }
+            if (in.tasks() != null) {
+                if (in.tasks().size() > 50) {
+                    throw bad("A checklist has at most 50 tasks");
+                }
+                java.util.Set<UUID> kept = new java.util.HashSet<>();
+                int position = 1;
+                for (TaskInput t : in.tasks()) {
+                    kept.add(saveTemplateTask(c, ctx, saved, t, position++));
+                }
+                // Removed tasks: joiners who already have them keep them, no longer linked to the template.
+                for (Map<String, Object> r : Sql.query(c, "select id from app.checklist_template_task where template_id = ?", saved)) {
+                    UUID taskId = AuthService.uuid(r.get("id"));
+                    if (!kept.contains(taskId)) {
+                        Sql.update(c, "update app.onboarding_task set template_task_id = null where template_task_id = ?", taskId);
+                        Sql.update(c, "delete from app.checklist_template_task where id = ?", taskId);
+                    }
+                }
+            }
+            Map<String, Object> after = checklistDetail(c, Sql.one(c, "select * from app.checklist_template where id = ?", saved), names);
+            audit(c, ctx, id == null ? "onboarding.checklist_created" : "onboarding.checklist_changed", "checklist_template", saved,
+                    before, after);
+            return after;
+        });
+    }
+
+    private static UUID saveTemplateTask(Connection c, SessionCtx ctx, UUID templateId, TaskInput t, int position) throws SQLException {
+        String title = text(t.title(), "every task's title", 120, true);
+        String owner = t.owner() == null ? "hr" : t.owner().trim();
+        if (!OWNERS.contains(owner)) {
+            throw bad(title + ": the owner must be hr, it, manager, buddy, joiner, role or user");
+        }
+        UUID ownerRole = owner.equals("role") ? roleId(c, t.ownerRoleCode(), title) : null;
+        UUID ownerUser = owner.equals("user") ? memberId(c, t.ownerMembershipId(), title) : null;
+        String trigger = t.triggerEvent() == null ? "joining_date" : t.triggerEvent().trim();
+        if (!TRIGGERS.contains(trigger)) {
+            throw bad(title + ": the trigger must be added, offer_accepted, invited, joining_date or activated");
+        }
+        int offset = t.offsetDays() == null ? 0 : range(t.offsetDays(), -90, 180, title + ": the offset in days");
+        String approver = t.approver() == null || t.approver().isBlank() ? null : t.approver().trim();
+        if (approver != null && !APPROVERS.contains(approver)) {
+            throw bad(title + ": the approver must be hr, manager, role or user");
+        }
+        UUID approverRole = "role".equals(approver) ? roleId(c, t.approverRoleCode(), title) : null;
+        UUID approverUser = "user".equals(approver) ? memberId(c, t.approverMembershipId(), title) : null;
+        AppliesTo rules = t.appliesTo() == null ? AppliesTo.EVERYONE : checkedRules(c, AppliesTo.from(t.appliesTo()));
+        Object[] values = {title, t.instructions() == null || t.instructions().isBlank() ? null : t.instructions().trim(), owner, ownerRole,
+            ownerUser, trigger, (short) offset, !Boolean.FALSE.equals(t.required()), Boolean.TRUE.equals(t.needsAttachment()), approver,
+            approverRole, approverUser, rules.toJson(), (short) position};
+        UUID id = null;
+        if (t.id() != null && !t.id().isBlank()) {
+            try {
+                id = UUID.fromString(t.id().trim());
+            } catch (IllegalArgumentException e) {
+                throw bad(title + ": not a valid task id");
+            }
+            if (Sql.one(c, "select 1 from app.checklist_template_task where id = ? and template_id = ?", id, templateId) == null) {
+                throw bad(title + ": that task is not in this checklist");
+            }
+            Object[] params = java.util.Arrays.copyOf(values, values.length + 1);
+            params[values.length] = id;
+            Sql.update(c, "update app.checklist_template_task set title = ?, instructions = ?, owner = ?, owner_role_id = ?, "
+                    + "owner_membership_id = ?, trigger_event = ?, offset_days = ?, required = ?, needs_attachment = ?, approver = ?, "
+                    + "approver_role_id = ?, approver_membership_id = ?, applies_to = ?::jsonb, position = ? where id = ?", params);
+            return id;
+        }
+        Object[] params = new Object[values.length + 2];
+        params[0] = ctx.tenantId();
+        params[1] = templateId;
+        System.arraycopy(values, 0, params, 2, values.length);
+        return AuthService.uuid(Sql.one(c, "insert into app.checklist_template_task (tenant_id, template_id, title, instructions, owner, "
+                + "owner_role_id, owner_membership_id, trigger_event, offset_days, required, needs_attachment, approver, approver_role_id, "
+                + "approver_membership_id, applies_to, position) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb, ?) returning id",
+                params).get("id"));
+    }
+
+    private static UUID roleId(Connection c, String code, String title) throws SQLException {
+        Map<String, Object> r = code == null ? null : Sql.one(c, "select id from app.role where code = ? and code not like 'support%'", code.trim());
+        if (r == null) {
+            throw bad(title + ": choose a role");
+        }
+        return AuthService.uuid(r.get("id"));
+    }
+
+    private static UUID memberId(Connection c, String id, String title) throws SQLException {
+        try {
+            UUID m = UUID.fromString(id == null ? "" : id.trim());
+            if (Sql.one(c, "select 1 from app.membership where id = ? and status = 'active'", m) != null) {
+                return m;
+            }
+        } catch (IllegalArgumentException e) {
+            // fall through
+        }
+        throw bad(title + ": choose a user of the Organization");
+    }
+
+    private static Map<String, Object> checklistDetail(Connection c, Map<String, Object> row, Map<UUID, String> names) throws SQLException {
+        Map<String, Object> out = new LinkedHashMap<>(row);
+        AppliesTo rules = AppliesTo.parse((String) row.get("appliesTo"));
+        out.put("rules", rules.describe(names::get));
+        out.put("appliesTo", rules.rules());
+        List<Map<String, Object>> tasks = new ArrayList<>();
+        for (Map<String, Object> t : Sql.query(c, "select t.*, r.code as owner_role_code, ar.code as approver_role_code "
+                + "from app.checklist_template_task t left join app.role r on r.id = t.owner_role_id "
+                + "left join app.role ar on ar.id = t.approver_role_id where t.template_id = ?::uuid order by t.position", row.get("id"))) {
+            t.put("appliesTo", AppliesTo.parse((String) t.get("appliesTo")).rules());
+            tasks.add(t);
+        }
+        out.put("tasks", tasks);
+        return out;
     }
 
     // ── the form ────────────────────────────────────────────────────────
