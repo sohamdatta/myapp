@@ -433,6 +433,32 @@ public final class OnboardingConfigService {
         });
     }
 
+    // ── last changes ────────────────────────────────────────────────────
+
+    private static final Map<String, String> AREAS = Map.ofEntries(
+            Map.entry("settings", "'onboarding.settings_changed','onboarding.notice_published'"),
+            Map.entry("flows", "'onboarding.flow_created','onboarding.flow_changed','onboarding.flows_ordered'"),
+            Map.entry("form", "'onboarding.fields_changed','onboarding.custom_field_created','onboarding.custom_field_changed'"),
+            Map.entry("documents", "'onboarding.document_type_created','onboarding.document_type_changed'"),
+            Map.entry("checklists", "'onboarding.checklist_created','onboarding.checklist_changed'"),
+            Map.entry("letters", "'onboarding.letter_created','onboarding.letter_changed'"),
+            Map.entry("policies", "'onboarding.policy_created','onboarding.policy_changed'"),
+            Map.entry("messages", "'onboarding.message_changed'"),
+            Map.entry("codes", "'onboarding.series_created','onboarding.series_changed'"));
+
+    /** For each area of setup, who last changed it and when, for the line under each screen's title. */
+    public Map<String, Object> lastChanges(SessionCtx ctx) {
+        requireRead(ctx);
+        return db.inTenant(ctx.tenantId(), c -> {
+            Map<String, Object> out = new LinkedHashMap<>();
+            for (Map.Entry<String, String> a : AREAS.entrySet()) {
+                out.put(a.getKey(), Sql.one(c, "select at, actor_label from app.audit_event where action in (" + a.getValue() + ") "
+                        + "order by at desc, id desc limit 1"));
+            }
+            return out;
+        });
+    }
+
     // ── document types and checklists ───────────────────────────────────
 
     public List<Map<String, Object>> documentTypes(SessionCtx ctx) {

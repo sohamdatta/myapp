@@ -177,4 +177,9 @@ public class PeopleSetupController {
                                              @PathVariable("id") String id, @RequestBody ChecklistInput request) {
         return config.saveChecklist(Requests.session(auth, authorization), Requests.id(id), request);
     }
+
+    @GetMapping("/changes")
+    public Map<String, Object> changes(@RequestHeader(value = "Authorization", required = false) String authorization) {
+        return config.lastChanges(Requests.session(auth, authorization));
+    }
 }

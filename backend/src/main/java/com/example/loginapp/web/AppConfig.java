@@ -20,6 +20,7 @@ import com.example.loginapp.core.ChecklistService;
 import com.example.loginapp.core.Crypto;
 import com.example.loginapp.core.Db;
 import com.example.loginapp.core.DocumentService;
+import com.example.loginapp.core.EmployeeImport;
 import com.example.loginapp.core.EmployeeService;
 import com.example.loginapp.core.InvitationService;
 import com.example.loginapp.core.JoinerService;
@@ -133,6 +134,11 @@ public class AppConfig {
     @Bean
     public ChecklistService checklistService(Db db, DocumentService documents) {
         return new ChecklistService(db, documents);
+    }
+
+    @Bean
+    public EmployeeImport employeeImport(Db db, Crypto crypto, EmployeeService employees) {
+        return new EmployeeImport(db, crypto, employees);
     }
 
     @Bean

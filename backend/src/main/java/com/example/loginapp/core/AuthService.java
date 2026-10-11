@@ -108,6 +108,7 @@ public final class AuthService {
                 permissions = db.inTenant(tenantId, c -> {
                     LocalDate today = LocalDate.now(ZoneId.of("Asia/Kolkata"));
                     EmployeeService.endIfLeft(c, tenantId, membershipId, today);
+                    EmployeeService.linkIfInvited(c, membershipId);
                     // A joiner whose joining date has come, with nothing blocking, becomes an employee now.
                     JoinerService.activateIfDue(c, tenantId, membershipId, today);
                     return permissions(c, "select permission_code, scope from app.effective_permissions(?)", membershipId);

@@ -23,7 +23,8 @@ public final class Migrator {
             "V6__onboarding.sql",
             "V7__joiner_flow.sql",
             "V8__documents_and_checklists.sql",
-            "V9__letters_policies_codes_messages.sql");
+            "V9__letters_policies_codes_messages.sql",
+            "V10__employee_import.sql");
 
     private Migrator() {}
 

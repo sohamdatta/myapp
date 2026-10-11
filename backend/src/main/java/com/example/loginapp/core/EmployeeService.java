@@ -181,9 +181,21 @@ public final class EmployeeService {
 
     // ── writing ─────────────────────────────────────────────────────────
 
-    /** Adds an employee who is already working here: HR entering existing staff, and later the bulk import. */
+    /** A new employee's details, checked and normalised, ready to be written. */
+    record Checked(String legalName, String preferred, LocalDate dob, String gender, String email, String mobile, String type,
+                   LocalDate joining, LocalDate probationEnd, LocalDate contractEnd, String code, String designation, UUID departmentId,
+                   UUID managerId, UUID membershipId, String pan, String panPending, String aadhaarLast4, String uan, boolean bank,
+                   String account, String ifsc, String holder, String bankName, String branch) {}
+
+    /** Adds an employee who is already working here: HR entering existing staff, and the bulk import. */
     public Map<String, Object> add(SessionCtx ctx, NewEmployee in) {
         ctx.require("employee.write");
+        Checked k = check(in);
+        return db.inTenant(ctx.tenantId(), c -> insert(c, ctx, k));
+    }
+
+    /** Checks a new employee's details without touching the database; a problem is thrown as an ApiException. */
+    static Checked check(NewEmployee in) {
         String legalName = required(in.legalName(), "the full name as on PAN", 120);
         String preferred = optional(in.preferredName(), 60);
         LocalDate dob = optionalDate(in.dateOfBirth(), "date of birth");
@@ -219,68 +231,112 @@ public final class EmployeeService {
         String account = bank ? IdChecks.bankAccount(in.bankAccount()) : null;
         String ifsc = bank ? IdChecks.ifsc(in.ifsc()) : null;
         String holder = bank ? (blank(in.bankHolder()) ? legalName : required(in.bankHolder(), "the account holder", 120)) : null;
+        return new Checked(legalName, preferred, dob, gender, email, mobile, type, joining, probationEnd, contractEnd, code, designation,
+                departmentId, managerId, membershipId, pan, panPending, aadhaarLast4, uan, bank, account, ifsc, holder,
+                optional(in.bankName(), 80), optional(in.branch(), 80));
+    }
+
+    /** Writes a checked employee. */
+    Map<String, Object> insert(Connection c, SessionCtx ctx, Checked k) throws SQLException {
+        String legalName = k.legalName();
+        String preferred = k.preferred();
+        LocalDate dob = k.dob();
+        String gender = k.gender();
+        String email = k.email();
+        String mobile = k.mobile();
+        String type = k.type();
+        LocalDate joining = k.joining();
+        LocalDate probationEnd = k.probationEnd();
+        LocalDate contractEnd = k.contractEnd();
+        String code = k.code();
+        String designation = k.designation();
+        UUID departmentId = k.departmentId();
+        UUID managerId = k.managerId();
+        UUID membershipId = k.membershipId();
+        String pan = k.pan();
+        String panPending = k.panPending();
+        String aadhaarLast4 = k.aadhaarLast4();
+        String uan = k.uan();
+        boolean bank = k.bank();
+        String account = k.account();
+        String ifsc = k.ifsc();
+        String holder = k.holder();
         LocalDate today = today();
 
-        return db.inTenant(ctx.tenantId(), c -> {
-            String finalCode = code;
-            if (membershipId != null) {
-                Map<String, Object> m = Sql.one(c, "select id, person_id, status, employee_code from app.membership where id = ? for update",
-                        membershipId);
-                if (m == null) {
-                    throw ApiException.notFound("The user");
-                }
-                if (m.get("personId") != null) {
-                    throw new ApiException(409, "employee.user_linked", "That user already has an employee record");
-                }
-                if (finalCode == null && m.get("employeeCode") != null) {
-                    finalCode = (String) m.get("employeeCode");
-                }
+        String finalCode = code;
+        if (membershipId != null) {
+            Map<String, Object> m = Sql.one(c, "select id, person_id, status, employee_code from app.membership where id = ? for update",
+                    membershipId);
+            if (m == null) {
+                throw ApiException.notFound("The user");
             }
-            if (departmentId != null) {
-                requireDepartment(c, departmentId);
+            if (m.get("personId") != null) {
+                throw new ApiException(409, "employee.user_linked", "That user already has an employee record");
             }
-            if (managerId != null) {
-                requireActiveManager(c, managerId);
+            if (finalCode == null && m.get("employeeCode") != null) {
+                finalCode = (String) m.get("employeeCode");
             }
-            UUID personId = AuthService.uuid(Sql.one(c,
-                    "insert into app.person (tenant_id, legal_name, preferred_name, date_of_birth, gender, personal_email, mobile) "
-                            + "values (?, ?, ?, ?, ?, ?, ?) returning id",
-                    ctx.tenantId(), legalName, preferred, dob, gender, email, mobile).get("id"));
-            UUID employmentId = AuthService.uuid(Sql.one(c,
-                    "insert into app.employment (tenant_id, person_id, membership_id, employee_code, employment_type, joining_date, "
-                            + "probation_end, contract_end, status, activated_at, created_by) "
-                            + "values (?, ?, ?, ?, ?, ?, ?, ?, 'active', now(), ?) returning id",
-                    ctx.tenantId(), personId, membershipId, finalCode, type, joining, probationEnd, contractEnd,
-                    ctx.membershipId()).get("id"));
-            Sql.update(c, "insert into app.job_assignment (tenant_id, employment_id, effective_from, designation, department_id, "
-                            + "manager_id, reason, created_by) values (?, ?, ?, ?, ?, ?, 'Joined', ?)",
-                    ctx.tenantId(), employmentId, joining, designation, departmentId, managerId, ctx.membershipId());
-            if (membershipId != null) {
-                Sql.update(c, "update app.membership set person_id = ?, employee_code = ? where id = ?",
-                        personId, finalCode, membershipId);
-            }
-            if (pan != null) {
-                insertIdentifier(c, ctx, personId, "pan", pan, null);
-            } else if (panPending != null) {
-                Sql.update(c, "insert into app.statutory_id (tenant_id, person_id, kind, value_enc, last4, pending_reason, created_by) "
-                        + "values (?, ?, 'pan', ?, 'NONE', ?, ?)", ctx.tenantId(), personId,
-                        crypto.encrypt(ctx.tenantId(), ""), panPending, ctx.membershipId());
-            }
-            if (aadhaarLast4 != null) {
-                Sql.update(c, "insert into app.statutory_id (tenant_id, person_id, kind, last4, created_by) values (?, ?, 'aadhaar', ?, ?)",
-                        ctx.tenantId(), personId, aadhaarLast4, ctx.membershipId());
-            }
-            if (uan != null) {
-                insertIdentifier(c, ctx, personId, "uan", uan, null);
-            }
-            if (bank) {
-                insertBank(c, ctx, personId, holder, account, ifsc, optional(in.bankName(), 80), optional(in.branch(), 80),
-                        joining.isAfter(today) ? joining : today);
-            }
-            UserService.audit(c, ctx, "employee.added", "employment", employmentId,
-                    detail("name", legalName, "joiningDate", joining.toString(), "linkedUser", membershipId == null ? null : membershipId.toString()));
-            return Map.of("id", employmentId.toString(), "personId", personId.toString());
-        });
+        }
+        if (departmentId != null) {
+            requireDepartment(c, departmentId);
+        }
+        if (managerId != null) {
+            requireActiveManager(c, managerId);
+        }
+        UUID personId = AuthService.uuid(Sql.one(c,
+                "insert into app.person (tenant_id, legal_name, preferred_name, date_of_birth, gender, personal_email, mobile) "
+                        + "values (?, ?, ?, ?, ?, ?, ?) returning id",
+                ctx.tenantId(), legalName, preferred, dob, gender, email, mobile).get("id"));
+        UUID employmentId = AuthService.uuid(Sql.one(c,
+                "insert into app.employment (tenant_id, person_id, membership_id, employee_code, employment_type, joining_date, "
+                        + "probation_end, contract_end, status, activated_at, created_by) "
+                        + "values (?, ?, ?, ?, ?, ?, ?, ?, 'active', now(), ?) returning id",
+                ctx.tenantId(), personId, membershipId, finalCode, type, joining, probationEnd, contractEnd,
+                ctx.membershipId()).get("id"));
+        Sql.update(c, "insert into app.job_assignment (tenant_id, employment_id, effective_from, designation, department_id, "
+                        + "manager_id, reason, created_by) values (?, ?, ?, ?, ?, ?, 'Joined', ?)",
+                ctx.tenantId(), employmentId, joining, designation, departmentId, managerId, ctx.membershipId());
+        if (membershipId != null) {
+            Sql.update(c, "update app.membership set person_id = ?, employee_code = ? where id = ?",
+                    personId, finalCode, membershipId);
+        }
+        if (pan != null) {
+            insertIdentifier(c, ctx, personId, "pan", pan, null);
+        } else if (panPending != null) {
+            Sql.update(c, "insert into app.statutory_id (tenant_id, person_id, kind, value_enc, last4, pending_reason, created_by) "
+                    + "values (?, ?, 'pan', ?, 'NONE', ?, ?)", ctx.tenantId(), personId,
+                    crypto.encrypt(ctx.tenantId(), ""), panPending, ctx.membershipId());
+        }
+        if (aadhaarLast4 != null) {
+            Sql.update(c, "insert into app.statutory_id (tenant_id, person_id, kind, last4, created_by) values (?, ?, 'aadhaar', ?, ?)",
+                    ctx.tenantId(), personId, aadhaarLast4, ctx.membershipId());
+        }
+        if (uan != null) {
+            insertIdentifier(c, ctx, personId, "uan", uan, null);
+        }
+        if (bank) {
+            insertBank(c, ctx, personId, holder, account, ifsc, k.bankName(), k.branch(),
+                    joining.isAfter(today) ? joining : today);
+        }
+        UserService.audit(c, ctx, "employee.added", "employment", employmentId,
+                detail("name", legalName, "joiningDate", joining.toString(), "linkedUser", membershipId == null ? null : membershipId.toString()));
+        return Map.of("id", employmentId.toString(), "personId", personId.toString());
+    }
+
+    /**
+     * An employee who accepted a bulk invitation has a login for their person: the record is linked to
+     * it, and the login takes the employee code. Their joining date is left alone, so leave is not
+     * accrued again for years already worked. Runs on every request; does nothing once linked.
+     */
+    static void linkIfInvited(Connection c, UUID membershipId) throws SQLException {
+        int linked = Sql.update(c, "update app.employment e set membership_id = m.id from app.membership m "
+                + "where m.id = ? and m.person_id = e.person_id and e.membership_id is null and e.status = 'active'", membershipId);
+        if (linked > 0) {
+            Sql.update(c, "update app.membership m set employee_code = e.employee_code from app.employment e "
+                    + "where m.id = ? and e.membership_id = m.id and e.status = 'active' and m.employee_code is null "
+                    + "and e.employee_code is not null "
+                    + "and not exists (select 1 from app.membership x where lower(x.employee_code) = lower(e.employee_code))", membershipId);
+        }
     }
 
     /** Links an employee record to a user of the Organization, so their attendance and leave follow the record. */
