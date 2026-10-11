@@ -1,8 +1,10 @@
 import { useState } from 'react'
-import { attendance, invitationLink, joiners, people } from '../api.js'
+import { attendance, invitationLink, joiners, org, people } from '../api.js'
 import { formatDate, formatDay, localToday, useAction, useLoad } from '../hooks.js'
 import { Badge, CopyLink, Empty, ErrorNote, StatusBadge, Tabs } from '../ui.jsx'
+import DocumentList from './DocumentList.jsx'
 import SectionForm from './SectionForm.jsx'
+import { Checklist } from './TaskList.jsx'
 import { SECTION_STATUS, pretty } from './onboardingText.js'
 
 /** HR's onboarding: joiners still to start, adding one, and one joiner's sections, checks and activation. */
@@ -51,6 +53,7 @@ export function JoinerList({ canWrite, onOpen, onAdd }) {
             ['waitingOnJoiner', 'Waiting on the joiner'],
             ['waitingOnHr', 'Waiting on HR'],
             ['ready', 'Ready to activate'],
+            ['overdueTasks', 'Overdue tasks'],
           ].map(([key, label]) => (
             <div key={key} className="tile">
               <div className="tile-label">{label}</div>
@@ -101,6 +104,7 @@ export function JoinerList({ canWrite, onOpen, onAdd }) {
                 <th>Designation</th>
                 <th>Reports to</th>
                 <th>Checked</th>
+                <th>Tasks</th>
                 <th>Waiting on</th>
                 <th>Status</th>
               </tr>
@@ -119,6 +123,15 @@ export function JoinerList({ canWrite, onOpen, onAdd }) {
                   <td>{j.managerName || '—'}</td>
                   <td>
                     {j.verified} of {j.sectionCount}
+                  </td>
+                  <td>
+                    {j.tasksDone} of {j.taskCount}
+                    {j.overdueTasks > 0 && (
+                      <>
+                        {' '}
+                        <Badge tone="warn">{j.overdueTasks} overdue</Badge>
+                      </>
+                    )}
                   </td>
                   <td>{j.waitingOn ? j.waitingOn === 'nobody' ? <Badge tone="good">Ready</Badge> : WAITING[j.waitingOn] : '—'}</td>
                   <td>
@@ -519,14 +532,16 @@ export function JoinerPage({ id, onBack, initialInvitation }) {
       <Tabs
         tabs={[
           { id: 'sections', label: 'Sections' },
+          j.sections.some((s) => s.section === 'documents') && { id: 'documents', label: 'Documents' },
+          { id: 'checklist', label: 'Checklist' },
           { id: 'history', label: 'History' },
-        ]}
+        ].filter(Boolean)}
         current={view}
         onChange={setView}
       />
       {view === 'sections' && (
         <div className="section-list">
-          {j.sections.map((s) => (
+          {j.sections.filter((s) => s.section !== 'documents').map((s) => (
             <SectionCard
               key={s.section}
               joinerId={id}
@@ -539,6 +554,8 @@ export function JoinerPage({ id, onBack, initialInvitation }) {
           ))}
         </div>
       )}
+      {view === 'documents' && <JoinerDocuments id={id} onChanged={joiner.reload} />}
+      {view === 'checklist' && <JoinerChecklist id={id} onChanged={joiner.reload} />}
       {view === 'history' && <History id={id} />}
     </>
   )
@@ -668,6 +685,132 @@ function SectionDetail({ joinerId, section, lookups, onChanged }) {
       )}
       <p className="hint">{SECTION_STATUS[d.status]}</p>
     </div>
+  )
+}
+
+function JoinerDocuments({ id, onChanged }) {
+  const docs = useLoad(() => joiners.documents(id))
+  if (docs.loading) return <p className="muted">Loading…</p>
+  if (docs.error) return <ErrorNote>{docs.error}</ErrorNote>
+  const d = docs.data
+  const changed = () => {
+    docs.reload()
+    onChanged()
+  }
+  return (
+    <DocumentList
+      data={d}
+      canUpload={d.canUpload}
+      canVerify={d.canVerify}
+      canOpen={d.canOpen}
+      onUpload={async (typeId, file, onProgress) => {
+        await joiners.uploadDocument(id, typeId, file, onProgress)
+        changed()
+      }}
+      onOpen={joiners.documentFile}
+      onVerify={async (documentId) => {
+        await joiners.verifyDocument(id, documentId)
+        changed()
+      }}
+      onReject={async (documentId, note) => {
+        await joiners.rejectDocument(id, documentId, note)
+        changed()
+      }}
+    />
+  )
+}
+
+function JoinerChecklist({ id, onChanged }) {
+  const list = useLoad(() => joiners.tasks(id))
+  const users = useLoad(() => org.users().catch(() => []))
+  const [adding, setAdding] = useState(false)
+  if (list.loading || users.loading) return <p className="muted">Loading…</p>
+  if (list.error) return <ErrorNote>{list.error}</ErrorNote>
+  const active = (users.data || []).filter((u) => u.status === 'active')
+  const changed = () => {
+    list.reload()
+    onChanged()
+  }
+  return (
+    <>
+      {list.data.canManage && (
+        <div className="toolbar">
+          <span className="spacer" />
+          {!adding && (
+            <button type="button" className="outline" onClick={() => setAdding(true)}>
+              Add a task
+            </button>
+          )}
+        </div>
+      )}
+      {adding && (
+        <AddTask
+          id={id}
+          users={active}
+          onDone={() => {
+            setAdding(false)
+            changed()
+          }}
+          onCancel={() => setAdding(false)}
+        />
+      )}
+      {list.data.tasks.length === 0 ? (
+        <Empty>No checklist tasks for this joiner.</Empty>
+      ) : (
+        <Checklist tasks={list.data.tasks} hr={list.data.canManage} users={active} onChanged={changed} />
+      )}
+    </>
+  )
+}
+
+function AddTask({ id, users, onDone, onCancel }) {
+  const [form, setForm] = useState({ title: '', assigneeId: '', dueDate: '', required: true })
+  const { busy, error, run } = useAction()
+  const set = (patch) => setForm((f) => ({ ...f, ...patch }))
+  return (
+    <form
+      className="panel"
+      onSubmit={async (e) => {
+        e.preventDefault()
+        if (await run(() => joiners.addTask(id, form))) onDone()
+      }}
+    >
+      <h3>Add a task for this joiner</h3>
+      <div className="grid">
+        <div>
+          <label htmlFor="task-title">Task</label>
+          <input id="task-title" value={form.title} placeholder="Order a desk chair" onChange={(e) => set({ title: e.target.value })} />
+        </div>
+        <div>
+          <label htmlFor="task-assignee">Who does it</label>
+          <select id="task-assignee" value={form.assigneeId} onChange={(e) => set({ assigneeId: e.target.value })}>
+            <option value="">Me</option>
+            {users.map((u) => (
+              <option key={u.id} value={u.id}>
+                {u.email}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label htmlFor="task-due">Due</label>
+          <input id="task-due" type="date" value={form.dueDate} onChange={(e) => set({ dueDate: e.target.value })} />
+        </div>
+      </div>
+      <label className="check">
+        <input type="checkbox" checked={form.required} onChange={(e) => set({ required: e.target.checked })} />
+        Needed before the joiner can be activated, when due before the joining date
+      </label>
+      <ErrorNote>{error}</ErrorNote>
+      <div className="form-actions">
+        <button type="submit" className="secondary" disabled={busy}>
+          Add task
+        </button>
+        <button type="button" className="quiet" onClick={onCancel}>
+          Cancel
+        </button>
+      </div>
+    </form>
   )
 }
 

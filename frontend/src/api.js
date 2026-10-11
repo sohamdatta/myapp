@@ -85,6 +85,51 @@ async function request(method, path, body) {
   return data
 }
 
+/**
+ * Sends a file as the request body, reporting progress (0 to 1) as it goes. The server reads the
+ * file's type from its bytes; the name and document type travel in the query string.
+ */
+export function uploadFile(path, file, onProgress) {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest()
+    xhr.open('POST', `/api${path}`)
+    const token = getToken()
+    if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`)
+    xhr.setRequestHeader('Content-Type', 'application/octet-stream')
+    if (onProgress) xhr.upload.onprogress = (e) => e.lengthComputable && onProgress(e.loaded / e.total)
+    xhr.onload = () => {
+      let data = {}
+      try {
+        data = JSON.parse(xhr.responseText || '{}')
+      } catch {
+        // not JSON: fall through with the status
+      }
+      if (xhr.status >= 200 && xhr.status < 300) resolve(data)
+      else reject(new ApiError(data.message || (xhr.status === 413 ? 'The file is larger than 10 MB.' : 'The upload failed. Try again.'), xhr.status, data.code || 'error'))
+    }
+    xhr.onerror = () => reject(new ApiError('Cannot reach the server. Check your connection and try again.', 0, 'network'))
+    xhr.send(file)
+  })
+}
+
+/** Fetches a file the server sends as an attachment, as a Blob to show or save. */
+export async function fetchFile(path) {
+  const headers = {}
+  const token = getToken()
+  if (token) headers.Authorization = `Bearer ${token}`
+  const response = await fetch(`/api${path}`, { headers })
+  if (!response.ok) {
+    let data = {}
+    try {
+      data = await response.json()
+    } catch {
+      // not JSON
+    }
+    throw new ApiError(data.message || 'The file could not be opened.', response.status, data.code || 'error')
+  }
+  return response.blob()
+}
+
 const get = (path) => request('GET', path)
 const post = (path, body = {}) => request('POST', path, body)
 const put = (path, body) => request('PUT', path, body)
@@ -285,6 +330,23 @@ export const joiners = {
   activate: (id) => post(`/org/people/joiners/${id}/activate`),
   withdraw: (id, reason) => post(`/org/people/joiners/${id}/withdraw`, { reason }),
   history: (id) => get(`/org/people/joiners/${id}/history`),
+  documents: (id) => get(`/org/people/joiners/${id}/documents`),
+  uploadDocument: (id, typeId, file, onProgress) =>
+    uploadFile(`/org/people/joiners/${id}/documents${query({ type: typeId, name: file.name })}`, file, onProgress),
+  verifyDocument: (id, documentId) => post(`/org/people/joiners/${id}/documents/${documentId}/verify`),
+  rejectDocument: (id, documentId, note) => post(`/org/people/joiners/${id}/documents/${documentId}/reject`, { note }),
+  documentFile: (documentId) => fetchFile(`/org/people/documents/${documentId}/content`),
+  tasks: (id) => get(`/org/people/joiners/${id}/tasks`),
+  addTask: (id, body) => post(`/org/people/joiners/${id}/tasks`, body),
+}
+
+export const tasks = {
+  mine: () => get('/org/people/tasks/mine'),
+  done: (id) => post(`/org/people/tasks/${id}/done`),
+  skip: (id, reason) => post(`/org/people/tasks/${id}/skip`, { reason }),
+  reassign: (id, membershipId) => post(`/org/people/tasks/${id}/reassign`, { membershipId }),
+  approve: (id) => post(`/org/people/tasks/${id}/approve`),
+  attach: (id, file, onProgress) => uploadFile(`/org/people/tasks/${id}/attachment${query({ name: file.name })}`, file, onProgress),
 }
 
 export const onboarding = {
@@ -293,6 +355,9 @@ export const onboarding = {
   section: (section) => get(`/org/onboarding/me/sections/${section}`),
   save: (section, values) => put(`/org/onboarding/me/sections/${section}`, values),
   submit: (section) => post(`/org/onboarding/me/sections/${section}/submit`),
+  documents: () => get('/org/onboarding/me/documents'),
+  upload: (typeId, file, onProgress) => uploadFile(`/org/onboarding/me/documents${query({ type: typeId, name: file.name })}`, file, onProgress),
+  documentFile: (documentId) => fetchFile(`/org/onboarding/me/documents/${documentId}/content`),
 }
 
 // ── the platform console ────────────────────────────────────────────

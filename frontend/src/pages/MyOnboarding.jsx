@@ -1,8 +1,10 @@
 import { useState } from 'react'
-import { onboarding, people } from '../api.js'
+import { onboarding, people, tasks } from '../api.js'
 import { formatDay, useAction, useLoad } from '../hooks.js'
 import { Badge, ErrorNote, StatusBadge } from '../ui.jsx'
+import DocumentList from './DocumentList.jsx'
 import SectionForm from './SectionForm.jsx'
+import { TaskRow } from './TaskList.jsx'
 import { SECTION_STATUS } from './onboardingText.js'
 
 /**
@@ -82,6 +84,7 @@ export default function MyOnboarding() {
               {sent} of {yours.length} sent · {checked} checked
             </span>
           </div>
+          <YourTasks />
           <div className="section-list">
             {m.sections.map((s) => (
               <MySection
@@ -136,7 +139,10 @@ function MySection({ summary, open, onToggle, states, me, onChanged, onSent }) {
           <strong>HR asks:</strong> {summary.note}
         </p>
       )}
-      {open && <MySectionForm section={summary.section} states={states} onChanged={onChanged} onSent={onSent} />}
+      {open && summary.section === 'documents' && <MyDocuments onChanged={onChanged} />}
+      {open && summary.section !== 'documents' && (
+        <MySectionForm section={summary.section} states={states} onChanged={onChanged} onSent={onSent} />
+      )}
     </section>
   )
 }
@@ -168,5 +174,42 @@ function MySectionForm({ section, states, onChanged, onSent }) {
         }}
       />
     </>
+  )
+}
+
+function MyDocuments({ onChanged }) {
+  const docs = useLoad(onboarding.documents)
+  if (docs.loading) return <p className="muted">Loading…</p>
+  if (docs.error) return <ErrorNote>{docs.error}</ErrorNote>
+  return (
+    <>
+      <p className="hint">A clear photo or a PDF of each. Each one is checked by HR; you will see here if one needs sending again.</p>
+      <DocumentList
+        joiner
+        data={docs.data}
+        canUpload={docs.data.canUpload}
+        canOpen
+        onUpload={async (typeId, file, onProgress) => {
+          await onboarding.upload(typeId, file, onProgress)
+          docs.reload()
+          onChanged()
+        }}
+        onOpen={onboarding.documentFile}
+      />
+    </>
+  )
+}
+
+/** Checklist tasks that are the joiner's own, such as bringing original documents on the first day. */
+function YourTasks() {
+  const list = useLoad(tasks.mine)
+  if (list.loading || list.error || list.data.length === 0) return null
+  return (
+    <section className="panel">
+      <h3>Your tasks</h3>
+      {list.data.map((t) => (
+        <TaskRow key={t.id} task={t} onChanged={list.reload} />
+      ))}
+    </section>
   )
 }

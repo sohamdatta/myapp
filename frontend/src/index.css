@@ -1294,3 +1294,132 @@ td input.cell-input {
   height: 100%;
   background: var(--accent);
 }
+
+/* ── onboarding: documents and checklists ──────────────────────────── */
+
+.doc-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.doc-row {
+  padding: 14px 16px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.doc-rejected {
+  border-color: var(--warn);
+}
+
+.doc-head,
+.task-main {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.doc-row .hint,
+.doc-row .notice {
+  margin: 6px 0;
+}
+
+.file-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 12px;
+  margin: 8px 0;
+}
+
+.file-name {
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+
+.file-button {
+  display: inline-flex;
+  align-items: center;
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.task-group h3 {
+  margin: 0 0 8px;
+}
+
+.task-row {
+  padding: 12px 0;
+  border-top: 1px solid var(--border);
+}
+
+.task-row:first-of-type {
+  border-top: none;
+}
+
+.task-title {
+  font-weight: 500;
+}
+
+.task-overdue .task-title {
+  color: var(--warn);
+}
+
+.task-done .task-title,
+.task-skipped .task-title {
+  color: var(--muted);
+}
+
+.task-row .form-actions,
+.task-row .inline-form {
+  margin-top: 8px;
+}
+
+.viewer {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  background: rgba(10, 14, 20, 0.85);
+}
+
+.viewer-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  padding: 10px 16px;
+  color: var(--text);
+  background: var(--card);
+}
+
+.viewer-bar .file-name {
+  flex: 1 1 160px;
+}
+
+.viewer-body {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 0;
+  padding: 16px;
+}
+
+.viewer-body img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  background: #fff;
+}
+
+.viewer-body iframe {
+  width: 100%;
+  height: 100%;
+  background: #fff;
+  border: none;
+}

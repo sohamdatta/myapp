@@ -34,7 +34,11 @@ export function navFor(me) {
   return [
     {
       label: 'My work',
-      items: [canPunch && { id: 'my-attendance', label: 'My attendance' }, hasOwnLeave && { id: 'my-leave', label: 'My leave' }].filter(Boolean),
+      items: [
+        canPunch && { id: 'my-attendance', label: 'My attendance' },
+        hasOwnLeave && { id: 'my-leave', label: 'My leave' },
+        me.openTasks > 0 && { id: 'my-tasks', label: 'My tasks' },
+      ].filter(Boolean),
     },
     {
       label: 'Organization',

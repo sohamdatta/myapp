@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { HR, PASSWORD, ORG, signIn, newPage, nav, tab, isoDay, expectNoSidewaysScroll, expectNoConsoleErrors } from './helpers';
+import { HR, OWNER, PASSWORD, ORG, signIn, newPage, nav, tab, isoDay, expectNoSidewaysScroll, expectNoConsoleErrors } from './helpers';
 
 // Onboarding a joiner: HR adds and invites them, the joiner accepts on a phone,
 // reads the notice and fills each section, HR returns one section with a note,
@@ -13,6 +13,9 @@ const sectionCard = (page: Page, title: string) =>
   page.locator('.section-card').filter({ has: page.locator('.section-title', { hasText: new RegExp(`^${title}$`) }) });
 const PAN = 'BQKPI4321M';
 const ACCOUNT = '501002003004';
+const PDF = Buffer.from('%PDF-1.4\n%address proof\n1 0 obj <<>> endobj\n%%EOF\n');
+// A 1 x 1 PNG, standing in for a phone photo of a PAN card.
+const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
 
 test.describe.serial('onboarding', () => {
   let hr: Page;
@@ -133,7 +136,20 @@ test.describe.serial('onboarding', () => {
     await joiner.selectOption('#f-statutory-tax_regime', 'old');
     await joiner.getByRole('button', { name: 'Send for checking' }).click();
     await expect(card('PAN, Aadhaar and PF')).toContainText('submitted');
-    await expect(joiner.locator('.progress-row')).toContainText('7 of 7 sent');
+
+    // Documents open next: a photo of the PAN card and a PDF of an address proof. Anything else is refused.
+    const docs = card('Documents');
+    const pan = docs.locator('.doc-row[data-type="PAN card"]');
+    await pan.locator('input[type=file]').setInputFiles({ name: 'notes.pdf', mimeType: 'application/pdf', buffer: Buffer.from('<html>hello</html>') });
+    await expect(pan.locator('.error')).toContainText('Only PDF, JPEG and PNG');
+    await pan.locator('input[type=file]').setInputFiles({ name: 'IMG_0412.png', mimeType: 'image/png', buffer: PNG });
+    await expect(pan).toContainText('Waiting to be checked');
+    await expect(pan).toContainText('IMG_0412.png');
+    const address = docs.locator('.doc-row[data-type="Address proof"]');
+    await address.locator('input[type=file]').setInputFiles({ name: 'electricity bill.pdf', mimeType: 'application/pdf', buffer: PDF });
+    await expect(address).toContainText('Waiting to be checked');
+    await expect(docs.locator('.section-toggle')).toContainText('submitted');
+    await expect(joiner.locator('.progress-row')).toContainText('8 of 8 sent');
 
     // Sent sections are read-only and show identifiers as the last four only.
     await card('PAN, Aadhaar and PF').locator('.section-toggle').click();
@@ -164,6 +180,88 @@ test.describe.serial('onboarding', () => {
     await joiner.fill('#f-bank-ifsc', 'HDFC0000123');
     await joiner.getByRole('button', { name: 'Send for checking' }).click();
     await expect(card).toContainText('submitted');
+  });
+
+  test('HR checks the documents, rejecting one, which the joiner sends again', async () => {
+    await hr.reload();
+    await nav(hr, 'People');
+    await tab(hr, 'Joiners');
+    await hr.getByRole('button', { name: 'Meera Iyer' }).click();
+    await tab(hr, 'Documents');
+    const pan = hr.locator('.doc-row[data-type="PAN card"]');
+    await pan.getByRole('button', { name: 'View' }).click();
+    await expect(hr.getByRole('dialog')).toBeVisible();
+    await expect(hr.getByRole('dialog').locator('img')).toBeVisible();
+    await hr.getByRole('dialog').getByRole('button', { name: 'Close' }).click();
+    await pan.getByRole('button', { name: 'Verify' }).click();
+    await expect(pan).toContainText('Verified');
+
+    const address = hr.locator('.doc-row[data-type="Address proof"]');
+    await address.getByRole('button', { name: 'Reject' }).click();
+    await address.locator('input[id^="reject-"]').fill('The bill must be from the last three months');
+    await address.getByRole('button', { name: 'Reject' }).click();
+    await expect(address).toContainText('Rejected');
+
+    await joiner.reload();
+    const docs = sectionCard(joiner, 'Documents');
+    await expect(docs.locator('.section-toggle')).toContainText('returned');
+    await docs.locator('.section-toggle').click();
+    const mine = docs.locator('.doc-row[data-type="Address proof"]');
+    await expect(mine).toContainText('HR says: The bill must be from the last three months');
+    await mine.locator('input[type=file]').setInputFiles({ name: 'new bill.pdf', mimeType: 'application/pdf', buffer: PDF });
+    await expect(mine).toContainText('Waiting to be checked');
+    await expect(docs.locator('.doc-row[data-type="PAN card"] input[type=file]')).toHaveCount(0); // verified: no replacing it
+    await expectNoSidewaysScroll(joiner);
+
+    await hr.reload();
+    await nav(hr, 'People');
+    await tab(hr, 'Joiners');
+    await hr.getByRole('button', { name: 'Meera Iyer' }).click();
+    await tab(hr, 'Documents');
+    await hr.locator('.doc-row[data-type="Address proof"]').getByRole('button', { name: 'Verify' }).click();
+    await expect(hr.locator('.doc-row[data-type="Address proof"]')).toContainText('Verified');
+  });
+
+  test('the checklist: tasks before joining block activation; a task reassigned shows in My tasks', async ({ browser }) => {
+    await tab(hr, 'Checklist');
+    await expect(hr.locator('.task-group')).toHaveCount(4); // HR, IT, Manager, Joiner
+    await expect(hr.locator('.blockers')).toContainText('Task: Prepare laptop and accounts');
+
+    // IT has nobody yet; HR gives the laptop task to the Org Admin, who finds it under My tasks.
+    const laptop = hr.locator('.task-row[data-task="Prepare laptop and accounts"]');
+    await expect(laptop).toContainText('nobody yet');
+    await laptop.getByRole('button', { name: 'Reassign' }).click();
+    await laptop.locator('select').selectOption({ label: OWNER });
+    await laptop.getByRole('button', { name: 'Reassign' }).click();
+    await expect(laptop).toContainText(OWNER);
+
+    const owner = await signIn(browser, OWNER);
+    await nav(owner, 'My tasks');
+    const task = owner.locator('.task-row[data-task="Prepare laptop and accounts"]');
+    await expect(task).toContainText('Meera Iyer, joining');
+    await task.getByRole('button', { name: 'Mark done' }).click();
+    await expect(task).toHaveCount(0);
+    // The Org Admin is also Meera's manager, so the manager's tasks are here too.
+    await expect(owner.locator('.task-row[data-task="Plan the first week"]')).toBeVisible();
+    await owner.context().close();
+    await hr.reload();
+    await nav(hr, 'People');
+    await tab(hr, 'Joiners');
+    await hr.getByRole('button', { name: 'Meera Iyer' }).click();
+    await tab(hr, 'Checklist');
+    await expect(laptop).toContainText('Done');
+
+    // HR skips one with a reason and ticks the rest that fall before the joining date.
+    const email = hr.locator('.task-row[data-task="Create the official email"]');
+    await email.getByRole('button', { name: 'Skip' }).click();
+    await email.locator('input').fill('Uses the shared team mailbox');
+    await email.getByRole('button', { name: 'Skip task' }).click();
+    await expect(email).toContainText('Skipped');
+    for (const title of ['Send the welcome note and invitation', 'Issue the appointment letter', 'Plan the first week']) {
+      const row = hr.locator(`.task-row[data-task="${title}"]`);
+      await row.getByRole('button', { name: 'Mark done' }).click();
+      await expect(row).toContainText('Done');
+    }
   });
 
   test('HR verifies every section and the joiner becomes an employee', async () => {

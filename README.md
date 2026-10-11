@@ -356,7 +356,26 @@ the link, which stays valid until at least a week after the joining date.
   offered to HR as a possible rehire before anything is created.
 - **Withdrawal** ends the link and login; the joiner's data is deleted after
   the Organization's retention period (90 days by default).
-- Documents, policies and letters come with the next milestones.
+- **Documents.** Each joiner is asked for the document types whose rules
+  match them (by default: PAN card and address proof before joining,
+  education certificates within 30 days, a relieving letter and a photo
+  optional). The joiner uploads a PDF or a photo from the phone; the server
+  reads the type from the file's bytes (PDF, JPEG or PNG, up to 10 MB),
+  redraws photos to drop their location and camera data, and stores the bytes
+  encrypted. HR views, verifies or rejects each with a note; a new upload
+  replaces the old one. A file is shown only to its owner and to people with
+  `employee.sensitive`, and every view is in the audit log.
+- **Checklists.** Every joiner gets the tasks of each checklist template whose
+  rules match them, for HR, IT, the manager, a buddy or the joiner. Due dates
+  follow the task's trigger (added, invited, joining date, activated). Whoever
+  a task is assigned to sees it under **My tasks** and can mark it done,
+  without any HR permission; give IT tasks a home with the new **IT Admin**
+  role. HR can skip with a reason, reassign, or add a task. A task can need a
+  file before it is done, or an approver.
+- **What blocks activation:** sections not verified, documents needed before
+  joining not verified, and required tasks due before the joining date that
+  are not done or skipped.
+- Policies and letters come with the next milestone.
 
 ## Roles
 
@@ -489,6 +508,8 @@ Onboarding configuration, under `/api/org/people/setup`:
 | GET, PUT | `/fields`, `/flows/{id}/fields` | Built-in field settings for the Organization, or one flow's overrides |
 | GET, POST | `/custom-fields`; PUT `/custom-fields/{id}` | The Organization's own fields |
 | GET | `/preview?flow=&employmentType=&department=&workLocation=&designation=` | The form a joiner would see |
+| GET, POST | `/document-types`; PUT `/document-types/{id}` | Documents asked for: before joining, within days, or optional, with rules |
+| GET, POST | `/checklists`; PUT `/checklists/{id}` | Checklist templates with rules and their tasks (owner, trigger, offset, file needed, approver) |
 
 Joiners (HR), under `/api/org/people/joiners`:
 
@@ -500,10 +521,20 @@ Joiners (HR), under `/api/org/people/joiners`:
 | GET, PUT | `/{id}/sections/{section}` | A section's form and values; HR fills or corrects it |
 | POST | `/{id}/sections/{section}/submit`, `/verify`, `/return` | Sends, verifies, or returns with `{note}` |
 | POST | `/{id}/invite`, `/{id}/activate`, `/{id}/withdraw` | Invitation link, activation, withdrawal with `{reason}` |
+| GET, POST | `/{id}/documents` | The documents asked for and uploaded; HR uploads one (the file as the body, `?type=&name=`) |
+| POST | `/{id}/documents/{docId}/verify`, `/reject` | Decides a document; a rejection needs `{note}` |
+| GET, POST | `/{id}/tasks` | The checklist; HR adds a one-off task |
+
+Files and tasks, under `/api/org/people`: GET `/documents/{id}/content` (the
+file, for `employee.sensitive`, audited); GET `/tasks/mine`; POST
+`/tasks/{id}/done`, `/skip` `{reason}`, `/reassign` `{membershipId}`,
+`/approve`, `/attachment` (the file as the body).
 
 The joiner's own onboarding, under `/api/org/onboarding/me`: GET for the
 welcome and sections, POST `/notice` with `{noticeId}`, GET and PUT
-`/sections/{section}`, POST `/sections/{section}/submit`.
+`/sections/{section}`, POST `/sections/{section}/submit`, GET and POST
+`/documents` (upload: the file as the body, `?type=&name=`), GET
+`/documents/{id}/content`.
 
 The Organization a request acts on always comes from the server-side session.
 It is never read from the URL, a header or the request body.
@@ -516,7 +547,7 @@ on GitHub and emails whoever pushed it.
 
 | Job | What it checks | Where the tests are |
 |---|---|---|
-| Backend build and tests | Maven builds the backend; 154 JUnit tests run against a real PostgreSQL 16: business rules, permissions, and isolation between Organizations | `backend/src/test/` |
+| Backend build and tests | Maven builds the backend; 163 JUnit tests run against a real PostgreSQL 16: business rules, permissions, and isolation between Organizations | `backend/src/test/` |
 | Frontend lint and build | `oxlint` finds no problems and the production build succeeds | `frontend/` |
 | Browser tests | The app is started from the backend jar, and Playwright clicks through it as the Super Admin, an Org Admin and an HR Admin | `e2e/tests/` |
 
@@ -528,7 +559,7 @@ The browser tests tell one story in order, each step depending on the one before
 4. `04-work-from-home`: a range of future days, the weekly limit, cancelling an approved day.
 5. `05-people`: departments, adding employees with identifiers, last four on screen and the full PAN only with a reason, a dated job change, a duplicate PAN refused, an exit.
 6. `06-phone`: the main screens at 390 px wide, with no sideways scrolling.
-7. `07-onboarding`: HR adds and invites a joiner; the joiner accepts on a phone, reads the notice and fills every section; HR returns one with a note, the joiner fixes it, HR verifies all, and the joiner becomes an employee; a joiner is withdrawn.
+7. `07-onboarding`: HR adds and invites a joiner; the joiner accepts on a phone, reads the notice, fills every section and uploads documents; HR returns a section and rejects a document, the joiner fixes both; HR works the checklist (a task reassigned and done from My tasks, one skipped); HR verifies all, and the joiner becomes an employee; a joiner is withdrawn.
 
 Every browser test also fails on any error in the browser console.
 

@@ -259,3 +259,14 @@ Five decisions shape milestone 1 and should be settled before it starts; the rel
 - Activation sets the login's joining date to the joining date, so leave accrues from that day. Due activations and scheduled invitations are applied when joiners are read and on the joiner's own requests, not by a background job.
 - The rehire check matches personal email and mobile; PAN is not known when a joiner is added.
 
+**Milestone 4, documents and checklists: done** (11 Oct 2026). Differences:
+
+- `V8__documents_and_checklists.sql` switches the Documents section on in every flow, adds the **IT Admin** role (IT tasks go to its first member; with nobody in it they wait for HR to reassign), and links documents to their onboarding.
+- An upload is the file itself as the request body, with the name and document type in the query string, rather than multipart: one simple path for the phone and for checklist attachments, read with a hard 10 MB cap.
+- Photos are redrawn (which drops Exif location data) and scaled to at most 2400 pixels on the longer side. A photo the JDK cannot read is refused with a request to take it again or send a PDF.
+- Documents are decided one by one; the Documents section's status is worked out from them. Only documents needed before joining block activation; those due within days of joining are listed with their date.
+- Required tasks block activation only when due before the joining date; tasks due on or after it do not. A task with an approver also waits for the approval.
+- The manager's "Joining soon" list is My tasks: a manager sees their joiners' tasks there, with the joiner's name and joining date.
+- Setup endpoints for document types and checklists are in place; their screens come with milestone 6.
+- Not yet: a joiner who has become an employee no longer sees My onboarding, so documents due after joining are uploaded by HR for now.
+

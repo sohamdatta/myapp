@@ -7,6 +7,7 @@ import Leave from './Leave.jsx'
 import MyAttendance from './MyAttendance.jsx'
 import MyLeave from './MyLeave.jsx'
 import MyOnboarding from './MyOnboarding.jsx'
+import MyTasks from './MyTasks.jsx'
 import People from './People.jsx'
 
 /** Checkboxes for roles. A role the signed-in user may not grant is shown but cannot be changed. */
@@ -416,6 +417,7 @@ export default function Organization({ me, page }) {
       {page === 'leave' && <Leave me={me} />}
       {page === 'people' && <People me={me} />}
       {page === 'my-onboarding' && <MyOnboarding me={me} />}
+      {page === 'my-tasks' && <MyTasks />}
       {page === 'users' && <UserManagement me={me} />}
       {page === 'audit' && <AuditTab />}
     </>
