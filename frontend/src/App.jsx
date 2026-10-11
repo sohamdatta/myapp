@@ -4,6 +4,7 @@ import Console from './pages/Console.jsx'
 import Organization from './pages/Organization.jsx'
 import { AcceptInvitation, Chooser, LoginForm } from './pages/SignIn.jsx'
 import { formatDate } from './hooks.js'
+import Bell from './Bell.jsx'
 import { firstPage, navFor } from './nav.js'
 
 function inviteTokenFromUrl() {
@@ -62,6 +63,9 @@ function Shell({ me, nav, page, onNavigate, onSwitch, onSignOut, onEndSupport, c
           <header className="topbar">
             <h1 className="page-title">{title}</h1>
             <div className="topbar-actions">
+              {me.kind === 'tenant' && me.membershipId && (
+                <Bell pages={nav.flatMap((section) => section.items.map((item) => item.id))} onNavigate={onNavigate} />
+              )}
               <span className="who">{me.email}</span>
               {me.kind !== 'support' && me.organizations.length + (me.console ? 1 : 0) > 1 && (
                 <button type="button" className="quiet plain" onClick={onSwitch}>

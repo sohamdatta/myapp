@@ -1423,3 +1423,128 @@ td input.cell-input {
   background: #fff;
   border: none;
 }
+
+/* ── the bell ──────────────────────────────────────────────────────── */
+
+.bell {
+  position: relative;
+}
+
+.bell-button {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+}
+
+.bell-count {
+  position: absolute;
+  top: 2px;
+  right: 0;
+  min-width: 18px;
+  padding: 0 5px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  line-height: 18px;
+  color: var(--on-accent);
+  text-align: center;
+  background: var(--error);
+  border-radius: 9px;
+}
+
+.bell-panel {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 40;
+  width: min(360px, calc(100vw - 32px));
+  max-height: 70vh;
+  overflow-y: auto;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
+}
+
+.bell-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.bell-empty {
+  padding: 14px;
+  margin: 0;
+}
+
+.bell-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.bell-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  padding: 10px 14px;
+  font: inherit;
+  color: var(--text);
+  text-align: left;
+  background: none;
+  border: none;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+}
+
+.bell-item:hover {
+  background: var(--row);
+}
+
+.bell-unread {
+  background: var(--accent-soft);
+}
+
+.bell-subject {
+  font-weight: 600;
+}
+
+.bell-body {
+  overflow-wrap: anywhere;
+}
+
+.letter-list {
+  margin-bottom: 8px;
+}
+
+.letter-preview {
+  max-height: 320px;
+  padding: 12px 14px;
+  overflow: auto;
+  font-family: inherit;
+  white-space: pre-wrap;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.letters .doc-row,
+.policies .doc-row {
+  margin-bottom: 10px;
+}
+
+@media (max-width: 760px) {
+  .bell-panel {
+    position: fixed;
+    top: auto;
+    right: 16px;
+    left: 16px;
+    width: auto;
+    margin-top: 6px;
+  }
+}

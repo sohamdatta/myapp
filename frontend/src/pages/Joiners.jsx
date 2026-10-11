@@ -3,9 +3,10 @@ import { attendance, invitationLink, joiners, org, people } from '../api.js'
 import { formatDate, formatDay, localToday, useAction, useLoad } from '../hooks.js'
 import { Badge, CopyLink, Empty, ErrorNote, StatusBadge, Tabs } from '../ui.jsx'
 import DocumentList from './DocumentList.jsx'
+import FileViewer from './FileViewer.jsx'
 import SectionForm from './SectionForm.jsx'
 import { Checklist } from './TaskList.jsx'
-import { SECTION_STATUS, pretty } from './onboardingText.js'
+import { SECTION_STATUS, letterState, pretty } from './onboardingText.js'
 
 /** HR's onboarding: joiners still to start, adding one, and one joiner's sections, checks and activation. */
 
@@ -534,6 +535,7 @@ export function JoinerPage({ id, onBack, initialInvitation }) {
           { id: 'sections', label: 'Sections' },
           j.sections.some((s) => s.section === 'documents') && { id: 'documents', label: 'Documents' },
           { id: 'checklist', label: 'Checklist' },
+          { id: 'letters', label: 'Letters and policies' },
           { id: 'history', label: 'History' },
         ].filter(Boolean)}
         current={view}
@@ -556,6 +558,7 @@ export function JoinerPage({ id, onBack, initialInvitation }) {
       )}
       {view === 'documents' && <JoinerDocuments id={id} onChanged={joiner.reload} />}
       {view === 'checklist' && <JoinerChecklist id={id} onChanged={joiner.reload} />}
+      {view === 'letters' && <JoinerLetters id={id} onChanged={joiner.reload} />}
       {view === 'history' && <History id={id} />}
     </>
   )
@@ -760,6 +763,217 @@ function JoinerChecklist({ id, onChanged }) {
         <Checklist tasks={list.data.tasks} hr={list.data.canManage} users={active} onChanged={changed} />
       )}
     </>
+  )
+}
+
+const LETTER_STATE = {
+  waiting: ['warn', 'Waiting for an answer'],
+  accepted: ['good', 'Accepted'],
+  declined: ['warn', 'Declined'],
+  expired: ['neutral', 'Expired'],
+  none: ['neutral', 'No answer needed'],
+}
+
+function JoinerLetters({ id, onChanged }) {
+  const data = useLoad(() => joiners.letters(id))
+  const policies = useLoad(() => joiners.policies(id))
+  const [templateId, setTemplateId] = useState('')
+  const [days, setDays] = useState('')
+  const [preview, setPreview] = useState(null)
+  const [viewing, setViewing] = useState(null)
+  const [uploading, setUploading] = useState(false)
+  const { busy, error, run } = useAction()
+  if (data.loading || policies.loading) return <p className="muted">Loading…</p>
+  if (data.error) return <ErrorNote>{data.error}</ErrorNote>
+  const d = data.data
+  const chosen = d.templates.find((t) => t.id === templateId)
+
+  async function view(letter) {
+    const blob = await run(() => joiners.documentFile(letter.documentId))
+    if (blob) setViewing({ name: `${letter.title}.pdf`, type: 'application/pdf', url: URL.createObjectURL(blob) })
+  }
+
+  async function issue() {
+    if (await run(() => joiners.issueLetter(id, templateId, chosen?.kind === 'offer' && days ? Number(days) : null))) {
+      setTemplateId('')
+      setPreview(null)
+      data.reload()
+      onChanged()
+    }
+  }
+
+  return (
+    <>
+      <section className="panel">
+        <div className="section-head">
+          <h3>Letters</h3>
+          {d.canIssue && !uploading && (
+            <button type="button" className="quiet plain" onClick={() => setUploading(true)}>
+              Upload a letter instead
+            </button>
+          )}
+        </div>
+        {d.letters.length === 0 ? (
+          <p className="hint">No letters issued yet.</p>
+        ) : (
+          <div className="letter-list">
+            {d.letters.map((l) => {
+              const [tone, label] = LETTER_STATE[letterState(l)]
+              return (
+                <div key={l.id} className="file-line letter-row" data-letter={l.title}>
+                  <span className="file-name">{l.title}</span>
+                  <span className="hint">
+                    {pretty(l.kind)} · issued {formatDate(l.issuedAt)}
+                    {l.expiresOn && !l.response && ` · answer by ${formatDay(l.expiresOn)}`}
+                    {l.respondedAt && ` · ${formatDate(l.respondedAt)}`}
+                  </span>
+                  <Badge tone={tone}>{label}</Badge>
+                  <button type="button" className="quiet plain" onClick={() => view(l)}>
+                    View
+                  </button>
+                </div>
+              )
+            })}
+          </div>
+        )}
+        {d.canIssue && (
+          <div className="verify-box">
+            <div className="grid">
+              <div>
+                <label htmlFor="letter-template">Issue a letter</label>
+                <select
+                  id="letter-template"
+                  value={templateId}
+                  onChange={(e) => {
+                    setTemplateId(e.target.value)
+                    setPreview(null)
+                  }}
+                >
+                  <option value="">Choose…</option>
+                  {d.templates.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              {chosen?.kind === 'offer' && (
+                <div>
+                  <label htmlFor="letter-days">Days to answer</label>
+                  <input id="letter-days" inputMode="numeric" placeholder={String(d.offerExpiryDays)} value={days} onChange={(e) => setDays(e.target.value)} />
+                </div>
+              )}
+            </div>
+            {chosen?.kind === 'offer' && (
+              <p className="hint">The joiner will see only this offer until they accept it; declining it ends their onboarding.</p>
+            )}
+            {preview && <pre className="letter-preview">{preview}</pre>}
+            <ErrorNote>{error}</ErrorNote>
+            <div className="form-actions">
+              <button type="button" className="outline" disabled={!templateId || busy} onClick={async () => {
+                const p = await run(() => joiners.previewLetter(id, templateId))
+                if (p) setPreview(p.text)
+              }}>
+                Preview
+              </button>
+              <button type="button" className="primary" disabled={!templateId || busy} onClick={issue}>
+                Issue letter
+              </button>
+            </div>
+          </div>
+        )}
+        {uploading && (
+          <UploadLetter
+            id={id}
+            onDone={() => {
+              setUploading(false)
+              data.reload()
+              onChanged()
+            }}
+            onCancel={() => setUploading(false)}
+          />
+        )}
+      </section>
+      <section className="panel">
+        <h3>Policies</h3>
+        {policies.error ? (
+          <ErrorNote>{policies.error}</ErrorNote>
+        ) : policies.data.length === 0 ? (
+          <p className="hint">No policies apply to this joiner.</p>
+        ) : (
+          policies.data.map((p) => (
+            <div key={p.id} className="file-line" data-policy={p.name}>
+              <span className="file-name">{p.name}</span>
+              <span className="hint">
+                version {p.version} · {p.due === 'before_activation' ? 'before joining' : `by ${formatDay(p.dueOn)}`}
+              </span>
+              {p.current ? (
+                <Badge tone="good">Acknowledged {formatDate(p.acknowledgedAt)}</Badge>
+              ) : (
+                <Badge tone="warn">{p.acknowledgedVersion ? `Acknowledged version ${p.acknowledgedVersion}` : 'Not acknowledged'}</Badge>
+              )}
+            </div>
+          ))
+        )}
+      </section>
+      {viewing && <FileViewer file={viewing} onClose={() => setViewing(null)} />}
+    </>
+  )
+}
+
+function UploadLetter({ id, onDone, onCancel }) {
+  const [form, setForm] = useState({ title: '', kind: 'other', response: 'accept' })
+  const [file, setFile] = useState(null)
+  const { busy, error, run } = useAction()
+  const set = (patch) => setForm((f) => ({ ...f, ...patch }))
+  return (
+    <form
+      className="verify-box"
+      onSubmit={async (e) => {
+        e.preventDefault()
+        if (file && (await run(() => joiners.uploadLetter(id, file, form)))) onDone()
+      }}
+    >
+      <div className="grid">
+        <div>
+          <label htmlFor="up-title">Title</label>
+          <input id="up-title" value={form.title} placeholder="Relocation letter" onChange={(e) => set({ title: e.target.value })} />
+        </div>
+        <div>
+          <label htmlFor="up-kind">Kind</label>
+          <select id="up-kind" value={form.kind} onChange={(e) => set({ kind: e.target.value })}>
+            {['offer', 'appointment', 'confirmation', 'other'].map((k) => (
+              <option key={k} value={k}>
+                {pretty(k)}
+              </option>
+            ))}
+          </select>
+        </div>
+        {form.kind !== 'offer' && (
+          <div>
+            <label htmlFor="up-response">The joiner</label>
+            <select id="up-response" value={form.response} onChange={(e) => set({ response: e.target.value })}>
+              <option value="accept">Accepts it</option>
+              <option value="accept_or_decline">Accepts or declines it</option>
+              <option value="none">Only reads it</option>
+            </select>
+          </div>
+        )}
+        <div>
+          <label htmlFor="up-file">The letter, as a PDF</label>
+          <input id="up-file" type="file" accept="application/pdf" onChange={(e) => setFile(e.target.files?.[0] || null)} />
+        </div>
+      </div>
+      <ErrorNote>{error}</ErrorNote>
+      <div className="form-actions">
+        <button type="submit" className="secondary" disabled={busy || !file}>
+          Issue letter
+        </button>
+        <button type="button" className="quiet" onClick={onCancel}>
+          Cancel
+        </button>
+      </div>
+    </form>
   )
 }
 

@@ -337,6 +337,12 @@ export const joiners = {
   rejectDocument: (id, documentId, note) => post(`/org/people/joiners/${id}/documents/${documentId}/reject`, { note }),
   documentFile: (documentId) => fetchFile(`/org/people/documents/${documentId}/content`),
   tasks: (id) => get(`/org/people/joiners/${id}/tasks`),
+  letters: (id) => get(`/org/people/joiners/${id}/letters`),
+  previewLetter: (id, templateId) => get(`/org/people/joiners/${id}/letters/preview${query({ template: templateId })}`),
+  issueLetter: (id, templateId, expiresInDays) => post(`/org/people/joiners/${id}/letters`, { templateId, expiresInDays }),
+  uploadLetter: (id, file, { title, kind, response }) =>
+    uploadFile(`/org/people/joiners/${id}/letters/upload${query({ title, kind, response })}`, file),
+  policies: (id) => get(`/org/people/joiners/${id}/policies`),
   addTask: (id, body) => post(`/org/people/joiners/${id}/tasks`, body),
 }
 
@@ -358,6 +364,15 @@ export const onboarding = {
   documents: () => get('/org/onboarding/me/documents'),
   upload: (typeId, file, onProgress) => uploadFile(`/org/onboarding/me/documents${query({ type: typeId, name: file.name })}`, file, onProgress),
   documentFile: (documentId) => fetchFile(`/org/onboarding/me/documents/${documentId}/content`),
+  letters: () => get('/org/onboarding/me/letters'),
+  answerLetter: (id, accept) => post(`/org/onboarding/me/letters/${id}/${accept ? 'accept' : 'decline'}`),
+  policies: () => get('/org/onboarding/me/policies'),
+  acknowledge: (id, version) => post(`/org/onboarding/me/policies/${id}/acknowledge`, { version }),
+}
+
+export const notifications = {
+  list: () => get('/org/notifications'),
+  read: (ids) => post('/org/notifications/read', { ids }),
 }
 
 // ── the platform console ────────────────────────────────────────────

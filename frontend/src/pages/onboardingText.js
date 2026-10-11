@@ -24,3 +24,10 @@ export const pretty = (value) => {
   const text = String(value)
   return OPTION_LABELS[text] || text.charAt(0).toUpperCase() + text.slice(1).replaceAll('_', ' ')
 }
+
+/** Where a letter stands: accepted, declined, expired, waiting, or needing no answer. */
+export function letterState(l) {
+  if (l.response) return l.response
+  if (l.expired) return 'expired'
+  return l.responseNeeded === 'none' ? 'none' : 'waiting'
+}

@@ -373,9 +373,33 @@ the link, which stays valid until at least a week after the joining date.
   role. HR can skip with a reason, reassign, or add a task. A task can need a
   file before it is done, or an approver.
 - **What blocks activation:** sections not verified, documents needed before
-  joining not verified, and required tasks due before the joining date that
-  are not done or skipped.
-- Policies and letters come with the next milestone.
+  joining not verified, required tasks due before the joining date that are
+  not done or skipped, letters waiting for an answer, and policies due before
+  joining not acknowledged.
+- **Letters.** HR issues a letter from the Organization's templates (an
+  offer and an appointment letter to start with), filled for the joiner with
+  placeholders like `{{person.legal_name}}` and written as a PDF, or uploads
+  a PDF of their own. A letter can ask the joiner to accept it, or to accept
+  or decline it. An unknown placeholder is refused when a template is saved.
+  The PDF writer is built in and uses the standard PDF fonts, so characters
+  outside Latin-1 (Devanagari, say) show as "?" and the rupee sign as "Rs.";
+  upload a PDF when a letter needs them.
+- **The offer stage.** An offer letter puts the joiner in the offered state:
+  they see only the offer until they answer it. Accepting moves them on;
+  declining ends the onboarding and the login. An offer expires after the
+  days HR chose (7 by default).
+- **Policies** to read and acknowledge, with rules for whom they apply to,
+  due before joining or within days. New wording is a new version, which is
+  acknowledged again.
+- **Employee codes** from series such as `GLX-{YY}-` with 4 digits, using
+  `{YYYY} {YY} {MM} {LOC} {DEPT} {TYPE}`, resetting yearly if wanted. A joiner
+  with no code typed gets the next one from the first matching series when
+  they are activated; two activations at once never share a code.
+- **The bell.** People are told, in the app, when a task is given to them, a
+  section or document is returned, an offer arrives, a joiner is ready, a
+  joiner becomes active, and when a task is coming due or overdue or a
+  joiner has a week left with sections to do (each at most once a day). The
+  wording is the Organization's own; email will use the same wording later.
 
 ## Roles
 
@@ -510,6 +534,11 @@ Onboarding configuration, under `/api/org/people/setup`:
 | GET | `/preview?flow=&employmentType=&department=&workLocation=&designation=` | The form a joiner would see |
 | GET, POST | `/document-types`; PUT `/document-types/{id}` | Documents asked for: before joining, within days, or optional, with rules |
 | GET, POST | `/checklists`; PUT `/checklists/{id}` | Checklist templates with rules and their tasks (owner, trigger, offset, file needed, approver) |
+| GET, POST | `/letters`; PUT `/letters/{id}` | Letter templates: kind, wording with placeholders, the answer asked for, rules |
+| GET, POST | `/policies`; PUT `/policies/{id}` | Policies: wording, due point, rules |
+| GET, POST | `/number-series`; PUT `/number-series/{id}` | Employee code series |
+| POST | `/number-series/{id}/example` | The next code a series would give, without taking it |
+| GET | `/messages`; PUT `/messages/{id}` | The wording of each in-app message, or switching one off |
 
 Joiners (HR), under `/api/org/people/joiners`:
 
@@ -524,6 +553,10 @@ Joiners (HR), under `/api/org/people/joiners`:
 | GET, POST | `/{id}/documents` | The documents asked for and uploaded; HR uploads one (the file as the body, `?type=&name=`) |
 | POST | `/{id}/documents/{docId}/verify`, `/reject` | Decides a document; a rejection needs `{note}` |
 | GET, POST | `/{id}/tasks` | The checklist; HR adds a one-off task |
+| GET, POST | `/{id}/letters` | Letters issued and the templates that apply; issue one with `{templateId, expiresInDays}` |
+| GET | `/{id}/letters/preview?template=` | A template filled for this joiner, as text |
+| POST | `/{id}/letters/upload` | Issue a PDF (the body) with `?title=&kind=&response=` |
+| GET | `/{id}/policies` | The policies that apply, and what was acknowledged |
 
 Files and tasks, under `/api/org/people`: GET `/documents/{id}/content` (the
 file, for `employee.sensitive`, audited); GET `/tasks/mine`; POST
@@ -534,7 +567,10 @@ The joiner's own onboarding, under `/api/org/onboarding/me`: GET for the
 welcome and sections, POST `/notice` with `{noticeId}`, GET and PUT
 `/sections/{section}`, POST `/sections/{section}/submit`, GET and POST
 `/documents` (upload: the file as the body, `?type=&name=`), GET
-`/documents/{id}/content`.
+`/documents/{id}/content`, GET `/letters`, POST `/letters/{id}/accept` or
+`/decline`, GET `/policies`, POST `/policies/{id}/acknowledge` `{version}`.
+The bell: GET `/api/org/notifications`, POST `/api/org/notifications/read`
+`{ids}` (no ids marks all read).
 
 The Organization a request acts on always comes from the server-side session.
 It is never read from the URL, a header or the request body.
@@ -547,7 +583,7 @@ on GitHub and emails whoever pushed it.
 
 | Job | What it checks | Where the tests are |
 |---|---|---|
-| Backend build and tests | Maven builds the backend; 163 JUnit tests run against a real PostgreSQL 16: business rules, permissions, and isolation between Organizations | `backend/src/test/` |
+| Backend build and tests | Maven builds the backend; 174 JUnit tests run against a real PostgreSQL 16: business rules, permissions, and isolation between Organizations | `backend/src/test/` |
 | Frontend lint and build | `oxlint` finds no problems and the production build succeeds | `frontend/` |
 | Browser tests | The app is started from the backend jar, and Playwright clicks through it as the Super Admin, an Org Admin and an HR Admin | `e2e/tests/` |
 
@@ -560,6 +596,8 @@ The browser tests tell one story in order, each step depending on the one before
 5. `05-people`: departments, adding employees with identifiers, last four on screen and the full PAN only with a reason, a dated job change, a duplicate PAN refused, an exit.
 6. `06-phone`: the main screens at 390 px wide, with no sideways scrolling.
 7. `07-onboarding`: HR adds and invites a joiner; the joiner accepts on a phone, reads the notice, fills every section and uploads documents; HR returns a section and rejects a document, the joiner fixes both; HR works the checklist (a task reassigned and done from My tasks, one skipped); HR verifies all, and the joiner becomes an employee; a joiner is withdrawn.
+
+8. `08-offer-and-codes`: a code series and two policies set up; an offer letter previewed and issued; the joiner reads it on a phone, accepts it and acknowledges the policies; the bell takes HR to their tasks; the joiner becomes an employee with the next code from the series.
 
 Every browser test also fails on any error in the browser console.
 

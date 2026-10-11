@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { formatDate, formatDay } from '../hooks.js'
 import { Badge, ErrorNote } from '../ui.jsx'
+import FileViewer from './FileViewer.jsx'
 
 /**
  * The documents a joiner is asked for, each with what has been uploaded, for
@@ -65,7 +66,7 @@ export default function DocumentList({ data, canUpload, canVerify, canOpen, onUp
           ))}
         </div>
       )}
-      {viewing && <Viewer file={viewing} onClose={() => setViewing(null)} />}
+      {viewing && <FileViewer file={viewing} onClose={() => setViewing(null)} />}
     </div>
   )
 }
@@ -201,36 +202,6 @@ function FileLine({ doc, canOpen, onOpen }) {
           View
         </button>
       )}
-    </div>
-  )
-}
-
-function Viewer({ file, onClose }) {
-  useEffect(() => {
-    const onKey = (e) => e.key === 'Escape' && onClose()
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [onClose])
-  useEffect(() => () => URL.revokeObjectURL(file.url), [file])
-
-  return (
-    <div className="viewer" role="dialog" aria-modal="true" aria-label={file.name}>
-      <div className="viewer-bar">
-        <span className="file-name">{file.name}</span>
-        <a className="outline file-button" href={file.url} download={file.name}>
-          Download
-        </a>
-        <button type="button" className="secondary" onClick={onClose}>
-          Close
-        </button>
-      </div>
-      <div className="viewer-body">
-        {file.type === 'application/pdf' ? (
-          <iframe title={file.name} src={file.url} />
-        ) : (
-          <img src={file.url} alt={file.name} />
-        )}
-      </div>
     </div>
   )
 }

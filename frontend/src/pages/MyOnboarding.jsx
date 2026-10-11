@@ -3,9 +3,10 @@ import { onboarding, people, tasks } from '../api.js'
 import { formatDay, useAction, useLoad } from '../hooks.js'
 import { Badge, ErrorNote, StatusBadge } from '../ui.jsx'
 import DocumentList from './DocumentList.jsx'
+import FileViewer from './FileViewer.jsx'
 import SectionForm from './SectionForm.jsx'
 import { TaskRow } from './TaskList.jsx'
-import { SECTION_STATUS } from './onboardingText.js'
+import { SECTION_STATUS, letterState } from './onboardingText.js'
 
 /**
  * The joiner's own onboarding: a welcome, the privacy notice to accept, and
@@ -24,6 +25,34 @@ export default function MyOnboarding() {
   const sent = yours.filter((s) => ['submitted', 'verified'].includes(s.status)).length
   const checked = m.sections.filter((s) => s.status === 'verified').length
   const firstName = m.legalName?.split(' ')[0]
+
+  if (m.status === 'offered') {
+    return (
+      <>
+        <section className="panel welcome">
+          <h2>
+            {m.organization} has an offer for you, {firstName}
+          </h2>
+          <p className="muted">
+            {[m.designation, m.managerName && `reporting to ${m.managerName}`, m.workLocation, `from ${formatDay(m.joiningDate)}`]
+              .filter(Boolean)
+              .join(' · ')}
+          </p>
+          <p>Read the offer letter, then accept or decline it. Once you accept, you can fill in your details.</p>
+        </section>
+        <MyLetters offerOnly onAnswered={mine.reload} />
+      </>
+    )
+  }
+
+  if (m.status === 'offer_declined') {
+    return (
+      <section className="panel">
+        <h2>You declined the offer</h2>
+        <p>Thank you for letting us know. If this was a mistake, write to HR.</p>
+      </section>
+    )
+  }
 
   if (m.status === 'active') {
     return (
@@ -85,6 +114,8 @@ export default function MyOnboarding() {
             </span>
           </div>
           <YourTasks />
+          <MyLetters onAnswered={mine.reload} />
+          <MyPolicies onChanged={mine.reload} />
           <div className="section-list">
             {m.sections.map((s) => (
               <MySection
@@ -213,3 +244,142 @@ function YourTasks() {
     </section>
   )
 }
+
+/** Letters for the joiner: to read, and to accept (or decline, when the letter allows). */
+function MyLetters({ offerOnly, onAnswered }) {
+  const list = useLoad(onboarding.letters)
+  const [viewing, setViewing] = useState(null)
+  const [declining, setDeclining] = useState(null)
+  const { busy, error, run } = useAction()
+  if (list.loading || list.error) return list.error ? <ErrorNote>{list.error}</ErrorNote> : null
+  const letters = list.data.filter((l) => !offerOnly || (l.kind === 'offer' && !l.response))
+  if (letters.length === 0) return null
+
+  async function view(l) {
+    const blob = await run(() => onboarding.documentFile(l.documentId))
+    if (blob) setViewing({ name: `${l.title}.pdf`, type: 'application/pdf', url: URL.createObjectURL(blob) })
+  }
+
+  async function answer(l, accept) {
+    const done = await run(() => onboarding.answerLetter(l.id, accept))
+    if (done) {
+      setDeclining(null)
+      list.reload()
+      onAnswered()
+    }
+  }
+
+  return (
+    <section className="panel letters">
+      <h3>{offerOnly ? 'Your offer' : 'Letters'}</h3>
+      {letters.map((l) => {
+        const state = letterState(l)
+        return (
+          <div key={l.id} className="doc-row" data-letter={l.title}>
+            <div className="doc-head">
+              <div>
+                <strong>{l.title}</strong>
+                <div className="hint">
+                  {l.expiresOn && state === 'waiting' && `Please answer by ${formatDay(l.expiresOn)}`}
+                  {state === 'expired' && 'This letter has expired; HR will send a new one if needed'}
+                  {state === 'accepted' && 'You accepted this letter'}
+                  {state === 'declined' && 'You declined this letter'}
+                </div>
+              </div>
+              {state === 'waiting' ? <Badge tone="warn">Waiting for you</Badge> : <StatusBadge status={state === 'none' ? 'issued' : state} />}
+            </div>
+            <div className="form-actions">
+              <button type="button" className="outline" onClick={() => view(l)}>
+                Read the letter
+              </button>
+              {state === 'waiting' && declining !== l.id && (
+                <>
+                  <button type="button" className="primary" disabled={busy} onClick={() => answer(l, true)}>
+                    Accept
+                  </button>
+                  {l.responseNeeded === 'accept_or_decline' && (
+                    <button type="button" className="quiet danger" onClick={() => setDeclining(l.id)}>
+                      Decline
+                    </button>
+                  )}
+                </>
+              )}
+            </div>
+            {declining === l.id && (
+              <div className="verify-box">
+                <p>
+                  {l.kind === 'offer'
+                    ? 'Declining the offer ends your joining here, and this login stops working.'
+                    : 'HR will see that you declined this letter.'}
+                </p>
+                <div className="form-actions">
+                  <button type="button" className="secondary danger" disabled={busy} onClick={() => answer(l, false)}>
+                    Yes, decline
+                  </button>
+                  <button type="button" className="quiet" onClick={() => setDeclining(null)}>
+                    Keep it
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        )
+      })}
+      <ErrorNote>{error}</ErrorNote>
+      {viewing && <FileViewer file={viewing} onClose={() => setViewing(null)} />}
+    </section>
+  )
+}
+
+/** Policies to read and acknowledge, each by the version read. */
+function MyPolicies({ onChanged }) {
+  const list = useLoad(onboarding.policies)
+  const [open, setOpen] = useState(null)
+  const { busy, error, run } = useAction()
+  if (list.loading || list.error || list.data.length === 0) return list.error ? <ErrorNote>{list.error}</ErrorNote> : null
+  return (
+    <section className="panel policies">
+      <h3>Policies</h3>
+      {list.data.map((p) => (
+        <div key={p.id} className="doc-row" data-policy={p.name}>
+          <div className="doc-head">
+            <div>
+              <strong>{p.name}</strong>
+              <div className="hint">{p.due === 'before_activation' ? 'Before you join' : `By ${formatDay(p.dueOn)}`}</div>
+            </div>
+            {p.current ? <Badge tone="good">Acknowledged</Badge> : <Badge tone="warn">To read</Badge>}
+          </div>
+          {open === p.id ? (
+            <>
+              <div className="notice-body prewrap">{p.body}</div>
+              {!p.current && (
+                <div className="form-actions">
+                  <button
+                    type="button"
+                    className="primary"
+                    disabled={busy}
+                    onClick={async () => {
+                      if (await run(() => onboarding.acknowledge(p.id, p.version))) {
+                        setOpen(null)
+                        list.reload()
+                        onChanged()
+                      }
+                    }}
+                  >
+                    I have read and accept this policy
+                  </button>
+                </div>
+              )}
+            </>
+          ) : (
+            <button type="button" className="outline" onClick={() => setOpen(p.id)}>
+              Read
+            </button>
+          )}
+        </div>
+      ))}
+      <ErrorNote>{error}</ErrorNote>
+    </section>
+  )
+}
+

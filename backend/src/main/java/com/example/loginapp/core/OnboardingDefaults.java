@@ -60,6 +60,26 @@ public final class OnboardingDefaults {
             For {{organization.name}}
             {{today}}""";
 
+    static final String OFFER = """
+            {{organization.name}}
+            
+            Offer of employment
+            
+            {{today}}
+            
+            Dear {{person.legal_name}},
+            
+            We are pleased to offer you the position of {{job.designation}}{{job.department_with_in}}, reporting to {{job.manager_name}}, at {{job.work_location}}, from {{employment.joining_date}}.
+            
+            Type of employment: {{employment.type}}
+            Probation: {{employment.probation_text}}
+            
+            Your salary and its components are set out in the schedule to this letter.
+            
+            Please accept or decline this offer by {{offer.expires_on}}. Once you accept, we will ask you for the details we need to set up your employment.
+            
+            For {{organization.name}}""";
+
     /** Writes the defaults if this Organization has none yet. Returns true when it did. */
     public static boolean ensure(Connection c, UUID tenantId) throws SQLException {
         if (Sql.one(c, "insert into app.onboarding_settings (tenant_id) values (?) on conflict do nothing returning tenant_id",
@@ -134,6 +154,8 @@ public final class OnboardingDefaults {
 
         Sql.update(c, "insert into app.letter_template (tenant_id, kind, name, body, response) "
                 + "values (?, 'appointment', 'Appointment letter', ?, 'accept')", tenantId, APPOINTMENT);
+        Sql.update(c, "insert into app.letter_template (tenant_id, kind, name, body, response) "
+                + "values (?, 'offer', 'Offer letter', ?, 'accept_or_decline')", tenantId, OFFER);
         return true;
     }
 

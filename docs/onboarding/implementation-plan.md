@@ -270,3 +270,14 @@ Five decisions shape milestone 1 and should be settled before it starts; the rel
 - Setup endpoints for document types and checklists are in place; their screens come with milestone 6.
 - Not yet: a joiner who has become an employee no longer sees My onboarding, so documents due after joining are uploaded by HR for now.
 
+**Milestone 5, letters, policies, employee codes, messages: done** (11 Oct 2026). Differences:
+
+- No PDF library: letters are written by a small built-in PDF writer (A4, Helvetica, wrapped text, page numbers), so the build gains no dependency and works offline. The standard PDF fonts cover Latin-1 only, so other scripts show as "?" and the rupee sign is written "Rs."; an Organization that needs more uploads its letter as a PDF. A library (openhtmltopdf, with an embedded font) can replace the writer later behind the same call.
+- `V9__letters_policies_codes_messages.sql` adds the offer expiry setting (7 days), when an offer was accepted (the trigger for tasks waiting on it), reminder and ready markers, a title, kind and onboarding for each issued letter, and a function for the Organization's name. Every Organization gets a default offer letter.
+- Letters and policies are panels on the joiner's page and their own tab for HR, not sections: they appear only when there is something to answer, and they block activation directly.
+- An offer can be issued at any point before activation; the joiner then sees only the offer. A declined offer ends the onboarding as `offer_declined`, the login, and its sessions.
+- Policies are written as text; a policy as an uploaded PDF waits for a document store not tied to one person.
+- Employee codes are drawn at activation only when HR typed none; the Employment section no longer requires a code when a series will give one.
+- Reminders: a task is reminded when it comes within its reminder days (one by default), then every few days once overdue (three by default); a joiner with sections to do is reminded daily in the last week. All at most once a day, worked out when the person opens the bell.
+- The setup screens for letters, policies, messages and series come with milestone 6; the API is in place.
+

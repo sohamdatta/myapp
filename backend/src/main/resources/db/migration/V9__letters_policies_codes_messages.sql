@@ -28,3 +28,26 @@ language sql stable security definer set search_path = app, platform, pg_temp as
 $$;
 alter function app.organization_name() owner to app_definer;
 grant execute on function app.organization_name() to app_tenant;
+
+-- Organizations that already have their defaults get the default offer letter too.
+insert into app.letter_template (tenant_id, kind, name, body, response)
+select s.tenant_id, 'offer', 'Offer letter', $offer${{organization.name}}
+
+Offer of employment
+
+{{today}}
+
+Dear {{person.legal_name}},
+
+We are pleased to offer you the position of {{job.designation}}{{job.department_with_in}}, reporting to {{job.manager_name}}, at {{job.work_location}}, from {{employment.joining_date}}.
+
+Type of employment: {{employment.type}}
+Probation: {{employment.probation_text}}
+
+Your salary and its components are set out in the schedule to this letter.
+
+Please accept or decline this offer by {{offer.expires_on}}. Once you accept, we will ask you for the details we need to set up your employment.
+
+For {{organization.name}}$offer$, 'accept_or_decline'
+from app.onboarding_settings s
+where not exists (select 1 from app.letter_template t where t.tenant_id = s.tenant_id and t.kind = 'offer');

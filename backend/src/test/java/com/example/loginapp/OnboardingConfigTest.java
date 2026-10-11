@@ -134,7 +134,7 @@ class OnboardingConfigTest {
         assertEquals(5L, count(org.id, "app.document_type"));
         assertEquals(8L, count(org.id, "app.checklist_template_task"));
         assertEquals(10L, count(org.id, "app.message_template"));
-        assertEquals(1L, count(org.id, "app.letter_template"));
+        assertEquals(2L, count(org.id, "app.letter_template"));   // appointment and offer
         assertEquals(1L, count(org.id, "app.privacy_notice"));
     }
 
