@@ -294,9 +294,17 @@ onboarding will use.
 ## Onboarding configuration
 
 Every Organization configures onboarding its own way; nothing in the code
-names a customer. The configuration is in place now and can be changed
-through the API under `/api/org/people/setup`. The screens to change it come
-with milestone 6; the joiner flow below already uses it.
+names a customer. HR changes it under **People → Setup**, one tab per area:
+flows (in the order they are tried, with their rules in words, welcome,
+sections and who checks them), the form (each field hidden, optional or
+required, relabelled, for the Organization or one flow; fields of their own;
+a preview of the form on a phone), documents, checklists, letters, policies,
+messages, employee codes and settings. Letters and messages list the
+placeholders they can use and show a sample; employee codes show the next
+code as it is typed. Each tab says who changed it last. Everyone with
+`employee.read` across the Organization can look; changing needs
+`onboarding.configure`. The same configuration is available through the API
+under `/api/org/people/setup`.
 
 - **Defaults.** The first time anything reads an Organization's configuration,
   it gets working defaults: settings (invite by hand, links valid 14 days,
@@ -400,6 +408,32 @@ the link, which stays valid until at least a week after the joining date.
   joiner becomes active, and when a task is coming due or overdue or a
   joiner has a week left with sections to do (each at most once a day). The
   wording is the Organization's own; email will use the same wording later.
+
+## Importing existing employees
+
+A new customer brings in their staff under **People → Import**: a CSV saved
+from Excel or Google Sheets, one person per row.
+
+- **Columns.** The first look guesses which column holds what from the
+  column names (Emp Code, DOJ, Reports To and the like, and the
+  Organization's own fields). The mapping is remembered by column name, so
+  the next file from the same spreadsheet maps itself.
+- **Checking.** Every row is checked before anything is written, with the
+  reason a row cannot be used: a date that is not a date, an unknown gender
+  or employment type, a missing designation, a bad PAN or IFSC, a PAN,
+  employee code, personal email, or name and joining date already recorded or
+  repeated in the file, a manager who is not found, reporting lines that go
+  round in a circle. Dates may be written 2023-05-01, 01/05/2023 or
+  1-May-2023.
+- **Importing** writes every usable row at once: departments named in the
+  file are added, managers are found among existing staff (by employee code
+  or personal email) or further up the file, the Organization's own fields
+  are set, and PAN, UAN and bank accounts are encrypted. The same file
+  imported twice adds nothing.
+- **Invitations.** Imported employees with a personal email are listed to
+  invite in bulk; each gets a link to copy (no email yet), and when they
+  accept, their login is linked to their record and takes their employee
+  code. Their joining date is left as it was, so leave is not accrued again.
 
 ## Roles
 
@@ -558,6 +592,11 @@ Joiners (HR), under `/api/org/people/joiners`:
 | POST | `/{id}/letters/upload` | Issue a PDF (the body) with `?title=&kind=&response=` |
 | GET | `/{id}/policies` | The policies that apply, and what was acknowledged |
 
+The import, under `/api/org/people/import`: POST `/read` `{content}` (columns,
+first rows and a mapping), POST `/preview` and `/run` `{content, mapping}`,
+GET `/uninvited`, POST `/invite` `{employmentIds}`. And GET
+`/api/org/people/setup/changes`, the last change to each area of setup.
+
 Files and tasks, under `/api/org/people`: GET `/documents/{id}/content` (the
 file, for `employee.sensitive`, audited); GET `/tasks/mine`; POST
 `/tasks/{id}/done`, `/skip` `{reason}`, `/reassign` `{membershipId}`,
@@ -583,7 +622,7 @@ on GitHub and emails whoever pushed it.
 
 | Job | What it checks | Where the tests are |
 |---|---|---|
-| Backend build and tests | Maven builds the backend; 174 JUnit tests run against a real PostgreSQL 16: business rules, permissions, and isolation between Organizations | `backend/src/test/` |
+| Backend build and tests | Maven builds the backend; 176 JUnit tests run against a real PostgreSQL 16: business rules, permissions, and isolation between Organizations | `backend/src/test/` |
 | Frontend lint and build | `oxlint` finds no problems and the production build succeeds | `frontend/` |
 | Browser tests | The app is started from the backend jar, and Playwright clicks through it as the Super Admin, an Org Admin and an HR Admin | `e2e/tests/` |
 
@@ -598,6 +637,7 @@ The browser tests tell one story in order, each step depending on the one before
 7. `07-onboarding`: HR adds and invites a joiner; the joiner accepts on a phone, reads the notice, fills every section and uploads documents; HR returns a section and rejects a document, the joiner fixes both; HR works the checklist (a task reassigned and done from My tasks, one skipped); HR verifies all, and the joiner becomes an employee; a joiner is withdrawn.
 
 8. `08-offer-and-codes`: a code series and two policies set up; an offer letter previewed and issued; the joiner reads it on a phone, accepts it and acknowledges the policies; the bell takes HR to their tasks; the joiner becomes an employee with the next code from the series.
+9. `09-setup-and-import`: a flow for interns set up on screen, a field made required for it and a field of HR's own, previewed on a phone and seen on a new intern; a code series and a message reworded; existing staff imported from a CSV with every refused row explained, the same file refused the second time; an imported employee invited and signed in.
 
 Every browser test also fails on any error in the browser console.
 

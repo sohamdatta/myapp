@@ -346,6 +346,45 @@ export const joiners = {
   addTask: (id, body) => post(`/org/people/joiners/${id}/tasks`, body),
 }
 
+// ── onboarding setup and the employee import ────────────────────────
+
+const S = '/org/people/setup'
+export const setup = {
+  changes: () => get(`${S}/changes`),
+  settings: () => get(`${S}/settings`),
+  saveSettings: (body) => put(`${S}/settings`, body),
+  publishNotice: (body) => post(`${S}/notice`, { body }),
+  flows: () => get(`${S}/flows`),
+  saveFlow: (id, body) => (id ? put(`${S}/flows/${id}`, body) : post(`${S}/flows`, body)),
+  orderFlows: (ids) => put(`${S}/flows/order`, { ids }),
+  fields: (flowId) => get(flowId ? `${S}/flows/${flowId}/fields` : `${S}/fields`),
+  saveFields: (flowId, fields) => put(flowId ? `${S}/flows/${flowId}/fields` : `${S}/fields`, { fields }),
+  customFields: () => get(`${S}/custom-fields`),
+  saveCustomField: (id, body) => (id ? put(`${S}/custom-fields/${id}`, body) : post(`${S}/custom-fields`, body)),
+  preview: (params) => get(`${S}/preview${query(params || {})}`),
+  documentTypes: () => get(`${S}/document-types`),
+  saveDocumentType: (id, body) => (id ? put(`${S}/document-types/${id}`, body) : post(`${S}/document-types`, body)),
+  checklists: () => get(`${S}/checklists`),
+  saveChecklist: (id, body) => (id ? put(`${S}/checklists/${id}`, body) : post(`${S}/checklists`, body)),
+  letters: () => get(`${S}/letters`),
+  saveLetter: (id, body) => (id ? put(`${S}/letters/${id}`, body) : post(`${S}/letters`, body)),
+  policies: () => get(`${S}/policies`),
+  savePolicy: (id, body) => (id ? put(`${S}/policies/${id}`, body) : post(`${S}/policies`, body)),
+  messages: () => get(`${S}/messages`),
+  saveMessage: (id, body) => put(`${S}/messages/${id}`, body),
+  series: () => get(`${S}/number-series`),
+  saveSeries: (id, body) => (id ? put(`${S}/number-series/${id}`, body) : post(`${S}/number-series`, body)),
+  seriesExample: (id, body) => post(`${S}/number-series/${id}/example`, body || {}),
+}
+
+export const importing = {
+  read: (content) => post('/org/people/import/read', { content }),
+  preview: (content, mapping) => post('/org/people/import/preview', { content, mapping }),
+  run: (content, mapping) => post('/org/people/import/run', { content, mapping }),
+  uninvited: () => get('/org/people/import/uninvited'),
+  invite: (employmentIds) => post('/org/people/import/invite', { employmentIds }),
+}
+
 export const tasks = {
   mine: () => get('/org/people/tasks/mine'),
   done: (id) => post(`/org/people/tasks/${id}/done`),

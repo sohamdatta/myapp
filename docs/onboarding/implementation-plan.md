@@ -281,3 +281,12 @@ Five decisions shape milestone 1 and should be settled before it starts; the rel
 - Reminders: a task is reminded when it comes within its reminder days (one by default), then every few days once overdue (three by default); a joiner with sections to do is reminded daily in the last week. All at most once a day, worked out when the person opens the bell.
 - The setup screens for letters, policies, messages and series come with milestone 6; the API is in place.
 
+**Milestone 6, setup screens and bulk import: done** (11 Oct 2026). Onboarding is complete. Differences:
+
+- Flows and their sections are reordered with up and down buttons rather than by dragging: the same result, and it works with a keyboard and on a phone.
+- The import reads the file in the browser and sends it as text (up to 5 MB), in three calls: read (columns and a guessed or remembered mapping), preview (every row checked, nothing written) and run (every usable row in one transaction). The mapping is remembered by column name in `V10__employee_import.sql`, which also marks imported employments.
+- Duplicates are found by PAN, employee code, personal email, and name with joining date, so a file without identifiers still cannot be imported twice. A manager is looked up among existing staff first, then further up the file; managers are written before the people who report to them, since job records are never changed afterwards.
+- Departments named in the file are added unless HR unticks that.
+- Bulk invitations give imported employees the Employee role; on acceptance their login is linked to the record and takes the employee code, and their joining date is left alone so leave is not accrued twice.
+- The offer expiry is now a setting on the Settings tab.
+

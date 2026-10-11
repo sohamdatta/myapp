@@ -35,7 +35,7 @@ const emptyAddress = { line1: '', line2: '', city: '', stateCode: '', pin: '', c
  * @param lookups  { departments, managers, locations, shifts, states } for the Employment section and addresses
  * @param onSave   values => Promise; onSubmit: () => Promise (save first if needed)
  */
-export default function SectionForm({ view, canEdit, editableField, lookups = {}, onSave, onSubmit, submitLabel = 'Send for checking' }) {
+export default function SectionForm({ view, canEdit, editableField, lookups = {}, onSave, onSubmit, submitLabel = 'Send for checking', actions = true }) {
   const [draft, setDraft] = useState({})
   const [again, setAgain] = useState('')
   const [busy, setBusy] = useState(false)
@@ -115,7 +115,7 @@ export default function SectionForm({ view, canEdit, editableField, lookups = {}
           Saved.
         </p>
       )}
-      {canEdit && (
+      {canEdit && actions && (
         <div className="form-actions">
           <button type="button" className="primary" disabled={busy} onClick={() => act(true)}>
             {busy ? 'Saving…' : submitLabel}

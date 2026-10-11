@@ -31,3 +31,73 @@ export function letterState(l) {
   if (l.expired) return 'expired'
   return l.responseNeeded === 'none' ? 'none' : 'waiting'
 }
+
+/** Placeholders a letter can use, as the server allows them. */
+export const LETTER_PLACEHOLDERS = {
+  'organization.name': "The Organization's name",
+  'person.legal_name': 'The full name as on PAN',
+  'person.first_name': 'The first name, or the preferred name',
+  'job.designation': 'Designation',
+  'job.department': 'Department',
+  'job.department_with_in': '", in the X department", or nothing',
+  'job.manager_name': "The reporting manager's name",
+  'job.work_location': 'Work location',
+  'employment.joining_date': 'Joining date, as 12 October 2026',
+  'employment.type': 'Type of employment, in words',
+  'employment.probation_text': 'Probation in words, or "none"',
+  'employment.contract_end': 'When a fixed-term contract ends',
+  'employment.code': 'Employee code, once known',
+  'statutory.uan_or_pending': 'UAN, or "to be generated"',
+  'offer.expires_on': 'The date an offer must be answered by',
+  today: "Today's date",
+}
+
+/** Placeholders a message can use: a letter's, and the event's own details. */
+export const MESSAGE_PLACEHOLDERS = {
+  ...LETTER_PLACEHOLDERS,
+  link: 'The link the message is about',
+  note: "HR's note",
+  'section.title': "The section's title",
+  'task.title': 'The task',
+  'task.due_date': "The task's due date",
+  'joiner.name': "The joiner's name",
+}
+
+/** Sample values, to show how a message reads. */
+export const SAMPLE_VALUES = {
+  'organization.name': 'Globex Ltd',
+  'person.legal_name': 'Asha Rao',
+  'person.first_name': 'Asha',
+  'joiner.name': 'Asha Rao',
+  'job.designation': 'Analyst',
+  'job.department': 'Engineering',
+  'job.department_with_in': ', in the Engineering department',
+  'job.manager_name': 'Ravi Sen',
+  'job.work_location': 'Bengaluru office',
+  'employment.joining_date': '12 October 2026',
+  'employment.type': 'Permanent',
+  'employment.probation_text': 'until 12 April 2027',
+  'employment.contract_end': '',
+  'employment.code': 'GLX-26-0001',
+  'statutory.uan_or_pending': 'to be generated',
+  'offer.expires_on': '19 October 2026',
+  today: '5 October 2026',
+  link: 'https://…',
+  note: 'Please upload a clearer photo',
+  'section.title': 'Bank account',
+  'task.title': 'Prepare laptop and accounts',
+  'task.due_date': '10 October 2026',
+}
+
+/** Fills placeholders with values, as the server does: unknown or empty ones become nothing. */
+export function fill(text, values) {
+  return (text || '').replace(/\{\{\s*([A-Za-z0-9_.]+)\s*\}\}/g, (_, key) => values[key] ?? '')
+}
+
+/** Employee code tokens as the server expands them, for a live example while typing. */
+export function expandCode(pattern, joining = new Date()) {
+  const yyyy = String(joining.getFullYear())
+  const tokens = { YYYY: yyyy, YY: yyyy.slice(2), MM: String(joining.getMonth() + 1).padStart(2, '0'), LOC: 'OFF', DEPT: 'ENG', TYPE: 'P' }
+  return (pattern || '').replace(/\{([A-Z]+)\}/g, (m, t) => tokens[t] ?? m)
+}
+

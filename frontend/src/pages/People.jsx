@@ -3,6 +3,8 @@ import { people } from '../api.js'
 import { formatDay, localToday, useAction, useLoad } from '../hooks.js'
 import { Badge, Empty, ErrorNote, StatusBadge, Tabs } from '../ui.jsx'
 import { AddJoiner, JoinerList, JoinerPage } from './Joiners.jsx'
+import PeopleImport from './PeopleImport.jsx'
+import PeopleSetup from './setup/PeopleSetup.jsx'
 
 const TYPES = {
   permanent: 'Permanent',
@@ -1104,6 +1106,8 @@ export default function People({ me }) {
     { id: 'employees', label: everyone ? 'Employees' : 'My team' },
     everyone && { id: 'joiners', label: 'Joiners' },
     everyone && { id: 'departments', label: 'Departments' },
+    everyone && canWrite && { id: 'import', label: 'Import' },
+    everyone && { id: 'setup', label: 'Setup' },
   ].filter(Boolean)
   const [view, setView] = useState('employees')
   const [open, setOpen] = useState(null) // an employment id, or 'new'
@@ -1127,6 +1131,8 @@ export default function People({ me }) {
       {view === 'employees' && <EmployeeList canWrite={canWrite} onOpen={setOpen} onAdd={() => setOpen('new')} />}
       {view === 'joiners' && <JoinerList canWrite={canWrite} onOpen={(id) => setJoiner({ id })} onAdd={() => setJoiner('new')} />}
       {view === 'departments' && <Departments canWrite={canWrite} />}
+      {view === 'import' && <PeopleImport />}
+      {view === 'setup' && <PeopleSetup me={me} />}
     </>
   )
 }

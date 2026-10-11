@@ -340,29 +340,28 @@ public final class EmployeeImport {
             r.notes.add(v.apply("manager") == null ? "" : "manager:" + v.apply("manager"));
             out.add(r);
         }
-        // Managers: someone already employed (by code or personal email), or a usable row of this file.
+        // Managers: someone already employed (by code or personal email) comes first, since a row of
+        // the file with the same code is a duplicate; otherwise a usable row of this file.
         for (Row r : out) {
             String ref = r.notes.remove(r.notes.size() - 1);
             if (ref.isEmpty()) {
                 continue;
             }
             String manager = ref.substring("manager:".length());
-            Row inFile = out.stream().filter(o -> o != r && (manager.equalsIgnoreCase(o.code == null ? "" : o.code)
-                    || manager.equalsIgnoreCase(o.email == null ? "" : o.email))).findFirst().orElse(null);
-            if (inFile != null) {
-                if (!inFile.problems.isEmpty()) {
-                    r.problems.add("The manager " + manager + " is on row " + inFile.line + ", which cannot be imported");
-                } else {
-                    r.managerRow = inFile;
-                }
-                continue;
-            }
             Map<String, Object> e = Sql.one(c, "select e.id from app.employment e join app.person p on p.id = e.person_id "
                     + "where e.status = 'active' and (lower(e.employee_code) = lower(?) or p.personal_email = ?::citext) limit 1", manager, manager);
-            if (e == null) {
-                r.problems.add("No employee with the code or email " + manager + " to report to");
-            } else {
+            if (e != null) {
                 r.managerEmployment = AuthService.uuid(e.get("id"));
+                continue;
+            }
+            Row inFile = out.stream().filter(o -> o != r && (manager.equalsIgnoreCase(o.code == null ? "" : o.code)
+                    || manager.equalsIgnoreCase(o.email == null ? "" : o.email))).findFirst().orElse(null);
+            if (inFile == null) {
+                r.problems.add("No employee with the code or email " + manager + " to report to");
+            } else if (!inFile.problems.isEmpty()) {
+                r.problems.add("The manager " + manager + " is on row " + inFile.line + ", which cannot be imported");
+            } else {
+                r.managerRow = inFile;
             }
         }
         // Reporting lines within the file must not go round in a circle.

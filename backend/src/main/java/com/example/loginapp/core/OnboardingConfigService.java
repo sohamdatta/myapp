@@ -27,7 +27,16 @@ public final class OnboardingConfigService {
 
     public record SettingsInput(Boolean offerStage, String inviteWhen, Integer inviteDaysBefore, Integer linkValidDays,
                                 String activation, Boolean allowActivationWithoutPan, List<String> rehireMatch,
-                                Integer withdrawnRetentionDays, Integer exitedRetentionYears) {}
+                                Integer withdrawnRetentionDays, Integer exitedRetentionYears, Integer offerExpiryDays) {
+
+        /** Without the offer expiry, for callers written before it existed. */
+        public SettingsInput(Boolean offerStage, String inviteWhen, Integer inviteDaysBefore, Integer linkValidDays, String activation,
+                             Boolean allowActivationWithoutPan, List<String> rehireMatch, Integer withdrawnRetentionDays,
+                             Integer exitedRetentionYears) {
+            this(offerStage, inviteWhen, inviteDaysBefore, linkValidDays, activation, allowActivationWithoutPan, rehireMatch,
+                    withdrawnRetentionDays, exitedRetentionYears, null);
+        }
+    }
 
     public record SectionInput(String section, Boolean enabled, Integer position, String title, String intro, Boolean verify) {}
 
@@ -89,8 +98,8 @@ public final class OnboardingConfigService {
                 throw bad("Inviting when the offer is accepted needs the offer stage switched on");
             }
             Integer daysBefore = inviteWhen.equals("days_before_joining")
-                    ? range(in.inviteDaysBefore() != null ? in.inviteDaysBefore() : number(before.get("inviteDaysBefore")), 1, 90,
-                            "Days before joining")
+                    ? range(in.inviteDaysBefore() != null ? in.inviteDaysBefore()
+                            : before.get("inviteDaysBefore") == null ? null : number(before.get("inviteDaysBefore")), 1, 90, "Days before joining")
                     : null;
             int linkDays = range(in.linkValidDays() != null ? in.linkValidDays() : number(before.get("linkValidDays")), 1, 120,
                     "Link validity in days");
@@ -110,11 +119,14 @@ public final class OnboardingConfigService {
                     : number(before.get("withdrawnRetentionDays")), 30, 3650, "Days to keep a withdrawn joiner's data");
             int exitedYears = range(in.exitedRetentionYears() != null ? in.exitedRetentionYears()
                     : number(before.get("exitedRetentionYears")), 5, 30, "Years to keep a former employee's records");
+            int offerDays = range(in.offerExpiryDays() != null ? in.offerExpiryDays() : number(before.get("offerExpiryDays")), 1, 60,
+                    "Days to answer an offer");
             Sql.update(c, "update app.onboarding_settings set offer_stage = ?, invite_when = ?, invite_days_before = ?, "
                             + "link_valid_days = ?, activation = ?, allow_activation_without_pan = ?, rehire_match = ?, "
-                            + "withdrawn_retention_days = ?, exited_retention_years = ?, updated_by = ?, updated_at = now()",
+                            + "withdrawn_retention_days = ?, exited_retention_years = ?, offer_expiry_days = ?, updated_by = ?, updated_at = now()",
                     offer, inviteWhen, daysBefore == null ? null : daysBefore.shortValue(), (short) linkDays, activation, withoutPan,
-                    rehire.stream().distinct().toArray(String[]::new), (short) withdrawnDays, (short) exitedYears, ctx.membershipId());
+                    rehire.stream().distinct().toArray(String[]::new), (short) withdrawnDays, (short) exitedYears, (short) offerDays,
+                    ctx.membershipId());
             Map<String, Object> after = settingsRow(c);
             audit(c, ctx, "onboarding.settings_changed", "onboarding_settings", null, before, after);
             return after;
@@ -737,7 +749,7 @@ public final class OnboardingConfigService {
 
     private static Map<String, Object> settingsRow(Connection c) throws SQLException {
         return Sql.one(c, "select offer_stage, invite_when, invite_days_before, link_valid_days, activation, "
-                + "allow_activation_without_pan, rehire_match, withdrawn_retention_days, exited_retention_years, updated_at "
+                + "allow_activation_without_pan, rehire_match, withdrawn_retention_days, exited_retention_years, offer_expiry_days, updated_at "
                 + "from app.onboarding_settings");
     }
 
