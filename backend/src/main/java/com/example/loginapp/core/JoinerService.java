@@ -677,7 +677,10 @@ public final class JoinerService {
         if (!l.open() || l.row().get("readyNotifiedAt") != null || !blockers(c, l).isEmpty()) {
             return;
         }
-        Sql.update(c, "update app.onboarding set ready_notified_at = now() where id = ?", onboardingId);
+        // Claimed before telling, so two requests finishing the last step together send one note.
+        if (Sql.update(c, "update app.onboarding set ready_notified_at = now() where id = ? and ready_notified_at is null", onboardingId) == 0) {
+            return;
+        }
         Notifications.aboutJoiner(c, l, AuthService.uuid(l.row().get("createdBy")), "joiner_ready", null, "people");
     }
 

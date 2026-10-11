@@ -357,7 +357,7 @@ class LetterPolicyCodeTest {
 
     @Test
     @SuppressWarnings("unchecked")
-    void remindersComeOnceADayAndStopWhenTheTaskIsDone() {
+    void remindersComeOnceADayAndStopWhenTheTaskIsDone() throws Exception {
         Setup s = setup();
         SessionCtx it = join(s.org, "it", List.of("employee", "it_admin"));
         LocalDate joining = TODAY.plusDays(10);
@@ -368,6 +368,21 @@ class LetterPolicyCodeTest {
 
         LocalDate due = joining.minusDays(2);   // laptop and official email
         Notifications dayBefore = new Notifications(db, fixed(due.minusDays(1)));
+        // Several requests at once (a page load) still give one reminder per task.
+        ExecutorService pool = Executors.newFixedThreadPool(8);
+        CountDownLatch go = new CountDownLatch(1);
+        List<Future<Map<String, Object>>> reads = new ArrayList<>();
+        for (int i = 0; i < 8; i++) {
+            reads.add(pool.submit(() -> {
+                go.await();
+                return dayBefore.list(it);
+            }));
+        }
+        go.countDown();
+        for (Future<Map<String, Object>> r : reads) {
+            r.get();
+        }
+        pool.shutdown();
         assertEquals(2L, count(dayBefore.list(it), "task_due"));
         assertEquals(2L, count(dayBefore.list(it), "task_due"));   // not twice on the same day
         Notifications dayAfter = new Notifications(db, fixed(due.plusDays(1)));

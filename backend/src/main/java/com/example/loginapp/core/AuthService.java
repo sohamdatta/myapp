@@ -224,10 +224,14 @@ public final class AuthService {
     }
 
     public void logout(SessionCtx ctx) {
-        db.inAuth(c -> {
-            revoke(c, ctx.sessionId());
-            return null;
-        });
+        int ended = db.inAuth(c -> revoke(c, ctx.sessionId()));
+        if (ended > 0 && ctx.isSupport()) {
+            // The Organization saw support come in; it sees them leave too.
+            db.inTenant(ctx.tenantId(), c -> Sql.update(c,
+                    "insert into app.audit_event (tenant_id, actor_kind, actor_label, impersonation_grant_id, action, target_type, detail) "
+                            + "values (?, 'support', ?, ?, 'support.session_ended', 'support', '{}'::jsonb)",
+                    ctx.tenantId(), ctx.email(), ctx.grantId()));
+        }
     }
 
     // ── shared with the other services ──────────────────────────────────
@@ -239,8 +243,9 @@ public final class AuthService {
                 identityId, kind, tenantId, membershipId, grantId, Secrets.sha256(token), lifetime);
     }
 
-    static void revoke(Connection c, UUID sessionId) throws SQLException {
-        Sql.update(c, "update auth.session set revoked_at = now() where id = ? and revoked_at is null", sessionId);
+    /** Ends a session; returns 1 when it was still open, 0 when it had already ended. */
+    static int revoke(Connection c, UUID sessionId) throws SQLException {
+        return Sql.update(c, "update auth.session set revoked_at = now() where id = ? and revoked_at is null", sessionId);
     }
 
     static UUID uuid(Object value) {

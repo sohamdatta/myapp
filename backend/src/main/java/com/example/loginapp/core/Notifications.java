@@ -135,12 +135,13 @@ public final class Notifications {
             } else if (!due.minusDays(((Number) t.get("before")).intValue()).isAfter(today) && last == null) {
                 event = "task_due";
             }
-            if (event != null) {
+            // Claimed before reminding: of several requests reading the same task at once, one sends it.
+            if (event != null && Sql.update(c, "update app.onboarding_task set last_reminded_at = (?::date)::timestamp at time zone 'Asia/Kolkata' "
+                    + "where id = ?::uuid and (last_reminded_at is null or (last_reminded_at at time zone 'Asia/Kolkata')::date < ?::date)",
+                    today, t.get("id"), today) > 0) {
                 JoinerService.Loaded l = JoinerService.load(c, AuthService.uuid(t.get("onboardingId")));
                 aboutJoiner(c, l, membershipId, event, Map.of("task.title", (String) t.get("title"),
                         "task.due_date", TemplateValues.DATE.format(due)), "my-tasks");
-                Sql.update(c, "update app.onboarding_task set last_reminded_at = (?::date)::timestamp at time zone 'Asia/Kolkata' "
-                        + "where id = ?::uuid", today, t.get("id"));
             }
         }
         Map<String, Object> o = Sql.one(c, "select o.id, e.joining_date, (o.reminded_at at time zone 'Asia/Kolkata')::date as last "
@@ -151,11 +152,11 @@ public final class Notifications {
         if (o != null) {
             LocalDate joining = LocalDate.parse((String) o.get("joiningDate"));
             LocalDate last = o.get("last") == null ? null : LocalDate.parse((String) o.get("last"));
-            if (!joining.minusDays(7).isAfter(today) && (last == null || last.isBefore(today))) {
+            if (!joining.minusDays(7).isAfter(today) && (last == null || last.isBefore(today))
+                    && Sql.update(c, "update app.onboarding set reminded_at = (?::date)::timestamp at time zone 'Asia/Kolkata' where id = ?::uuid "
+                    + "and (reminded_at is null or (reminded_at at time zone 'Asia/Kolkata')::date < ?::date)", today, o.get("id"), today) > 0) {
                 JoinerService.Loaded l = JoinerService.load(c, AuthService.uuid(o.get("id")));
                 aboutJoiner(c, l, membershipId, "reminder_joiner", null, "my-onboarding");
-                Sql.update(c, "update app.onboarding set reminded_at = (?::date)::timestamp at time zone 'Asia/Kolkata' where id = ?::uuid",
-                        today, o.get("id"));
             }
         }
     }

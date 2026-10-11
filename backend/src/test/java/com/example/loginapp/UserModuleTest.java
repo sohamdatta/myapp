@@ -344,8 +344,15 @@ class UserModuleTest {
         assertEquals("support", event.get("actorKind"));
         assertTrue(((String) event.get("detail")).contains("Ticket 42"));
 
+        // Ending the session is logged too, once.
+        auth.logout(support);
+        auth.logout(support);
+        assertEquals(1L, users.auditLog(org.admin).stream().filter(e -> e.get("action").equals("support.session_ended")).count());
+        assertError(401, "auth.session_revoked", () -> auth.resolve(token));
+
+        String again = platform.startSupportSession(superAdmin, grantId);
         platform.decideGrant(superAdmin, grantId, "revoke");
-        assertError(401, "support.expired", () -> auth.resolve(token));
+        assertError(401, "support.expired", () -> auth.resolve(again));
         assertError(409, "support.expired", () -> platform.startSupportSession(superAdmin, grantId));
     }
 
