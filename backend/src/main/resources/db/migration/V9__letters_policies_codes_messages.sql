@@ -26,7 +26,9 @@ create function app.organization_name() returns text
 language sql stable security definer set search_path = app, platform, pg_temp as $$
   select t.name from platform.tenant t where t.id = app.current_tenant()
 $$;
+grant create on schema app to app_definer;   -- needed to own a function there; see V1
 alter function app.organization_name() owner to app_definer;
+revoke create on schema app from app_definer;
 grant execute on function app.organization_name() to app_tenant;
 
 -- Organizations that already have their defaults get the default offer letter too.

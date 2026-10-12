@@ -26,6 +26,24 @@ public final class Migrator {
             "V9__letters_policies_codes_messages.sql",
             "V10__employee_import.sql");
 
+    /**
+     * Lets app_definer see every row of every table under row-level security, for databases where it
+     * could not be created with BYPASSRLS (see V1). Run after each migration, so a table added later
+     * is covered the moment it exists; a table that already has the policy is skipped.
+     */
+    static final String DEFINER_POLICIES = """
+            do $$
+            declare t record;
+            begin
+              for t in select n.nspname, c.relname from pg_class c join pg_namespace n on n.oid = c.relnamespace
+                        where c.relrowsecurity and n.nspname in ('app', 'auth', 'platform')
+                          and not exists (select 1 from pg_policy p where p.polrelid = c.oid and p.polname = 'definer_access')
+              loop
+                execute format('create policy definer_access on %I.%I to app_definer using (true) with check (true)',
+                               t.nspname, t.relname);
+              end loop;
+            end $$""";
+
     private Migrator() {}
 
     public static void migrate(Db db, String rolePassword) {
@@ -43,11 +61,18 @@ public final class Migrator {
                 }
                 try (Statement st = c.createStatement()) {
                     st.execute(read(file));
+                    st.execute(DEFINER_POLICIES);
                 }
                 Sql.update(c, "insert into public.schema_migration (version) values (?)", file);
                 return null;
             });
         }
+        db.inOwner(c -> {
+            try (Statement st = c.createStatement()) {
+                st.execute(DEFINER_POLICIES);   // databases migrated before the policies existed
+            }
+            return null;
+        });
         db.inOwner(c -> {
             String literal = "'" + rolePassword.replace("'", "''") + "'";
             try (Statement st = c.createStatement()) {

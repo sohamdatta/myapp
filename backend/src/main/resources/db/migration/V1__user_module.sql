@@ -14,8 +14,22 @@ begin
   if not exists (select 1 from pg_roles where rolname = 'app_tenant') then
     create role app_tenant login nobypassrls;     -- everything inside an Organization
   end if;
+  -- Owns the few SECURITY DEFINER functions, which must see every Organization's rows.
+  -- A managed database (AWS RDS and Lightsail, Cloud SQL) gives no superuser, and only a
+  -- superuser or a BYPASSRLS role may create a BYPASSRLS role. Without that right the role
+  -- is created plainly, and the migrator gives it a policy on every protected table instead
+  -- (Migrator.DEFINER_POLICIES): the same reach, granted table by table.
   if not exists (select 1 from pg_roles where rolname = 'app_definer') then
-    create role app_definer nologin bypassrls;    -- owns the few SECURITY DEFINER functions
+    if (select rolsuper or rolbypassrls from pg_roles where rolname = current_user) then
+      create role app_definer nologin bypassrls;
+    else
+      create role app_definer nologin;
+    end if;
+  end if;
+  -- Handing functions to app_definer needs membership of it, which a superuser has anyway.
+  if not (select rolsuper from pg_roles where rolname = current_user)
+     and not pg_has_role(current_user, 'app_definer', 'SET') then
+    execute format('grant app_definer to %I', current_user);
   end if;
 end $$;
 
@@ -450,6 +464,9 @@ language sql stable as $$
 $$;
 
 -- grants
+-- Giving app_definer a function needs it to hold CREATE on the schema (a superuser skips
+-- that check, a managed database's owner does not); it keeps the right only meanwhile.
+grant create on schema app, auth, platform to app_definer;
 alter function app.bump_scope_version()               owner to app_definer;
 alter function app.assert_not_operator_and_approver() owner to app_definer;
 alter function app.assert_tenant_has_owner()          owner to app_definer;
@@ -459,6 +476,7 @@ alter function platform.invite_first_owner(uuid, citext, bytea) owner to app_def
 alter function auth.invitation_preview(bytea)        owner to app_definer;
 alter function platform.tenant_stats(uuid)            owner to app_definer;
 alter function app.member_directory()                 owner to app_definer;
+revoke create on schema app, auth, platform from app_definer;
 
 grant usage on schema app, auth, platform to app_definer;
 grant select, insert, update, delete on all tables in schema app to app_definer;

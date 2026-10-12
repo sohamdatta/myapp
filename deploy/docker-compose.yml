@@ -1,0 +1,46 @@
+# The whole app on one server: the backend and the Caddy web server. The database is
+# separate (a managed PostgreSQL 16), reached with the settings in .env.
+#
+#   cp deploy/.env.example deploy/.env      # then fill it in
+#   docker compose -f deploy/docker-compose.yml up -d --build
+services:
+  app:
+    build:
+      context: ..
+      dockerfile: deploy/backend.Dockerfile
+    env_file: .env
+    restart: unless-stopped
+    healthcheck:
+      # Signed out, the "who am I" call answers 401: the app and its database are up.
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8080 && printf 'GET /api/auth/me HTTP/1.0\\r\\n\\r\\n' >&3 && head -1 <&3 | grep -q ' 401 '"]
+      interval: 15s
+      timeout: 5s
+      retries: 20
+      start_period: 60s
+    logging:
+      driver: json-file
+      options: { max-size: "20m", max-file: "5" }
+
+  web:
+    build:
+      context: ..
+      dockerfile: deploy/web.Dockerfile
+    environment:
+      DOMAIN: ${DOMAIN:?Set DOMAIN in deploy/.env}
+    ports:
+      - "80:80"
+      - "443:443"
+    depends_on:
+      app:
+        condition: service_healthy
+    volumes:
+      - caddy_data:/data      # the HTTPS certificates; keep this volume
+      - caddy_config:/config
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options: { max-size: "20m", max-file: "5" }
+
+volumes:
+  caddy_data:
+  caddy_config:

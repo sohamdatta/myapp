@@ -84,6 +84,22 @@ class UserModuleTest {
         superAdmin = auth.resolve(auth.enterConsole(auth.resolve(auth.login("root@platform.test", PASSWORD))));
     }
 
+    // ── database roles ──────────────────────────────────────────────────
+
+    @Test
+    void theDefinerReachesEveryProtectedTableWithOrWithoutBypassRls() {
+        // On a managed database app_definer cannot be BYPASSRLS; a policy on every table under
+        // row-level security gives it the same reach. A new table without one would break the
+        // functions that cross Organizations, there and only there.
+        long missing = db.inOwner(c -> (Long) Sql.one(c, "select count(*) as n from pg_class c "
+                + "join pg_namespace n on n.oid = c.relnamespace where c.relrowsecurity and n.nspname in ('app','auth','platform') "
+                + "and not exists (select 1 from pg_policy p where p.polrelid = c.oid and p.polname = 'definer_access')").get("n"));
+        assertEquals(0L, missing);
+        long tenantRoles = db.inOwner(c -> (Long) Sql.one(c, "select count(*) as n from pg_roles "
+                + "where rolname in ('app_platform','app_auth','app_tenant') and (rolbypassrls or rolsuper)").get("n"));
+        assertEquals(0L, tenantRoles);
+    }
+
     // ── sign-in ─────────────────────────────────────────────────────────
 
     @Test

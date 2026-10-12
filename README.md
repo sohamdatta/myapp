@@ -124,6 +124,17 @@ docker run -d --name hrms-db -p 5432:5432 \
 ./start.sh
 ```
 
+## Deploying
+
+To run it on a server, see [Deploying on AWS Lightsail](docs/deploy/aws-lightsail.md):
+one server running the app behind Caddy (which handles HTTPS), and a managed
+PostgreSQL 16, in the Mumbai region. The files are in [`deploy/`](deploy).
+
+The database login the app is given needs to create roles and databases, but not be a
+superuser, which managed databases never give. Where it cannot create a role that
+bypasses row-level security, the app's function owner (`app_definer`) gets an equivalent
+policy on every protected table instead.
+
 ## Configuration
 
 Set these environment variables for anything beyond local development.
@@ -622,9 +633,10 @@ on GitHub and emails whoever pushed it.
 
 | Job | What it checks | Where the tests are |
 |---|---|---|
-| Backend build and tests | Maven builds the backend; 177 JUnit tests run against a real PostgreSQL 16: business rules, permissions, and isolation between Organizations | `backend/src/test/` |
+| Backend build and tests | Maven builds the backend; 178 JUnit tests run against a real PostgreSQL 16: business rules, permissions, and isolation between Organizations | `backend/src/test/` |
 | Frontend lint and build | `oxlint` finds no problems and the production build succeeds | `frontend/` |
 | Browser tests | The app is started from the backend jar, and Playwright clicks through it as the Super Admin, an Org Admin and an HR Admin | `e2e/tests/` |
+| Deployment images | The two images in `deploy/` are built and started as on a server, behind Caddy, against a PostgreSQL whose admin login is not a superuser; the API, the frontend and a sign-in answer through it | `deploy/`, `.github/workflows/ci.yml` |
 
 The browser tests tell one story in order, each step depending on the one before:
 

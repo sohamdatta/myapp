@@ -10,3 +10,6 @@ frontend/dist/
 .vscode/
 *.iml
 .DS_Store
+
+# Deployment secrets
+deploy/.env
