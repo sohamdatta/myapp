@@ -293,10 +293,9 @@ manager), identifiers and bank account.
   number is checked (12 digits, Verhoeff check digit) and discarded. A PAN
   must be a person's (fourth letter P) and is unique within an Organization;
   it can be recorded as pending with a reason.
-- **Leaving.** "Record exit" sets the last working day. The day after it, the
-  person's roles are replaced by Ex-employee, so they can still sign in to see
-  their own records and nothing else. The record is kept. The only Org Admin
-  cannot be exited.
+- **Leaving.** "Record exit" starts an exit with its last working day; see
+  "Exits" below. The day after it, the person's roles are replaced by
+  Ex-employee. The record is kept. The only Org Admin cannot be exited.
 
 The schema is `backend/src/main/resources/db/migration/V5__employee_record.sql`.
 It also adds the `employee.sensitive` permission and the Joiner role that
@@ -445,6 +444,63 @@ from Excel or Google Sheets, one person per row.
   invite in bulk; each gets a link to copy (no email yet), and when they
   accept, their login is linked to their record and takes their employee
   code. Their joining date is left as it was, so leave is not accrued again.
+
+## Exits
+
+Under People → Exits for HR and managers, and My exit for each employee.
+The design, as built, is `docs/exit/design.md`; the schema is
+`V11__employee_exit.sql`.
+
+- **Resignation.** The employee resigns in My exit, with a reason and the
+  last day they would like; their notice comes from Setup → Exits (by
+  employment type, the probation notice while on probation). Their manager
+  recommends a last day, then HR accepts it (the manager's step can be turned
+  off). Notice not served is waived, set against earned leave, recorded as
+  owed by the employee, or (for terminations) paid in lieu; it is never
+  deducted from wages. Before acceptance the employee withdraws in one click;
+  after it, HR decides. The employee keeps working, and applying for leave,
+  until the last day; Setup decides which leave types are allowed then.
+- **Other exits.** HR starts a termination, end of contract, retirement,
+  death or absconding. The app proposes an end of contract 30 days ahead and
+  a retirement 60 days ahead (the last day of the month the retirement age is
+  reached); HR confirms or cancels. On death the employment ends at once, the
+  nominees are shown, and gratuity is due whatever the service. Absconding
+  opens once someone has been away without word for the days set, and is
+  confirmed only after the show-cause notice and then the final notice have
+  each had their days to reply.
+- **Clearance.** Acceptance starts the exit checklist (Setup → Checklists,
+  "People leaving"): handover, equipment, accounts, ID card, dues, the exit
+  interview, the PF date of exit. Tasks fall to the manager, IT, Finance or
+  HR, due from the acceptance or the last day, and show in My tasks. A task
+  can be done with an amount owed by or to the employee.
+- **The full and final settlement.** HR has the app work out the lines:
+  salary days to the last day less unpaid leave, leave to encash, notice pay
+  or the notice owed, gratuity (five years' service, one for fixed term, any
+  on death; part years over six months count), claims and recoveries from
+  clearance, and income tax. Each line has its legal due date: wages within
+  two working days of the last day, gratuity within thirty. HR types the
+  amounts (payroll will fill them later); a second person approves, which
+  sends the employee a PDF statement; each line is then marked paid with its
+  date and bank reference, and a paid line never changes. HR is reminded the
+  day before a line falls due.
+- **Letters.** The acceptance letter goes out when a resignation is accepted.
+  HR issues termination, retirement, end-of-contract, show-cause, final
+  notice, experience and relieving letters from the exit; the relieving letter
+  waits for the last day and the required clearance. Their wording is in
+  Setup → Letters, under "Leaving".
+- **The exit interview.** HR sends the questions (Setup → Exits); the
+  employee answers or declines in My exit. Answers are encrypted and only HR
+  reads them; the manager sees only whether it happened. HR can write notes
+  from one held in person.
+- **Afterwards.** The day after the last day, the employment ends and the
+  reports move to whoever HR named. A former employee signs in to My exit
+  only, for their letters and settlement, for 12 months by default (Setup →
+  Exits; none on death), and is told two weeks before that ends. HR closes the
+  exit once clearance and the settlement are done, saying whether the person
+  could be hired again; the rehire check shows it if they apply again. After
+  the retention period (Setup → Onboarding), a former employee's personal data
+  is removed, keeping only what other records need, unless an exit is under
+  legal hold.
 
 ## Roles
 
@@ -608,6 +664,23 @@ first rows and a mapping), POST `/preview` and `/run` `{content, mapping}`,
 GET `/uninvited`, POST `/invite` `{employmentIds}`. And GET
 `/api/org/people/setup/changes`, the last change to each area of setup.
 
+Exits, under `/api/org`: GET and POST `/me/exit` (resign `{reasonCategory,
+note, requestedLastDay}`), POST `/me/exit/withdraw` `{note}`, POST
+`/me/exit/interview` `{answers}` and `/me/exit/interview/decline`. For HR and
+managers, under `/api/org/people/exits`: GET (`?status=open|closed|all`) and
+POST (start `{employmentId, kind, reasonCategory, note, lastWorkingDay,
+shortfallAction, newManagerId}`); GET `/{id}`; POST `/{id}/recommend`,
+`/accept`, `/withdrawal` `{approve, note}`, `/cancel` `{note}`, `/close`
+`{rehire, rehireNote}`, `/tasks`; PUT `/{id}/legal-hold` `{hold, note}`; GET
+`/{id}/settlement`, POST `/{id}/settlement/prepare`, `/settlement/lines`,
+`/settlement/approve`, `/settlement/lines/{lineId}/paid` `{paidOn,
+reference}`, PUT and DELETE `/settlement/lines/{lineId}`; GET
+`/{id}/letters/preview?template=`, POST `/{id}/letters` `{templateId}`; GET
+and POST `/{id}/interview`, PUT `/{id}/interview/notes` `{notes}`. Clearance
+tasks: GET `/api/org/people/exit-tasks/mine`, POST
+`/api/org/people/exit-tasks/{id}/done` `{amount, direction, note}`, `/skip`,
+`/reassign`. Setup: GET and PUT `/api/org/people/setup/exit`.
+
 Files and tasks, under `/api/org/people`: GET `/documents/{id}/content` (the
 file, for `employee.sensitive`, audited); GET `/tasks/mine`; POST
 `/tasks/{id}/done`, `/skip` `{reason}`, `/reassign` `{membershipId}`,
@@ -633,7 +706,7 @@ on GitHub and emails whoever pushed it.
 
 | Job | What it checks | Where the tests are |
 |---|---|---|
-| Backend build and tests | Maven builds the backend; 178 JUnit tests run against a real PostgreSQL 16: business rules, permissions, and isolation between Organizations | `backend/src/test/` |
+| Backend build and tests | Maven builds the backend; 190 JUnit tests run against a real PostgreSQL 16: business rules, permissions, and isolation between Organizations | `backend/src/test/` |
 | Frontend lint and build | `oxlint` finds no problems and the production build succeeds | `frontend/` |
 | Browser tests | The app is started from the backend jar, and Playwright clicks through it as the Super Admin, an Org Admin and an HR Admin | `e2e/tests/` |
 | Deployment images | The two images in `deploy/` are built and started as on a server, behind Caddy, against a PostgreSQL whose admin login is not a superuser; the API, the frontend and a sign-in answer through it | `deploy/`, `.github/workflows/ci.yml` |
@@ -650,6 +723,7 @@ The browser tests tell one story in order, each step depending on the one before
 
 8. `08-offer-and-codes`: a code series and two policies set up; an offer letter previewed and issued; the joiner reads it on a phone, accepts it and acknowledges the policies; the bell takes HR to their tasks; the joiner becomes an employee with the next code from the series.
 9. `09-setup-and-import`: a flow for interns set up on screen, a field made required for it and a field of HR's own, previewed on a phone and seen on a new intern; a code series and a message reworded; existing staff imported from a CSV with every refused row explained, the same file refused the second time; an imported employee invited and signed in.
+10. `10-exit`: an employee resigns on a phone; the manager recommends a day and HR accepts it with the shortfall set against leave; clearance tasks go to their owners and the leaver records a claim; a withdrawal is asked for and refused; HR starts a termination and sets notice periods; the settlement is worked out, approved by a second person, paid and downloaded by the employee; letters wait for their moment, and the exit interview is answered and read only by HR; an absconding case waits for its show-cause notice; an exit is put under legal hold.
 
 Every browser test also fails on any error in the browser console.
 
