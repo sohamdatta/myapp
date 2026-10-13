@@ -429,7 +429,7 @@ public final class ExitSettlement {
                 + "values (?, ?::uuid, ?, ?, 'settlement', 'Full and final settlement', 'none', ?)", ctx.tenantId(), x.get("personId"), document,
                 ctx.membershipId(), caseId);
         UUID employee = AuthService.uuid(x.get("membershipId"));
-        if (employee != null) {
+        if (employee != null && !"death".equals(x.get("kind"))) {
             v.put("letter.title", "full and final settlement statement");
             Notifications.send(c, ctx.tenantId(), employee, "exit_letter_issued", v, "my-exit");
         }

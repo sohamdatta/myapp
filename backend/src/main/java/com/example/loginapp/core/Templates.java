@@ -52,6 +52,7 @@ public final class Templates {
         x.put("exit.notice_days", "The notice owed, in days");
         x.put("exit.notice_end", "When the notice would end");
         x.put("exit.response_by", "The date a reply is due by (show-cause and final notice)");
+        x.put("exit.absent_since", "The first day of absence without leave");
         x.put("employment.tenure", "Length of service, as 3 years 2 months");
         x.put("employment.designations", "Every designation held, with dates");
         EXIT_LETTER = java.util.Collections.unmodifiableMap(x);

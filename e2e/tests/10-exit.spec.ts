@@ -229,4 +229,23 @@ test.describe.serial('exit', () => {
     await expect(hr.getByTestId('exit-interview')).toContainText('More time for learning');
     await expect(hr.getByTestId('exit-interview')).toContainText('4 of 5');
   });
+
+  test('absence without leave waits for the show-cause notice before it can be confirmed', async () => {
+    await hr.reload();
+    await nav(hr, 'Exits');
+    await hr.getByRole('button', { name: 'Start an exit' }).click();
+    const rahul = await hr.locator('#se-employee option', { hasText: 'Rahul Bose' }).getAttribute('value');
+    await hr.selectOption('#se-employee', rahul!);
+    await hr.selectOption('#se-kind', 'absconding');
+    await expect(hr.locator('label[for="se-day"]')).toHaveText('Last day at work');
+    await hr.fill('#se-day', isoDay(-10));
+    await hr.getByRole('button', { name: 'Start the exit' }).click();
+    await expect(hr.getByRole('heading', { name: /Rahul Bose/ })).toContainText('Absent without leave');
+    await expect(hr.getByTestId('absconding')).toContainText('Send the show-cause notice first');
+    const notice = hr.getByTestId('exit-letters').locator('[data-template="Show-cause notice"]');
+    await notice.getByRole('button', { name: 'Issue' }).click();
+    await expect(hr.getByTestId('exit-letters').locator('li[data-letter="Show-cause notice"]')).toBeVisible();
+    await expect(hr.getByTestId('absconding')).toContainText('The show-cause notice can be answered until');
+    await shot(hr, '95-absconding', true);
+  });
 });

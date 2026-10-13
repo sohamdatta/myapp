@@ -239,6 +239,23 @@ function ExitPage({ id, onBack }) {
             )}
           </dl>
         </section>
+        {x.absconding && <AbscondingSteps steps={x.absconding} />}
+        {x.nominees && (
+          <section className="panel" data-testid="nominees">
+            <h3>Nominees</h3>
+            {x.nominees.length === 0 ? (
+              <p className="hint">No nominees were recorded. The settlement goes to the legal heirs; ask for proof of succession.</p>
+            ) : (
+              <ul className="blockers">
+                {x.nominees.map((n) => (
+                  <li key={`${n.scheme}-${n.name}`}>
+                    {n.scheme.toUpperCase()}: {n.name} ({n.relationship.replaceAll('_', ' ')}), {Number(n.sharePct)}%
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+        )}
         {x.closeBlockers?.length > 0 && x.stage !== 'notice' && (
           <section className="panel">
             <h3>Before closing</h3>
@@ -385,15 +402,17 @@ function Recommend({ exit: x, onDone, onCancel }) {
 }
 
 /** The fields for fixing a last working day: the date, how a shortfall is settled, and who takes over the reports. */
+const DAY_LABEL = { death: 'Date of passing', absconding: 'Last day at work' }
+
 function LastDayFields({ value, set, noticeEnd, kind, employees, exclude, prefix }) {
   const shortfall = noticeEnd && value.lastWorkingDay && value.lastWorkingDay < noticeEnd ? daysBetween(value.lastWorkingDay, noticeEnd) : 0
   return (
     <div className="grid">
       <div>
-        <label htmlFor={`${prefix}-day`}>Last working day</label>
+        <label htmlFor={`${prefix}-day`}>{DAY_LABEL[kind] || 'Last working day'}</label>
         <input id={`${prefix}-day`} type="date" value={value.lastWorkingDay} onChange={(e) => set({ lastWorkingDay: e.target.value })} />
       </div>
-      {(shortfall > 0 || (kind && kind !== 'resignation')) && (
+      {(shortfall > 0 || kind === 'termination') && (
         <div>
           <label htmlFor={`${prefix}-shortfall`}>{shortfall > 0 ? `${shortfall} days of notice not served` : 'Notice'}</label>
           <select id={`${prefix}-shortfall`} value={value.shortfallAction} onChange={(e) => set({ shortfallAction: e.target.value })}>
@@ -443,6 +462,7 @@ function Accept({ exit: x, onDone, onCancel }) {
       }}
     >
       <h3>{x.status === 'proposed' ? 'Confirm the exit' : 'Accept the resignation'}</h3>
+      {x.kind === 'absconding' && <p className="hint">The employment ends with the last day they came to work.</p>}
       <LastDayFields
         value={value}
         set={(patch) => setValue({ ...value, ...patch })}
@@ -622,6 +642,15 @@ function StartExit({ onSaved, onCancel }) {
       {form.kind === 'resignation' && (
         <p className="hint">Leave the last working day empty to record a resignation handed in on paper; it then waits for acceptance as usual.</p>
       )}
+      {form.kind === 'absconding' && (
+        <p className="hint">
+          The exit opens and waits: send the show-cause notice, then the final notice, each with the days to reply set in Setup. With no word
+          back, confirm it.
+        </p>
+      )}
+      {form.kind === 'death' && (
+        <p className="hint">The employment ends at once. The settlement, with gratuity whatever the length of service, goes to the nominees.</p>
+      )}
       <LastDayFields value={form} set={set} kind={form.kind} employees={employees.data} exclude={form.employmentId} prefix="se" />
       <ErrorNote>{error}</ErrorNote>
       <div className="form-actions">
@@ -633,5 +662,26 @@ function StartExit({ onSaved, onCancel }) {
         </button>
       </div>
     </form>
+  )
+}
+
+/** Absence without leave: the notices sent, and what the exit waits for. */
+function AbscondingSteps({ steps }) {
+  return (
+    <section className="panel" data-testid="absconding">
+      <h3>Absent without leave</h3>
+      <dl className="facts">
+        <dt>Last day at work</dt>
+        <dd>{formatDay(steps.lastAtWork)}</dd>
+        <dt>Show-cause notice</dt>
+        <dd>{steps.showCauseOn ? `Sent ${formatDay(steps.showCauseOn)}` : 'Not sent'}</dd>
+        <dt>Final notice</dt>
+        <dd>{steps.finalNoticeOn ? `Sent ${formatDay(steps.finalNoticeOn)}` : 'Not sent'}</dd>
+        <dt>Days to reply</dt>
+        <dd>{steps.responseDays}</dd>
+      </dl>
+      {steps.waitingFor && <p className="hint">{steps.waitingFor}.</p>}
+      <p className="hint">If they come back or reply, cancel the exit.</p>
+    </section>
   )
 }

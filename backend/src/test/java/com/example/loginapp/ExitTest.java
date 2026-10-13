@@ -18,6 +18,7 @@ import java.time.ZoneOffset;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -484,6 +485,111 @@ class ExitTest {
         static String of(LocalDate d) {
             return java.time.format.DateTimeFormatter.ofPattern("d MMMM yyyy", java.util.Locale.ENGLISH).format(d);
         }
+    }
+
+    // ── other kinds of exit ─────────────────────────────────────────────
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void contractEndsAndRetirementsAreProposedToHrAndConfirmedOrCancelled() {
+        Setup s = setup();
+        LocalDate contractEnd = TODAY.plusDays(20);
+        db.inTenant(s.org.id, c -> {
+            Sql.update(c, "update app.employment set employment_type = 'fixed_term', contract_end = ? where id = ?", contractEnd, s.workerRecord);
+            Sql.update(c, "update app.person set date_of_birth = ? where id = (select person_id from app.employment where id = ?)",
+                    TODAY.minusYears(60).plusDays(30), s.colleagueRecord);
+            return null;
+        });
+        List<Map<String, Object>> open = exits.list(s.hr, "open");
+        Map<String, Object> contract = open.stream().filter(x -> "end_of_contract".equals(x.get("kind"))).findFirst().orElseThrow();
+        assertEquals("proposed", contract.get("status"));
+        assertEquals("to_confirm", contract.get("stage"));
+        assertEquals(contractEnd.toString(), contract.get("requestedLastDay"));
+        Map<String, Object> retirement = open.stream().filter(x -> "retirement".equals(x.get("kind"))).findFirst().orElseThrow();
+        LocalDate retireOn = TODAY.minusYears(60).plusDays(30).plusYears(60).with(java.time.temporal.TemporalAdjusters.lastDayOfMonth());
+        assertEquals(retireOn.toString(), retirement.get("requestedLastDay"));
+        assertTrue(events(s.hr).contains("exit_proposed"));
+        assertEquals(2, open.size());
+        exits.list(s.hr, "open");   // looking again proposes nothing twice
+        assertEquals(2, exits.list(s.hr, "open").size());
+        // Proposals are HR's: neither the employee nor the manager sees them.
+        assertNull(exits.mine(s.worker).get("exit"));
+        assertTrue(exits.list(s.boss, "all").isEmpty());
+
+        // The contract is renewed: the proposal is cancelled and not made again for the same date.
+        UUID contractId = UUID.fromString((String) contract.get("id"));
+        exits.cancel(s.hr, contractId, new WithdrawInput("Contract renewed for a year"));
+        assertEquals(1, exits.list(s.hr, "open").size());
+        // The retirement is confirmed with the proposed day.
+        Map<String, Object> retired = exits.accept(s.hr, UUID.fromString((String) retirement.get("id")), new AcceptInput(null, null, null));
+        assertEquals("accepted", retired.get("status"));
+        assertEquals(retireOn.toString(), retired.get("lastWorkingDay"));
+        assertTrue(((List<Map<String, Object>>) retired.get("letterTemplates")).stream().anyMatch(t -> "retirement".equals(t.get("kind"))));
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void onDeathTheEmploymentEndsAtOnceWithNomineesAndGratuityWhateverTheService() {
+        Setup s = setup();
+        db.inTenant(s.org.id, c -> {
+            Sql.update(c, "update app.employment set joining_date = ? where id = ?", TODAY.minusMonths(8), s.workerRecord);
+            Object person = Sql.one(c, "select person_id from app.employment where id = ?", s.workerRecord).get("personId");
+            Object member = Sql.one(c, "insert into app.family_member (tenant_id, person_id, name, relationship) values (?, ?::uuid, "
+                    + "'Rukhsana Worker', 'spouse') returning id", s.org.id, person).get("id");
+            Sql.update(c, "insert into app.nomination (tenant_id, person_id, scheme, family_member_id, share_pct, effective_from) "
+                    + "values (?, ?::uuid, 'gratuity', ?::uuid, 100, ?)", s.org.id, person, member, TODAY.minusMonths(8));
+            return null;
+        });
+        assertError(400, "request.invalid", () -> exits.start(s.hr, new StartInput(s.workerRecord.toString(), "death", null, null,
+                TODAY.plusDays(1).toString(), null, null)));
+        Map<String, Object> x = exits.start(s.hr, new StartInput(s.workerRecord.toString(), "death", null, null,
+                TODAY.minusDays(2).toString(), null, null));
+        UUID id = UUID.fromString((String) x.get("id"));
+        assertEquals("exited", employees.get(s.hr, s.workerRecord).get("status"));
+        assertEquals(TODAY.minusDays(2).toString(), x.get("formerAccessUntil"));   // no former-employee access
+        List<Map<String, Object>> nominees = (List<Map<String, Object>>) x.get("nominees");
+        assertEquals("Rukhsana Worker", nominees.get(0).get("name"));
+        assertFalse((Boolean) x.get("canSendInterview"));
+        assertFalse(((List<Map<String, Object>>) x.get("tasks")).stream().anyMatch(t -> "joiner".equals(t.get("owner"))));
+        Map<String, Object> settlement = settlements.prepare(s.hr, id);
+        assertTrue((Boolean) ((Map<String, Object>) settlement.get("gratuity")).get("eligible"));
+        assertTrue(((List<Map<String, Object>>) settlement.get("lines")).stream().anyMatch(l -> "gratuity".equals(l.get("code"))));
+        assertFalse(events(s.worker).contains("resignation_accepted"));
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void abscondingNeedsTheShowCauseAndFinalNoticesAnsweredByNobodyBeforeTheExitIsConfirmed() {
+        Setup s = setup();
+        assertError(409, "exit.too_soon", () -> exits.start(s.hr, new StartInput(s.workerRecord.toString(), "absconding", null, null,
+                TODAY.minusDays(3).toString(), null, null)));
+        LocalDate lastSeen = TODAY.minusDays(10);
+        Map<String, Object> x = exits.start(s.hr, new StartInput(s.workerRecord.toString(), "absconding", null, null, lastSeen.toString(),
+                null, null));
+        UUID id = UUID.fromString((String) x.get("id"));
+        assertEquals("proposed", x.get("status"));
+        assertEquals("absent", x.get("stage"));
+        assertEquals("Send the show-cause notice first, from Letters", ((Map<String, Object>) x.get("absconding")).get("waitingFor"));
+        assertError(409, "exit.absconding_steps", () -> exits.accept(s.hr, id, new AcceptInput(null, null, null)));
+        List<Map<String, Object>> templates = (List<Map<String, Object>>) x.get("letterTemplates");
+        assertEquals(Set.of("show_cause", "final_notice", "relieving", "experience"),
+                templates.stream().map(t -> (String) t.get("kind")).collect(java.util.stream.Collectors.toSet()));
+        ExitLetters letters = new ExitLetters(db, crypto);
+        letters.issue(s.hr, id, templateId(templates, "show_cause"));
+        String text = (String) letters.preview(s.hr, id, templateId(templates, "show_cause")).get("text");
+        assertTrue(text.contains(ExitValuesDate.of(lastSeen.plusDays(1))), text);
+        // The employee sees the notice in My exit.
+        Map<String, Object> mine = (Map<String, Object>) exits.mine(s.worker).get("exit");
+        assertEquals(1, ((List<?>) mine.get("letters")).size());
+        assertError(409, "exit.absconding_steps", () -> exits.accept(s.hr, id, new AcceptInput(null, null, null)));
+
+        // A week later, no reply: the final notice; a week after that, still none: confirmed with the last day at work.
+        new ExitLetters(db, crypto, fixed(TODAY.plusDays(8))).issue(s.hr, id, templateId(templates, "final_notice"));
+        ExitService later = new ExitService(db, crypto, fixed(TODAY.plusDays(16)));
+        Map<String, Object> confirmed = later.accept(s.hr, id, new AcceptInput(null, null, null));
+        assertEquals("accepted", confirmed.get("status"));
+        assertEquals(lastSeen.toString(), confirmed.get("lastWorkingDay"));
+        assertEquals("exited", employees.get(s.hr, s.workerRecord).get("status"));
     }
 
     // ── helpers ─────────────────────────────────────────────────────────

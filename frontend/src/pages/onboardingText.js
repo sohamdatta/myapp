@@ -61,6 +61,7 @@ export const EXIT_LETTER_PLACEHOLDERS = {
   'exit.notice_days': 'The notice owed, in days',
   'exit.notice_end': 'When the notice would end',
   'exit.response_by': 'The date a reply is due by (show-cause and final notice)',
+  'exit.absent_since': 'The first day of absence without leave',
   'employment.tenure': 'Length of service, as 3 years 2 months',
   'employment.designations': 'Every designation held, with dates',
 }
@@ -112,6 +113,7 @@ export const SAMPLE_VALUES = {
   'exit.notice_days': '30',
   'exit.notice_end': '31 October 2026',
   'exit.response_by': '12 October 2026',
+  'exit.absent_since': '28 September 2026',
   'exit.access_until': '31 October 2027',
   'employment.tenure': '3 years 2 months',
   'employment.designations': 'Analyst, 12 August 2023 to 31 March 2025\nSenior Analyst, 1 April 2025 to 31 October 2026',

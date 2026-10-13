@@ -17,7 +17,7 @@ export default function MyExit() {
   if (mine.error) return <ErrorNote>{mine.error}</ErrorNote>
   const m = mine.data
   const x = m.exit
-  const open = x && ['submitted', 'recommended', 'accepted', 'closed'].includes(x.status)
+  const open = x && ['proposed', 'submitted', 'recommended', 'accepted', 'closed'].includes(x.status)
   return (
     <div className="my-exit">
       {open ? <ExitSummary exit={x} onChanged={mine.reload} /> : null}

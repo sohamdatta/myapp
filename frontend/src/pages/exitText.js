@@ -32,6 +32,7 @@ export const REASONS = {
 /** Where an exit is: [badge tone, words for HR, words for the employee]. */
 export const STAGES = {
   to_confirm: ['warn', 'To confirm', 'Being prepared'],
+  absent: ['bad', 'Absent without leave', 'Asked to explain your absence'],
   awaiting_manager: ['warn', 'Waiting for the manager', 'Waiting for your manager'],
   awaiting_hr: ['warn', 'Waiting for HR', 'Waiting for HR'],
   withdrawal_asked: ['warn', 'Asks to withdraw', 'You asked to withdraw'],

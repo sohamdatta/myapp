@@ -173,7 +173,7 @@ final class ExitDefaults {
 
             Dear {{person.legal_name}},
 
-            You have been absent from work without leave or any word since {{exit.submitted_on}}. Please report to work, \
+            You have been absent from work without leave or any word since {{exit.absent_since}}. Please report to work, \
             or explain your absence in writing, by {{exit.response_by}}.
 
             If we do not hear from you by then, we may treat you as having left your employment.

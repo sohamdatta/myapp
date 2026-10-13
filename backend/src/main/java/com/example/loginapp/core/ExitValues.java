@@ -41,6 +41,7 @@ final class ExitValues {
         v.put("exit.notice_days", String.valueOf(x.get("noticeDays")));
         v.put("exit.notice_end", date(x.get("noticeEnd")));
         v.put("exit.access_until", date(x.get("formerAccessUntil")));
+        v.put("exit.absent_since", x.get("requestedLastDay") == null ? "" : date(LocalDate.parse((String) x.get("requestedLastDay")).plusDays(1)));
         return v;
     }
 

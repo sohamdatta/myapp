@@ -108,7 +108,7 @@ public final class ExitLetters {
                 title, caseId).get("id"));
         UserService.audit(c, ctx, "exit.letter_issued", "exit", caseId, Map.of("letter", title, "kind", t.get("kind")));
         UUID employee = AuthService.uuid(x.get("membershipId"));
-        if (employee != null) {
+        if (employee != null && !"death".equals(x.get("kind"))) {
             v.put("letter.title", title.toLowerCase(java.util.Locale.ENGLISH));
             Notifications.send(c, ctx.tenantId(), employee, "exit_letter_issued", v, "my-exit");
         }
@@ -131,7 +131,7 @@ public final class ExitLetters {
                 + "order by kind, lower(name)", (Object) KINDS.toArray(String[]::new))) {
             String kind = (String) t.get("kind");
             String suits = FOR_KIND.get(kind);
-            if (suits != null && !suits.equals(x.get("kind"))) {
+            if ((suits != null && !suits.equals(x.get("kind"))) || ("death".equals(x.get("kind")) && suits == null)) {
                 continue;
             }
             Map<String, Object> m = new LinkedHashMap<>(t);

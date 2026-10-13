@@ -103,7 +103,8 @@ public final class ExitService {
             Map<String, Object> x = Sql.one(c, "select id from app.exit_case where employment_id = ?::uuid "
                     + "order by (status in ('proposed','submitted','recommended','accepted','closed')) desc, started_at desc limit 1",
                     e.get("id"));
-            if (x != null && "proposed".equals(Sql.one(c, "select status from app.exit_case where id = ?::uuid", x.get("id")).get("status"))) {
+            Map<String, Object> st = x == null ? null : Sql.one(c, "select status, kind from app.exit_case where id = ?::uuid", x.get("id"));
+            if (st != null && "proposed".equals(st.get("status")) && !"absconding".equals(st.get("kind"))) {
                 x = null;   // a proposal (contract end, retirement) is HR's until they confirm it
             }
             int notice = noticeDays(settings, e, today);
@@ -213,9 +214,13 @@ public final class ExitService {
         return db.inTenant(ctx.tenantId(), c -> {
             ExitDefaults.ensure(c, ctx.tenantId());
             applyDue(c, ctx.tenantId(), today);
+            ExitProposals.run(c, ctx.tenantId(), today);
             UUID[] reach = Team.reach(c, ctx, "exit.read", today);
             List<Object> params = new ArrayList<>();
             StringBuilder sql = new StringBuilder(LIST_SELECT).append(" where true");
+            if (!canManage(ctx)) {
+                sql.append(" and x.status <> 'proposed'");   // the app's proposals are HR's until confirmed
+            }
             if (wanted.equals("open")) {
                 sql.append(" and (x.status in ('proposed','submitted','recommended') "
                         + "or (x.status = 'accepted' and (x.ended_at is null or x.settlement_state <> 'paid')))");
@@ -292,6 +297,12 @@ public final class ExitService {
                     && managerMembership(c, employment, today) != null && !ctx.membershipId().equals(managerMembership(c, employment, today))) {
                 throw new ApiException(409, "exit.awaiting_manager", "This resignation waits for the manager's recommendation first");
             }
+            if ("absconding".equals(x.get("kind"))) {
+                String waiting = abscondingWaits(c, id, today);
+                if (waiting != null) {
+                    throw new ApiException(409, "exit.absconding_steps", waiting);
+                }
+            }
             LocalDate last = in.lastWorkingDay() == null || in.lastWorkingDay().isBlank()
                     ? firstDate(x.get("recommendedLastDay"), x.get("requestedLastDay"), x.get("noticeEnd"))
                     : date(in.lastWorkingDay(), "last working day");
@@ -316,7 +327,11 @@ public final class ExitService {
         LocalDate today = today();
         LocalDate last = in.lastWorkingDay() == null || in.lastWorkingDay().isBlank() ? null : date(in.lastWorkingDay(), "last working day");
         if (last == null && !kind.equals("resignation")) {
-            throw ApiException.badRequest("Give the last working day");
+            throw ApiException.badRequest(kind.equals("death") ? "Give the date of passing"
+                    : kind.equals("absconding") ? "Give the last day they came to work" : "Give the last working day");
+        }
+        if (kind.equals("death") && last.isAfter(today)) {
+            throw ApiException.badRequest("The date of passing cannot be in the future");
         }
         return db.inTenant(ctx.tenantId(), c -> {
             ExitDefaults.ensure(c, ctx.tenantId());
@@ -328,6 +343,17 @@ public final class ExitService {
                 throw new ApiException(409, "request.refused", "You cannot start your own exit here; resign from My exit instead");
             }
             refuseIfOpen(c, employment);
+            if (kind.equals("absconding")) {
+                // Absent without word: the case opens with the last day at work, and waits for the show-cause and final notices.
+                int days = ((Number) settings(c).get("abscondingDays")).intValue();
+                if (last.isAfter(today.minusDays(days))) {
+                    throw new ApiException(409, "exit.too_soon", "Absconding can be recorded once someone has been away without word for "
+                            + days + " days; the last day at work must be on or before " + TemplateValues.DATE.format(today.minusDays(days)));
+                }
+                UUID id = insertCase(c, ctx, e, kind, "proposed", reason, note, last, 0, today);
+                UserService.audit(c, ctx, "exit.started", "exit", id, Map.of("kind", kind, "employmentId", employment.toString()));
+                return view(c, ctx, id, today, false);
+            }
             int notice = kind.equals("resignation") ? noticeDays(settings(c), e, today) : 0;
             UUID id = insertCase(c, ctx, e, kind, "submitted", reason, note, last, notice, today);
             UserService.audit(c, ctx, "exit.started", "exit", id, Map.of("kind", kind, "employmentId", employment.toString()));
@@ -432,6 +458,42 @@ public final class ExitService {
     }
 
     /** What stops an exit from being closed, in words. */
+    /**
+     * An absconding exit is confirmed only after the show-cause notice and then the final notice
+     * have gone, each given the days to reply the Organization allows, without a word back.
+     * Returns what it still waits for, or null.
+     */
+    static String abscondingWaits(Connection c, UUID id, LocalDate today) throws SQLException {
+        Map<String, Object> d = abscondingDates(c, id);
+        int days = ((Number) d.get("responseDays")).intValue();
+        if (d.get("showCauseOn") == null) {
+            return "Send the show-cause notice first, from Letters";
+        }
+        LocalDate showCause = LocalDate.parse((String) d.get("showCauseOn"));
+        if (d.get("finalNoticeOn") == null) {
+            return today.isAfter(showCause.plusDays(days)) ? "Send the final notice next, from Letters"
+                    : "The show-cause notice can be answered until " + TemplateValues.DATE.format(showCause.plusDays(days));
+        }
+        LocalDate last = LocalDate.parse((String) d.get("finalNoticeOn")).plusDays(days);
+        return today.isAfter(last) ? null : "The final notice can be answered until " + TemplateValues.DATE.format(last);
+    }
+
+    private static Map<String, Object> abscondingDates(Connection c, UUID id) throws SQLException {
+        return Sql.one(c, "select (select min(issued_at at time zone 'Asia/Kolkata')::date from app.issued_letter "
+                + "  where exit_case_id = ? and kind = 'show_cause') as show_cause_on, "
+                + "(select min(issued_at at time zone 'Asia/Kolkata')::date from app.issued_letter "
+                + "  where exit_case_id = ? and kind = 'final_notice') as final_notice_on, "
+                + "(select response_days from app.exit_settings) as response_days", id, id);
+    }
+
+    /** The current nominees for each scheme, for an exit on death: the settlement is paid to them. */
+    private static List<Map<String, Object>> nominees(Connection c, Object personId) throws SQLException {
+        return Sql.query(c, "select n.scheme, f.name, f.relationship, n.share_pct from app.nomination n "
+                + "join app.family_member f on f.id = n.family_member_id "
+                + "where n.person_id = ?::uuid and n.created_at = (select max(created_at) from app.nomination m "
+                + "  where m.person_id = n.person_id and m.scheme = n.scheme) order by n.scheme, n.share_pct desc, f.name", personId);
+    }
+
     static List<String> closeBlockers(Connection c, UUID id) throws SQLException {
         List<String> out = new ArrayList<>();
         for (Map<String, Object> t : Sql.query(c, "select title from app.exit_task where exit_case_id = ? and required and done_at is null "
@@ -552,7 +614,8 @@ public final class ExitService {
         LocalDate last = LocalDate.parse((String) x.get("lastWorkingDay"));
         Map<String, Object> months = Sql.one(c, "select former_access_months from app.exit_settings");
         int access = months == null ? 12 : ((Number) months.get("formerAccessMonths")).intValue();
-        Sql.update(c, "update app.exit_case set former_access_until = ? where id = ?", last.plusMonths(access), id);
+        Sql.update(c, "update app.exit_case set former_access_until = ? where id = ?",
+                "death".equals(x.get("kind")) ? last : last.plusMonths(access), id);
         Sql.update(c, "update app.employment set status = 'exited', exit_date = ?, exit_reason = ? where id = ?::uuid and status = 'active'",
                 last, ExitValues.KINDS.getOrDefault((String) x.get("kind"), (String) x.get("kind"))
                         + (x.get("reasonCategory") == null ? "" : ", " + x.get("reasonCategory")), x.get("employmentId"));
@@ -713,7 +776,7 @@ public final class ExitService {
     static String stage(Map<String, Object> x, LocalDate today) {
         String status = (String) x.get("status");
         return switch (status) {
-            case "proposed" -> "to_confirm";
+            case "proposed" -> "absconding".equals(x.get("kind")) ? "absent" : "to_confirm";
             case "submitted" -> "awaiting_manager";
             case "recommended" -> "awaiting_hr";
             case "accepted" -> x.get("withdrawalRequestedAt") != null && x.get("withdrawalRefusedAt") == null ? "withdrawal_asked"
@@ -782,7 +845,21 @@ public final class ExitService {
             interview = Map.of("status", interview.get("status"));   // a manager sees only whether it happened
         }
         out.put("interview", interview);
-        out.put("canSendInterview", manage && "accepted".equals(status) && interview == null && x.get("membershipId") != null);
+        boolean gone = Set.of("death", "absconding").contains((String) x.get("kind"));
+        out.put("canSendInterview", manage && !gone && "accepted".equals(status) && interview == null && x.get("membershipId") != null);
+        if (manage && "death".equals(x.get("kind"))) {
+            out.put("nominees", nominees(c, full.get("personId")));
+        }
+        if (!own && hr && "absconding".equals(x.get("kind"))) {
+            Map<String, Object> d = abscondingDates(c, id);
+            Map<String, Object> steps = new LinkedHashMap<>();
+            steps.put("lastAtWork", x.get("requestedLastDay"));
+            steps.put("showCauseOn", d.get("showCauseOn"));
+            steps.put("finalNoticeOn", d.get("finalNoticeOn"));
+            steps.put("responseDays", d.get("responseDays"));
+            steps.put("waitingFor", "proposed".equals(status) ? abscondingWaits(c, id, today) : null);
+            out.put("absconding", steps);
+        }
         out.put("canRecordInterview", manage && Set.of("accepted", "closed").contains(status));
         return out;
     }
