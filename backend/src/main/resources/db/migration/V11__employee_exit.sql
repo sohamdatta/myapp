@@ -84,6 +84,7 @@ create table app.exit_case (
   rehire             text check (rehire in ('yes','no','maybe')),
   rehire_note        text check (rehire_note is null or length(rehire_note) <= 500),
   legal_hold         boolean not null default false,
+  last_day_reminded_at timestamptz,                             -- "last working day tomorrow" sent
   settlement_state   text not null default 'none' check (settlement_state in ('none','draft','approved','paid')),
   settlement_prepared_by uuid references app.membership(id),
   settlement_approved_by uuid references app.membership(id),
@@ -169,6 +170,7 @@ create table app.exit_settlement_line (
   paid_on       date,
   paid_reference text check (paid_reference is null or length(btrim(paid_reference)) between 1 and 80),
   paid_by       uuid references app.membership(id),
+  reminded_at   timestamptz,                              -- "due tomorrow" sent to HR
   created_at    timestamptz not null default now(),
   foreign key (tenant_id, exit_case_id) references app.exit_case (tenant_id, id),
   check ((paid_on is null) = (paid_reference is null)),

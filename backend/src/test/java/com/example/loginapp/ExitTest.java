@@ -38,6 +38,9 @@ import com.example.loginapp.core.ExitService.ResignInput;
 import com.example.loginapp.core.ExitService.SettingsInput;
 import com.example.loginapp.core.ExitService.StartInput;
 import com.example.loginapp.core.ExitService.WithdrawInput;
+import com.example.loginapp.core.ExitTasks;
+import com.example.loginapp.core.ExitTasks.DoneInput;
+import com.example.loginapp.core.LeaveService;
 import com.example.loginapp.core.InvitationService;
 import com.example.loginapp.core.Migrator;
 import com.example.loginapp.core.Notifications;
@@ -68,6 +71,8 @@ class ExitTest {
     private static EmployeeService employees;
     private static ExitService exits;
     private static Notifications notifications;
+    private static ExitTasks exitTasks;
+    private static LeaveService leaves;
     private static SessionCtx superAdmin;
     private static final Map<UUID, String> TOKENS = new HashMap<>();
 
@@ -102,6 +107,8 @@ class ExitTest {
         employees = new EmployeeService(db, crypto);
         exits = new ExitService(db, crypto);
         notifications = new Notifications(db);
+        exitTasks = new ExitTasks(db);
+        leaves = new LeaveService(db);
         platform.ensureFirstSuperAdmin("root@platform.test", PASSWORD);
         superAdmin = auth.resolve(auth.enterConsole(auth.resolve(auth.login("root@platform.test", PASSWORD))));
     }
@@ -171,6 +178,60 @@ class ExitTest {
         assertEquals("withdrawn", approved.get("status"));
         assertNull(employees.get(s.hr, s.workerRecord).get("leavingOn"));
         assertTrue(events(s.worker).contains("withdrawal_decided"));
+    }
+
+    // ── clearance ───────────────────────────────────────────────────────
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void acceptanceCreatesTheClearanceChecklistWithOwnersDueDatesAndNoDues() {
+        Setup s = setup();
+        exits.saveSettings(s.hr, new SettingsInput(Map.of("permanent", 30, "probation", 15, "fixed_term", 30, "intern", 0, "consultant", 15),
+                false, List.of(), "leave_then_owed", 60, 7, 7, 12, List.of()));   // no leave at all during notice
+        UUID id = UUID.fromString((String) exits.resign(s.worker, new ResignInput("pay", null, null)).get("id"));
+        LocalDate last = TODAY.plusDays(14);
+        Map<String, Object> accepted = exits.accept(s.hr, id, new AcceptInput(last.toString(), "waived", null));
+        List<Map<String, Object>> tasks = (List<Map<String, Object>>) accepted.get("tasks");
+        assertEquals(9, tasks.size());
+        Map<String, Object> handover = task(tasks, "Plan the handover of work");
+        assertEquals(s.boss.membershipId().toString(), handover.get("assigneeId"));
+        assertEquals(TODAY.plusDays(5).toString(), handover.get("dueDate"));
+        // Nobody is IT Admin or Payroll Operator here, so those tasks fall to the HR who accepted.
+        assertEquals(s.hr.membershipId().toString(), task(tasks, "Collect the laptop and other equipment").get("assigneeId"));
+        assertEquals(last.toString(), task(tasks, "Collect the laptop and other equipment").get("dueDate"));
+        assertEquals(s.hr.membershipId().toString(), task(tasks, "Clear open advances, loans and expense claims").get("assigneeId"));
+        assertEquals(last.minusDays(2).toString(), task(tasks, "Clear open advances, loans and expense claims").get("dueDate"));
+        Map<String, Object> claims = task(tasks, "Submit pending expense claims");
+        assertEquals(s.worker.membershipId().toString(), claims.get("assigneeId"));
+        assertTrue(events(s.boss).contains("exit_task_assigned"));
+        assertEquals(2, exitTasks.mine(s.boss).size());
+
+        // The leaver sees only their own task; their claim is recorded as owed to them.
+        Map<String, Object> mine = (Map<String, Object>) exits.mine(s.worker).get("exit");
+        assertEquals(1, ((List<?>) mine.get("tasks")).size());
+        UUID claimId = UUID.fromString((String) claims.get("id"));
+        assertError(403, "permission.denied", () -> exitTasks.skip(s.worker, claimId, "Not needed"));
+        Map<String, Object> done = exitTasks.done(s.worker, claimId, new DoneInput(new java.math.BigDecimal("1500.50"), "owed_to_employee",
+                "Travel to the client in September"));
+        assertEquals("done", done.get("state"));
+        assertEquals(0, new java.math.BigDecimal("1500.50").compareTo((java.math.BigDecimal) done.get("amount")));
+        assertError(400, "request.invalid", () -> exitTasks.done(s.hr, UUID.fromString((String) handover.get("id")),
+                new DoneInput(new java.math.BigDecimal("10"), null, null)));
+        exitTasks.skip(s.hr, UUID.fromString((String) handover.get("id")), "Handover done in person");
+        assertTrue(((List<String>) exits.get(s.hr, id).get("closeBlockers")).contains("Task: Collect the laptop and other equipment"));
+
+        // No leave during notice, as set; the day before the last day everyone involved is told, once.
+        assertError(409, "leave.not_during_notice", () -> leaves.apply(s.worker, UUID.randomUUID(), TODAY.plusDays(2).toString(), null,
+                null, "Family function"));
+        Notifications eve = new Notifications(db, fixed(last.minusDays(1)));
+        assertTrue(names(eve.list(s.hr)).contains("last_day_tomorrow"));
+        assertTrue(names(eve.list(s.boss)).contains("last_day_tomorrow"));
+        assertEquals(1L, names(eve.list(s.worker)).stream().filter("last_day_tomorrow"::equals).count());
+        // An overdue task is chased, at most once a day.
+        Notifications after = new Notifications(db, fixed(last.plusDays(1)));
+        long overdue = names(after.list(s.hr)).stream().filter("exit_task_overdue"::equals).count();
+        assertTrue(overdue > 0);
+        assertEquals(overdue, names(after.list(s.hr)).stream().filter("exit_task_overdue"::equals).count());
     }
 
     // ── HR-started exits and the last working day ───────────────────────
@@ -288,6 +349,15 @@ class ExitTest {
     @SuppressWarnings("unchecked")
     private static List<String> events(SessionCtx ctx) {
         return ((List<Map<String, Object>>) notifications.list(ctx).get("items")).stream().map(n -> (String) n.get("event")).toList();
+    }
+
+    private static Map<String, Object> task(List<Map<String, Object>> tasks, String title) {
+        return tasks.stream().filter(t -> t.get("title").equals(title)).findFirst().orElseThrow(() -> new AssertionError("no task " + title));
+    }
+
+    @SuppressWarnings("unchecked")
+    private static List<String> names(Map<String, Object> list) {
+        return ((List<Map<String, Object>>) list.get("items")).stream().map(n -> (String) n.get("event")).toList();
     }
 
     private static long count(Org org, String sql) {

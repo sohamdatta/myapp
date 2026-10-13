@@ -423,8 +423,16 @@ export const exits = {
   decideWithdrawal: (id, approve, note) => post(`/org/people/exits/${id}/withdrawal`, { approve, note }),
   cancel: (id, note) => post(`/org/people/exits/${id}/cancel`, { note }),
   close: (id, body) => post(`/org/people/exits/${id}/close`, body),
+  addTask: (id, body) => post(`/org/people/exits/${id}/tasks`, body),
   settings: () => get('/org/people/setup/exit'),
   saveSettings: (body) => put('/org/people/setup/exit', body),
+}
+
+export const exitTasks = {
+  mine: () => get('/org/people/exit-tasks/mine'),
+  done: (id, body) => post(`/org/people/exit-tasks/${id}/done`, body || {}),
+  skip: (id, reason) => post(`/org/people/exit-tasks/${id}/skip`, { reason }),
+  reassign: (id, membershipId) => post(`/org/people/exit-tasks/${id}/reassign`, { membershipId }),
 }
 
 export const notifications = {

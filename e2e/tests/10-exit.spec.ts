@@ -68,6 +68,32 @@ test.describe.serial('exit', () => {
     await expect(meera.getByTestId('my-last-day')).not.toHaveText('—');
   });
 
+  test('clearance: tasks go to their owners, and the leaver records a claim owed to them', async () => {
+    await expect(hr.locator('.clearance')).toContainText('0 of 9 done');
+    await expect(hr.locator('.clearance .task-row[data-task="Plan the handover of work"]')).toContainText('Ananya Sen');
+    await shot(hr, '88-clearance', true);
+
+    await owner.reload();
+    await nav(owner, 'My tasks');
+    // Kiran Pal's exit, recorded earlier, has its own clearance; Meera's handover is the one to do here.
+    const handover = owner.locator('.task-row[data-task="Plan the handover of work"]', { hasText: 'Meera Iyer, leaving' });
+    await expect(handover).toBeVisible();
+    await handover.getByRole('button', { name: 'Mark done' }).click();
+    await expect(handover).toHaveCount(0);
+
+    await meera.reload();
+    await nav(meera, 'My exit');
+    const claims = meera.locator('.task-row[data-task="Submit pending expense claims"]');
+    await claims.getByRole('button', { name: 'Done, with an amount…' }).click();
+    await meera.fill(`[id^="amount-"]:not([id^="amount-note"])`, '1500');
+    await meera.locator('[id^="direction-"]').selectOption('owed_to_employee');
+    await meera.locator('[id^="amount-note-"]').fill('Travel to the client in September');
+    await shot(meera, '89-leaver-claim', true);
+    await claims.getByRole('button', { name: 'Mark done' }).click();
+    await expect(claims).toContainText('₹1,500 owed to the leaver');
+    await expectNoSidewaysScroll(meera);
+  });
+
   test('the employee asks to withdraw, and HR refuses', async () => {
     await meera.getByRole('button', { name: 'Ask to withdraw my resignation' }).click();
     await meera.fill('#withdraw-note', 'I would like to stay after all');

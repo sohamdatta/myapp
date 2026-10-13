@@ -117,7 +117,10 @@ public final class LeaveService {
             throw new ApiException(400, "leave.window", "Leave can be for the last " + BACK_WINDOW_DAYS
                     + " days or the next " + AHEAD_WINDOW_DAYS + ". For older dates ask HR");
         }
-        return db.inTenant(ctx.tenantId(), c -> create(c, ctx, ctx.membershipId(), leaveTypeId, from, to, half(half), why, today, false));
+        return db.inTenant(ctx.tenantId(), c -> {
+            ExitService.refuseLeaveDuringNotice(c, ctx.membershipId(), leaveTypeId);
+            return create(c, ctx, ctx.membershipId(), leaveTypeId, from, to, half(half), why, today, false);
+        });
     }
 
     public List<Map<String, Object>> myRequests(SessionCtx ctx) {

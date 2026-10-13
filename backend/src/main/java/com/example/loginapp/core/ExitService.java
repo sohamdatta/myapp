@@ -567,6 +567,24 @@ public final class ExitService {
         }
     }
 
+    /**
+     * During notice only the leave types the Organization allows may be applied for. Called when
+     * an employee applies for their own leave.
+     */
+    static void refuseLeaveDuringNotice(Connection c, UUID membershipId, UUID leaveTypeId) throws SQLException {
+        Map<String, Object> x = Sql.one(c, "select s.notice_leave_type_ids from app.exit_case x join app.employment e on e.id = x.employment_id "
+                + "cross join app.exit_settings s where e.membership_id = ? and x.status in ('submitted','recommended','accepted') "
+                + "and x.ended_at is null and s.notice_leave_type_ids is not null limit 1", membershipId);
+        if (x == null) {
+            return;
+        }
+        @SuppressWarnings("unchecked")
+        List<String> allowed = (List<String>) x.get("noticeLeaveTypeIds");
+        if (allowed == null || !allowed.contains(leaveTypeId.toString())) {
+            throw new ApiException(409, "leave.not_during_notice", "This kind of leave cannot be taken during your notice period");
+        }
+    }
+
     // ── internals ───────────────────────────────────────────────────────
 
     /** Fixes the last working day: works out the shortfall, accepts, tells people, and applies it if already past. */
@@ -627,7 +645,7 @@ public final class ExitService {
 
     /** What acceptance starts besides the case itself; the clearance checklist and the acceptance letter hook in here. */
     void afterAccept(Connection c, SessionCtx ctx, UUID id, LocalDate today) throws SQLException {
-        // filled in by the clearance, letters and settlement milestones
+        ExitTasks.createTasks(c, id);
     }
 
     private UUID insertCase(Connection c, SessionCtx ctx, Map<String, Object> e, String kind, String status, String reason, String note,
@@ -728,6 +746,10 @@ public final class ExitService {
         out.put("canWithdraw", mine && "resignation".equals(x.get("kind")) && (Set.of("submitted", "recommended").contains(status)
                 || ("accepted".equals(status) && !ended && !(x.get("withdrawalRequestedAt") != null && x.get("withdrawalRefusedAt") == null))));
         out.put("closeBlockers", hr && "accepted".equals(status) ? closeBlockers(c, id) : List.of());
+        List<Map<String, Object>> tasks = ExitTasks.forCase(c, ctx, id, today);
+        out.put("clearance", Map.of("done", tasks.stream().filter(t -> t.get("doneAt") != null).count(), "total", tasks.size()));
+        out.put("tasks", own ? tasks.stream().filter(t -> ctx.membershipId().toString().equals(t.get("assigneeId"))).toList() : tasks);
+        out.put("canManageTasks", !own && hr && !mine && "accepted".equals(status));
         return out;
     }
 

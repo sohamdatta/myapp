@@ -1,8 +1,9 @@
 import { useState } from 'react'
-import { exits, people } from '../api.js'
+import { exitTasks, exits, org, people } from '../api.js'
 import { formatDay, localToday, useAction, useLoad } from '../hooks.js'
 import { Badge, Empty, ErrorNote } from '../ui.jsx'
 import { KINDS, REASONS, REHIRE, SHORTFALL, STAGES, daysBetween } from './exitText.js'
+import { Checklist } from './TaskList.jsx'
 
 /**
  * Exits: every exit for HR, the team's for a manager. A list by stage, and one exit at a time
@@ -236,7 +237,7 @@ function ExitPage({ id, onBack }) {
             )}
           </dl>
         </section>
-        {x.closeBlockers?.length > 0 && (
+        {x.closeBlockers?.length > 0 && x.stage !== 'notice' && (
           <section className="panel">
             <h3>Before closing</h3>
             <ul className="blockers">
@@ -247,7 +248,95 @@ function ExitPage({ id, onBack }) {
           </section>
         )}
       </div>
+      {(x.tasks?.length > 0 || x.canManageTasks) && <Clearance exit={x} onChanged={exit.reload} />}
     </>
+  )
+}
+
+/** The clearance checklist: tasks by owner, with HR able to add, reassign and skip. */
+function Clearance({ exit: x, onChanged }) {
+  const users = useLoad(() => org.users().catch(() => []))
+  const [adding, setAdding] = useState(false)
+  const active = (users.data || []).filter((u) => u.status === 'active')
+  return (
+    <section className="clearance">
+      <div className="toolbar">
+        <h3>
+          Clearance{' '}
+          <span className="hint">
+            {x.clearance.done} of {x.clearance.total} done
+          </span>
+        </h3>
+        <span className="spacer" />
+        {x.canManageTasks && !adding && (
+          <button type="button" className="outline" onClick={() => setAdding(true)}>
+            Add a task
+          </button>
+        )}
+      </div>
+      {adding && (
+        <AddExitTask
+          id={x.id}
+          users={active}
+          onDone={() => {
+            setAdding(false)
+            onChanged()
+          }}
+          onCancel={() => setAdding(false)}
+        />
+      )}
+      <Checklist tasks={x.tasks} hr={x.canManageTasks} users={active} onChanged={onChanged} taskApi={exitTasks} exit />
+    </section>
+  )
+}
+
+function AddExitTask({ id, users, onDone, onCancel }) {
+  const [form, setForm] = useState({ title: '', assigneeId: '', dueDate: '', required: true })
+  const { busy, error, run } = useAction()
+  const set = (patch) => setForm((f) => ({ ...f, ...patch }))
+  return (
+    <form
+      className="panel"
+      onSubmit={async (e) => {
+        e.preventDefault()
+        if (await run(() => exits.addTask(id, form))) onDone()
+      }}
+    >
+      <div className="grid">
+        <div>
+          <label htmlFor="xt-title">Task</label>
+          <input id="xt-title" value={form.title} placeholder="Collect the company phone" onChange={(e) => set({ title: e.target.value })} />
+        </div>
+        <div>
+          <label htmlFor="xt-assignee">Who does it</label>
+          <select id="xt-assignee" value={form.assigneeId} onChange={(e) => set({ assigneeId: e.target.value })}>
+            <option value="">Me</option>
+            {users.map((u) => (
+              <option key={u.id} value={u.id}>
+                {u.email}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label htmlFor="xt-due">Due</label>
+          <input id="xt-due" type="date" value={form.dueDate} onChange={(e) => set({ dueDate: e.target.value })} />
+        </div>
+      </div>
+      <label className="check">
+        <input type="checkbox" checked={form.required} onChange={(e) => set({ required: e.target.checked })} />
+        Needed before the exit can be closed
+      </label>
+      <ErrorNote>{error}</ErrorNote>
+      <div className="form-actions">
+        <button type="submit" className="secondary" disabled={busy}>
+          Add task
+        </button>
+        <button type="button" className="quiet" onClick={onCancel}>
+          Cancel
+        </button>
+      </div>
+    </form>
   )
 }
 

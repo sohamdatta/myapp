@@ -79,6 +79,7 @@ public final class Notifications {
         LocalDate today = LocalDate.now(clock.withZone(IST));
         return db.inTenant(ctx.tenantId(), c -> {
             remind(c, ctx.tenantId(), ctx.membershipId(), today);
+            remindExits(c, ctx.tenantId(), ctx.membershipId(), today);
             Map<String, Object> out = new LinkedHashMap<>();
             out.put("unread", ((Number) Sql.one(c, "select count(*) as n from app.notification where membership_id = ? and read_at is null",
                     ctx.membershipId()).get("n")).intValue());
@@ -157,6 +158,51 @@ public final class Notifications {
                     + "and (reminded_at is null or (reminded_at at time zone 'Asia/Kolkata')::date < ?::date)", today, o.get("id"), today) > 0) {
                 JoinerService.Loaded l = JoinerService.load(c, AuthService.uuid(o.get("id")));
                 aboutJoiner(c, l, membershipId, "reminder_joiner", null, "my-onboarding");
+            }
+        }
+    }
+
+    /**
+     * Exit reminders for one person: their exit tasks overdue (every few days, three by default),
+     * and, for every exit they are part of, the day before the last working day (sent once to the
+     * leaver, their manager and HR, whoever looks first).
+     */
+    static void remindExits(Connection c, UUID tenantId, UUID membershipId, LocalDate today) throws SQLException {
+        for (Map<String, Object> t : Sql.query(c, "select t.id, t.title, t.due_date, t.exit_case_id, coalesce(t.repeat_every_days, 3) as every, "
+                + "(t.last_reminded_at at time zone 'Asia/Kolkata')::date as last from app.exit_task t join app.exit_case x on x.id = t.exit_case_id "
+                + "where t.assignee_id = ? and t.done_at is null and t.due_date < ? and x.status = 'accepted'", membershipId, today)) {
+            LocalDate last = t.get("last") == null ? null : LocalDate.parse((String) t.get("last"));
+            int every = ((Number) t.get("every")).intValue();
+            if (last != null && last.plusDays(every).isAfter(today)) {
+                continue;
+            }
+            if (Sql.update(c, "update app.exit_task set last_reminded_at = (?::date)::timestamp at time zone 'Asia/Kolkata' where id = ?::uuid "
+                    + "and (last_reminded_at is null or (last_reminded_at at time zone 'Asia/Kolkata')::date < ?::date)",
+                    today, t.get("id"), today) > 0) {
+                Map<String, String> values = ExitValues.forCase(c, AuthService.uuid(t.get("exitCaseId")));
+                values.put("task.title", (String) t.get("title"));
+                values.put("task.due_date", ExitValues.date(t.get("dueDate")));
+                send(c, tenantId, membershipId, "exit_task_overdue", values, "my-tasks");
+            }
+        }
+        for (Map<String, Object> x : Sql.query(c, "select x.id, x.employment_id, e.membership_id from app.exit_case x "
+                + "join app.employment e on e.id = x.employment_id where x.status = 'accepted' and x.last_working_day = ? "
+                + "and x.last_day_reminded_at is null and x.kind <> 'death'", today.plusDays(1))) {
+            if (Sql.update(c, "update app.exit_case set last_day_reminded_at = now() where id = ?::uuid and last_day_reminded_at is null",
+                    x.get("id")) == 0) {
+                continue;
+            }
+            Map<String, String> values = ExitValues.forCase(c, AuthService.uuid(x.get("id")));
+            java.util.Set<UUID> to = new java.util.LinkedHashSet<>(ExitService.hrMembers(c));
+            UUID manager = ExitService.managerMembership(c, AuthService.uuid(x.get("employmentId")), today);
+            if (manager != null) {
+                to.add(manager);
+            }
+            if (x.get("membershipId") != null) {
+                to.add(AuthService.uuid(x.get("membershipId")));
+            }
+            for (UUID m : to) {
+                send(c, tenantId, m, "last_day_tomorrow", values, m.toString().equals(x.get("membershipId")) ? "my-exit" : "exits");
             }
         }
     }

@@ -15,18 +15,25 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.example.loginapp.core.AuthService;
 import com.example.loginapp.core.ExitService;
+import com.example.loginapp.core.ExitTasks;
 
 /** Exits: the employee's own (My exit), and everyone's for HR and managers (People → Exits). */
 @RestController
 @RequestMapping("/api/org")
 public class ExitController {
 
+    public record Skip(String reason) {}
+
+    public record Reassign(String membershipId) {}
+
     private final AuthService auth;
     private final ExitService exits;
+    private final ExitTasks tasks;
 
-    public ExitController(AuthService auth, ExitService exits) {
+    public ExitController(AuthService auth, ExitService exits, ExitTasks tasks) {
         this.auth = auth;
         this.exits = exits;
+        this.tasks = tasks;
     }
 
     // ── the employee's own ──────────────────────────────────────────────
@@ -96,6 +103,37 @@ public class ExitController {
     public Map<String, Object> close(@RequestHeader(value = "Authorization", required = false) String authorization,
                                      @PathVariable("id") String id, @RequestBody ExitService.CloseInput request) {
         return exits.close(Requests.session(auth, authorization), Requests.id(id), request);
+    }
+
+    // ── clearance ───────────────────────────────────────────────────────
+
+    @GetMapping("/people/exit-tasks/mine")
+    public List<Map<String, Object>> myTasks(@RequestHeader(value = "Authorization", required = false) String authorization) {
+        return tasks.mine(Requests.session(auth, authorization));
+    }
+
+    @PostMapping("/people/exits/{id}/tasks")
+    public Map<String, Object> addTask(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                       @PathVariable("id") String id, @RequestBody ExitTasks.NewTask request) {
+        return tasks.add(Requests.session(auth, authorization), Requests.id(id), request);
+    }
+
+    @PostMapping("/people/exit-tasks/{id}/done")
+    public Map<String, Object> done(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                    @PathVariable("id") String id, @RequestBody(required = false) ExitTasks.DoneInput request) {
+        return tasks.done(Requests.session(auth, authorization), Requests.id(id), request);
+    }
+
+    @PostMapping("/people/exit-tasks/{id}/skip")
+    public Map<String, Object> skip(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                    @PathVariable("id") String id, @RequestBody Skip request) {
+        return tasks.skip(Requests.session(auth, authorization), Requests.id(id), request.reason());
+    }
+
+    @PostMapping("/people/exit-tasks/{id}/reassign")
+    public Map<String, Object> reassign(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                        @PathVariable("id") String id, @RequestBody Reassign request) {
+        return tasks.reassign(Requests.session(auth, authorization), Requests.id(id), Requests.id(request.membershipId()));
     }
 
     // ── setup ───────────────────────────────────────────────────────────

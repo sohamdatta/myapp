@@ -321,7 +321,9 @@ function DocumentEditor({ item, isNew, lookups, onDone, onCancel }) {
 // ── checklists ──────────────────────────────────────────────────────
 
 const OWNERS = { hr: 'HR', it: 'IT', manager: 'Manager', buddy: 'Buddy', joiner: 'Joiner', role: 'A role', user: 'A named user' }
+const EXIT_OWNERS = { hr: 'HR', it: 'IT', finance: 'Finance', manager: 'Manager', joiner: 'The leaver', role: 'A role', user: 'A named user' }
 const TRIGGERS = { added: 'Added', offer_accepted: 'Offer accepted', invited: 'Invited', joining_date: 'Joining date', activated: 'Activated' }
+const EXIT_TRIGGERS = { exit_accepted: 'The exit is accepted', last_working_day: 'The last working day' }
 
 export function ChecklistsSetup(props) {
   return (
@@ -330,19 +332,30 @@ export function ChecklistsSetup(props) {
       title="Checklists"
       load={setup.checklists}
       addLabel="Add a checklist"
-      blank={() => ({ name: '', appliesTo: {}, active: true, tasks: [] })}
-      summary={(t, l) => `${t.tasks.length} tasks · ${describeRules(t.appliesTo, l)}`}
+      blank={() => ({ name: '', kind: 'joining', appliesTo: {}, active: true, tasks: [] })}
+      summary={(t, l) => `${t.kind === 'exit' ? 'Leaving' : 'Joining'} · ${t.tasks.length} tasks · ${describeRules(t.appliesTo, l)}`}
       Editor={ChecklistEditor}
     />
   )
 }
 
-const blankTask = () => ({ title: '', owner: 'hr', triggerEvent: 'joining_date', offsetDays: 0, required: true, needsAttachment: false, approver: '' })
+const blankTask = (kind) => ({
+  title: '',
+  owner: 'hr',
+  triggerEvent: kind === 'exit' ? 'last_working_day' : 'joining_date',
+  offsetDays: 0,
+  required: true,
+  needsAttachment: false,
+  approver: '',
+})
 
 function ChecklistEditor({ item, isNew, lookups, onDone, onCancel }) {
   const [t, setT] = useState(item)
   const { busy, error, run } = useAction()
   const set = (patch) => setT({ ...t, ...patch })
+  const exit = t.kind === 'exit'
+  const owners = exit ? EXIT_OWNERS : OWNERS
+  const triggers = exit ? EXIT_TRIGGERS : TRIGGERS
   const setTask = (i, patch) => set({ tasks: t.tasks.map((x, j) => (j === i ? { ...x, ...patch } : x)) })
   const move = (i, by) => {
     const tasks = [...t.tasks]
@@ -359,6 +372,7 @@ function ChecklistEditor({ item, isNew, lookups, onDone, onCancel }) {
       onSave={async () => {
         const body = {
           name: t.name,
+          kind: t.kind || 'joining',
           appliesTo: t.appliesTo || {},
           active: t.active !== false,
           tasks: t.tasks.map((x) => ({
@@ -380,8 +394,21 @@ function ChecklistEditor({ item, isNew, lookups, onDone, onCancel }) {
         if (await run(() => setup.saveChecklist(isNew ? null : t.id, body))) onDone()
       }}
     >
-      <label htmlFor="cl-name">Name</label>
-      <input id="cl-name" value={t.name} onChange={(e) => set({ name: e.target.value })} />
+      <div className="grid">
+        <div>
+          <label htmlFor="cl-name">Name</label>
+          <input id="cl-name" value={t.name} onChange={(e) => set({ name: e.target.value })} />
+        </div>
+        {isNew && (
+          <div>
+            <label htmlFor="cl-kind">For</label>
+            <select id="cl-kind" value={t.kind} onChange={(e) => set({ kind: e.target.value, tasks: [] })}>
+              <option value="joining">People joining</option>
+              <option value="exit">People leaving</option>
+            </select>
+          </div>
+        )}
+      </div>
       <RuleEditor idPrefix="cl" value={t.appliesTo} onChange={(appliesTo) => set({ appliesTo })} lookups={lookups} />
       <h4>Tasks</h4>
       <div className="rows">
@@ -394,7 +421,7 @@ function ChecklistEditor({ item, isNew, lookups, onDone, onCancel }) {
             <div>
               <label htmlFor={`cl-t-${i}-owner`}>Who does it</label>
               <select id={`cl-t-${i}-owner`} value={x.owner} onChange={(e) => setTask(i, { owner: e.target.value })}>
-                {Object.entries(OWNERS).map(([k, v]) => (
+                {Object.entries(owners).map(([k, v]) => (
                   <option key={k} value={k}>
                     {v}
                   </option>
@@ -432,31 +459,35 @@ function ChecklistEditor({ item, isNew, lookups, onDone, onCancel }) {
               <input id={`cl-t-${i}-offset`} inputMode="numeric" value={x.offsetDays} onChange={(e) => setTask(i, { offsetDays: e.target.value })} />
             </div>
             <div>
-              <label htmlFor={`cl-t-${i}-trigger`}>the day the joiner is</label>
+              <label htmlFor={`cl-t-${i}-trigger`}>{exit ? 'the day' : 'the day the joiner is'}</label>
               <select id={`cl-t-${i}-trigger`} value={x.triggerEvent} onChange={(e) => setTask(i, { triggerEvent: e.target.value })}>
-                {Object.entries(TRIGGERS).map(([k, v]) => (
+                {Object.entries(triggers).map(([k, v]) => (
                   <option key={k} value={k}>
                     {v.toLowerCase()}
                   </option>
                 ))}
               </select>
             </div>
-            <div>
-              <label htmlFor={`cl-t-${i}-approver`}>Approved by</label>
-              <select id={`cl-t-${i}-approver`} value={x.approver || ''} onChange={(e) => setTask(i, { approver: e.target.value })}>
-                <option value="">Nobody</option>
-                <option value="hr">HR</option>
-                <option value="manager">Manager</option>
-              </select>
-            </div>
+            {!exit && (
+              <div>
+                <label htmlFor={`cl-t-${i}-approver`}>Approved by</label>
+                <select id={`cl-t-${i}-approver`} value={x.approver || ''} onChange={(e) => setTask(i, { approver: e.target.value })}>
+                  <option value="">Nobody</option>
+                  <option value="hr">HR</option>
+                  <option value="manager">Manager</option>
+                </select>
+              </div>
+            )}
             <label className="check">
               <input type="checkbox" checked={x.required !== false} onChange={(e) => setTask(i, { required: e.target.checked })} />
               Required
             </label>
-            <label className="check">
-              <input type="checkbox" checked={!!x.needsAttachment} onChange={(e) => setTask(i, { needsAttachment: e.target.checked })} />
-              Needs a file
-            </label>
+            {!exit && (
+              <label className="check">
+                <input type="checkbox" checked={!!x.needsAttachment} onChange={(e) => setTask(i, { needsAttachment: e.target.checked })} />
+                Needs a file
+              </label>
+            )}
             <div className="form-actions">
               <button type="button" className="quiet" disabled={i === 0} onClick={() => move(i, -1)} aria-label={`Move ${x.title} up`}>
                 ↑
@@ -470,11 +501,15 @@ function ChecklistEditor({ item, isNew, lookups, onDone, onCancel }) {
             </div>
           </div>
         ))}
-        <button type="button" className="outline" onClick={() => set({ tasks: [...t.tasks, blankTask()] })}>
+        <button type="button" className="outline" onClick={() => set({ tasks: [...t.tasks, blankTask(t.kind)] })}>
           Add a task
         </button>
       </div>
-      <p className="hint">A negative number of days means before: −2 from the joining date is two days before joining.</p>
+      <p className="hint">
+        {exit
+          ? 'A negative number of days means before: −2 from the last working day is two days before it. Nobody holding the role means HR does it.'
+          : 'A negative number of days means before: −2 from the joining date is two days before joining.'}
+      </p>
       <Active id="cl-active" value={t.active} onChange={(active) => set({ active })} />
     </EditorFrame>
   )

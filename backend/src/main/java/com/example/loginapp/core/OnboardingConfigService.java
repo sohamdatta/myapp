@@ -57,7 +57,13 @@ public final class OnboardingConfigService {
                                     Map<String, Object> appliesTo, Integer position, Boolean active) {}
 
     /** A checklist template and its tasks. A task with an id changes that task; one without is added; one left out is removed. */
-    public record ChecklistInput(String name, Map<String, Object> appliesTo, Boolean active, List<TaskInput> tasks) {}
+    public record ChecklistInput(String name, Map<String, Object> appliesTo, Boolean active, List<TaskInput> tasks, String kind) {
+
+        /** Without a kind, as before: a joining checklist. */
+        public ChecklistInput(String name, Map<String, Object> appliesTo, Boolean active, List<TaskInput> tasks) {
+            this(name, appliesTo, active, tasks, null);
+        }
+    }
 
     public record TaskInput(String id, String title, String instructions, String owner, String ownerRoleCode, String ownerMembershipId,
                             String triggerEvent, Integer offsetDays, Boolean required, Boolean needsAttachment, String approver,
@@ -541,17 +547,19 @@ public final class OnboardingConfigService {
         requireRead(ctx);
         return db.inTenant(ctx.tenantId(), c -> {
             OnboardingDefaults.ensure(c, ctx.tenantId());
+            ExitDefaults.ensure(c, ctx.tenantId());
             Map<UUID, String> names = names(c);
             List<Map<String, Object>> out = new ArrayList<>();
-            for (Map<String, Object> row : Sql.query(c, "select * from app.checklist_template order by lower(name)")) {
+            for (Map<String, Object> row : Sql.query(c, "select * from app.checklist_template order by kind desc, lower(name)")) {
                 out.add(checklistDetail(c, row, names));
             }
             return out;
         });
     }
 
-    private static final Set<String> OWNERS = Set.of("hr", "it", "manager", "buddy", "joiner", "role", "user");
+    private static final Set<String> OWNERS = Set.of("hr", "it", "finance", "manager", "buddy", "joiner", "role", "user");
     private static final Set<String> TRIGGERS = Set.of("added", "offer_accepted", "invited", "joining_date", "activated");
+    private static final Set<String> EXIT_TRIGGERS = Set.of("exit_accepted", "last_working_day");
     private static final Set<String> APPROVERS = Set.of("hr", "manager", "role", "user");
 
     public Map<String, Object> saveChecklist(SessionCtx ctx, UUID id, ChecklistInput in) {
@@ -572,10 +580,14 @@ public final class OnboardingConfigService {
             AppliesTo rules = in.appliesTo() != null ? checkedRules(c, AppliesTo.from(in.appliesTo()))
                     : current == null ? AppliesTo.EVERYONE : AppliesTo.parse((String) current.get("appliesTo"));
             boolean active = in.active() != null ? in.active() : current == null || (Boolean) current.get("active");
+            String kind = current != null ? (String) current.get("kind") : in.kind() == null || in.kind().isBlank() ? "joining" : in.kind().trim();
+            if (!Set.of("joining", "exit").contains(kind)) {
+                throw bad("A checklist is for joining or for exit");
+            }
             UUID saved;
             if (id == null) {
-                saved = AuthService.uuid(Sql.one(c, "insert into app.checklist_template (tenant_id, name, applies_to, active) "
-                        + "values (?, ?, ?::jsonb, ?) returning id", ctx.tenantId(), name, rules.toJson(), active).get("id"));
+                saved = AuthService.uuid(Sql.one(c, "insert into app.checklist_template (tenant_id, name, applies_to, active, kind) "
+                        + "values (?, ?, ?::jsonb, ?, ?) returning id", ctx.tenantId(), name, rules.toJson(), active, kind).get("id"));
             } else {
                 saved = id;
                 Sql.update(c, "update app.checklist_template set name = ?, applies_to = ?::jsonb, active = ? where id = ?",
@@ -588,13 +600,14 @@ public final class OnboardingConfigService {
                 java.util.Set<UUID> kept = new java.util.HashSet<>();
                 int position = 1;
                 for (TaskInput t : in.tasks()) {
-                    kept.add(saveTemplateTask(c, ctx, saved, t, position++));
+                    kept.add(saveTemplateTask(c, ctx, saved, t, position++, kind));
                 }
                 // Removed tasks: joiners who already have them keep them, no longer linked to the template.
                 for (Map<String, Object> r : Sql.query(c, "select id from app.checklist_template_task where template_id = ?", saved)) {
                     UUID taskId = AuthService.uuid(r.get("id"));
                     if (!kept.contains(taskId)) {
                         Sql.update(c, "update app.onboarding_task set template_task_id = null where template_task_id = ?", taskId);
+                        Sql.update(c, "update app.exit_task set template_task_id = null where template_task_id = ?", taskId);
                         Sql.update(c, "delete from app.checklist_template_task where id = ?", taskId);
                     }
                 }
@@ -606,17 +619,23 @@ public final class OnboardingConfigService {
         });
     }
 
-    private static UUID saveTemplateTask(Connection c, SessionCtx ctx, UUID templateId, TaskInput t, int position) throws SQLException {
+    private static UUID saveTemplateTask(Connection c, SessionCtx ctx, UUID templateId, TaskInput t, int position, String kind)
+            throws SQLException {
         String title = text(t.title(), "every task's title", 120, true);
         String owner = t.owner() == null ? "hr" : t.owner().trim();
-        if (!OWNERS.contains(owner)) {
-            throw bad(title + ": the owner must be hr, it, manager, buddy, joiner, role or user");
+        boolean exit = kind.equals("exit");
+        if (!OWNERS.contains(owner) || (exit && owner.equals("buddy"))) {
+            throw bad(title + ": the owner must be hr, it, finance, manager, " + (exit ? "" : "buddy, ") + "joiner, role or user");
         }
         UUID ownerRole = owner.equals("role") ? roleId(c, t.ownerRoleCode(), title) : null;
         UUID ownerUser = owner.equals("user") ? memberId(c, t.ownerMembershipId(), title) : null;
-        String trigger = t.triggerEvent() == null ? "joining_date" : t.triggerEvent().trim();
-        if (!TRIGGERS.contains(trigger)) {
-            throw bad(title + ": the trigger must be added, offer_accepted, invited, joining_date or activated");
+        String trigger = t.triggerEvent() == null ? (exit ? "last_working_day" : "joining_date") : t.triggerEvent().trim();
+        if (exit ? !EXIT_TRIGGERS.contains(trigger) : !TRIGGERS.contains(trigger)) {
+            throw bad(title + (exit ? ": the trigger must be exit_accepted or last_working_day"
+                    : ": the trigger must be added, offer_accepted, invited, joining_date or activated"));
+        }
+        if (exit && ((t.approver() != null && !t.approver().isBlank()) || Boolean.TRUE.equals(t.needsAttachment()))) {
+            throw bad(title + ": exit tasks have no approver and no file");
         }
         int offset = t.offsetDays() == null ? 0 : range(t.offsetDays(), -90, 180, title + ": the offset in days");
         String approver = t.approver() == null || t.approver().isBlank() ? null : t.approver().trim();

@@ -1,8 +1,9 @@
 import { useState } from 'react'
-import { exits } from '../api.js'
+import { exitTasks, exits } from '../api.js'
 import { formatDay, localToday, useAction, useLoad } from '../hooks.js'
 import { Badge, ErrorNote } from '../ui.jsx'
 import { KINDS, RESIGN_REASONS, SHORTFALL, STAGES } from './exitText.js'
+import { TaskRow } from './TaskList.jsx'
 
 /**
  * My exit: resigning, and everything about leaving once it has started: the notice, the last
@@ -18,6 +19,17 @@ export default function MyExit() {
   return (
     <div className="my-exit">
       {open ? <ExitSummary exit={x} onChanged={mine.reload} /> : null}
+      {open && x.clearance?.total > 0 && (
+        <section className="panel">
+          <h3>
+            Clearance <span className="hint">{x.clearance.done} of {x.clearance.total} done by everyone</span>
+          </h3>
+          {x.tasks.length === 0 && <p className="hint">Nothing for you to do; HR, IT and your manager clear the rest.</p>}
+          {x.tasks.map((t) => (
+            <TaskRow key={t.id} task={t} onChanged={mine.reload} taskApi={exitTasks} />
+          ))}
+        </section>
+      )}
       {!open && m.employed && <Resign mine={m} previous={x} onDone={mine.reload} />}
       {!open && !m.employed && <p className="muted">There is nothing about leaving to show.</p>}
     </div>

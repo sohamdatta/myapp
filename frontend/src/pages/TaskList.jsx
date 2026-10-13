@@ -5,7 +5,8 @@ import { Badge, ErrorNote } from '../ui.jsx'
 
 /** Checklist tasks: one row each, with what the caller may do to it. Shared by a joiner's checklist and My tasks. */
 
-const OWNERS = { hr: 'HR', it: 'IT', manager: 'Manager', buddy: 'Buddy', joiner: 'Joiner', role: 'Others', user: 'Others' }
+const OWNERS = { hr: 'HR', it: 'IT', finance: 'Finance', manager: 'Manager', buddy: 'Buddy', joiner: 'Joiner', role: 'Others', user: 'Others' }
+const EXIT_OWNERS = { ...OWNERS, joiner: 'The leaver' }
 
 const STATES = {
   open: ['neutral', 'To do'],
@@ -15,10 +16,13 @@ const STATES = {
   skipped: ['neutral', 'Skipped'],
 }
 
-/** Tasks grouped by owner, as HR sees one joiner's checklist. */
-export function Checklist({ tasks, hr, users, onChanged }) {
+const DIRECTIONS = { owed_by_employee: 'owed by the leaver', owed_to_employee: 'owed to the leaver' }
+const rupees = (n) => `₹${Number(n).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`
+
+/** Tasks grouped by owner, as HR sees one joiner's (or leaver's) checklist. */
+export function Checklist({ tasks, hr, users, onChanged, taskApi, exit }) {
   const groups = {}
-  for (const t of tasks) (groups[OWNERS[t.owner]] ||= []).push(t)
+  for (const t of tasks) (groups[(exit ? EXIT_OWNERS : OWNERS)[t.owner]] ||= []).push(t)
   return (
     <div className="task-groups">
       {Object.entries(groups).map(([owner, list]) => (
@@ -27,7 +31,7 @@ export function Checklist({ tasks, hr, users, onChanged }) {
             {owner} <span className="hint">{list.filter((t) => t.doneAt).length} of {list.length} done</span>
           </h3>
           {list.map((t) => (
-            <TaskRow key={t.id} task={t} hr={hr} users={users} onChanged={onChanged} />
+            <TaskRow key={t.id} task={t} hr={hr} users={users} onChanged={onChanged} taskApi={taskApi} />
           ))}
         </section>
       ))}
@@ -35,10 +39,18 @@ export function Checklist({ tasks, hr, users, onChanged }) {
   )
 }
 
-export function TaskRow({ task, hr, users = [], onChanged, showJoiner }) {
-  const [mode, setMode] = useState(null) // 'skip' | 'reassign'
+/**
+ * One task. {@code taskApi} is the joiner tasks' API unless an exit's is given; {@code context}
+ * replaces the joiner line in My tasks. Exit tasks can be marked done with an amount (no dues).
+ */
+export function TaskRow({ task, hr, users = [], onChanged, showJoiner, taskApi = api, context }) {
+  const [mode, setMode] = useState(null) // 'skip' | 'reassign' | 'amount'
   const [reason, setReason] = useState('')
   const [assignee, setAssignee] = useState('')
+  const [amount, setAmount] = useState('')
+  const [direction, setDirection] = useState('owed_by_employee')
+  const [note, setNote] = useState('')
+  const exitTask = Boolean(task.exitCaseId)
   const [busy, setBusy] = useState(false)
   const [progress, setProgress] = useState(null)
   const [error, setError] = useState('')
@@ -63,7 +75,7 @@ export function TaskRow({ task, hr, users = [], onChanged, showJoiner }) {
     event.target.value = ''
     if (!file) return
     setProgress(0)
-    await run(() => api.attach(task.id, file, setProgress))
+    await run(() => taskApi.attach(task.id, file, setProgress))
     setProgress(null)
   }
 
@@ -77,7 +89,8 @@ export function TaskRow({ task, hr, users = [], onChanged, showJoiner }) {
             {!task.required && <span className="hint"> (optional)</span>}
           </div>
           <div className="hint">
-            {showJoiner && (
+            {context && <>{context} · </>}
+            {showJoiner && !context && (
               <>
                 {task.joinerPreferredName || task.joinerName}, joining {formatDay(task.joiningDate)} ·{' '}
               </>
@@ -86,6 +99,8 @@ export function TaskRow({ task, hr, users = [], onChanged, showJoiner }) {
             {!showJoiner && ` · ${task.assigneeName || task.assigneeEmail || 'nobody yet'}`}
             {task.skippedReason && ` · ${task.skippedReason}`}
             {task.attachmentName && ` · file: ${task.attachmentName}`}
+            {task.amount && ` · ${rupees(task.amount)} ${DIRECTIONS[task.amountDirection]}`}
+            {task.amountNote && ` (${task.amountNote})`}
           </div>
           {task.instructions && <div className="hint">{task.instructions}</div>}
         </div>
@@ -106,12 +121,17 @@ export function TaskRow({ task, hr, users = [], onChanged, showJoiner }) {
             </label>
           )}
           {task.canDo && (
-            <button type="button" className="secondary" disabled={busy} onClick={() => run(() => api.done(task.id))}>
+            <button type="button" className="secondary" disabled={busy} onClick={() => run(() => taskApi.done(task.id))}>
               Mark done
             </button>
           )}
+          {task.canDo && exitTask && (
+            <button type="button" className="quiet" onClick={() => setMode('amount')}>
+              Done, with an amount…
+            </button>
+          )}
           {task.canApprove && (
-            <button type="button" className="primary" disabled={busy} onClick={() => run(() => api.approve(task.id))}>
+            <button type="button" className="primary" disabled={busy} onClick={() => run(() => taskApi.approve(task.id))}>
               Approve
             </button>
           )}
@@ -134,8 +154,40 @@ export function TaskRow({ task, hr, users = [], onChanged, showJoiner }) {
             <input id={`skip-${task.id}`} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Not needed for this joiner" />
           </div>
           <div className="form-actions">
-            <button type="button" className="secondary" disabled={busy} onClick={() => run(() => api.skip(task.id, reason))}>
+            <button type="button" className="secondary" disabled={busy} onClick={() => run(() => taskApi.skip(task.id, reason))}>
               Skip task
+            </button>
+            <button type="button" className="quiet" onClick={() => setMode(null)}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+      {mode === 'amount' && (
+        <div className="inline-form">
+          <div>
+            <label htmlFor={`amount-${task.id}`}>Amount (₹)</label>
+            <input id={`amount-${task.id}`} inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} />
+          </div>
+          <div>
+            <label htmlFor={`direction-${task.id}`}>Who owes it</label>
+            <select id={`direction-${task.id}`} value={direction} onChange={(e) => setDirection(e.target.value)}>
+              <option value="owed_by_employee">The leaver owes it</option>
+              <option value="owed_to_employee">It is owed to the leaver</option>
+            </select>
+          </div>
+          <div>
+            <label htmlFor={`amount-note-${task.id}`}>For</label>
+            <input id={`amount-note-${task.id}`} value={note} placeholder="Laptop charger not returned" onChange={(e) => setNote(e.target.value)} />
+          </div>
+          <div className="form-actions">
+            <button
+              type="button"
+              className="secondary"
+              disabled={busy || !amount}
+              onClick={() => run(() => taskApi.done(task.id, { amount: Number(amount), direction, note }))}
+            >
+              Mark done
             </button>
             <button type="button" className="quiet" onClick={() => setMode(null)}>
               Cancel
@@ -157,7 +209,7 @@ export function TaskRow({ task, hr, users = [], onChanged, showJoiner }) {
             </select>
           </div>
           <div className="form-actions">
-            <button type="button" className="secondary" disabled={busy || !assignee} onClick={() => run(() => api.reassign(task.id, assignee))}>
+            <button type="button" className="secondary" disabled={busy || !assignee} onClick={() => run(() => taskApi.reassign(task.id, assignee))}>
               Reassign
             </button>
             <button type="button" className="quiet" onClick={() => setMode(null)}>
