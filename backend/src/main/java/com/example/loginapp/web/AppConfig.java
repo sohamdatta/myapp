@@ -25,6 +25,8 @@ import com.example.loginapp.core.EmployeeService;
 import com.example.loginapp.core.InvitationService;
 import com.example.loginapp.core.JoinerService;
 import com.example.loginapp.core.LeaveAdminService;
+import com.example.loginapp.core.ExitInterview;
+import com.example.loginapp.core.ExitLetters;
 import com.example.loginapp.core.ExitService;
 import com.example.loginapp.core.ExitSettlement;
 import com.example.loginapp.core.ExitTasks;
@@ -152,6 +154,16 @@ public class AppConfig {
     @Bean
     public ExitSettlement exitSettlement(Db db, Crypto crypto) {
         return new ExitSettlement(db, crypto);
+    }
+
+    @Bean
+    public ExitLetters exitLetters(Db db, Crypto crypto) {
+        return new ExitLetters(db, crypto);
+    }
+
+    @Bean
+    public ExitInterview exitInterview(Db db, Crypto crypto) {
+        return new ExitInterview(db, crypto);
     }
 
     @Bean

@@ -26,7 +26,7 @@ export function ExitSetup({ canConfigure, onChanged }) {
   if (data.loading || types.loading) return <p className="muted">Loading…</p>
   if (data.error) return <ErrorNote>{data.error}</ErrorNote>
   const initial = data.data
-  const s = form || { ...initial, noticeDays: JSON.parse(initial.noticeDays) }
+  const s = form || { ...initial, noticeDays: JSON.parse(initial.noticeDays), questions: JSON.parse(initial.interviewQuestions || '[]') }
   const set = (patch) => {
     setSaved('')
     setForm({ ...s, ...patch })
@@ -48,6 +48,7 @@ export function ExitSetup({ canConfigure, onChanged }) {
         responseDays: Number(s.responseDays),
         formerAccessMonths: Number(s.formerAccessMonths),
         encashableLeaveTypeIds: s.encashableLeaveTypeIds || [],
+        interviewQuestions: s.questions,
       }),
     )
     if (done) {
@@ -150,6 +151,15 @@ export function ExitSetup({ canConfigure, onChanged }) {
             <input id="ex-access" type="number" min="0" max="36" value={s.formerAccessMonths} onChange={(e) => set({ formerAccessMonths: e.target.value })} />
           </div>
         </div>
+
+        <h3>
+          Exit interview <span className="hint">version {initial.interviewVersion}</span>
+        </h3>
+        <p className="hint">
+          Sent by HR to the leaving employee, and read only by HR. Changing the questions makes a new version; interviews already sent keep
+          theirs.
+        </p>
+        <InterviewQuestions value={s.questions} onChange={(questions) => set({ questions })} />
       </fieldset>
       <ErrorNote>{error}</ErrorNote>
       {saved && <p className="notice">{saved}</p>}
@@ -161,5 +171,71 @@ export function ExitSetup({ canConfigure, onChanged }) {
         </div>
       )}
     </form>
+  )
+}
+
+const QUESTION_TYPES = { rating: 'A rating, 1 to 5', choice: 'One of some choices', text: 'Their own words' }
+
+function InterviewQuestions({ value, onChange }) {
+  const setAt = (i, patch) => onChange(value.map((q, j) => (j === i ? { ...q, ...patch } : q)))
+  const move = (i, d) => {
+    const next = [...value]
+    ;[next[i], next[i + d]] = [next[i + d], next[i]]
+    onChange(next)
+  }
+  return (
+    <div className="rows interview-questions">
+      {value.map((q, i) => (
+        <div key={q.id || i} className="question-item" data-question={i + 1}>
+          <div className="grid">
+            <div>
+              <label htmlFor={`iq-text-${i}`}>Question {i + 1}</label>
+              <input id={`iq-text-${i}`} value={q.text} maxLength={200} onChange={(e) => setAt(i, { text: e.target.value })} />
+            </div>
+            <div>
+              <label htmlFor={`iq-type-${i}`}>Answered as</label>
+              <select id={`iq-type-${i}`} value={q.type} onChange={(e) => setAt(i, { type: e.target.value, choices: q.choices || ['', ''] })}>
+                {Object.entries(QUESTION_TYPES).map(([k, v]) => (
+                  <option key={k} value={k}>
+                    {v}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+          {q.type === 'choice' && (
+            <>
+              <label htmlFor={`iq-choices-${i}`}>Choices, one per line</label>
+              <textarea
+                id={`iq-choices-${i}`}
+                rows={Math.min(8, (q.choices || []).length + 1)}
+                value={(q.choices || []).join('\n')}
+                onChange={(e) => setAt(i, { choices: e.target.value.split('\n') })}
+              />
+            </>
+          )}
+          <div className="form-actions">
+            <button type="button" className="quiet" disabled={i === 0} onClick={() => move(i, -1)} aria-label={`Move question ${i + 1} up`}>
+              ↑
+            </button>
+            <button
+              type="button"
+              className="quiet"
+              disabled={i === value.length - 1}
+              onClick={() => move(i, 1)}
+              aria-label={`Move question ${i + 1} down`}
+            >
+              ↓
+            </button>
+            <button type="button" className="quiet" onClick={() => onChange(value.filter((_, j) => j !== i))}>
+              Remove
+            </button>
+          </div>
+        </div>
+      ))}
+      <button type="button" className="outline" onClick={() => onChange([...value, { type: 'rating', text: '' }])}>
+        Add a question
+      </button>
+    </div>
   )
 }

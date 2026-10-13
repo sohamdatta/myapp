@@ -130,6 +130,18 @@ export async function fetchFile(path) {
   return response.blob()
 }
 
+/** Saves a document the server holds, such as a letter, to the person's device. */
+export async function downloadDocument(documentId, name) {
+  const blob = await fetchFile(`/org/people/documents/${documentId}/content`)
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = name
+  a.click()
+  setTimeout(() => URL.revokeObjectURL(url), 10000)
+  return true
+}
+
 const get = (path) => request('GET', path)
 const post = (path, body = {}) => request('POST', path, body)
 const put = (path, body) => request('PUT', path, body)
@@ -431,6 +443,13 @@ export const exits = {
   removeSettlementLine: (id, lineId) => del(`/org/people/exits/${id}/settlement/lines/${lineId}`),
   approveSettlement: (id) => post(`/org/people/exits/${id}/settlement/approve`),
   paySettlementLine: (id, lineId, body) => post(`/org/people/exits/${id}/settlement/lines/${lineId}/paid`, body),
+  previewLetter: (id, templateId) => get(`/org/people/exits/${id}/letters/preview${query({ template: templateId })}`),
+  issueLetter: (id, templateId) => post(`/org/people/exits/${id}/letters`, { templateId }),
+  interview: (id) => get(`/org/people/exits/${id}/interview`),
+  sendInterview: (id) => post(`/org/people/exits/${id}/interview`),
+  interviewNotes: (id, notes) => put(`/org/people/exits/${id}/interview/notes`, { notes }),
+  answerInterview: (answers) => post('/org/me/exit/interview', { answers }),
+  declineInterview: () => post('/org/me/exit/interview/decline'),
   settings: () => get('/org/people/setup/exit'),
   saveSettings: (body) => put('/org/people/setup/exit', body),
 }

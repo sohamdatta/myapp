@@ -54,7 +54,16 @@ public final class ExitService {
 
     public record SettingsInput(Map<String, Object> noticeDays, Boolean managerStep, List<String> noticeLeaveTypeIds,
                                 String shortfallDefault, Integer retirementAge, Integer abscondingDays, Integer responseDays,
-                                Integer formerAccessMonths, List<String> encashableLeaveTypeIds) {}
+                                Integer formerAccessMonths, List<String> encashableLeaveTypeIds,
+                                List<Map<String, Object>> interviewQuestions) {
+
+        public SettingsInput(Map<String, Object> noticeDays, Boolean managerStep, List<String> noticeLeaveTypeIds, String shortfallDefault,
+                             Integer retirementAge, Integer abscondingDays, Integer responseDays, Integer formerAccessMonths,
+                             List<String> encashableLeaveTypeIds) {
+            this(noticeDays, managerStep, noticeLeaveTypeIds, shortfallDefault, retirementAge, abscondingDays, responseDays,
+                    formerAccessMonths, encashableLeaveTypeIds, null);
+        }
+    }
 
     private final Db db;
     private final Crypto crypto;
@@ -429,9 +438,14 @@ public final class ExitService {
                 + "order by due_date nulls last, position", id)) {
             out.add("Task: " + t.get("title"));
         }
-        Map<String, Object> x = Sql.one(c, "select settlement_state from app.exit_case where id = ?", id);
+        Map<String, Object> x = Sql.one(c, "select kind, settlement_state from app.exit_case where id = ?", id);
         if (!"paid".equals(x.get("settlementState"))) {
             out.add("the settlement is not paid");
+        }
+        if (!Set.of("death", "absconding").contains((String) x.get("kind"))
+                && Sql.one(c, "select 1 from app.letter_template where kind = 'relieving' and active") != null
+                && Sql.one(c, "select 1 from app.issued_letter where exit_case_id = ? and kind = 'relieving'", id) == null) {
+            out.add("the relieving letter is not issued");
         }
         return out;
     }
@@ -479,6 +493,7 @@ public final class ExitService {
         int access = between(in.formerAccessMonths(), 12, 0, 36, "Former employees' access must be from 0 to 36 months");
         UUID[] noticeLeave = in.noticeLeaveTypeIds() == null ? null : ids(in.noticeLeaveTypeIds());
         UUID[] encashable = ids(in.encashableLeaveTypeIds() == null ? List.of() : in.encashableLeaveTypeIds());
+        String questions = in.interviewQuestions() == null ? null : ExitInterview.checkQuestions(in.interviewQuestions());
         return db.inTenant(ctx.tenantId(), c -> {
             ExitDefaults.ensure(c, ctx.tenantId());
             for (UUID t : concat(noticeLeave, encashable)) {
@@ -491,6 +506,10 @@ public final class ExitService {
                     + "encashable_leave_type_ids = ?, updated_by = ?, updated_at = now()",
                     Json.write(notice), !Boolean.FALSE.equals(in.managerStep()), noticeLeave, shortfall, (short) retirement,
                     (short) absconding, (short) response, (short) access, encashable, ctx.membershipId());
+            if (questions != null && Sql.update(c, "update app.exit_settings set interview_questions = ?::jsonb, "
+                    + "interview_version = interview_version + 1 where interview_questions <> ?::jsonb", questions, questions) > 0) {
+                UserService.audit(c, ctx, "exit.interview_changed", "tenant", ctx.tenantId(), Map.of());
+            }
             UserService.audit(c, ctx, "exit.settings_changed", "tenant", ctx.tenantId(), Map.of("noticeDays", notice));
             Map<String, Object> out = new LinkedHashMap<>(settings(c));
             out.put("canConfigure", true);
@@ -646,6 +665,7 @@ public final class ExitService {
     /** What acceptance starts besides the case itself; the clearance checklist and the acceptance letter hook in here. */
     void afterAccept(Connection c, SessionCtx ctx, UUID id, LocalDate today) throws SQLException {
         ExitTasks.createTasks(c, id);
+        new ExitLetters(db, crypto, clock).onAccepted(c, ctx, id, today);
     }
 
     private UUID insertCase(Connection c, SessionCtx ctx, Map<String, Object> e, String kind, String status, String reason, String note,
@@ -751,6 +771,19 @@ public final class ExitService {
         out.put("tasks", own ? tasks.stream().filter(t -> ctx.membershipId().toString().equals(t.get("assigneeId"))).toList() : tasks);
         out.put("canManageTasks", !own && hr && !mine && "accepted".equals(status));
         out.put("settlement", ExitSettlement.view(c, ctx, ExitSettlement.load(c, id), own || (mine && !hr)));
+        boolean manage = !own && hr && !mine;
+        out.put("letters", ExitLetters.issued(c, id));
+        out.put("letterTemplates", manage ? ExitLetters.available(c, x, today) : List.of());
+        Map<String, Object> interview = ExitInterview.summary(c, id);
+        if (interview != null && own && !"sent".equals(interview.get("status"))) {
+            interview.remove("questions");
+        }
+        if (interview != null && !own && !manage) {
+            interview = Map.of("status", interview.get("status"));   // a manager sees only whether it happened
+        }
+        out.put("interview", interview);
+        out.put("canSendInterview", manage && "accepted".equals(status) && interview == null && x.get("membershipId") != null);
+        out.put("canRecordInterview", manage && Set.of("accepted", "closed").contains(status));
         return out;
     }
 

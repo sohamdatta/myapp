@@ -3,6 +3,7 @@ import { exitTasks, exits } from '../api.js'
 import { formatDay, localToday, useAction, useLoad } from '../hooks.js'
 import { Badge, ErrorNote } from '../ui.jsx'
 import { KINDS, RESIGN_REASONS, SHORTFALL, STAGES } from './exitText.js'
+import { MyInterview, MyLetters } from './ExitLetters.jsx'
 import { MySettlement } from './Settlement.jsx'
 import { TaskRow } from './TaskList.jsx'
 
@@ -31,6 +32,8 @@ export default function MyExit() {
           ))}
         </section>
       )}
+      {open && <MyInterview interview={x.interview} onChanged={mine.reload} />}
+      {open && <MyLetters letters={x.letters} />}
       {open && <MySettlement settlement={x.settlement} />}
       {!open && m.employed && <Resign mine={m} previous={x} onDone={mine.reload} />}
       {!open && !m.employed && <p className="muted">There is nothing about leaving to show.</p>}

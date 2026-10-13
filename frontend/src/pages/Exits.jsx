@@ -4,6 +4,7 @@ import { formatDay, localToday, useAction, useLoad } from '../hooks.js'
 import { Badge, Empty, ErrorNote } from '../ui.jsx'
 import { KINDS, REASONS, REHIRE, SHORTFALL, STAGES, daysBetween } from './exitText.js'
 import { Checklist } from './TaskList.jsx'
+import { ExitLettersPanel, InterviewPanel } from './ExitLetters.jsx'
 import { Settlement } from './Settlement.jsx'
 
 /**
@@ -251,6 +252,8 @@ function ExitPage({ id, onBack }) {
       </div>
       {(x.tasks?.length > 0 || x.canManageTasks) && <Clearance exit={x} onChanged={exit.reload} />}
       <Settlement exit={x} onChanged={exit.reload} />
+      <ExitLettersPanel exit={x} onChanged={exit.reload} />
+      <InterviewPanel exit={x} onChanged={exit.reload} />
     </>
   )
 }

@@ -52,15 +52,33 @@ export const LETTER_PLACEHOLDERS = {
   today: "Today's date",
 }
 
+/** Placeholders an exit letter can use: a letter's, and the exit's own details. */
+export const EXIT_LETTER_PLACEHOLDERS = {
+  ...LETTER_PLACEHOLDERS,
+  'exit.kind': 'The kind of exit, in words: resignation, retirement and so on',
+  'exit.submitted_on': 'When the resignation was given, or the exit started',
+  'exit.last_working_day': 'The last working day',
+  'exit.notice_days': 'The notice owed, in days',
+  'exit.notice_end': 'When the notice would end',
+  'exit.response_by': 'The date a reply is due by (show-cause and final notice)',
+  'employment.tenure': 'Length of service, as 3 years 2 months',
+  'employment.designations': 'Every designation held, with dates',
+}
+
 /** Placeholders a message can use: a letter's, and the event's own details. */
 export const MESSAGE_PLACEHOLDERS = {
-  ...LETTER_PLACEHOLDERS,
+  ...EXIT_LETTER_PLACEHOLDERS,
   link: 'The link the message is about',
   note: "HR's note",
   'section.title': "The section's title",
   'task.title': 'The task',
   'task.due_date': "The task's due date",
   'joiner.name': "The joiner's name",
+  'employee.name': "The leaving employee's name",
+  'exit.access_until': "When a former employee's access ends",
+  'letter.title': "The letter's title",
+  'settlement.line': 'A settlement line, such as Gratuity',
+  'settlement.due_date': 'When a settlement line is due',
 }
 
 /** Sample values, to show how a message reads. */
@@ -87,6 +105,19 @@ export const SAMPLE_VALUES = {
   'section.title': 'Bank account',
   'task.title': 'Prepare laptop and accounts',
   'task.due_date': '10 October 2026',
+  'employee.name': 'Asha Rao',
+  'exit.kind': 'resignation',
+  'exit.submitted_on': '1 October 2026',
+  'exit.last_working_day': '31 October 2026',
+  'exit.notice_days': '30',
+  'exit.notice_end': '31 October 2026',
+  'exit.response_by': '12 October 2026',
+  'exit.access_until': '31 October 2027',
+  'employment.tenure': '3 years 2 months',
+  'employment.designations': 'Analyst, 12 August 2023 to 31 March 2025\nSenior Analyst, 1 April 2025 to 31 October 2026',
+  'letter.title': 'relieving letter',
+  'settlement.line': 'Gratuity',
+  'settlement.due_date': '30 November 2026',
 }
 
 /** Fills placeholders with values, as the server does: unknown or empty ones become nothing. */

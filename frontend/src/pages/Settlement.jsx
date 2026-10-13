@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { exits, fetchFile } from '../api.js'
+import { downloadDocument as download, exits } from '../api.js'
 import { formatDay, localToday, useAction } from '../hooks.js'
 import { Badge, ErrorNote } from '../ui.jsx'
 
@@ -19,16 +19,6 @@ const STATES = {
 
 const qty = (l) => (l.quantity !== null && l.quantity !== undefined && l.unit ? `${Number(l.quantity)} ${l.unit}` : '')
 
-/** Opens a document the server holds as a download. */
-async function download(documentId, name) {
-  const blob = await fetchFile(`/org/people/documents/${documentId}/content`)
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = name
-  a.click()
-  setTimeout(() => URL.revokeObjectURL(url), 10000)
-}
 
 /**
  * The full and final settlement for HR: work out the lines, type the amounts, have a second person

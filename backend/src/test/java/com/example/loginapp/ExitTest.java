@@ -31,7 +31,11 @@ import com.example.loginapp.core.Crypto;
 import com.example.loginapp.core.Db;
 import com.example.loginapp.core.EmployeeService;
 import com.example.loginapp.core.EmployeeService.NewEmployee;
+import com.example.loginapp.core.DocumentService;
+import com.example.loginapp.core.ExitInterview;
+import com.example.loginapp.core.ExitLetters;
 import com.example.loginapp.core.ExitService;
+import com.example.loginapp.core.LetterService;
 import com.example.loginapp.core.ExitService.AcceptInput;
 import com.example.loginapp.core.ExitService.DecisionInput;
 import com.example.loginapp.core.ExitService.RecommendInput;
@@ -390,6 +394,96 @@ class ExitTest {
         }
         assertEquals("paid", paid.get("state"));
         assertEquals(1L, count(s.org, "select count(*) from app.issued_letter where kind = 'settlement'"));
+    }
+
+    // ── letters and the interview ───────────────────────────────────────
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void lettersWaitForTheLastDayAndClearanceAndTheInterviewIsReadOnlyByHr() {
+        Setup s = setup();
+        exits.saveSettings(s.hr, settings(false));
+        UUID id = UUID.fromString((String) exits.resign(s.worker, new ResignInput("career", null, null)).get("id"));
+        LocalDate last = TODAY.plusDays(10);
+        Map<String, Object> accepted = exits.accept(s.hr, id, new AcceptInput(last.toString(), "waived", null));
+        // The acceptance letter goes out on acceptance.
+        List<Map<String, Object>> issued = (List<Map<String, Object>>) accepted.get("letters");
+        assertEquals(List.of("exit_acceptance"), issued.stream().map(l -> l.get("kind")).toList());
+        assertTrue(events(s.worker).contains("exit_letter_issued"));
+        List<Map<String, Object>> templates = (List<Map<String, Object>>) accepted.get("letterTemplates");
+        assertFalse(templates.stream().anyMatch(t -> "termination".equals(t.get("kind"))));   // not for a resignation
+        UUID relieving = templateId(templates, "relieving");
+        UUID experience = templateId(templates, "experience");
+        assertTrue(((String) templates.stream().filter(t -> "relieving".equals(t.get("kind"))).findFirst().get().get("waitingFor"))
+                .startsWith("Waits for the last working day"));
+        ExitLetters letters = new ExitLetters(db, crypto);
+        assertError(409, "exit.letter_not_ready", () -> letters.issue(s.hr, id, relieving));
+        assertTrue(((List<String>) exits.get(s.hr, id).get("closeBlockers")).contains("the relieving letter is not issued"));
+
+        // On the last day the experience letter can go; the relieving letter waits for clearance.
+        ExitLetters onTheDay = new ExitLetters(db, crypto, fixed(last));
+        assertError(409, "exit.letter_not_ready", () -> onTheDay.issue(s.hr, id, relieving));
+        onTheDay.issue(s.hr, id, experience);
+        String text = (String) onTheDay.preview(s.hr, id, experience).get("text");
+        assertTrue(text.contains("Wasim Worker") && text.contains(ExitValuesDate.of(last)), text);
+        db.inTenant(s.org.id, c -> Sql.update(c, "update app.exit_task set done_at = now(), done_by = ? where exit_case_id = ? and done_at is null",
+                s.hr.membershipId(), id));
+        onTheDay.issue(s.hr, id, relieving);
+        assertFalse(((List<String>) exits.get(s.hr, id).get("closeBlockers")).contains("the relieving letter is not issued"));
+        assertEquals(3, ((List<?>) ((Map<String, Object>) exits.mine(s.worker).get("exit")).get("letters")).size());
+        assertError(403, "permission.denied", () -> letters.issue(s.worker, id, relieving));
+
+        // Exit letters take the exit's placeholders; joining letters do not, and never list exit letters.
+        LetterService letterService = new LetterService(db, crypto, new DocumentService(db, crypto));
+        letterService.saveTemplate(s.org.admin, null, new LetterService.TemplateInput("relieving", "Short relieving letter",
+                "{{person.legal_name}} left on {{exit.last_working_day}}.", "accept", null, true));
+        assertError(400, "template.unknown_placeholder", () -> letterService.saveTemplate(s.org.admin, null,
+                new LetterService.TemplateInput("other", "Odd", "Left on {{exit.last_working_day}}.", "none", null, true)));
+
+        // The interview: sent by HR, answered by the employee, read only by HR.
+        assertTrue((Boolean) exits.get(s.hr, id).get("canSendInterview"));
+        ExitInterview interview = new ExitInterview(db, crypto);
+        interview.send(s.hr, id);
+        assertError(409, "interview.exists", () -> interview.send(s.hr, id));
+        assertTrue(events(s.worker).contains("interview_sent"));
+        Map<String, Object> mine = (Map<String, Object>) ((Map<String, Object>) exits.mine(s.worker).get("exit")).get("interview");
+        assertEquals("sent", mine.get("status"));
+        assertEquals(8, ((List<?>) mine.get("questions")).size());
+        assertError(400, "request.invalid", () -> interview.answer(s.worker, new ExitInterview.AnswersInput(Map.of("manager", 9))));
+        assertError(400, "request.invalid", () -> interview.answer(s.worker, new ExitInterview.AnswersInput(Map.of("reason", "Boredom"))));
+        interview.answer(s.worker, new ExitInterview.AnswersInput(Map.of("reason", "Career growth", "manager", 4,
+                "change", "More time for learning")));
+        assertError(409, "interview.done", () -> interview.decline(s.worker));
+        assertEquals(Map.of("status", "submitted"), exits.get(s.boss, id).get("interview"));
+        assertError(403, "permission.denied", () -> interview.get(s.boss, id));
+        Map<String, Object> read = interview.get(s.hr, id);
+        assertEquals("More time for learning", ((Map<String, Object>) read.get("answers")).get("change"));
+        assertEquals(4, ((Number) ((Map<String, Object>) read.get("answers")).get("manager")).intValue());
+        assertEquals(0L, count(s.org, "select count(*) from app.exit_interview where position(convert_to('learning', 'UTF8') in answers_enc) > 0"));
+        Map<String, Object> noted = interview.notes(s.hr, id, new ExitInterview.NotesInput("Spoke for twenty minutes; wants to return later."));
+        assertEquals("submitted", noted.get("status"));
+        assertTrue(((String) noted.get("notes")).startsWith("Spoke"));
+
+        // New questions are a new version; the interview already sent keeps its own.
+        exits.saveSettings(s.hr, new SettingsInput(Map.of("permanent", 45, "probation", 15, "fixed_term", 30, "intern", 0, "consultant", 15),
+                false, null, "leave_then_owed", 60, 7, 7, 12, List.of(), List.of(Map.of("type", "rating", "text", "How was it?"))));
+        assertEquals(2, ((Number) exits.getSettings(s.hr).get("interviewVersion")).intValue());
+        assertEquals(8, ((List<?>) interview.get(s.hr, id).get("questions")).size());
+        assertError(400, "request.invalid", () -> exits.saveSettings(s.hr, new SettingsInput(Map.of("permanent", 45, "probation", 15,
+                "fixed_term", 30, "intern", 0, "consultant", 15), false, null, "leave_then_owed", 60, 7, 7, 12, List.of(),
+                List.of(Map.of("type", "choice", "text", "Pick", "choices", List.of("Only one"))))));
+    }
+
+    private static UUID templateId(List<Map<String, Object>> templates, String kind) {
+        return UUID.fromString((String) templates.stream().filter(t -> kind.equals(t.get("kind"))).findFirst()
+                .orElseThrow(() -> new AssertionError("no template " + kind)).get("id"));
+    }
+
+    /** Dates as letters write them. */
+    private static final class ExitValuesDate {
+        static String of(LocalDate d) {
+            return java.time.format.DateTimeFormatter.ofPattern("d MMMM yyyy", java.util.Locale.ENGLISH).format(d);
+        }
     }
 
     // ── helpers ─────────────────────────────────────────────────────────

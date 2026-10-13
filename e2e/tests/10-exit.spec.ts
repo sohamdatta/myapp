@@ -192,4 +192,41 @@ test.describe.serial('exit', () => {
     await expectNoSidewaysScroll(meera);
     await shot(meera, '92-my-settlement', true);
   });
+
+  test('letters wait for their moment, and the exit interview is answered and read only by HR', async () => {
+    await hr.reload();
+    await nav(hr, 'Exits');
+    await hr.getByRole('button', { name: 'Meera Iyer' }).click();
+    const letters = hr.getByTestId('exit-letters');
+    await expect(letters.locator('li[data-letter="Resignation acceptance"]')).toBeVisible();   // issued on acceptance
+    const relieving = letters.locator('[data-template="Relieving letter"]');
+    await expect(relieving).toContainText('Waits for the last working day');
+    await expect(relieving.getByRole('button', { name: 'Issue' })).toBeDisabled();
+    await relieving.getByRole('button', { name: 'Preview' }).click();
+    await expect(letters.locator('.letter-preview')).toContainText('Meera Iyer');
+
+    const interview = hr.getByTestId('exit-interview');
+    await interview.getByRole('button', { name: 'Send the interview' }).click();
+    await expect(interview).toContainText('Sent, waiting for answers');
+    await shot(hr, '93-letters-interview', true);
+
+    await meera.reload();
+    await nav(meera, 'My exit');
+    await expect(meera.getByTestId('my-letters')).toContainText('Resignation acceptance');
+    const mine = meera.getByTestId('my-interview');
+    await mine.getByRole('radiogroup', { name: 'How well did your manager support you?' }).getByLabel('4').check();
+    await mine.getByRole('combobox', { name: 'What is the main reason you are leaving?' }).selectOption('Career growth');
+    await mine.getByRole('textbox', { name: 'What one thing should we change?' }).fill('More time for learning');
+    await expectNoSidewaysScroll(meera);
+    await shot(meera, '94-my-interview', true);
+    await mine.getByRole('button', { name: 'Send my answers' }).click();
+    await expect(mine).toContainText('Thank you for your answers');
+
+    await hr.reload();
+    await nav(hr, 'Exits');
+    await hr.getByRole('button', { name: 'Meera Iyer' }).click();
+    await hr.getByTestId('exit-interview').getByRole('button', { name: 'Read it' }).click();
+    await expect(hr.getByTestId('exit-interview')).toContainText('More time for learning');
+    await expect(hr.getByTestId('exit-interview')).toContainText('4 of 5');
+  });
 });

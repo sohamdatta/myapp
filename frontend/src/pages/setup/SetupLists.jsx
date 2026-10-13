@@ -2,7 +2,7 @@ import { useRef, useState } from 'react'
 import { joiners, setup } from '../../api.js'
 import { formatDate, useAction, useLoad } from '../../hooks.js'
 import { Badge, Empty, ErrorNote } from '../../ui.jsx'
-import { LETTER_PLACEHOLDERS, MESSAGE_PLACEHOLDERS, SAMPLE_VALUES, expandCode, fill, pretty } from '../onboardingText.js'
+import { EXIT_LETTER_PLACEHOLDERS, LETTER_PLACEHOLDERS, MESSAGE_PLACEHOLDERS, SAMPLE_VALUES, expandCode, fill, pretty } from '../onboardingText.js'
 import { Placeholders, RuleEditor } from './SetupShared.jsx'
 import { describeRules, insertAt } from './setupText.js'
 
@@ -518,6 +518,18 @@ function ChecklistEditor({ item, isNew, lookups, onDone, onCancel }) {
 // ── letters ─────────────────────────────────────────────────────────
 
 const RESPONSES = { none: 'Only reads it', accept: 'Accepts it', accept_or_decline: 'Accepts or declines it' }
+const JOINING_KINDS = ['offer', 'appointment', 'confirmation', 'other']
+const EXIT_KINDS = {
+  exit_acceptance: 'Resignation accepted',
+  relieving: 'Relieving',
+  experience: 'Experience',
+  termination: 'Termination',
+  retirement: 'Retirement',
+  contract_end: 'End of contract',
+  show_cause: 'Show-cause notice',
+  final_notice: 'Final notice',
+}
+const isExit = (kind) => kind in EXIT_KINDS
 
 export function LettersSetup(props) {
   return (
@@ -527,7 +539,11 @@ export function LettersSetup(props) {
       load={setup.letters}
       addLabel="Add a letter"
       blank={() => ({ kind: 'other', name: '', body: '{{organization.name}}\n\n\n\nDear {{person.legal_name}},\n\n', response: 'accept', appliesTo: {}, active: true })}
-      summary={(t, l) => `${pretty(t.kind)} · version ${t.version} · the joiner ${RESPONSES[t.response].toLowerCase()} · ${describeRules(t.appliesTo, l)}`}
+      summary={(t, l) =>
+        isExit(t.kind)
+          ? `Exit letter: ${EXIT_KINDS[t.kind]} · version ${t.version}`
+          : `${pretty(t.kind)} · version ${t.version} · the joiner ${RESPONSES[t.response].toLowerCase()} · ${describeRules(t.appliesTo, l)}`
+      }
       Editor={LetterEditor}
     />
   )
@@ -560,14 +576,27 @@ function LetterEditor({ item, isNew, lookups, onDone, onCancel }) {
         <div>
           <label htmlFor="lt-kind">Kind</label>
           <select id="lt-kind" value={t.kind} onChange={(e) => set({ kind: e.target.value })}>
-            {['offer', 'appointment', 'confirmation', 'other'].map((k) => (
-              <option key={k} value={k}>
-                {pretty(k)}
-              </option>
-            ))}
+            {(isNew || !isExit(item.kind)) && (
+              <optgroup label="Joining">
+                {JOINING_KINDS.map((k) => (
+                  <option key={k} value={k}>
+                    {pretty(k)}
+                  </option>
+                ))}
+              </optgroup>
+            )}
+            {(isNew || isExit(item.kind)) && (
+              <optgroup label="Leaving">
+                {Object.entries(EXIT_KINDS).map(([k, v]) => (
+                  <option key={k} value={k}>
+                    {v}
+                  </option>
+                ))}
+              </optgroup>
+            )}
           </select>
         </div>
-        {t.kind !== 'offer' && (
+        {t.kind !== 'offer' && !isExit(t.kind) && (
           <div>
             <label htmlFor="lt-response">The joiner</label>
             <select id="lt-response" value={t.response} onChange={(e) => set({ response: e.target.value })}>
@@ -582,10 +611,13 @@ function LetterEditor({ item, isNew, lookups, onDone, onCancel }) {
       </div>
       <label htmlFor="lt-body">Wording</label>
       <textarea id="lt-body" ref={area} rows={14} value={t.body} onChange={(e) => set({ body: e.target.value })} />
-      <Placeholders list={LETTER_PLACEHOLDERS} onPick={(p) => insertAt(area, t.body, p, (body) => set({ body }))} />
+      <Placeholders
+        list={isExit(t.kind) ? EXIT_LETTER_PLACEHOLDERS : LETTER_PLACEHOLDERS}
+        onPick={(p) => insertAt(area, t.body, p, (body) => set({ body }))}
+      />
       <p className="hint">Changing the wording makes a new version; letters already issued keep the version they were issued with.</p>
       <div className="inline-form">
-        <div>
+        <div hidden={isExit(t.kind)}>
           <label htmlFor="lt-sample">See it filled for</label>
           <select id="lt-sample" value={sampleFor} onChange={(e) => setSampleFor(e.target.value)}>
             <option value="">Sample values</option>
@@ -600,7 +632,7 @@ function LetterEditor({ item, isNew, lookups, onDone, onCancel }) {
           type="button"
           className="outline"
           onClick={async () => {
-            if (sampleFor && !isNew && t.body === item.body) {
+            if (sampleFor && !isExit(t.kind) && !isNew && t.body === item.body) {
               const p = await run(() => joiners.previewLetter(sampleFor, t.id))
               if (p) setSample(p.text)
             } else {
@@ -613,7 +645,7 @@ function LetterEditor({ item, isNew, lookups, onDone, onCancel }) {
       </div>
       {sampleFor && (isNew || t.body !== item.body) && <p className="hint">Save first to fill it for a real joiner; this shows sample values.</p>}
       {sample && <pre className="letter-preview">{sample}</pre>}
-      <RuleEditor idPrefix="lt" value={t.appliesTo} onChange={(appliesTo) => set({ appliesTo })} lookups={lookups} />
+      {!isExit(t.kind) && <RuleEditor idPrefix="lt" value={t.appliesTo} onChange={(appliesTo) => set({ appliesTo })} lookups={lookups} />}
       <Active id="lt-active" value={t.active} onChange={(active) => set({ active })} />
     </EditorFrame>
   )

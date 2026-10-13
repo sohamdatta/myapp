@@ -56,6 +56,7 @@ public final class LetterService {
         requireRead(ctx);
         return db.inTenant(ctx.tenantId(), c -> {
             OnboardingDefaults.ensure(c, ctx.tenantId());
+            ExitDefaults.ensure(c, ctx.tenantId());
             List<Map<String, Object>> out = new ArrayList<>();
             for (Map<String, Object> t : Sql.query(c, "select * from app.letter_template order by kind, lower(name)")) {
                 t.put("appliesTo", AppliesTo.parse((String) t.get("appliesTo")).rules());
@@ -78,8 +79,12 @@ public final class LetterService {
                 }
             }
             String kind = in.kind() != null ? in.kind().trim() : current == null ? "other" : (String) current.get("kind");
-            if (!KINDS.contains(kind)) {
-                throw ApiException.badRequest("The kind must be offer, appointment, confirmation or other");
+            boolean exit = ExitLetters.KINDS.contains(kind);
+            if (!KINDS.contains(kind) && !exit) {
+                throw ApiException.badRequest("Not a kind of letter");
+            }
+            if (current != null && exit != ExitLetters.KINDS.contains((String) current.get("kind"))) {
+                throw ApiException.badRequest("A joining letter cannot become an exit letter, or the other way round");
             }
             String name = in.name() != null ? in.name().trim() : current == null ? "" : (String) current.get("name");
             if (name.isEmpty() || name.length() > 80) {
@@ -89,8 +94,9 @@ public final class LetterService {
             if (body == null || body.isBlank() || body.length() > 20000) {
                 throw ApiException.badRequest("Write the letter, in at most 20,000 characters");
             }
-            Templates.check(body, Templates.LETTER);
-            String response = in.response() != null ? in.response().trim() : current == null ? "accept" : (String) current.get("response");
+            Templates.check(body, exit ? Templates.EXIT_LETTER : Templates.LETTER);
+            String response = exit ? "none"
+                    : in.response() != null ? in.response().trim() : current == null ? "accept" : (String) current.get("response");
             if (!RESPONSES.contains(response)) {
                 throw ApiException.badRequest("The response must be none, accept or accept_or_decline");
             }
@@ -144,7 +150,7 @@ public final class LetterService {
             AppliesTo.Subject subject = JoinerService.subject(c, l);
             List<Map<String, Object>> templates = new ArrayList<>();
             for (Map<String, Object> t : Sql.query(c, "select id, kind, name, version, response, applies_to from app.letter_template "
-                    + "where active order by kind, lower(name)")) {
+                    + "where active and kind in ('offer','appointment','confirmation','other') order by kind, lower(name)")) {
                 if (AppliesTo.parse((String) t.remove("appliesTo")).matches(subject)) {
                     templates.add(t);
                 }
@@ -171,7 +177,8 @@ public final class LetterService {
         return db.inTenant(ctx.tenantId(), c -> {
             JoinerService.Loaded l = JoinerService.load(c, onboardingId);
             JoinerService.requireOpen(l);
-            Map<String, Object> t = Sql.one(c, "select * from app.letter_template where id = ? and active", templateId);
+            Map<String, Object> t = Sql.one(c, "select * from app.letter_template where id = ? and active "
+                    + "and kind in ('offer','appointment','confirmation','other')", templateId);
             if (t == null) {
                 throw ApiException.badRequest("Choose a letter that is in use");
             }

@@ -15,6 +15,8 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.example.loginapp.core.AuthService;
+import com.example.loginapp.core.ExitInterview;
+import com.example.loginapp.core.ExitLetters;
 import com.example.loginapp.core.ExitService;
 import com.example.loginapp.core.ExitSettlement;
 import com.example.loginapp.core.ExitTasks;
@@ -28,16 +30,23 @@ public class ExitController {
 
     public record Reassign(String membershipId) {}
 
+    public record IssueLetter(String templateId) {}
+
     private final AuthService auth;
     private final ExitService exits;
     private final ExitTasks tasks;
     private final ExitSettlement settlement;
+    private final ExitLetters letters;
+    private final ExitInterview interview;
 
-    public ExitController(AuthService auth, ExitService exits, ExitTasks tasks, ExitSettlement settlement) {
+    public ExitController(AuthService auth, ExitService exits, ExitTasks tasks, ExitSettlement settlement, ExitLetters letters,
+                          ExitInterview interview) {
         this.auth = auth;
         this.exits = exits;
         this.tasks = tasks;
         this.settlement = settlement;
+        this.letters = letters;
+        this.interview = interview;
     }
 
     // ── the employee's own ──────────────────────────────────────────────
@@ -57,6 +66,17 @@ public class ExitController {
     public Map<String, Object> withdraw(@RequestHeader(value = "Authorization", required = false) String authorization,
                                         @RequestBody(required = false) ExitService.WithdrawInput request) {
         return exits.withdraw(Requests.session(auth, authorization), request);
+    }
+
+    @PostMapping("/me/exit/interview")
+    public Map<String, Object> answer(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                      @RequestBody ExitInterview.AnswersInput request) {
+        return interview.answer(Requests.session(auth, authorization), request);
+    }
+
+    @PostMapping("/me/exit/interview/decline")
+    public Map<String, Object> decline(@RequestHeader(value = "Authorization", required = false) String authorization) {
+        return interview.decline(Requests.session(auth, authorization));
     }
 
     // ── HR and managers ─────────────────────────────────────────────────
@@ -184,6 +204,38 @@ public class ExitController {
                                     @PathVariable("id") String id, @PathVariable("lineId") String lineId,
                                     @RequestBody ExitSettlement.PaidInput request) {
         return settlement.paid(Requests.session(auth, authorization), Requests.id(id), Requests.id(lineId), request);
+    }
+
+    // ── letters and the interview ───────────────────────────────────────
+
+    @GetMapping("/people/exits/{id}/letters/preview")
+    public Map<String, Object> previewLetter(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                             @PathVariable("id") String id, @RequestParam("template") String template) {
+        return letters.preview(Requests.session(auth, authorization), Requests.id(id), Requests.id(template));
+    }
+
+    @PostMapping("/people/exits/{id}/letters")
+    public Map<String, Object> issueLetter(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                           @PathVariable("id") String id, @RequestBody IssueLetter request) {
+        return letters.issue(Requests.session(auth, authorization), Requests.id(id), Requests.id(request.templateId()));
+    }
+
+    @GetMapping("/people/exits/{id}/interview")
+    public Map<String, Object> interview(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                         @PathVariable("id") String id) {
+        return interview.get(Requests.session(auth, authorization), Requests.id(id));
+    }
+
+    @PostMapping("/people/exits/{id}/interview")
+    public Map<String, Object> sendInterview(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                             @PathVariable("id") String id) {
+        return interview.send(Requests.session(auth, authorization), Requests.id(id));
+    }
+
+    @PutMapping("/people/exits/{id}/interview/notes")
+    public Map<String, Object> interviewNotes(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                              @PathVariable("id") String id, @RequestBody ExitInterview.NotesInput request) {
+        return interview.notes(Requests.session(auth, authorization), Requests.id(id), request);
     }
 
     // ── setup ───────────────────────────────────────────────────────────
