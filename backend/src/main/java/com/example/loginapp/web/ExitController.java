@@ -129,6 +129,12 @@ public class ExitController {
         return exits.close(Requests.session(auth, authorization), Requests.id(id), request);
     }
 
+    @PutMapping("/people/exits/{id}/legal-hold")
+    public Map<String, Object> legalHold(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                         @PathVariable("id") String id, @RequestBody ExitService.HoldInput request) {
+        return exits.legalHold(Requests.session(auth, authorization), Requests.id(id), request);
+    }
+
     // ── clearance ───────────────────────────────────────────────────────
 
     @GetMapping("/people/exit-tasks/mine")

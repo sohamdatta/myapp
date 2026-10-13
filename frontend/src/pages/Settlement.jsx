@@ -13,8 +13,8 @@ const MY_DIRECTIONS = { earning: 'Paid to you', deduction: 'Deducted', demand: '
 const STATES = {
   none: ['neutral', 'Not prepared'],
   draft: ['warn', 'Draft'],
-  approved: ['info', 'Approved, being paid'],
-  paid: ['ok', 'Paid'],
+  approved: ['warn', 'Approved, being paid'],
+  paid: ['good', 'Paid'],
 }
 
 const qty = (l) => (l.quantity !== null && l.quantity !== undefined && l.unit ? `${Number(l.quantity)} ${l.unit}` : '')

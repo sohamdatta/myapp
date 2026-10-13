@@ -744,6 +744,11 @@ td input.cell-input {
   background: var(--neutral-bg);
 }
 
+.badge-bad {
+  color: var(--error);
+  background: var(--error-bg);
+}
+
 /* A small menu of row actions behind a "more" button. */
 .menu {
   position: relative;
@@ -1805,4 +1810,9 @@ fieldset.question legend {
   flex-wrap: wrap;
   gap: 4px 14px;
   align-items: center;
+}
+
+.error-text {
+  color: var(--error);
+  font-size: 0.85rem;
 }

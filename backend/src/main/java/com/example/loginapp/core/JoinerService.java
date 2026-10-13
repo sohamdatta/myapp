@@ -1054,8 +1054,11 @@ public final class JoinerService {
         return Sql.query(c, "select p.id as person_id, p.legal_name, p.personal_email, p.mobile, "
                 + "(select e.status from app.employment e where e.person_id = p.id order by e.joining_date desc limit 1) as last_status, "
                 + "(select e.joining_date from app.employment e where e.person_id = p.id order by e.joining_date desc limit 1) as last_joined, "
-                + "(select e.exit_date from app.employment e where e.person_id = p.id order by e.joining_date desc limit 1) as last_exit "
-                + "from app.person p where " + String.join(" or ", conditions) + " order by p.created_at", params.toArray());
+                + "(select e.exit_date from app.employment e where e.person_id = p.id order by e.joining_date desc limit 1) as last_exit, "
+                + "x.kind as last_exit_kind, x.rehire, x.rehire_note "
+                + "from app.person p left join lateral (select x.kind, x.rehire, x.rehire_note from app.exit_case x where x.person_id = p.id "
+                + "  and x.status in ('accepted','closed') order by x.started_at desc limit 1) x on true "
+                + "where " + String.join(" or ", conditions) + " order by p.created_at", params.toArray());
     }
 
     /**

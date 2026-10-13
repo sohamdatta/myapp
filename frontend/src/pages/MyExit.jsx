@@ -20,6 +20,11 @@ export default function MyExit() {
   const open = x && ['proposed', 'submitted', 'recommended', 'accepted', 'closed'].includes(x.status)
   return (
     <div className="my-exit">
+      {open && !m.employed && x.formerAccessUntil && (
+        <p className="notice" data-testid="former-access">
+          You can sign in to download your letters and settlement until {formatDay(x.formerAccessUntil)}. Keep copies of anything you need.
+        </p>
+      )}
       {open ? <ExitSummary exit={x} onChanged={mine.reload} /> : null}
       {open && x.clearance?.total > 0 && (
         <section className="panel">

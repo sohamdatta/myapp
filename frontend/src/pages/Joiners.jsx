@@ -218,6 +218,18 @@ export function AddJoiner({ onSaved, onCancel }) {
                   <td>
                     {r.lastStatus ? pretty(r.lastStatus) : '—'}
                     {r.lastJoined && <div className="hint">joined {formatDay(r.lastJoined)}</div>}
+                    {r.lastExit && (
+                      <div className="hint">
+                        left {formatDay(r.lastExit)}
+                        {r.lastExitKind ? ` (${pretty(r.lastExitKind).toLowerCase()})` : ''}
+                      </div>
+                    )}
+                    {r.rehire && (
+                      <div className={r.rehire === 'no' ? 'error-text' : 'hint'} data-testid="rehire-eligibility">
+                        Could be hired again: {pretty(r.rehire)}
+                        {r.rehireNote ? `. ${r.rehireNote}` : ''}
+                      </div>
+                    )}
                   </td>
                   <td>
                     <button type="button" className="secondary" disabled={busy} onClick={() => save(invite, r.personId)}>

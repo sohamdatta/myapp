@@ -592,6 +592,56 @@ class ExitTest {
         assertEquals("exited", employees.get(s.hr, s.workerRecord).get("status"));
     }
 
+    // ── afterwards: former-employee access, legal hold, retention ───────
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void formerEmployeesKeepANarrowLoginUntilTheirAccessEndsAndTheirDataGoesAfterRetentionUnlessHeld() {
+        Setup s = setup();
+        LocalDate last = TODAY.minusDays(1);
+        Map<String, Object> x = exits.start(s.hr, new StartInput(s.workerRecord.toString(), "termination", "performance", null,
+                last.toString(), null, null));
+        UUID id = UUID.fromString((String) x.get("id"));
+        String token = TOKENS.get(s.worker.membershipId());
+        SessionCtx former = auth.resolve(token);
+        assertFalse(former.can("leave.apply"));
+        Map<String, Object> mine = exits.mine(former);
+        assertEquals(false, mine.get("employed"));
+        assertEquals(id.toString(), ((Map<String, Object>) mine.get("exit")).get("id"));
+        LocalDate until = last.plusMonths(12);
+        assertEquals(until.toString(), ((Map<String, Object>) mine.get("exit")).get("formerAccessUntil"));
+
+        // Two weeks before the access ends they are told, once; after it, the login ends.
+        new ExitService(db, crypto, fixed(until.minusDays(10))).list(s.hr, "all");
+        new ExitService(db, crypto, fixed(until.minusDays(9))).list(s.hr, "all");
+        assertEquals(1L, names(notifications.list(former)).stream().filter("former_access_ending"::equals).count());
+        new ExitService(db, crypto, fixed(until)).list(s.hr, "all");
+        auth.resolve(token);   // the last day of access still works
+        new ExitService(db, crypto, fixed(until.plusDays(1))).list(s.hr, "all");
+        assertThrows(ApiException.class, () -> auth.resolve(token));
+        assertEquals(1L, count(s.org, "select count(*) from app.audit_event where action = 'exit.access_ended'"));
+
+        // Retention: kept while under legal hold; removed, apart from what other records need, once it is lifted.
+        db.inTenant(s.org.id, c -> Sql.update(c, "update app.exit_case set settlement_state = 'paid' where id = ?", id));
+        assertError(400, "request.invalid", () -> exits.legalHold(s.hr, id, new ExitService.HoldInput(true, "")));
+        assertTrue((Boolean) exits.legalHold(s.hr, id, new ExitService.HoldInput(true, "Claim before the labour court")).get("legalHold"));
+        ExitService years = new ExitService(db, crypto, fixed(last.plusYears(9)));
+        years.list(s.hr, "all");
+        assertEquals("Wasim Worker", employees.get(s.hr, s.workerRecord).get("legalName"));
+        exits.legalHold(s.hr, id, new ExitService.HoldInput(false, null));
+        years.list(s.hr, "all");
+        Map<String, Object> record = employees.get(s.hr, s.workerRecord);
+        assertEquals("Former employee", record.get("legalName"));
+        assertEquals("exited", record.get("status"));
+        assertEquals(last.toString(), record.get("exitDate"));
+        Map<String, Object> after = exits.get(s.hr, id);
+        assertNotNull(after.get("purgedAt"));
+        assertNull(after.get("reasonNote"));
+        assertFalse((Boolean) after.get("canHold"));
+        assertError(409, "exit.purged", () -> exits.legalHold(s.hr, id, new ExitService.HoldInput(true, "Too late now")));
+        assertEquals(1L, count(s.org, "select count(*) from app.audit_event where action = 'exit.data_removed'"));
+    }
+
     // ── helpers ─────────────────────────────────────────────────────────
 
     private static Map<String, Object> line(List<Map<String, Object>> lines, String code) {

@@ -23,6 +23,11 @@ export function navFor(me) {
     return [{ label: 'Joining', items: [{ id: 'my-onboarding', label: 'My onboarding' }] }]
   }
 
+  // A former employee keeps only their letters and settlement, until that access ends.
+  if ((me.roles || []).includes('ex_employee')) {
+    return [{ label: 'Former employee', items: [{ id: 'my-exit', label: 'My exit' }] }]
+  }
+
   const scopes = me.scopes || {}
   // Punching is for users of the Organization, never for a support session.
   const canPunch = me.permissions.includes('attendance.punch') && me.kind === 'tenant'

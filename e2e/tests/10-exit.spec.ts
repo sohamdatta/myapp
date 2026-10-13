@@ -248,4 +248,16 @@ test.describe.serial('exit', () => {
     await expect(hr.getByTestId('absconding')).toContainText('The show-cause notice can be answered until');
     await shot(hr, '95-absconding', true);
   });
+
+  test('HR puts an exit under legal hold', async () => {
+    await hr.reload();
+    await nav(hr, 'Exits');
+    await hr.getByRole('button', { name: 'Nina Paul' }).click();
+    await hr.getByRole('button', { name: 'Put on hold…' }).click();
+    await hr.fill('#hold-note', 'Claim before the labour court');
+    await hr.getByRole('button', { name: 'Hold', exact: true }).click();
+    await expect(hr.locator('.panels')).toContainText('On hold');
+    await nav(hr, 'Audit log');
+    await expect(hr.locator('code', { hasText: 'exit.legal_hold_on' }).first()).toBeVisible();
+  });
 });

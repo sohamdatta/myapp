@@ -231,6 +231,14 @@ function ExitPage({ id, onBack }) {
                 </dd>
               </>
             )}
+            {(x.legalHold || x.canHold || x.purgedAt) && (
+              <>
+                <dt>Legal hold</dt>
+                <dd>
+                  <LegalHold exit={x} />
+                </dd>
+              </>
+            )}
             {x.cancelledReason && (
               <>
                 <dt>Cancelled because</dt>
@@ -683,5 +691,49 @@ function AbscondingSteps({ steps }) {
       {steps.waitingFor && <p className="hint">{steps.waitingFor}.</p>}
       <p className="hint">If they come back or reply, cancel the exit.</p>
     </section>
+  )
+}
+
+/** Legal hold keeps the person's data past the retention period while a dispute or claim is open. */
+function LegalHold({ exit: x }) {
+  const [editing, setEditing] = useState(false)
+  const [note, setNote] = useState('')
+  const [held, setHeld] = useState(!!x.legalHold)
+  const { busy, error, run } = useAction()
+  if (x.purgedAt) return <span className="hint">Personal data removed on {formatDay(x.purgedAt.slice(0, 10))}, after the retention period</span>
+  const set = async (hold) => {
+    const saved = await run(() => exits.legalHold(x.id, { hold, note }))
+    if (saved) {
+      setHeld(!!saved.legalHold)
+      setEditing(false)
+      setNote('')
+    }
+  }
+  return (
+    <>
+      {held ? <Badge tone="warn">On hold</Badge> : <span className="hint">None. Data goes after the retention period.</span>}{' '}
+      {x.canHold && !editing && (
+        <button type="button" className="quiet plain" onClick={() => (held ? set(false) : setEditing(true))} disabled={busy}>
+          {held ? 'Lift the hold' : 'Put on hold…'}
+        </button>
+      )}
+      {editing && (
+        <div className="inline-form">
+          <div>
+            <label htmlFor="hold-note">For which dispute or claim</label>
+            <input id="hold-note" value={note} maxLength={300} onChange={(e) => setNote(e.target.value)} />
+          </div>
+          <div className="form-actions">
+            <button type="button" className="secondary" disabled={busy} onClick={() => set(true)}>
+              Hold
+            </button>
+            <button type="button" className="quiet" onClick={() => setEditing(false)}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+      <ErrorNote>{error}</ErrorNote>
+    </>
   )
 }

@@ -5,9 +5,9 @@ import { Badge, ErrorNote } from '../ui.jsx'
 
 const INTERVIEW = {
   sent: ['warn', 'Sent, waiting for answers'],
-  submitted: ['ok', 'Answered'],
+  submitted: ['good', 'Answered'],
   declined: ['neutral', 'Declined'],
-  in_person: ['ok', 'Held in person'],
+  in_person: ['good', 'Held in person'],
 }
 
 function LetterList({ letters, onError }) {
@@ -43,7 +43,7 @@ export function ExitLettersPanel({ exit: x, onChanged }) {
             return (
               <div key={t.id} className="letter-option" data-template={t.name}>
                 <div>
-                  <strong>{t.name}</strong> {done && <Badge tone="ok">Issued</Badge>}
+                  <strong>{t.name}</strong> {done && <Badge tone="good">Issued</Badge>}
                   {t.waitingFor && <div className="hint">{t.waitingFor}</div>}
                 </div>
                 <div className="form-actions">

@@ -443,6 +443,7 @@ export const exits = {
   removeSettlementLine: (id, lineId) => del(`/org/people/exits/${id}/settlement/lines/${lineId}`),
   approveSettlement: (id) => post(`/org/people/exits/${id}/settlement/approve`),
   paySettlementLine: (id, lineId, body) => post(`/org/people/exits/${id}/settlement/lines/${lineId}/paid`, body),
+  legalHold: (id, body) => put(`/org/people/exits/${id}/legal-hold`, body),
   previewLetter: (id, templateId) => get(`/org/people/exits/${id}/letters/preview${query({ template: templateId })}`),
   issueLetter: (id, templateId) => post(`/org/people/exits/${id}/letters`, { templateId }),
   interview: (id) => get(`/org/people/exits/${id}/interview`),

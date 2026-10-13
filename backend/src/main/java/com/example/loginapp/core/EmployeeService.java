@@ -526,6 +526,7 @@ public final class EmployeeService {
                         + "where e.status = 'exited' and e.exit_date < ? and m.status <> 'ended'", today)) {
             endMembership(c, tenantId, AuthService.uuid(row.get("membershipId")), AuthService.uuid(row.get("id")));
         }
+        ExitService.formerAccess(c, tenantId, null, today);
     }
 
     /** For the session check: true when this membership's last working day has passed, and ends it. */
@@ -535,11 +536,11 @@ public final class EmployeeService {
                 "select e.id from app.employment e join app.membership m on m.id = e.membership_id "
                         + "where e.membership_id = ? and e.status = 'exited' and e.exit_date < ? and m.status <> 'ended'",
                 membershipId, today);
-        if (row == null) {
-            return false;
+        if (row != null) {
+            endMembership(c, tenantId, membershipId, AuthService.uuid(row.get("id")));
         }
-        endMembership(c, tenantId, membershipId, AuthService.uuid(row.get("id")));
-        return true;
+        ExitService.formerAccess(c, tenantId, membershipId, today);
+        return row != null;
     }
 
     private static void endMembership(Connection c, UUID tenantId, UUID membershipId, UUID employmentId) throws SQLException {

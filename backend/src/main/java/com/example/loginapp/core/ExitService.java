@@ -52,6 +52,8 @@ public final class ExitService {
 
     public record CloseInput(String rehire, String rehireNote) {}
 
+    public record HoldInput(Boolean hold, String note) {}
+
     public record SettingsInput(Map<String, Object> noticeDays, Boolean managerStep, List<String> noticeLeaveTypeIds,
                                 String shortfallDefault, Integer retirementAge, Integer abscondingDays, Integer responseDays,
                                 Integer formerAccessMonths, List<String> encashableLeaveTypeIds,
@@ -205,6 +207,9 @@ public final class ExitService {
         String scope = ctx.scopeOf("exit.read");
         if (scope == null || "self".equals(scope)) {
             throw ApiException.denied("exit.read");
+        }
+        if (canManage(ctx)) {
+            purgeExpired(ctx.tenantId(), today());
         }
         String wanted = status == null || status.isBlank() ? "open" : status;
         if (!Set.of("open", "closed", "all").contains(wanted)) {
@@ -591,6 +596,116 @@ public final class ExitService {
                 + "and last_working_day < ?", today)) {
             end(c, tenantId, AuthService.uuid(x.get("id")), today);
         }
+        formerAccess(c, tenantId, null, today);
+    }
+
+    /**
+     * Former employees keep a narrow login (My exit: their letters and settlement) until the date
+     * on their exit. Two weeks before, they are told once; after it, the Ex-employee role goes and
+     * with it the login. Someone hired again keeps theirs. {@code membershipId} limits it to one person.
+     */
+    static void formerAccess(Connection c, UUID tenantId, UUID membershipId, LocalDate today) throws SQLException {
+        String one = membershipId == null ? "" : " and e.membership_id = ?";
+        Object[] remindArgs = membershipId == null ? new Object[] {today, today.plusDays(14)} : new Object[] {today, today.plusDays(14), membershipId};
+        for (Map<String, Object> x : Sql.query(c, "select x.id, e.membership_id from app.exit_case x join app.employment e on e.id = x.employment_id "
+                + "join app.membership m on m.id = e.membership_id where x.ended_at is not null and x.kind <> 'death' "
+                + "and x.access_reminded_at is null and x.former_access_until between ? and ? and m.status = 'ended'" + one, remindArgs)) {
+            if (Sql.update(c, "update app.exit_case set access_reminded_at = now() where id = ?::uuid and access_reminded_at is null",
+                    x.get("id")) > 0) {
+                Notifications.send(c, tenantId, AuthService.uuid(x.get("membershipId")), "former_access_ending",
+                        ExitValues.forCase(c, AuthService.uuid(x.get("id"))), "my-exit");
+            }
+        }
+        Object[] endArgs = membershipId == null ? new Object[] {today} : new Object[] {today, membershipId};
+        for (Map<String, Object> x : Sql.query(c, "select x.id, e.membership_id from app.exit_case x join app.employment e on e.id = x.employment_id "
+                + "join app.membership m on m.id = e.membership_id where x.ended_at is not null and x.former_access_until < ? "
+                + "and m.status = 'ended' and exists (select 1 from app.membership_role mr join app.role r on r.id = mr.role_id "
+                + "  where mr.membership_id = m.id and r.code = 'ex_employee') "
+                + "and not exists (select 1 from app.employment o where o.membership_id = m.id and o.status in ('onboarding','active'))"
+                + " and x.id = (select x2.id from app.exit_case x2 join app.employment e2 on e2.id = x2.employment_id "
+                + "  where e2.membership_id = m.id and x2.ended_at is not null order by x2.last_working_day desc limit 1)" + one, endArgs)) {
+            if (Sql.update(c, "delete from app.membership_role mr using app.role r where r.id = mr.role_id and r.code = 'ex_employee' "
+                    + "and mr.membership_id = ?::uuid", x.get("membershipId")) > 0) {
+                Sql.update(c, "insert into app.audit_event (tenant_id, actor_kind, actor_label, action, target_type, target_id, detail) "
+                        + "values (?, 'system', 'system', 'exit.access_ended', 'exit', ?::uuid, '{}'::jsonb)", tenantId, x.get("id"));
+            }
+        }
+    }
+
+    /**
+     * Personal data of people who left longer ago than the Organization keeps it (Setup →
+     * Onboarding, in years) is removed, unless any of their exits is under legal hold or they work
+     * here again. What stays is what other records need: the employment and its dates, the job
+     * history, the exit's kind and dates and the settlement's figures, under the name "Former
+     * employee". Runs on the owner connection, scoped to this Organization; logged without values.
+     */
+    void purgeExpired(UUID tenantId, LocalDate today) {
+        db.inOwner(c -> {
+            List<Map<String, Object>> people = Sql.query(c, "select distinct x.person_id from app.exit_case x "
+                    + "join app.employment e on e.id = x.employment_id left join app.onboarding_settings s on s.tenant_id = x.tenant_id "
+                    + "where x.tenant_id = ? and x.purged_at is null and x.ended_at is not null and e.status = 'exited' "
+                    + "and e.exit_date < ?::date - make_interval(years => coalesce(s.exited_retention_years, 8)) "
+                    + "and not exists (select 1 from app.exit_case h where h.person_id = x.person_id and h.legal_hold) "
+                    + "and not exists (select 1 from app.employment o where o.person_id = x.person_id and o.status in ('onboarding','active'))",
+                    tenantId, today);
+            for (Map<String, Object> row : people) {
+                UUID person = AuthService.uuid(row.get("personId"));
+                String[] statements = {
+                    "delete from app.custom_field_value where person_id = ?",
+                    "delete from app.statutory_id where person_id = ?",
+                    "delete from app.bank_account where person_id = ?",
+                    "delete from app.person_address where person_id = ?",
+                    "delete from app.emergency_contact where person_id = ?",
+                    "delete from app.nomination where person_id = ?",
+                    "delete from app.family_member where person_id = ?",
+                    "delete from app.tax_regime_choice where person_id = ?",
+                    "delete from app.section_review where onboarding_id in (select id from app.onboarding where person_id = ?)",
+                    "delete from app.onboarding_section where onboarding_id in (select id from app.onboarding where person_id = ?)",
+                    "delete from app.onboarding_task where onboarding_id in (select id from app.onboarding where person_id = ?)",
+                    "delete from app.issued_letter where person_id = ?",
+                    "delete from app.policy_acknowledgement where person_id = ?",
+                    "update app.person set photo_document_id = null where id = ?",
+                    "delete from app.document_content where document_id in (select id from app.document where person_id = ?)",
+                    "delete from app.document where person_id = ?",
+                    "delete from app.exit_interview where exit_case_id in (select id from app.exit_case where person_id = ?)",
+                    "update app.exit_case set reason_note_enc = null, withdrawal_note = null, recommendation_note = null, rehire_note = null, "
+                            + "cancelled_reason = null, purged_at = now() where person_id = ?",
+                    "update app.person set legal_name = 'Former employee', preferred_name = null, date_of_birth = null, gender = null, "
+                            + "marital_status = null, blood_group = null, personal_email = null, mobile = null, alt_mobile = null where id = ?",
+                };
+                for (String sql : statements) {
+                    Sql.update(c, sql, person);
+                }
+                Sql.update(c, "insert into app.audit_event (tenant_id, actor_kind, actor_label, action, target_type, target_id, detail) "
+                        + "values (?, 'system', 'system', 'exit.data_removed', 'person', ?, "
+                        + "'{\"reason\":\"retention period passed after leaving\"}'::jsonb)", tenantId, person);
+            }
+            return null;
+        });
+    }
+
+    /** HR puts an exit under legal hold (a dispute, a claim), which keeps the person's data past the retention period, or lifts it. */
+    public Map<String, Object> legalHold(SessionCtx ctx, UUID id, HoldInput in) {
+        requireManage(ctx);
+        if (in == null || in.hold() == null) {
+            throw ApiException.badRequest("Say whether the hold is on or off");
+        }
+        String note = in.note() == null ? "" : in.note().trim();
+        if (in.hold() && (note.length() < 5 || note.length() > 300)) {
+            throw ApiException.badRequest("Say why, in 5 to 300 characters: the dispute or claim it is for");
+        }
+        LocalDate today = today();
+        return db.inTenant(ctx.tenantId(), c -> {
+            Map<String, Object> x = lockCase(c, id);
+            refuseOwn(ctx, x);
+            if (x.get("purgedAt") != null) {
+                throw new ApiException(409, "exit.purged", "The personal data of this exit has already been removed");
+            }
+            Sql.update(c, "update app.exit_case set legal_hold = ? where id = ?", in.hold(), id);
+            UserService.audit(c, ctx, in.hold() ? "exit.legal_hold_on" : "exit.legal_hold_off", "exit", id,
+                    in.hold() ? Map.of("reason", note) : Map.of());
+            return view(c, ctx, id, today, false);
+        });
     }
 
     /** The same, for one person's session. */
@@ -810,6 +925,7 @@ public final class ExitService {
             out.put("rehire", full.get("rehire"));
             out.put("rehireNote", full.get("rehireNote"));
             out.put("legalHold", full.get("legalHold"));
+            out.put("purgedAt", full.get("purgedAt"));
         }
         String status = (String) x.get("status");
         boolean open = OPEN.contains(status);
@@ -825,6 +941,7 @@ public final class ExitService {
         out.put("canDecideWithdrawal", !own && hr && !mine && "accepted".equals(status) && !ended
                 && x.get("withdrawalRequestedAt") != null && x.get("withdrawalRefusedAt") == null);
         out.put("canCancel", !own && hr && !mine && open && !ended);
+        out.put("canHold", !own && hr && !mine && full.get("purgedAt") == null && Set.of("accepted", "closed").contains(status));
         out.put("canClose", !own && hr && !mine && (("accepted".equals(status) && ended) || "closed".equals(status)));
         out.put("canWithdraw", mine && "resignation".equals(x.get("kind")) && (Set.of("submitted", "recommended").contains(status)
                 || ("accepted".equals(status) && !ended && !(x.get("withdrawalRequestedAt") != null && x.get("withdrawalRefusedAt") == null))));
