@@ -139,4 +139,57 @@ test.describe.serial('exit', () => {
       await expect(hr.locator('code', { hasText: action }).first()).toBeVisible();
     }
   });
+
+  test('the settlement is worked out, approved by a second person, paid, and sent to the employee', async () => {
+    await nav(hr, 'Exits');
+    await hr.getByRole('button', { name: 'Meera Iyer' }).click();
+    const panel = hr.getByTestId('settlement');
+    await panel.getByRole('button', { name: 'Work out the settlement' }).click();
+    await expect(panel).toContainText('Draft');
+    await expect(panel.getByTestId('line-salary')).toBeVisible();
+    await expect(panel.getByTestId('line-leave_encashment')).toBeVisible();
+    await expect(panel.getByTestId('line-reimbursement').getByRole('spinbutton', { name: /Amount/ })).toHaveValue('1500');
+    const amounts: Record<string, string> = { salary: '42000', leave_encashment: '8000', tax: '2000' };
+    const rows = panel.locator('tbody tr[data-testid^="line-"]');
+    const count = await rows.count();
+    for (let i = 0; i < count; i++) {
+      const row = rows.nth(i);
+      const code = (await row.getAttribute('data-testid'))!.slice(5);
+      const amount = row.getByRole('spinbutton', { name: /Amount/ });
+      if (amounts[code] || (await amount.inputValue()) === '') {
+        await amount.fill(amounts[code] ?? '0');
+        await row.getByRole('button', { name: 'Save' }).click();
+        await expect(row.getByRole('button', { name: 'Save' })).toHaveCount(0);
+      }
+    }
+    await expect(panel.getByTestId('settlement-net')).toHaveText('₹49,500.00');
+    await expect(panel.getByRole('button', { name: 'Approve and send the statement' })).toHaveCount(0);   // not by who prepared it
+    await shot(hr, '90-settlement-draft', true);
+
+    await owner.reload();
+    await nav(owner, 'Exits');
+    await owner.getByRole('button', { name: 'Meera Iyer' }).click();
+    await owner.getByTestId('settlement').getByRole('button', { name: 'Approve and send the statement' }).click();
+    await expect(owner.getByTestId('settlement')).toContainText('Approved, being paid');
+
+    await hr.reload();
+    await nav(hr, 'Exits');
+    await hr.getByRole('button', { name: 'Meera Iyer' }).click();
+    const salary = hr.getByTestId('settlement').getByTestId('line-salary');
+    await salary.getByRole('button', { name: 'Mark paid…' }).click();
+    await hr.locator('[id^="paid-ref-"]').fill('UTR20261031001');
+    await hr.getByRole('button', { name: 'Record' }).click();
+    await expect(salary).toContainText('UTR20261031001');
+    await shot(hr, '91-settlement-paid', true);
+
+    await meera.reload();
+    await nav(meera, 'My exit');
+    const mine = meera.getByTestId('my-settlement');
+    await expect(mine).toContainText('₹49,500.00');
+    const download = meera.waitForEvent('download');
+    await mine.getByRole('button', { name: 'Download the statement' }).click();
+    expect((await download).suggestedFilename()).toBe('Full and final settlement.pdf');
+    await expectNoSidewaysScroll(meera);
+    await shot(meera, '92-my-settlement', true);
+  });
 });

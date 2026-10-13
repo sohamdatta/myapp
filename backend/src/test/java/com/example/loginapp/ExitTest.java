@@ -2,6 +2,7 @@ package com.example.loginapp;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -38,6 +39,9 @@ import com.example.loginapp.core.ExitService.ResignInput;
 import com.example.loginapp.core.ExitService.SettingsInput;
 import com.example.loginapp.core.ExitService.StartInput;
 import com.example.loginapp.core.ExitService.WithdrawInput;
+import com.example.loginapp.core.ExitSettlement;
+import com.example.loginapp.core.ExitSettlement.LineInput;
+import com.example.loginapp.core.ExitSettlement.PaidInput;
 import com.example.loginapp.core.ExitTasks;
 import com.example.loginapp.core.ExitTasks.DoneInput;
 import com.example.loginapp.core.LeaveService;
@@ -73,6 +77,7 @@ class ExitTest {
     private static Notifications notifications;
     private static ExitTasks exitTasks;
     private static LeaveService leaves;
+    private static ExitSettlement settlements;
     private static SessionCtx superAdmin;
     private static final Map<UUID, String> TOKENS = new HashMap<>();
 
@@ -109,6 +114,7 @@ class ExitTest {
         notifications = new Notifications(db);
         exitTasks = new ExitTasks(db);
         leaves = new LeaveService(db);
+        settlements = new ExitSettlement(db, crypto);
         platform.ensureFirstSuperAdmin("root@platform.test", PASSWORD);
         superAdmin = auth.resolve(auth.enterConsole(auth.resolve(auth.login("root@platform.test", PASSWORD))));
     }
@@ -299,7 +305,98 @@ class ExitTest {
         assertTrue(((String) saved.get("noticeDays")).contains("\"permanent\": 45") || ((String) saved.get("noticeDays")).contains("\"permanent\":45"));
     }
 
+    // ── the full and final settlement ───────────────────────────────────
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void theSettlementIsWorkedOutApprovedByASecondPersonAndPaidLineByLine() {
+        Setup s = setup();
+        exits.saveSettings(s.hr, settings(false));
+        // Five years and seven months of service: gratuity counts six years.
+        db.inTenant(s.org.id, c -> Sql.update(c, "update app.employment set joining_date = ? where id = ?",
+                TODAY.minusYears(5).minusMonths(7), s.workerRecord));
+        UUID id = UUID.fromString((String) exits.resign(s.worker, new ResignInput("pay", null, null)).get("id"));
+        assertError(409, "exit.not_accepted", () -> settlements.prepare(s.hr, id));
+        LocalDate last = TODAY.plusDays(20);
+        Map<String, Object> accepted = exits.accept(s.hr, id, new AcceptInput(last.toString(), "owed", null));
+        int shortfall = ((Number) accepted.get("shortfallDays")).intValue();
+        assertEquals(25, shortfall);
+        assertEquals("none", ((Map<String, Object>) accepted.get("settlement")).get("state"));
+
+        assertError(403, "permission.denied", () -> settlements.prepare(s.worker, id));
+        Map<String, Object> draft = settlements.prepare(s.hr, id);
+        assertEquals("draft", draft.get("state"));
+        List<Map<String, Object>> lines = (List<Map<String, Object>>) draft.get("lines");
+        Map<String, Object> salary = line(lines, "salary");
+        LocalDate from = last.withDayOfMonth(1);
+        assertEquals(0, java.math.BigDecimal.valueOf(last.getDayOfMonth()).compareTo((java.math.BigDecimal) salary.get("quantity")));
+        assertTrue(LocalDate.parse((String) salary.get("dueDate")).isAfter(last));
+        assertTrue(LocalDate.parse((String) salary.get("dueDate")).isBefore(last.plusDays(5)));
+        assertEquals(0, java.math.BigDecimal.valueOf(shortfall).compareTo((java.math.BigDecimal) line(lines, "notice_recovery").get("quantity")));
+        assertEquals("demand", line(lines, "notice_recovery").get("direction"));
+        Map<String, Object> gratuity = line(lines, "gratuity");
+        assertEquals(0, java.math.BigDecimal.valueOf(6).compareTo((java.math.BigDecimal) gratuity.get("quantity")));
+        assertEquals(last.plusDays(30).toString(), gratuity.get("dueDate"));
+        assertTrue((Boolean) ((Map<String, Object>) draft.get("gratuity")).get("eligible"));
+        assertFalse(from.isAfter(last));
+        // Preparing again keeps what is there and adds nothing twice.
+        assertEquals(lines.size(), ((List<?>) settlements.prepare(s.hr, id).get("lines")).size());
+
+        // The employee sees nothing of a draft; the preparer cannot approve; every amount must be given.
+        assertTrue(((List<?>) settlements.get(s.worker, id).get("lines")).isEmpty());
+        assertError(409, "settlement.same_person", () -> settlements.approve(s.hr, id));
+        assertError(409, "settlement.amount_missing", () -> settlements.approve(s.org.admin, id));
+        assertError(409, "settlement.line_exists", () -> settlements.addLine(s.hr, id, new LineInput("salary", "Salary again", "earning",
+                null, null, java.math.BigDecimal.ONE, null, null)));
+        settlements.addLine(s.hr, id, new LineInput("bonus", "Statutory bonus", "earning", null, null, new java.math.BigDecimal("8000"),
+                last.plusDays(2).toString(), null));
+        Map<String, Object> current = settlements.get(s.hr, id);
+        for (Map<String, Object> l : (List<Map<String, Object>>) current.get("lines")) {
+            java.math.BigDecimal amount = switch ((String) l.get("code")) {
+                case "salary" -> new java.math.BigDecimal("50000");
+                case "gratuity" -> new java.math.BigDecimal("120000");
+                case "tax" -> new java.math.BigDecimal("5000");
+                case "notice_recovery" -> new java.math.BigDecimal("30000");
+                default -> (java.math.BigDecimal) l.get("amount");
+            };
+            settlements.changeLine(s.hr, id, UUID.fromString((String) l.get("id")), new LineInput(null, null, null,
+                    (java.math.BigDecimal) l.get("quantity"), (String) l.get("unit"), amount, (String) l.get("dueDate"), (String) l.get("note")));
+        }
+        Map<String, Object> approved = settlements.approve(s.org.admin, id);
+        assertEquals("approved", approved.get("state"));
+        assertEquals(0, new java.math.BigDecimal("173000").compareTo((java.math.BigDecimal) approved.get("net")));
+        assertEquals(0, new java.math.BigDecimal("30000").compareTo((java.math.BigDecimal) approved.get("demands")));
+        assertNotNull(approved.get("statementDocumentId"));
+        assertTrue(events(s.worker).contains("exit_letter_issued"));
+        Map<String, Object> seen = settlements.get(s.worker, id);
+        assertFalse(((List<?>) seen.get("lines")).isEmpty());
+        assertFalse((Boolean) seen.get("canPay"));
+        UUID salaryId = UUID.fromString((String) salary.get("id"));
+        assertError(409, "settlement.locked", () -> settlements.changeLine(s.hr, id, salaryId, new LineInput(null, null, null, null, null,
+                java.math.BigDecimal.TEN, null, null)));
+
+        // Paid line by line, with the bank reference; a paid line is final; demands do not hold it up.
+        assertError(400, "request.invalid", () -> settlements.paid(s.hr, id, salaryId, new PaidInput(TODAY.plusDays(1).toString(), "UTR1")));
+        assertError(400, "request.invalid", () -> settlements.paid(s.hr, id, salaryId, new PaidInput(null, " ")));
+        settlements.paid(s.hr, id, salaryId, new PaidInput(null, "UTR000123"));
+        assertError(409, "settlement.paid", () -> settlements.paid(s.hr, id, salaryId, new PaidInput(null, "UTR000124")));
+        assertThrows(RuntimeException.class, () -> db.inTenant(s.org.id, c -> Sql.update(c,
+                "update app.exit_settlement_line set amount = 1 where id = ?", salaryId)));
+        Map<String, Object> paid = null;
+        for (Map<String, Object> l : (List<Map<String, Object>>) settlements.get(s.hr, id).get("lines")) {
+            if (l.get("paidOn") == null && !"demand".equals(l.get("direction"))) {
+                paid = settlements.paid(s.hr, id, UUID.fromString((String) l.get("id")), new PaidInput(TODAY.toString(), "REF-" + l.get("code")));
+            }
+        }
+        assertEquals("paid", paid.get("state"));
+        assertEquals(1L, count(s.org, "select count(*) from app.issued_letter where kind = 'settlement'"));
+    }
+
     // ── helpers ─────────────────────────────────────────────────────────
+
+    private static Map<String, Object> line(List<Map<String, Object>> lines, String code) {
+        return lines.stream().filter(l -> code.equals(l.get("code"))).findFirst().orElseThrow(() -> new AssertionError("no line " + code));
+    }
 
     private static SettingsInput settings(boolean managerStep) {
         return new SettingsInput(Map.of("permanent", 45, "probation", 15, "fixed_term", 30, "intern", 0, "consultant", 15), managerStep,

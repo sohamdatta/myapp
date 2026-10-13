@@ -1738,3 +1738,30 @@ td input.cell-input {
     grid-template-columns: 1fr;
   }
 }
+
+/* ── exit settlement ── */
+.settlement-lines tr.group th {
+  padding-top: 0.9rem;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted, #666);
+  text-align: left;
+}
+.settlement-lines input[type='number'] {
+  width: 8.5rem;
+}
+.settlement-lines .qty input {
+  width: 5rem;
+}
+.settlement-lines input.note {
+  display: block;
+  margin-top: 0.3rem;
+  font-size: 0.85rem;
+}
+.settlement-lines td.actions {
+  white-space: nowrap;
+}
+.settlement .totals {
+  margin-top: 0.75rem;
+}

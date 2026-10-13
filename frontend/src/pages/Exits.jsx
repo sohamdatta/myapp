@@ -4,6 +4,7 @@ import { formatDay, localToday, useAction, useLoad } from '../hooks.js'
 import { Badge, Empty, ErrorNote } from '../ui.jsx'
 import { KINDS, REASONS, REHIRE, SHORTFALL, STAGES, daysBetween } from './exitText.js'
 import { Checklist } from './TaskList.jsx'
+import { Settlement } from './Settlement.jsx'
 
 /**
  * Exits: every exit for HR, the team's for a manager. A list by stage, and one exit at a time
@@ -249,6 +250,7 @@ function ExitPage({ id, onBack }) {
         )}
       </div>
       {(x.tasks?.length > 0 || x.canManageTasks) && <Clearance exit={x} onChanged={exit.reload} />}
+      <Settlement exit={x} onChanged={exit.reload} />
     </>
   )
 }

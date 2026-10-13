@@ -750,6 +750,7 @@ public final class ExitService {
         out.put("clearance", Map.of("done", tasks.stream().filter(t -> t.get("doneAt") != null).count(), "total", tasks.size()));
         out.put("tasks", own ? tasks.stream().filter(t -> ctx.membershipId().toString().equals(t.get("assigneeId"))).toList() : tasks);
         out.put("canManageTasks", !own && hr && !mine && "accepted".equals(status));
+        out.put("settlement", ExitSettlement.view(c, ctx, ExitSettlement.load(c, id), own || (mine && !hr)));
         return out;
     }
 

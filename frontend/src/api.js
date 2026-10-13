@@ -133,6 +133,7 @@ export async function fetchFile(path) {
 const get = (path) => request('GET', path)
 const post = (path, body = {}) => request('POST', path, body)
 const put = (path, body) => request('PUT', path, body)
+const del = (path) => request('DELETE', path)
 
 // ── sign-in and sessions ────────────────────────────────────────────
 
@@ -424,6 +425,12 @@ export const exits = {
   cancel: (id, note) => post(`/org/people/exits/${id}/cancel`, { note }),
   close: (id, body) => post(`/org/people/exits/${id}/close`, body),
   addTask: (id, body) => post(`/org/people/exits/${id}/tasks`, body),
+  prepareSettlement: (id) => post(`/org/people/exits/${id}/settlement/prepare`),
+  addSettlementLine: (id, body) => post(`/org/people/exits/${id}/settlement/lines`, body),
+  changeSettlementLine: (id, lineId, body) => put(`/org/people/exits/${id}/settlement/lines/${lineId}`, body),
+  removeSettlementLine: (id, lineId) => del(`/org/people/exits/${id}/settlement/lines/${lineId}`),
+  approveSettlement: (id) => post(`/org/people/exits/${id}/settlement/approve`),
+  paySettlementLine: (id, lineId, body) => post(`/org/people/exits/${id}/settlement/lines/${lineId}/paid`, body),
   settings: () => get('/org/people/setup/exit'),
   saveSettings: (body) => put('/org/people/setup/exit', body),
 }

@@ -3,6 +3,7 @@ package com.example.loginapp.web;
 import java.util.List;
 import java.util.Map;
 
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -15,6 +16,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.example.loginapp.core.AuthService;
 import com.example.loginapp.core.ExitService;
+import com.example.loginapp.core.ExitSettlement;
 import com.example.loginapp.core.ExitTasks;
 
 /** Exits: the employee's own (My exit), and everyone's for HR and managers (People → Exits). */
@@ -29,11 +31,13 @@ public class ExitController {
     private final AuthService auth;
     private final ExitService exits;
     private final ExitTasks tasks;
+    private final ExitSettlement settlement;
 
-    public ExitController(AuthService auth, ExitService exits, ExitTasks tasks) {
+    public ExitController(AuthService auth, ExitService exits, ExitTasks tasks, ExitSettlement settlement) {
         this.auth = auth;
         this.exits = exits;
         this.tasks = tasks;
+        this.settlement = settlement;
     }
 
     // ── the employee's own ──────────────────────────────────────────────
@@ -134,6 +138,52 @@ public class ExitController {
     public Map<String, Object> reassign(@RequestHeader(value = "Authorization", required = false) String authorization,
                                         @PathVariable("id") String id, @RequestBody Reassign request) {
         return tasks.reassign(Requests.session(auth, authorization), Requests.id(id), Requests.id(request.membershipId()));
+    }
+
+    // ── the full and final settlement ───────────────────────────────────
+
+    @GetMapping("/people/exits/{id}/settlement")
+    public Map<String, Object> settlement(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                          @PathVariable("id") String id) {
+        return settlement.get(Requests.session(auth, authorization), Requests.id(id));
+    }
+
+    @PostMapping("/people/exits/{id}/settlement/prepare")
+    public Map<String, Object> prepare(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                       @PathVariable("id") String id) {
+        return settlement.prepare(Requests.session(auth, authorization), Requests.id(id));
+    }
+
+    @PostMapping("/people/exits/{id}/settlement/lines")
+    public Map<String, Object> addLine(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                       @PathVariable("id") String id, @RequestBody ExitSettlement.LineInput request) {
+        return settlement.addLine(Requests.session(auth, authorization), Requests.id(id), request);
+    }
+
+    @PutMapping("/people/exits/{id}/settlement/lines/{lineId}")
+    public Map<String, Object> changeLine(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                          @PathVariable("id") String id, @PathVariable("lineId") String lineId,
+                                          @RequestBody ExitSettlement.LineInput request) {
+        return settlement.changeLine(Requests.session(auth, authorization), Requests.id(id), Requests.id(lineId), request);
+    }
+
+    @DeleteMapping("/people/exits/{id}/settlement/lines/{lineId}")
+    public Map<String, Object> removeLine(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                          @PathVariable("id") String id, @PathVariable("lineId") String lineId) {
+        return settlement.removeLine(Requests.session(auth, authorization), Requests.id(id), Requests.id(lineId));
+    }
+
+    @PostMapping("/people/exits/{id}/settlement/approve")
+    public Map<String, Object> approve(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                       @PathVariable("id") String id) {
+        return settlement.approve(Requests.session(auth, authorization), Requests.id(id));
+    }
+
+    @PostMapping("/people/exits/{id}/settlement/lines/{lineId}/paid")
+    public Map<String, Object> paid(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                    @PathVariable("id") String id, @PathVariable("lineId") String lineId,
+                                    @RequestBody ExitSettlement.PaidInput request) {
+        return settlement.paid(Requests.session(auth, authorization), Requests.id(id), Requests.id(lineId), request);
     }
 
     // ── setup ───────────────────────────────────────────────────────────
