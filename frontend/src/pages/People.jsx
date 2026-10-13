@@ -133,6 +133,7 @@ function EmployeeList({ canWrite, onOpen, onAdd }) {
                   <td>
                     <StatusBadge status={e.status === 'exited' ? 'ended' : e.status} />
                     {e.status === 'exited' && <div className="hint">Last day {formatDay(e.exitDate)}</div>}
+                    {e.leavingOn && <div className="hint">Leaving {formatDay(e.leavingOn)}</div>}
                   </td>
                 </tr>
               ))}
@@ -742,6 +743,7 @@ function EmployeePage({ id, onBack }) {
           <p className="muted">
             {[e.designation, e.departmentName, e.employeeCode].filter(Boolean).join(' · ')}
             {e.status === 'exited' && ` · last working day ${formatDay(e.exitDate)}`}
+            {e.leavingOn && ` · leaving ${formatDay(e.leavingOn)}`}
           </p>
         </div>
         {canWrite && !form && (
@@ -756,7 +758,7 @@ function EmployeePage({ id, onBack }) {
                 Link user account
               </button>
             )}
-            {active && (
+            {active && !e.leavingOn && (
               <button type="button" className="quiet danger" onClick={() => setForm('exit')}>
                 Record exit
               </button>

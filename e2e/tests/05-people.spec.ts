@@ -150,7 +150,7 @@ test.describe.serial('people', () => {
     await expect(owner.locator('tbody tr')).toContainText('Kiran Pal');
 
     await nav(owner, 'Audit log');
-    for (const action of ['department.created', 'employee.added', 'employee.revealed', 'employee.job_changed', 'employee.exited']) {
+    for (const action of ['department.created', 'employee.added', 'employee.revealed', 'employee.job_changed', 'exit.accepted']) {
       await expect(owner.locator('code', { hasText: action }).first()).toBeVisible();
     }
   });

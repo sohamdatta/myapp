@@ -1,3 +1,4 @@
+import { ExitSetup } from './ExitSetup.jsx'
 import { useState } from 'react'
 import { setup } from '../../api.js'
 import { useLoad } from '../../hooks.js'
@@ -23,6 +24,7 @@ const AREAS = [
   ['messages', 'Messages'],
   ['codes', 'Employee codes'],
   ['settings', 'Settings'],
+  ['exits', 'Exits'],
 ]
 
 export default function PeopleSetup({ me }) {
@@ -46,6 +48,7 @@ export default function PeopleSetup({ me }) {
       {area === 'messages' && <MessagesSetup {...props} />}
       {area === 'codes' && <CodesSetup {...props} />}
       {area === 'settings' && <SettingsSetup {...props} />}
+      {area === 'exits' && <ExitSetup {...props} />}
     </div>
   )
 }

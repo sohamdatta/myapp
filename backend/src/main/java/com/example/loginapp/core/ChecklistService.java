@@ -52,7 +52,7 @@ public final class ChecklistService {
     static void createTasks(Connection c, JoinerService.Loaded l) throws SQLException {
         AppliesTo.Subject subject = JoinerService.subject(c, l);
         int position = 0;
-        for (Map<String, Object> template : Sql.query(c, "select id, applies_to from app.checklist_template where active order by lower(name)")) {
+        for (Map<String, Object> template : Sql.query(c, "select id, applies_to from app.checklist_template where active and kind = 'joining' order by lower(name)")) {
             if (!AppliesTo.parse((String) template.get("appliesTo")).matches(subject)) {
                 continue;
             }

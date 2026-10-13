@@ -7,6 +7,8 @@ import Leave from './Leave.jsx'
 import MyAttendance from './MyAttendance.jsx'
 import MyLeave from './MyLeave.jsx'
 import MyOnboarding from './MyOnboarding.jsx'
+import Exits from './Exits.jsx'
+import MyExit from './MyExit.jsx'
 import MyTasks from './MyTasks.jsx'
 import People from './People.jsx'
 
@@ -418,6 +420,8 @@ export default function Organization({ me, page }) {
       {page === 'people' && <People me={me} />}
       {page === 'my-onboarding' && <MyOnboarding me={me} />}
       {page === 'my-tasks' && <MyTasks />}
+      {page === 'my-exit' && <MyExit me={me} />}
+      {page === 'exits' && <Exits me={me} />}
       {page === 'users' && <UserManagement me={me} />}
       {page === 'audit' && <AuditTab />}
     </>

@@ -24,7 +24,8 @@ public final class Migrator {
             "V7__joiner_flow.sql",
             "V8__documents_and_checklists.sql",
             "V9__letters_policies_codes_messages.sql",
-            "V10__employee_import.sql");
+            "V10__employee_import.sql",
+            "V11__employee_exit.sql");
 
     /**
      * Lets app_definer see every row of every table under row-level security, for databases where it

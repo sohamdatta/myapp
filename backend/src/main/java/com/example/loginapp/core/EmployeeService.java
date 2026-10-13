@@ -400,37 +400,16 @@ public final class EmployeeService {
     }
 
     /**
-     * Records that an employee leaves. The exit date is their last working day: their
-     * access ends the day after it (immediately when that day has passed), when their
-     * roles are replaced by Ex-employee, so they can still see their own records.
+     * Records that an employee leaves, as HR: an exit case accepted at once with this last working
+     * day (see {@link ExitService}). Their access ends the day after it, when their roles are
+     * replaced by Ex-employee, so they can still see their own records.
      */
     public void exit(SessionCtx ctx, UUID employmentId, String exitDate, String reason) {
         ctx.require("employee.write");
-        LocalDate last = requiredDate(exitDate, "last working day");
         String why = required(reason, "a reason", 200);
-        LocalDate today = today();
-        db.inTenant(ctx.tenantId(), c -> {
-            Map<String, Object> e = lockEmployment(c, employmentId);
-            if (!"active".equals(e.get("status"))) {
-                throw new ApiException(409, "employee.not_active", "Only an active employee can be marked as leaving");
-            }
-            if (ctx.membershipId() != null && ctx.membershipId().toString().equals(e.get("membershipId"))) {
-                throw new ApiException(409, "request.refused", "You cannot record your own exit");
-            }
-            if (last.isBefore(LocalDate.parse((String) e.get("joiningDate")))) {
-                throw ApiException.badRequest("The last working day cannot be before the joining date");
-            }
-            if (e.get("membershipId") != null && isOnlyOrgAdmin(c, AuthService.uuid(e.get("membershipId")))) {
-                throw new ApiException(409, "membership.last_owner",
-                        "This employee is the only Org Admin. Make someone else Org Admin first");
-            }
-            Sql.update(c, "update app.employment set status = 'exited', exit_date = ?, exit_reason = ? where id = ?",
-                    last, why, employmentId);
-            UserService.audit(c, ctx, "employee.exited", "employment", employmentId,
-                    Map.of("lastWorkingDay", last.toString(), "reason", why));
-            applyDueExits(c, ctx.tenantId(), today);   // a last working day already past ends access now
-            return null;
-        });
+        requiredDate(exitDate, "last working day");
+        new ExitService(db, crypto, clock).start(ctx, new ExitService.StartInput(employmentId.toString(), "resignation", "other", why,
+                exitDate, null, null));
     }
 
     /** Sets or corrects a statutory identifier. A correction adds a row and marks the old one replaced. */
@@ -541,6 +520,7 @@ public final class EmployeeService {
      * job: this runs whenever employees are read, and for the caller on every request.
      */
     public static void applyDueExits(Connection c, UUID tenantId, LocalDate today) throws SQLException {
+        ExitService.applyDue(c, tenantId, today);
         for (Map<String, Object> row : Sql.query(c,
                 "select e.id, e.membership_id from app.employment e join app.membership m on m.id = e.membership_id "
                         + "where e.status = 'exited' and e.exit_date < ? and m.status <> 'ended'", today)) {
@@ -550,6 +530,7 @@ public final class EmployeeService {
 
     /** For the session check: true when this membership's last working day has passed, and ends it. */
     public static boolean endIfLeft(Connection c, UUID tenantId, UUID membershipId, LocalDate today) throws SQLException {
+        ExitService.applyDueFor(c, tenantId, membershipId, today);
         Map<String, Object> row = Sql.one(c,
                 "select e.id from app.employment e join app.membership m on m.id = e.membership_id "
                         + "where e.membership_id = ? and e.status = 'exited' and e.exit_date < ? and m.status <> 'ended'",
@@ -577,7 +558,11 @@ public final class EmployeeService {
             "select e.id, e.person_id, e.membership_id, e.employee_code, e.employment_type, e.joining_date, e.probation_end, "
                     + "e.contract_end, e.status, e.exit_date, e.exit_reason, p.legal_name, p.preferred_name, p.personal_email, "
                     + "p.mobile, j.designation, j.department_id, d.name as department_name, j.manager_id, "
-                    + "mp.legal_name as manager_name, j.effective_from as job_from, dir.email "
+                    + "mp.legal_name as manager_name, j.effective_from as job_from, dir.email, "
+                    + "(select x.last_working_day from app.exit_case x where x.employment_id = e.id and x.status = 'accepted' "
+                    + "  and x.ended_at is null) as leaving_on, "
+                    + "(select x.id from app.exit_case x where x.employment_id = e.id order by "
+                    + "  (x.status in ('proposed','submitted','recommended','accepted','closed')) desc, x.started_at desc limit 1) as exit_id "
                     + "from app.employment e join app.person p on p.id = e.person_id "
                     + "left join lateral (select * from app.job_assignment j where j.employment_id = e.id "
                     + "  and j.effective_from <= greatest(?::date, e.joining_date) "
@@ -800,7 +785,7 @@ public final class EmployeeService {
         }
     }
 
-    private static boolean isOnlyOrgAdmin(Connection c, UUID membershipId) throws SQLException {
+    static boolean isOnlyOrgAdmin(Connection c, UUID membershipId) throws SQLException {
         return Sql.one(c, "select 1 from app.membership_role mr join app.role r on r.id = mr.role_id "
                 + "where mr.membership_id = ? and r.code = 'owner' "
                 + "and not exists (select 1 from app.membership m2 join app.membership_role mr2 on mr2.membership_id = m2.id "

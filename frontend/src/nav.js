@@ -38,6 +38,7 @@ export function navFor(me) {
         canPunch && { id: 'my-attendance', label: 'My attendance' },
         hasOwnLeave && { id: 'my-leave', label: 'My leave' },
         me.openTasks > 0 && { id: 'my-tasks', label: 'My tasks' },
+        me.employment && me.kind === 'tenant' && { id: 'my-exit', label: 'My exit' },
       ].filter(Boolean),
     },
     {
@@ -46,6 +47,7 @@ export function navFor(me) {
         seesPeople && { id: 'people', label: 'People' },
         seesOthersAttendance && { id: 'attendance', label: 'Attendance' },
         seesOthersLeave && { id: 'leave', label: 'Leave' },
+        Boolean(scopes['exit.read']) && scopes['exit.read'] !== 'self' && { id: 'exits', label: 'Exits' },
         me.permissions.includes('user.read') && { id: 'users', label: 'User management' },
         me.permissions.includes('audit.read') && { id: 'audit', label: 'Audit log' },
       ].filter(Boolean),

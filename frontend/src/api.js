@@ -409,6 +409,24 @@ export const onboarding = {
   acknowledge: (id, version) => post(`/org/onboarding/me/policies/${id}/acknowledge`, { version }),
 }
 
+// ── exits: the employee's own, and everyone's for HR and managers ───
+
+export const exits = {
+  mine: () => get('/org/me/exit'),
+  resign: (body) => post('/org/me/exit', body),
+  withdraw: (note) => post('/org/me/exit/withdraw', { note }),
+  list: (status) => get(`/org/people/exits${query({ status })}`),
+  get: (id) => get(`/org/people/exits/${id}`),
+  start: (body) => post('/org/people/exits', body),
+  recommend: (id, body) => post(`/org/people/exits/${id}/recommend`, body),
+  accept: (id, body) => post(`/org/people/exits/${id}/accept`, body),
+  decideWithdrawal: (id, approve, note) => post(`/org/people/exits/${id}/withdrawal`, { approve, note }),
+  cancel: (id, note) => post(`/org/people/exits/${id}/cancel`, { note }),
+  close: (id, body) => post(`/org/people/exits/${id}/close`, body),
+  settings: () => get('/org/people/setup/exit'),
+  saveSettings: (body) => put('/org/people/setup/exit', body),
+}
+
 export const notifications = {
   list: () => get('/org/notifications'),
   read: (ids) => post('/org/notifications/read', { ids }),

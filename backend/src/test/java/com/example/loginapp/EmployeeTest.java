@@ -323,7 +323,8 @@ class EmployeeTest {
 
         employees.exit(org.admin, stays, TODAY.toString(), "Resigned");           // last day is today: still working
         assertTrue(auth.resolve(token(later)).can("leave.apply"));
-        assertEquals("exited", employees.get(org.admin, stays).get("status"));
+        assertEquals("active", employees.get(org.admin, stays).get("status"));   // working out the last day
+        assertEquals(TODAY.toString(), employees.get(org.admin, stays).get("leavingOn"));
 
         employees.exit(org.admin, gone, TODAY.minusDays(1).toString(), "Resigned");   // last day was yesterday
         SessionCtx after = auth.resolve(token(leaving));

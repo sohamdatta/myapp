@@ -38,17 +38,36 @@ public final class Templates {
             Map.entry("offer.expires_on", "The date an offer must be answered by"),
             Map.entry("today", "Today's date"));
 
+    /** What exit letters can say: everything other letters can, and the exit's own details. */
+    public static final Map<String, String> EXIT_LETTER;
+
     /** What messages can say: everything letters can, and the event's own details. */
     public static final Map<String, String> MESSAGE;
 
     static {
-        java.util.Map<String, String> m = new java.util.TreeMap<>(LETTER);
+        java.util.Map<String, String> x = new java.util.TreeMap<>(LETTER);
+        x.put("exit.kind", "The kind of exit, in words: resignation, retirement and so on");
+        x.put("exit.submitted_on", "When the resignation was given, or the exit started");
+        x.put("exit.last_working_day", "The last working day");
+        x.put("exit.notice_days", "The notice owed, in days");
+        x.put("exit.notice_end", "When the notice would end");
+        x.put("exit.response_by", "The date a reply is due by (show-cause and final notice)");
+        x.put("employment.tenure", "Length of service, as 3 years 2 months");
+        x.put("employment.designations", "Every designation held, with dates");
+        EXIT_LETTER = java.util.Collections.unmodifiableMap(x);
+
+        java.util.Map<String, String> m = new java.util.TreeMap<>(EXIT_LETTER);
         m.put("link", "The link the message is about");
         m.put("note", "HR's note");
         m.put("section.title", "The section's title");
         m.put("task.title", "The task");
         m.put("task.due_date", "The task's due date");
         m.put("joiner.name", "The joiner's name");
+        m.put("employee.name", "The leaving employee's name");
+        m.put("exit.access_until", "When a former employee's access ends");
+        m.put("letter.title", "The letter's title");
+        m.put("settlement.line", "A settlement line, such as Gratuity");
+        m.put("settlement.due_date", "When a settlement line is due");
         MESSAGE = java.util.Collections.unmodifiableMap(m);
     }
 
