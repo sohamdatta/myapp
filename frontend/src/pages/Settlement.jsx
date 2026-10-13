@@ -64,7 +64,7 @@ export function Settlement({ exit: x, onChanged }) {
       {s.gratuity && s.state !== 'none' && (
         <p className="hint" data-testid="gratuity">
           Gratuity: {s.gratuity.eligible ? 'due' : 'not due'}. {s.gratuity.reason}
-          {s.gratuity.service ? ` (service ${s.gratuity.service})` : ''}.
+          {s.gratuity.eligible && s.gratuity.service ? ` (service ${s.gratuity.service})` : ''}.
         </p>
       )}
       <ErrorNote>{error}</ErrorNote>
@@ -421,7 +421,7 @@ export function MySettlement({ settlement: s }) {
           <tbody>
             {['earning', 'deduction', 'demand'].map((d) =>
               s.lines
-                .filter((l) => l.direction === d)
+                .filter((l) => l.direction === d && Number(l.amount) > 0)
                 .map((l, i) => (
                   <MyLine key={l.id} line={l} heading={i === 0 ? MY_DIRECTIONS[d] : null} />
                 )),

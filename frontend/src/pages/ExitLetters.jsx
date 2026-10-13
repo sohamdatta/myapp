@@ -16,7 +16,7 @@ function LetterList({ letters, onError }) {
     <ul className="letter-list">
       {letters.map((l) => (
         <li key={l.id} data-letter={l.title}>
-          <button type="button" className="plain link" onClick={() => onError(() => download(l.documentId, `${l.title}.pdf`))}>
+          <button type="button" className="quiet plain" onClick={() => onError(() => download(l.documentId, `${l.title}.pdf`))}>
             {l.title}
           </button>{' '}
           <span className="hint">issued {formatDate(l.issuedAt)}</span>

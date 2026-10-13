@@ -582,6 +582,7 @@ class ExitTest {
         Map<String, Object> mine = (Map<String, Object>) exits.mine(s.worker).get("exit");
         assertEquals(1, ((List<?>) mine.get("letters")).size());
         assertError(409, "exit.absconding_steps", () -> exits.accept(s.hr, id, new AcceptInput(null, null, null)));
+        assertError(409, "exit.letter_not_ready", () -> letters.issue(s.hr, id, templateId(templates, "final_notice")));
 
         // A week later, no reply: the final notice; a week after that, still none: confirmed with the last day at work.
         new ExitLetters(db, crypto, fixed(TODAY.plusDays(8))).issue(s.hr, id, templateId(templates, "final_notice"));

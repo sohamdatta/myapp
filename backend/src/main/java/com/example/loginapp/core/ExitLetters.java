@@ -158,6 +158,18 @@ public final class ExitLetters {
         if (!absconding && !Set.of("accepted", "closed").contains(status)) {
             return "The exit is not accepted yet";
         }
+        if ("final_notice".equals(kind)) {
+            Map<String, Object> d = Sql.one(c, "select (select min(issued_at at time zone 'Asia/Kolkata')::date from app.issued_letter "
+                    + "where exit_case_id = ?::uuid and kind = 'show_cause') as sent, (select response_days from app.exit_settings) as days",
+                    x.get("id"));
+            if (d.get("sent") == null) {
+                return "Send the show-cause notice first";
+            }
+            LocalDate until = LocalDate.parse((String) d.get("sent")).plusDays(((Number) d.get("days")).intValue());
+            if (!today.isAfter(until)) {
+                return "The show-cause notice can be answered until " + TemplateValues.DATE.format(until);
+            }
+        }
         LocalDate last = x.get("lastWorkingDay") == null ? null : LocalDate.parse((String) x.get("lastWorkingDay"));
         if (Set.of("relieving", "experience").contains(kind) && (last == null || today.isBefore(last))) {
             return "Waits for the last working day" + (last == null ? "" : ", " + TemplateValues.DATE.format(last));

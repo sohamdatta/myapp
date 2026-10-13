@@ -173,7 +173,7 @@ function ExitPage({ id, onBack }) {
             )}
             {x.requestedLastDay && (
               <>
-                <dt>Asked to leave on</dt>
+                <dt>{x.kind === 'absconding' ? 'Last day at work' : 'Asked to leave on'}</dt>
                 <dd>{formatDay(x.requestedLastDay)}</dd>
               </>
             )}
