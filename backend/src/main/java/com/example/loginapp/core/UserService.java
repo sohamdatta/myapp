@@ -192,9 +192,24 @@ public final class UserService {
             throw ApiException.denied("audit.read");
         }
         return db.inTenant(ctx.tenantId(), c -> Sql.query(c,
-                "select id, at, actor_kind, actor_label, action, target_type, target_id, detail "
-                        + "from app.audit_event order by at desc, id desc limit 200"));
+                "select a.id, a.at, a.actor_kind, a.actor_label, a.action, a.target_type, a.target_id, a.detail, " + TARGET_LABEL
+                        + " as target_label from app.audit_event a order by a.at desc, a.id desc limit 200"));
     }
+
+    /** Whom or what an audit event is about, in words: a person's name or a user's email, where the target is one. */
+    private static final String PERSON_NAME = "(select coalesce(p.preferred_name, p.legal_name) from app.person p where p.id = ";
+    private static final String TARGET_LABEL = "case a.target_type "
+            + "when 'membership' then coalesce(" + Names.of("a.target_id") + ", "
+            + "  (select d.email::text from app.member_directory() d where d.membership_id = a.target_id)) "
+            + "when 'employment' then " + PERSON_NAME + "(select e.person_id from app.employment e where e.id = a.target_id)) "
+            + "when 'exit' then " + PERSON_NAME + "(select x.person_id from app.exit_case x where x.id = a.target_id)) "
+            + "when 'onboarding' then " + PERSON_NAME + "(select o.person_id from app.onboarding o where o.id = a.target_id)) "
+            + "when 'person' then " + PERSON_NAME + "a.target_id) "
+            + "when 'leave_request' then " + Names.of("(select r.membership_id from app.leave_request r where r.id = a.target_id)") + " "
+            + "when 'attendance_request' then " + Names.of("(select r.membership_id from app.attendance_request r where r.id = a.target_id)") + " "
+            + "when 'invitation' then (select i.email::text from app.invitation i where i.id = a.target_id) "
+            + "when 'department' then (select d.name from app.department d where d.id = a.target_id) "
+            + "end";
 
     // ── helpers ─────────────────────────────────────────────────────────
 

@@ -129,7 +129,7 @@ test.describe.serial('offer, policies and employee codes', () => {
     await shot(hr, '63-bell');
     await item.click();
     await expect(hr.locator('.page-title')).toHaveText('My tasks');
-    await expect(hr.locator('.task-row[data-task="Send the welcome note and invitation"]')).toContainText('Nina Paul');
+    await expect(hr.locator('.task-group', { hasText: 'Nina Paul, joining' }).locator('.task-row[data-task="Send the welcome note and invitation"]')).toBeVisible();
   });
 
   test('with everything done, the joiner becomes GLX-yy-0001', async () => {
@@ -167,7 +167,7 @@ test.describe.serial('offer, policies and employee codes', () => {
     const yy = isoDay(0).slice(2, 4);
     await tab(hr, 'Joiners');
     await hr.getByRole('button', { name: 'Joined', exact: true }).click();
-    await expect(hr.locator('tbody tr', { hasText: 'Nina Paul' })).toContainText('active');
+    await expect(hr.locator('tbody tr', { hasText: 'Nina Paul' })).toContainText('Joined');
     await tab(hr, 'Employees');
     await expect(hr.locator('tbody tr', { hasText: 'Nina Paul' })).toContainText(`GLX-${yy}-0001`);
 

@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { attendance, invitationLink, joiners, org, people } from '../api.js'
 import { formatDate, formatDay, localToday, useAction, useLoad } from '../hooks.js'
-import { Badge, CopyLink, Empty, ErrorNote, StatusBadge, Tabs } from '../ui.jsx'
+import { Badge, CopyLink, Empty, ErrorNote, StatusBadge, Tabs, Chevron, SectionBadge } from '../ui.jsx'
 import DocumentList from './DocumentList.jsx'
 import FileViewer from './FileViewer.jsx'
 import SectionForm from './SectionForm.jsx'
@@ -135,9 +135,7 @@ export function JoinerList({ canWrite, onOpen, onAdd }) {
                     )}
                   </td>
                   <td>{j.waitingOn ? j.waitingOn === 'nobody' ? <Badge tone="good">Ready</Badge> : WAITING[j.waitingOn] : '—'}</td>
-                  <td>
-                    <StatusBadge status={j.status} />
-                  </td>
+                  <td>{j.status === 'active' ? <Badge tone="good">Joined</Badge> : <StatusBadge status={j.status} />}</td>
                 </tr>
               ))}
             </tbody>
@@ -385,8 +383,8 @@ export function AddJoiner({ onSaved, onCancel }) {
         <button type="button" className="primary" disabled={busy || !form.personalEmail} onClick={() => save(true)}>
           {busy && invite ? 'Saving…' : 'Save and invite'}
         </button>
-        <button type="submit" className="secondary" disabled={busy}>
-          {busy && !invite ? 'Saving…' : 'Save'}
+        <button type="submit" className="outline" disabled={busy}>
+          {busy && !invite ? 'Saving…' : 'Save, invite later'}
         </button>
         <button type="button" className="quiet" onClick={onCancel}>
           Cancel
@@ -448,12 +446,19 @@ export function JoinerPage({ id, onBack, initialInvitation }) {
         </div>
         {canManage && (
           <div className="form-actions">
+            {!j.hasLogin && !j.personalEmail && isOpen && <span className="hint">To invite them, add a personal email under Contact</span>}
             {!j.hasLogin && j.personalEmail && (
               <button type="button" className="outline" disabled={busy} onClick={invite}>
                 {j.invitation ? 'New invitation link' : 'Invite'}
               </button>
             )}
-            <button type="button" className="secondary" disabled={busy} onClick={activate}>
+            <button
+              type="button"
+              className="secondary"
+              disabled={busy || (j.blockers || []).length > 0 || Boolean(j.activationRequestedAt)}
+              title={(j.blockers || []).length > 0 ? 'Activation opens once everything under "Before activation" is done' : undefined}
+              onClick={activate}
+            >
               {j.activationRequestedAt ? 'Activation scheduled' : 'Activate'}
             </button>
             <button type="button" className="quiet danger" onClick={() => setWithdrawing(true)}>
@@ -587,7 +592,8 @@ function SectionCard({ joinerId, summary, open, onToggle, lookups, onChanged }) 
               level {summary.level + 1} of {summary.levels}{' '}
             </span>
           )}
-          <StatusBadge status={summary.status} />
+          <SectionBadge status={summary.status} hr />
+          <Chevron open={open} />
         </span>
       </button>
       {summary.status === 'returned' && summary.note && !open && <p className="hint">Returned: {summary.note}</p>}

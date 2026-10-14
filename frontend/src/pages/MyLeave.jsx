@@ -91,7 +91,7 @@ export function LeaveFields({ idPrefix, types, value, onChange }) {
   )
 }
 
-function ApplyForm({ types, onApplied }) {
+function ApplyForm({ types, onApplied, onCancel }) {
   const [value, setValue] = useState(newLeave)
   const [preview, setPreview] = useState(null)
   const { busy, error, run } = useAction()
@@ -138,9 +138,14 @@ function ApplyForm({ types, onApplied }) {
         </p>
       )}
       <ErrorNote>{error}</ErrorNote>
-      <button type="submit" className="secondary" disabled={busy || !leaveTypeId}>
-        {busy ? 'Sending…' : 'Send for approval'}
-      </button>
+      <div className="form-actions">
+        <button type="submit" className="secondary" disabled={busy || !leaveTypeId}>
+          {busy ? 'Sending…' : 'Send for approval'}
+        </button>
+        <button type="button" className="quiet" onClick={onCancel}>
+          Cancel
+        </button>
+      </div>
     </form>
   )
 }
@@ -161,7 +166,7 @@ function MyRequests({ requests, onChanged }) {
     <>
       <ErrorNote>{error}</ErrorNote>
       <div className="table-wrap">
-        <table>
+        <table className="stack">
           <thead>
             <tr>
               <th>Dates</th>
@@ -186,7 +191,7 @@ function MyRequests({ requests, onChanged }) {
                 <td>{r.reason}</td>
                 <td>
                   <StatusBadge status={r.status} />
-                  {r.decisionNote && <div className="hint">{r.decisionNote}</div>}
+                  {r.decisionNote && <div className="hint">Note: “{r.decisionNote}”</div>}
                 </td>
                 <td className="actions">
                   {r.canCancel && (
@@ -205,14 +210,26 @@ function MyRequests({ requests, onChanged }) {
 }
 
 /** Every entry behind a balance, newest first. The balance is their sum. */
-export function Ledger({ load }) {
+/** Why a credit was what it was: the year's quota, a part of it for a part year, or a month's share. */
+function accrualWhy(entry, type) {
+  if (!type) return null
+  if (type.accrual === 'monthly') return `${Number(type.yearlyQuota) / 12} a month, of ${Number(type.yearlyQuota)} a year`
+  if (type.accrual === 'yearly') {
+    return Number(entry.days) < Number(type.yearlyQuota)
+      ? `Part of the ${Number(type.yearlyQuota)} a year, for the part of the year after joining`
+      : `The ${Number(type.yearlyQuota)} days of the year`
+  }
+  return null
+}
+
+export function Ledger({ load, type }) {
   const entries = useLoad(load)
   if (entries.loading) return <p className="muted">Loading…</p>
   if (entries.error) return <ErrorNote>{entries.error}</ErrorNote>
   if (entries.data.length === 0) return <Empty>Nothing has been credited or taken yet.</Empty>
   return (
     <div className="table-wrap">
-      <table>
+      <table className="stack">
         <thead>
           <tr>
             <th>Date</th>
@@ -226,6 +243,7 @@ export function Ledger({ load }) {
               <td>{formatDay(e.onDate)}</td>
               <td>
                 {ENTRY_KINDS[e.kind] || e.kind}
+                {e.kind === 'accrual' && accrualWhy(e, type) && <div className="hint">{accrualWhy(e, type)}</div>}
                 {(e.reason || e.fromDate || e.expiresOn) && (
                   <div className="hint">
                     {e.fromDate && formatRange(e.fromDate, e.toDate)}
@@ -270,7 +288,7 @@ function History({ balances }) {
           </button>
         ))}
       </div>
-      <Ledger key={typeId} load={() => leave.myLedger(typeId)} />
+      <Ledger key={typeId} load={() => leave.myLedger(typeId)} type={paid.find((b) => b.leaveTypeId === typeId)} />
     </>
   )
 }
@@ -299,9 +317,9 @@ export default function MyLeave({ me }) {
 
       <div className="section-head">
         <h2>My leave requests</h2>
-        {canApply && types.length > 0 && (
-          <button type="button" className="outline" aria-expanded={applying} onClick={() => setApplying((v) => !v)}>
-            {applying ? 'Close' : 'Apply for leave'}
+        {canApply && types.length > 0 && !applying && (
+          <button type="button" className="outline" onClick={() => setApplying(true)}>
+            Apply for leave
           </button>
         )}
       </div>
@@ -312,6 +330,7 @@ export default function MyLeave({ me }) {
             setApplying(false)
             refresh()
           }}
+          onCancel={() => setApplying(false)}
         />
       )}
       <MyRequests requests={requests.data} onChanged={refresh} />

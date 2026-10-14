@@ -43,6 +43,7 @@ export function navFor(me) {
         canPunch && { id: 'my-attendance', label: 'My attendance' },
         hasOwnLeave && { id: 'my-leave', label: 'My leave' },
         me.openTasks > 0 && { id: 'my-tasks', label: 'My tasks' },
+        me.employment && me.kind === 'tenant' && { id: 'my-profile', label: 'My profile' },
         me.employment && me.kind === 'tenant' && { id: 'my-exit', label: 'My exit' },
       ].filter(Boolean),
     },

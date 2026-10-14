@@ -119,7 +119,7 @@ export function ExitSetup({ canConfigure, onChanged }) {
         <fieldset className="days">
           <legend>Leave paid out at exit</legend>
           {leaveTypes.length === 0 && <span className="hint">No leave types yet.</span>}
-          {leaveTypes.map((t) => (
+          {leaveTypes.filter((t) => t.paid !== false).map((t) => (
             <label key={t.id} className="check">
               <input
                 type="checkbox"
@@ -152,6 +152,9 @@ export function ExitSetup({ canConfigure, onChanged }) {
           </div>
         </div>
 
+        <p className="hint">How long a former employee's records are kept is set under Setup → Settings.</p>
+
+        <div className="subpanel">
         <h3>
           Exit interview <span className="hint">version {initial.interviewVersion}</span>
         </h3>
@@ -160,6 +163,7 @@ export function ExitSetup({ canConfigure, onChanged }) {
           theirs.
         </p>
         <InterviewQuestions value={s.questions} onChange={(questions) => set({ questions })} />
+        </div>
       </fieldset>
       <ErrorNote>{error}</ErrorNote>
       {saved && <p className="notice">{saved}</p>}

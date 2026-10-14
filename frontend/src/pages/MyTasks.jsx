@@ -18,29 +18,32 @@ export default function MyTasks() {
   const groups = []
   for (const t of joining) {
     let group = groups.find((g) => g.id === t.onboardingId)
-    if (!group) groups.push((group = { id: t.onboardingId, tasks: [] }))
+    if (!group) {
+      groups.push((group = { id: t.onboardingId, title: `${t.joinerPreferredName || t.joinerName}, joining ${formatDay(t.joiningDate)}`, tasks: [] }))
+    }
     group.tasks.push(t)
   }
   for (const t of leaving) {
     let group = groups.find((g) => g.id === t.exitCaseId)
-    if (!group) groups.push((group = { id: t.exitCaseId, exit: true, tasks: [] }))
+    if (!group) {
+      groups.push(
+        (group = { id: t.exitCaseId, exit: true, title: `${t.leaverPreferredName || t.leaverName}, leaving ${formatDay(t.lastWorkingDay)}`, tasks: [] }),
+      )
+    }
     group.tasks.push(t)
   }
   return (
     <div className="task-groups">
       {groups.map((g) => (
         <section key={g.id} className="panel task-group">
+          <h3>
+            {g.title} <span className="hint">{g.exit ? 'Leaving' : 'Joining'}</span>
+          </h3>
           {g.tasks.map((t) =>
             g.exit ? (
-              <TaskRow
-                key={t.id}
-                task={t}
-                taskApi={exitTasks}
-                context={`${t.leaverPreferredName || t.leaverName}, leaving ${formatDay(t.lastWorkingDay)}`}
-                onChanged={list.reload}
-              />
+              <TaskRow key={t.id} task={t} taskApi={exitTasks} plain onChanged={list.reload} />
             ) : (
-              <TaskRow key={t.id} task={t} showJoiner onChanged={list.reload} />
+              <TaskRow key={t.id} task={t} showJoiner plain onChanged={list.reload} />
             ),
           )}
         </section>

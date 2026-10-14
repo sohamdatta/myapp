@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { people } from '../api.js'
-import { formatDay, localToday, useAction, useLoad } from '../hooks.js'
+import { formatDay, localToday, useAction, useLoad, handoff } from '../hooks.js'
 import { Badge, Empty, ErrorNote, StatusBadge, Tabs } from '../ui.jsx'
 import { AddJoiner, JoinerList, JoinerPage } from './Joiners.jsx'
 import PeopleImport from './PeopleImport.jsx'
@@ -620,50 +620,6 @@ function JobForm({ employee, onSaved, onCancel }) {
   )
 }
 
-function ExitForm({ employee, onSaved, onCancel }) {
-  const [lastWorkingDay, setLastWorkingDay] = useState(localToday())
-  const [reason, setReason] = useState('')
-  const { busy, error, run } = useAction()
-
-  async function submit(event) {
-    event.preventDefault()
-    const done = await run(async () => {
-      await people.exit(employee.id, { lastWorkingDay, reason })
-      return true
-    })
-    if (done) onSaved()
-  }
-
-  return (
-    <form className="panel" onSubmit={submit} noValidate>
-      <h2>Record that {displayName(employee)} is leaving</h2>
-      <div className="toolbar">
-        <div>
-          <label htmlFor="exit-date">Last working day</label>
-          <input id="exit-date" type="date" value={lastWorkingDay} onChange={(e) => setLastWorkingDay(e.target.value)} />
-        </div>
-        <div>
-          <label htmlFor="exit-reason">Reason</label>
-          <input id="exit-reason" value={reason} placeholder="Resigned" onChange={(e) => setReason(e.target.value)} />
-        </div>
-      </div>
-      <p className="hint">
-        The day after their last working day, their roles are replaced by Ex-employee: they can still sign in to see their own
-        records, and nothing else. Their record is kept.
-      </p>
-      <ErrorNote>{error}</ErrorNote>
-      <div className="form-actions">
-        <button type="submit" className="secondary danger" disabled={busy}>
-          {busy ? 'Saving…' : 'Record exit'}
-        </button>
-        <button type="button" className="quiet" onClick={onCancel}>
-          Cancel
-        </button>
-      </div>
-    </form>
-  )
-}
-
 function LinkForm({ employee, onSaved, onCancel }) {
   const users = useLoad(people.unlinkedUsers)
   const [membershipId, setMembershipId] = useState('')
@@ -712,7 +668,13 @@ function LinkForm({ employee, onSaved, onCancel }) {
   )
 }
 
-function EmployeePage({ id, onBack }) {
+/** The signed-in employee's own record: the same page HR sees, without what only HR may do. */
+export function MyProfile({ id }) {
+  if (!id) return <Empty>There is no employee record linked to your login yet. HR links it under People.</Empty>
+  return <EmployeePage id={id} own />
+}
+
+function EmployeePage({ id, onBack, canExit, onExit, own }) {
   const employee = useLoad(() => people.employee(id))
   const [view, setView] = useState('details')
   const [form, setForm] = useState(null)
@@ -730,11 +692,14 @@ function EmployeePage({ id, onBack }) {
 
   return (
     <>
-      <p>
-        <button type="button" className="quiet plain" onClick={onBack}>
-          ← All employees
-        </button>
-      </p>
+      {!own && (
+        <p>
+          <button type="button" className="quiet plain" onClick={onBack}>
+            ← All employees
+          </button>
+        </p>
+      )}
+      {own && <p className="hint">Your record as HR keeps it. To correct something, ask HR.</p>}
       <div className="section-head">
         <div>
           <h2>
@@ -745,6 +710,13 @@ function EmployeePage({ id, onBack }) {
             {e.status === 'exited' && ` · last working day ${formatDay(e.exitDate)}`}
             {e.leavingOn && ` · leaving ${formatDay(e.leavingOn)}`}
           </p>
+          {e.exitId && canExit && (
+            <p>
+              <button type="button" className="text-link" onClick={() => onExit({ open: e.exitId })}>
+                {e.status === 'exited' ? 'Open their exit →' : 'They are leaving: open the exit →'}
+              </button>
+            </p>
+          )}
         </div>
         {canWrite && !form && (
           <div className="form-actions">
@@ -758,9 +730,9 @@ function EmployeePage({ id, onBack }) {
                 Link user account
               </button>
             )}
-            {active && !e.leavingOn && (
-              <button type="button" className="quiet danger" onClick={() => setForm('exit')}>
-                Record exit
+            {active && !e.exitId && canExit && (
+              <button type="button" className="quiet danger" onClick={() => onExit({ startFor: e.id })}>
+                Start an exit…
               </button>
             )}
           </div>
@@ -768,7 +740,6 @@ function EmployeePage({ id, onBack }) {
       </div>
 
       {form === 'job' && <JobForm employee={e} onSaved={saved} onCancel={() => setForm(null)} />}
-      {form === 'exit' && <ExitForm employee={e} onSaved={saved} onCancel={() => setForm(null)} />}
       {form === 'link' && <LinkForm employee={e} onSaved={saved} onCancel={() => setForm(null)} />}
       {form === 'identifier' && <IdentifierForm employee={e} onSaved={saved} onCancel={() => setForm(null)} />}
       {form === 'bank' && <BankForm employee={e} onSaved={saved} onCancel={() => setForm(null)} />}
@@ -1100,7 +1071,7 @@ function Departments({ canWrite }) {
 
 // ── the page ────────────────────────────────────────────────────────
 
-export default function People({ me }) {
+export default function People({ me, onNavigate }) {
   const scopes = me.scopes || {}
   const everyone = ['tenant', 'assigned'].includes(scopes['employee.read'])
   const canWrite = scopes['employee.write'] === 'tenant'
@@ -1125,7 +1096,18 @@ export default function People({ me }) {
     return <AddEmployee onSaved={(id) => setOpen(id)} onCancel={() => setOpen(null)} />
   }
   if (open) {
-    return <EmployeePage key={open} id={open} onBack={() => setOpen(null)} />
+    return (
+      <EmployeePage
+        key={open}
+        id={open}
+        onBack={() => setOpen(null)}
+        canExit={(me.scopes || {})['exit.manage'] === 'tenant' && me.kind === 'tenant'}
+        onExit={(what) => {
+          handoff.set(what)
+          onNavigate('exits')
+        }}
+      />
+    )
   }
   return (
     <>

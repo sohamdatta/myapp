@@ -125,7 +125,7 @@ test.describe.serial('users and access', () => {
     await expect(owner.getByText('Suspended 0')).toBeVisible();
 
     await tab(owner, 'Roles');
-    await expect(owner.locator('td.permissions').first()).toBeVisible();
+    await expect(owner.locator('details.permissions').first()).toBeVisible();
     await shot(owner, '08-roles');
     await nav(owner, 'Audit log');
     await expect(owner.locator('code', { hasText: 'role.granted' }).first()).toBeVisible();

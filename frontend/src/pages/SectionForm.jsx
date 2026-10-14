@@ -120,8 +120,8 @@ export default function SectionForm({ view, canEdit, editableField, lookups = {}
           <button type="button" className="primary" disabled={busy} onClick={() => act(true)}>
             {busy ? 'Saving…' : submitLabel}
           </button>
-          <button type="submit" className="secondary" disabled={busy || !dirty}>
-            Save
+          <button type="submit" className="outline" disabled={busy || !dirty}>
+            Save, finish later
           </button>
         </div>
       )}

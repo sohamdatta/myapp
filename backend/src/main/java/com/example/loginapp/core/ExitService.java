@@ -934,6 +934,11 @@ public final class ExitService {
         UUID employment = AuthService.uuid(x.get("employmentId"));
         UUID manager = managerMembership(c, employment, today);
         out.put("managerStep", Boolean.TRUE.equals(s.get("managerStep")) && manager != null);
+        Map<String, Object> boss = Sql.one(c, "select coalesce(mp.preferred_name, mp.legal_name) as name from app.job_assignment j "
+                + "join app.employment me on me.id = j.manager_id join app.person mp on mp.id = me.person_id "
+                + "where j.employment_id = ? and j.effective_from <= ? order by j.effective_from desc, j.created_at desc limit 1",
+                employment, today);
+        out.put("managerName", boss == null ? null : boss.get("name"));
         out.put("canRecommend", !own && "submitted".equals(status) && isManagerOf(c, ctx, x, today));
         out.put("canAccept", !own && hr && !mine && Set.of("submitted", "recommended", "proposed").contains(status)
                 && !("submitted".equals(status) && Boolean.TRUE.equals(s.get("managerStep")) && manager != null

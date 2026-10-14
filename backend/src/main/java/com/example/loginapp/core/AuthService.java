@@ -164,7 +164,7 @@ public final class AuthService {
                 + ExitTasks.openCount(c, ctx.membershipId())));
         // Whether the person has an employment record (so My exit can be offered), and their exit if one is open.
         me.put("employment", ctx.membershipId() == null || ctx.isSupport() ? null : db.inTenant(ctx.tenantId(), c -> Sql.one(c,
-                "select e.status, x.status as exit_status, x.last_working_day from app.employment e "
+                "select e.id, e.status, x.status as exit_status, x.last_working_day from app.employment e "
                         + "left join lateral (select * from app.exit_case x where x.employment_id = e.id "
                         + "  and x.status in ('submitted','recommended','accepted','closed') order by x.started_at desc limit 1) x on true "
                         + "where e.membership_id = ? and e.status in ('active','exited') order by (e.status = 'active') desc limit 1",

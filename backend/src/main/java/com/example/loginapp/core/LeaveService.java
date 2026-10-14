@@ -163,13 +163,14 @@ public final class LeaveService {
         return db.inTenant(ctx.tenantId(), c -> {
             UUID[] team = Team.reach(c, ctx, "leave.approve", today());
             return Sql.query(c,
-                "select r.id, r.membership_id, dir.email, t.name as leave_type, t.paid, r.from_date, r.to_date, r.half, r.days, "
+                "select r.id, r.membership_id, dir.email, " + Names.of("r.membership_id") + " as name, t.name as leave_type, t.paid, r.from_date, r.to_date, r.half, r.days, "
                         + "r.unpaid_days, r.reason, r.status, r.decision_note, r.decided_at, r.created_at, (r.membership_id = ?) as own, "
                         + "(select coalesce(sum(g.days), 0) from app.leave_ledger g "
                         + "  where g.membership_id = r.membership_id and g.leave_type_id = r.leave_type_id) as balance, "
-                        + "array(select d2.email from app.leave_request o join app.member_directory() d2 on d2.membership_id = o.membership_id "
+                        + "array(select coalesce(" + Names.of("o.membership_id") + ", d2.email::text) from app.leave_request o "
+                        + "  join app.member_directory() d2 on d2.membership_id = o.membership_id "
                         + "  where o.status = 'approved' and o.membership_id <> r.membership_id "
-                        + "  and o.from_date <= r.to_date and o.to_date >= r.from_date order by d2.email) as also_away "
+                        + "  and o.from_date <= r.to_date and o.to_date >= r.from_date order by 1) as also_away "
                         + "from app.leave_request r join app.leave_type t on t.id = r.leave_type_id "
                         + "join app.member_directory() dir on dir.membership_id = r.membership_id "
                         + "where r.status = ?" + (team == null ? "" : " and (r.membership_id = any(?) or r.membership_id = ?)")
@@ -251,16 +252,16 @@ public final class LeaveService {
         return db.inTenant(ctx.tenantId(), c -> {
             UUID[] team = Team.reach(c, ctx, "leave.read", today());
             List<Map<String, Object>> rows = Sql.query(c,
-                "select r.membership_id, dir.email, 'leave' as kind, t.name as label, r.from_date, r.to_date, r.half, r.status "
+                "select r.membership_id, dir.email, " + Names.of("r.membership_id") + " as name, 'leave' as kind, t.name as label, r.from_date, r.to_date, r.half, r.status "
                         + "from app.leave_request r join app.leave_type t on t.id = r.leave_type_id "
                         + "join app.member_directory() dir on dir.membership_id = r.membership_id "
                         + "where r.status in ('pending','approved') and r.from_date <= ? and r.to_date >= ? "
                         + "union all "
-                        + "select a.membership_id, dir.email, a.kind, case a.kind when 'on_duty' then 'On duty' else 'Work from home' end, "
+                        + "select a.membership_id, dir.email, " + Names.of("a.membership_id") + ", a.kind, case a.kind when 'on_duty' then 'On duty' else 'Work from home' end, "
                         + "a.work_date, a.work_date, a.half, a.status "
                         + "from app.attendance_request a join app.member_directory() dir on dir.membership_id = a.membership_id "
                         + "where a.kind in ('on_duty','work_from_home') and a.status in ('pending','approved') and a.work_date between ? and ? "
-                        + "order by 5, 2", to, from, from, to);
+                        + "order by 6, 3", to, from, from, to);
             if (team == null) {
                 return rows;
             }

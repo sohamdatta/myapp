@@ -293,8 +293,8 @@ manager), identifiers and bank account.
   number is checked (12 digits, Verhoeff check digit) and discarded. A PAN
   must be a person's (fourth letter P) and is unique within an Organization;
   it can be recorded as pending with a reason.
-- **Leaving.** "Record exit" starts an exit with its last working day; see
-  "Exits" below. The day after it, the person's roles are replaced by
+- **Leaving.** "Start an exit…" on the record opens Exits with the employee
+  chosen; see "Exits" below. The day after it, the person's roles are replaced by
   Ex-employee. The record is kept. The only Org Admin cannot be exited.
 
 The schema is `backend/src/main/resources/db/migration/V5__employee_record.sql`.

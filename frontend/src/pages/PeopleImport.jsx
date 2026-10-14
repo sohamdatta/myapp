@@ -128,6 +128,15 @@ export default function PeopleImport() {
           <h4>The first rows</h4>
           <div className="table-wrap">
             <table>
+              {mapping.hasHeader && (
+                <thead>
+                  <tr>
+                    {read.columns.map((c, i) => (
+                      <th key={i}>{c}</th>
+                    ))}
+                  </tr>
+                </thead>
+              )}
               <tbody>
                 {read.sample.map((row, i) => (
                   <tr key={i}>
@@ -150,7 +159,9 @@ export default function PeopleImport() {
       {step === 'check' && check && (
         <section className="panel">
           <h3>
-            {check.ready} ready to import · {check.refused} cannot be used
+            {check.ready} ready to import
+            {check.rows.filter((r) => !r.ok && alreadyHere(r)).length > 0 && ` · ${check.rows.filter((r) => !r.ok && alreadyHere(r)).length} already here`}
+            {check.rows.filter((r) => !r.ok && !alreadyHere(r)).length > 0 && ` · ${check.rows.filter((r) => !r.ok && !alreadyHere(r)).length} cannot be used`}
           </h3>
           <RowTable rows={check.rows} />
           <div className="form-actions">
@@ -182,6 +193,9 @@ export default function PeopleImport() {
   )
 }
 
+/** A row that is the same person, joining the same day, as someone already recorded: left out, not wrong. */
+const alreadyHere = (r) => r.problems.some((p) => / joining on .* is already recorded$/.test(p))
+
 function RowTable({ rows }) {
   if (rows.length === 0) return null
   return (
@@ -196,11 +210,17 @@ function RowTable({ rows }) {
         </thead>
         <tbody>
           {rows.map((r) => (
-            <tr key={r.line} data-line={r.line} className={r.ok ? undefined : 'row-refused'}>
+            <tr key={r.line} data-line={r.line} className={r.ok || alreadyHere(r) ? undefined : 'row-refused'}>
               <td>{r.line}</td>
               <td>{r.name || '—'}</td>
               <td>
-                {r.ok ? <Badge tone="good">Ready</Badge> : r.problems.map((p) => <div key={p}>{p}</div>)}
+                {r.ok ? (
+                  <Badge tone="good">Ready</Badge>
+                ) : alreadyHere(r) ? (
+                  <Badge>Already here: imported before</Badge>
+                ) : (
+                  r.problems.map((p) => <div key={p}>{p}</div>)
+                )}
                 {r.notes.filter(Boolean).map((n) => (
                   <div key={n} className="hint">
                     {n}

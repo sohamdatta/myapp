@@ -17,6 +17,7 @@ const STATES = {
 }
 
 const DIRECTIONS = { owed_by_employee: 'owed by the leaver', owed_to_employee: 'owed to the leaver' }
+const MY_DIRECTIONS = { owed_by_employee: 'owed by you', owed_to_employee: 'owed to you' }
 const rupees = (n) => `₹${Number(n).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`
 
 /** Tasks grouped by owner, as HR sees one joiner's (or leaver's) checklist. */
@@ -43,7 +44,7 @@ export function Checklist({ tasks, hr, users, onChanged, taskApi, exit }) {
  * One task. {@code taskApi} is the joiner tasks' API unless an exit's is given; {@code context}
  * replaces the joiner line in My tasks. Exit tasks can be marked done with an amount (no dues).
  */
-export function TaskRow({ task, hr, users = [], onChanged, showJoiner, taskApi = api, context }) {
+export function TaskRow({ task, hr, users = [], onChanged, showJoiner, taskApi = api, context, leaver, plain }) {
   const [mode, setMode] = useState(null) // 'skip' | 'reassign' | 'amount'
   const [reason, setReason] = useState('')
   const [assignee, setAssignee] = useState('')
@@ -51,6 +52,8 @@ export function TaskRow({ task, hr, users = [], onChanged, showJoiner, taskApi =
   const [direction, setDirection] = useState('owed_by_employee')
   const [note, setNote] = useState('')
   const exitTask = Boolean(task.exitCaseId)
+  // Amounts belong to clearance: equipment, dues and claims; not to a handover or an interview.
+  const withAmount = exitTask && task.owner !== 'manager' && !/interview/i.test(task.title)
   const [busy, setBusy] = useState(false)
   const [progress, setProgress] = useState(null)
   const [error, setError] = useState('')
@@ -90,16 +93,22 @@ export function TaskRow({ task, hr, users = [], onChanged, showJoiner, taskApi =
           </div>
           <div className="hint">
             {context && <>{context} · </>}
-            {showJoiner && !context && (
+            {showJoiner && !context && !plain && (
               <>
                 {task.joinerPreferredName || task.joinerName}, joining {formatDay(task.joiningDate)} ·{' '}
               </>
             )}
             {task.dueDate ? `due ${formatDay(task.dueDate)}` : 'no due date yet'}
-            {!showJoiner && ` · ${task.assigneeName || task.assigneeEmail || 'nobody yet'}`}
+            {!showJoiner && !plain && (task.assigneeName || task.assigneeEmail) && ` · ${task.assigneeName || task.assigneeEmail}`}
+            {!showJoiner && !plain && !task.assigneeName && !task.assigneeEmail && (
+              <>
+                {' · '}
+                <span className="warn-text">nobody assigned{hr ? ': use Reassign' : ''}</span>
+              </>
+            )}
             {task.skippedReason && ` · ${task.skippedReason}`}
             {task.attachmentName && ` · file: ${task.attachmentName}`}
-            {task.amount && ` · ${rupees(task.amount)} ${DIRECTIONS[task.amountDirection]}`}
+            {task.amount && ` · ${rupees(task.amount)} ${(leaver ? MY_DIRECTIONS : DIRECTIONS)[task.amountDirection]}`}
             {task.amountNote && ` (${task.amountNote})`}
           </div>
           {task.instructions && <div className="hint">{task.instructions}</div>}
@@ -113,7 +122,7 @@ export function TaskRow({ task, hr, users = [], onChanged, showJoiner, taskApi =
       )}
       <ErrorNote>{error}</ErrorNote>
       {(task.canDo || task.canApprove) && !mode && (
-        <div className="form-actions">
+        <div className="form-actions task-actions">
           {task.canDo && task.needsAttachment && (
             <label htmlFor={`attach-${task.id}`} className="file-button outline">
               {task.attachmentId ? 'Replace file' : 'Attach file'}
@@ -121,11 +130,11 @@ export function TaskRow({ task, hr, users = [], onChanged, showJoiner, taskApi =
             </label>
           )}
           {task.canDo && (
-            <button type="button" className="secondary" disabled={busy} onClick={() => run(() => taskApi.done(task.id))}>
+            <button type="button" className="outline" disabled={busy} onClick={() => run(() => taskApi.done(task.id))}>
               Mark done
             </button>
           )}
-          {task.canDo && exitTask && (
+          {task.canDo && withAmount && (
             <button type="button" className="quiet" onClick={() => setMode('amount')}>
               Done, with an amount…
             </button>
@@ -172,12 +181,12 @@ export function TaskRow({ task, hr, users = [], onChanged, showJoiner, taskApi =
           <div>
             <label htmlFor={`direction-${task.id}`}>Who owes it</label>
             <select id={`direction-${task.id}`} value={direction} onChange={(e) => setDirection(e.target.value)}>
-              <option value="owed_by_employee">The leaver owes it</option>
-              <option value="owed_to_employee">It is owed to the leaver</option>
+              <option value="owed_by_employee">{leaver ? 'I owe it' : 'The leaver owes it'}</option>
+              <option value="owed_to_employee">{leaver ? 'It is owed to me' : 'It is owed to the leaver'}</option>
             </select>
           </div>
           <div>
-            <label htmlFor={`amount-note-${task.id}`}>For</label>
+            <label htmlFor={`amount-note-${task.id}`}>What for</label>
             <input id={`amount-note-${task.id}`} value={note} placeholder="Laptop charger not returned" onChange={(e) => setNote(e.target.value)} />
           </div>
           <div className="form-actions">

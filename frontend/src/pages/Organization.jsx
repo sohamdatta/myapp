@@ -10,7 +10,26 @@ import MyOnboarding from './MyOnboarding.jsx'
 import Exits from './Exits.jsx'
 import MyExit from './MyExit.jsx'
 import MyTasks from './MyTasks.jsx'
-import People from './People.jsx'
+import People, { MyProfile } from './People.jsx'
+
+/** What each role is for, in plain words. The exact permissions are under User management → Roles. */
+const ROLE_SUMMARIES = {
+  owner: 'Everything in the Organization, including users, roles, setup and billing',
+  hr_admin: 'Runs HR: people, joiners, exits, attendance and leave for everyone; invites users',
+  manager: 'Sees their own team, and approves their leave, attendance and work-from-home requests',
+  employee: 'Punches, applies for leave and sees their own record. Give it to anyone who works here',
+  it_admin: 'Gets the IT tasks of joining and leaving checklists (laptops, accounts)',
+  payroll_operator: 'Prepares payroll. Cannot approve it',
+  payroll_approver: 'Approves payroll and settlements. Cannot prepare them',
+  auditor: 'Reads everything, including the audit log; changes nothing',
+  ex_employee: 'Given by the app after the last working day: their exit letters and settlement only',
+  joiner: 'Given by the app to someone joining: their own onboarding only',
+  support_read: 'Platform support, for a limited time, reading only',
+  support_write: 'Platform support, for a limited time',
+}
+
+/** Scope words as people say them. */
+const SCOPES = { tenant: 'everyone', team: 'their team', self: 'themselves', assigned: 'those assigned to them' }
 
 /** Checkboxes for roles. A role the signed-in user may not grant is shown but cannot be changed. */
 function RolePicker({ roles, selected, onChange }) {
@@ -20,19 +39,27 @@ function RolePicker({ roles, selected, onChange }) {
   return (
     <fieldset className="role-picker">
       <legend>Roles</legend>
-      {roles
-        .filter((r) => r.assignable)
-        .map((r) => (
-          <label key={r.code} className={r.grantable ? 'check' : 'check check-disabled'}>
-            <input
-              type="checkbox"
-              checked={selected.includes(r.code)}
-              disabled={!r.grantable}
-              onChange={() => toggle(r.code)}
-            />
-            {r.name}
-          </label>
-        ))}
+      <div className="role-options">
+        {roles
+          .filter((r) => r.assignable)
+          .map((r) => (
+            <div key={r.code} className="role-option">
+              <label className={r.grantable ? 'check' : 'check check-disabled'}>
+                <input
+                  type="checkbox"
+                  checked={selected.includes(r.code)}
+                  disabled={!r.grantable}
+                  aria-describedby={`role-about-${r.code}`}
+                  onChange={() => toggle(r.code)}
+                />
+                {r.name}
+              </label>
+              <p id={`role-about-${r.code}`} className="hint">
+                {ROLE_SUMMARIES[r.code]}
+              </p>
+            </div>
+          ))}
+      </div>
     </fieldset>
   )
 }
@@ -313,7 +340,7 @@ function RolesTab() {
         <thead>
           <tr>
             <th>Role</th>
-            <th>Permissions and their scope</th>
+            <th>What it is for</th>
           </tr>
         </thead>
         <tbody>
@@ -323,7 +350,18 @@ function RolesTab() {
                 {r.name}
                 {!r.assignable && <div className="hint">Set by the system</div>}
               </td>
-              <td className="permissions">{r.permissions.join(', ')}</td>
+              <td>
+                {ROLE_SUMMARIES[r.code] || '—'}
+                <details className="permissions">
+                  <summary>Exact permissions</summary>
+                  {r.permissions
+                    .map((p) => {
+                      const m = /^(.*) \((\w+)\)$/.exec(p)
+                      return m ? `${m[1]} (${SCOPES[m[2]] || m[2]})` : p
+                    })
+                    .join(', ')}
+                </details>
+              </td>
             </tr>
           ))}
         </tbody>
@@ -341,44 +379,89 @@ function describe(detail) {
   }
 }
 
+/** The area an audit action belongs to, in words. */
+const AREAS = {
+  membership: 'User',
+  role: 'Role',
+  user: 'User',
+  invitation: 'Invitation',
+  tenant: 'Organization',
+  support: 'Support',
+  grant: 'Support access',
+  platform_user: 'Platform user',
+  attendance: 'Attendance',
+  leave: 'Leave',
+  department: 'Department',
+  employee: 'Employee',
+  joiner: 'Joiner',
+  onboarding: 'Onboarding setup',
+  exit: 'Exit',
+}
+
+/** "exit.settlement_approved" as "Exit: settlement approved". */
+function actionWords(action) {
+  const [area, ...rest] = action.split('.')
+  const what = rest.join(' ').replaceAll('_', ' ')
+  return `${AREAS[area] || area.charAt(0).toUpperCase() + area.slice(1).replaceAll('_', ' ')}${what ? `: ${what}` : ''}`
+}
+
 function AuditTab() {
   const audit = useLoad(org.audit)
+  const [filter, setFilter] = useState('')
   if (audit.loading) return <p className="muted">Loading…</p>
   if (audit.error) return <ErrorNote>{audit.error}</ErrorNote>
   if (audit.data.length === 0) return <Empty>Nothing has been recorded yet.</Empty>
+  const words = filter.trim().toLowerCase()
+  const rows = audit.data.filter(
+    (e) => !words || [e.actorLabel, e.action, actionWords(e.action), e.targetLabel, describe(e.detail)].join(' ').toLowerCase().includes(words),
+  )
   return (
-    <div className="table-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th>When</th>
-            <th>Who</th>
-            <th>Action</th>
-            <th>Details</th>
-          </tr>
-        </thead>
-        <tbody>
-          {audit.data.map((e) => (
-            <tr key={e.id}>
-              <td>{formatDate(e.at)}</td>
-              <td>
-                {e.actorLabel}
-                {e.actorKind === 'support' && (
-                  <>
-                    {' '}
-                    <Badge tone="warn">platform support</Badge>
-                  </>
-                )}
-              </td>
-              <td>
-                <code>{e.action}</code>
-              </td>
-              <td>{describe(e.detail)}</td>
+    <>
+      <div className="filters">
+        <label htmlFor="audit-filter" className="sr-only">
+          Filter the audit log
+        </label>
+        <input id="audit-filter" type="search" placeholder="Filter" value={filter} onChange={(e) => setFilter(e.target.value)} />
+        <span className="you">The latest 200 events, newest first</span>
+      </div>
+      <div className="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>When</th>
+              <th>Who</th>
+              <th>Did</th>
+              <th>About</th>
+              <th>Details</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+          </thead>
+          <tbody>
+            {rows.map((e) => (
+              <tr key={e.id}>
+                <td>{formatDate(e.at)}</td>
+                <td>
+                  {e.actorLabel}
+                  {e.actorKind === 'support' && (
+                    <>
+                      {' '}
+                      <Badge tone="warn">platform support</Badge>
+                    </>
+                  )}
+                </td>
+                <td>
+                  {actionWords(e.action)}
+                  <div>
+                    <code>{e.action}</code>
+                  </div>
+                </td>
+                <td>{e.targetLabel || '—'}</td>
+                <td>{describe(e.detail)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </>
   )
 }
 
@@ -400,7 +483,7 @@ function UserManagement({ me }) {
   )
 }
 
-export default function Organization({ me, page }) {
+export default function Organization({ me, page, onNavigate }) {
   if (!page) {
     return (
       <section className="panel">
@@ -417,11 +500,12 @@ export default function Organization({ me, page }) {
       {page === 'my-leave' && <MyLeave me={me} />}
       {page === 'attendance' && <Attendance me={me} />}
       {page === 'leave' && <Leave me={me} />}
-      {page === 'people' && <People me={me} />}
+      {page === 'people' && <People me={me} onNavigate={onNavigate} />}
+      {page === 'my-profile' && <MyProfile id={me.employment?.id} />}
       {page === 'my-onboarding' && <MyOnboarding me={me} />}
       {page === 'my-tasks' && <MyTasks />}
       {page === 'my-exit' && <MyExit me={me} />}
-      {page === 'exits' && <Exits me={me} />}
+      {page === 'exits' && <Exits me={me} onNavigate={onNavigate} />}
       {page === 'users' && <UserManagement me={me} />}
       {page === 'audit' && <AuditTab />}
     </>

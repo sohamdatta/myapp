@@ -96,14 +96,17 @@ export function DayStatus({ day, isToday }) {
 }
 
 /** The steps that led to a day's result, oldest first. */
-export function Trail({ steps }) {
+export function Trail({ steps, inProgress }) {
   if (!steps || steps.length === 0) return <p className="hint">Nothing has been worked out for this day yet.</p>
   return (
-    <ol className="trail">
-      {steps.map((step, index) => (
-        <li key={index}>{step}</li>
-      ))}
-    </ol>
+    <>
+      {inProgress && <p className="hint">The day is not over yet: this is how it would count if it ended now.</p>}
+      <ol className="trail">
+        {steps.map((step, index) => (
+          <li key={index}>{step}</li>
+        ))}
+      </ol>
+    </>
   )
 }
 
@@ -161,4 +164,38 @@ export function Tabs({ tabs, current, onChange }) {
 
 export function Empty({ children }) {
   return <p className="empty">{children}</p>
+}
+
+/** A person in a list: their name when their record is linked, with the email (and code) underneath; the email alone otherwise. */
+export function Who({ person, code }) {
+  const extra = [code, person.name ? person.email : null].filter(Boolean).join(' · ')
+  return (
+    <>
+      {person.name || person.email}
+      {extra && <div className="hint">{extra}</div>}
+    </>
+  )
+}
+
+const SECTION_BADGES = {
+  not_started: ['neutral', 'To do', 'Not started'],
+  draft: ['neutral', 'In progress', 'In progress'],
+  submitted: ['warn', 'Sent for checking', 'To check'],
+  returned: ['warn', 'Needs a change', 'Returned to the joiner'],
+  verified: ['good', 'Checked', 'Checked'],
+}
+
+/** Where an onboarding section stands, in the joiner's words or HR's. */
+export function SectionBadge({ status, hr }) {
+  const [tone, joiner, forHr] = SECTION_BADGES[status] || ['neutral', status, status]
+  return <Badge tone={tone}>{hr ? forHr : joiner}</Badge>
+}
+
+/** The cue that a row opens: a chevron that turns when it is open. */
+export function Chevron({ open }) {
+  return (
+    <span className={open ? 'chevron chevron-open' : 'chevron'} aria-hidden="true">
+      ›
+    </span>
+  )
 }

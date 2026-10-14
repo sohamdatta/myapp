@@ -123,7 +123,7 @@ test.describe.serial('setup and import', () => {
     await hr.fill('#nj-joining', isoDay(15));
     await hr.selectOption('#nj-type', 'intern');
     await hr.fill('#nj-designation', 'Intern');
-    await hr.getByRole('button', { name: 'Save', exact: true }).click();
+    await hr.getByRole('button', { name: 'Save, invite later' }).click();
     await expect(hr.getByRole('heading', { name: /Uma Iyer/ })).toBeVisible();
     await expect(hr.locator('.panels')).toContainText('Interns');
     const personal = card(hr, 'Personal details');
@@ -158,7 +158,7 @@ test.describe.serial('setup and import', () => {
     await hr.locator('#import-file').setInputFiles({ name: 'staff.csv', mimeType: 'text/csv', buffer: Buffer.from(CSV) });
     await expect(hr.getByText('These are the columns you chose last time')).toBeVisible();
     await hr.getByRole('button', { name: 'Check every row' }).click();
-    await expect(hr.getByRole('heading', { name: '0 ready to import · 4 cannot be used' })).toBeVisible();
+    await expect(hr.getByRole('heading', { name: '0 ready to import · 2 already here · 2 cannot be used' })).toBeVisible();
   });
 
   test('an imported employee is invited and signs in', async ({ browser }) => {

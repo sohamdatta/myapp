@@ -135,15 +135,16 @@ test.describe.serial('people', () => {
     await expect(owner.locator('.panels')).toContainText('Applied for on 2 Oct');
   });
 
-  test('recording an exit moves the employee to Left', async () => {
-    await owner.click('text=Record exit');
-    await owner.fill('#exit-date', isoDay(-1));
-    await owner.fill('#exit-reason', 'Resigned');
+  test('an exit started from the record moves the employee to Left', async () => {
+    await owner.getByRole('button', { name: 'Start an exit…' }).click();
+    // The record sends HR to Exits with the employee chosen.
+    await expect(owner.locator('#se-employee option:checked')).toContainText('Kiran Pal');
+    await owner.fill('#se-day', isoDay(-1));
     await shot(owner, '36-record-exit');
-    await owner.click('button:has-text("Record exit")');
-    await expect(owner.locator('.section-head h2')).toContainText('ended');
+    await owner.getByRole('button', { name: 'Start the exit' }).click();
+    await expect(owner.getByRole('heading', { name: /Kiran Pal/ })).toBeVisible();
 
-    await owner.getByRole('button', { name: '← All employees' }).click();
+    await nav(owner, 'People');
     await expect(owner.locator('tbody tr')).toHaveCount(2);
     await owner.getByRole('button', { name: 'Left', exact: true }).click();
     await expect(owner.locator('tbody tr')).toHaveCount(1);

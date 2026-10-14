@@ -109,9 +109,9 @@ public final class LeaveAdminService {
         LocalDate today = today();
         return db.inTenant(ctx.tenantId(), c -> {
             List<Map<String, Object>> out = new ArrayList<>();
-            for (Map<String, Object> m : Sql.query(c, "select m.id as membership_id, dir.email, m.status from app.membership m "
+            for (Map<String, Object> m : Sql.query(c, "select m.id as membership_id, dir.email, " + Names.of("m.id") + " as name, m.status from app.membership m "
                     + "join app.member_directory() dir on dir.membership_id = m.id "
-                    + "where m.status in ('active','suspended') order by dir.email")) {
+                    + "where m.status in ('active','suspended') order by lower(coalesce(" + Names.of("m.id") + ", dir.email))")) {
                 m.put("balances", LeaveService.balancesOf(c, ctx.tenantId(), AuthService.uuid(m.get("membershipId")), today));
                 m.put("own", m.get("membershipId").equals(String.valueOf(ctx.membershipId())));
                 out.add(m);
@@ -176,7 +176,7 @@ public final class LeaveAdminService {
         ctx.require("leave.manage");
         LocalDate today = today();
         return db.inTenant(ctx.tenantId(), c -> Sql.query(c,
-                "select d.membership_id, dir.email, d.work_date, d.status, d.worked_minutes, "
+                "select d.membership_id, dir.email, " + Names.of("d.membership_id") + " as name, d.work_date, d.status, d.worked_minutes, "
                         + "case when d.worked_minutes >= s.full_day_minutes then 1 else 0.5 end as days "
                         + "from app.attendance_day d join app.shift s on s.id = d.shift_id "
                         + "join app.member_directory() dir on dir.membership_id = d.membership_id "

@@ -1,10 +1,11 @@
 import { useState } from 'react'
 import { exitTasks, exits, org, people } from '../api.js'
-import { formatDay, localToday, useAction, useLoad } from '../hooks.js'
+import { formatDay, localToday, useAction, useLoad, handoff } from '../hooks.js'
 import { Badge, Empty, ErrorNote } from '../ui.jsx'
 import { KINDS, REASONS, REHIRE, SHORTFALL, STAGES, daysBetween } from './exitText.js'
 import { Checklist } from './TaskList.jsx'
 import { ExitLettersPanel, InterviewPanel } from './ExitLetters.jsx'
+import { ExitProgress } from './ExitProgress.jsx'
 import { Settlement } from './Settlement.jsx'
 
 /**
@@ -13,8 +14,12 @@ import { Settlement } from './Settlement.jsx'
  */
 export default function Exits({ me }) {
   const canManage = (me.scopes || {})['exit.manage'] === 'tenant' && me.kind === 'tenant'
-  const [open, setOpen] = useState(null) // an exit id, or 'new'
-  if (open === 'new') return <StartExit onSaved={(id) => setOpen(id)} onCancel={() => setOpen(null)} />
+  // Sent here from an employee's record: start an exit for them, or show theirs.
+  const [asked] = useState(() => handoff.take())
+  const [open, setOpen] = useState(asked?.open || (asked?.startFor ? 'new' : null)) // an exit id, or 'new'
+  if (open === 'new') {
+    return <StartExit employmentId={asked?.startFor} onSaved={(id) => setOpen(id)} onCancel={() => setOpen(null)} />
+  }
   if (open) return <ExitPage key={open} id={open} onBack={() => setOpen(null)} />
   return <ExitList canManage={canManage} onOpen={setOpen} onStart={() => setOpen('new')} />
 }
@@ -56,7 +61,7 @@ function ExitList({ canManage, onOpen, onStart }) {
       {list.data && list.data.length === 0 && <Empty>{status === 'open' ? 'Nobody is leaving.' : 'No exits here.'}</Empty>}
       {list.data && list.data.length > 0 && (
         <div className="table-wrap">
-          <table>
+          <table className="stack">
             <thead>
               <tr>
                 <th>Name</th>
@@ -73,7 +78,7 @@ function ExitList({ canManage, onOpen, onStart }) {
                 return (
                   <tr key={x.id} data-exit={nameOf(x)}>
                     <td>
-                      <button type="button" className="quiet plain" onClick={() => onOpen(x.id)}>
+                      <button type="button" className="text-link" onClick={() => onOpen(x.id)}>
                         {nameOf(x)}
                       </button>
                       <div className="hint">{[x.designation, x.departmentName, x.employeeCode].filter(Boolean).join(' · ')}</div>
@@ -156,6 +161,7 @@ function ExitPage({ id, onBack }) {
       {form === 'cancel' && <CancelExit exit={x} onDone={done} onCancel={() => setForm(null)} />}
       {form === 'close' && <CloseExit exit={x} onDone={done} onCancel={() => setForm(null)} />}
       {x.canDecideWithdrawal && <WithdrawalDecision exit={x} onDone={done} />}
+      {!form && <ExitProgress exit={x} />}
 
       <div className="panels">
         <section className="panel">
@@ -412,7 +418,7 @@ function Recommend({ exit: x, onDone, onCancel }) {
 /** The fields for fixing a last working day: the date, how a shortfall is settled, and who takes over the reports. */
 const DAY_LABEL = { death: 'Date of passing', absconding: 'Last day at work' }
 
-function LastDayFields({ value, set, noticeEnd, kind, employees, exclude, prefix }) {
+function LastDayFields({ value, set, noticeEnd, kind, employees, exclude, prefix, managerName }) {
   const shortfall = noticeEnd && value.lastWorkingDay && value.lastWorkingDay < noticeEnd ? daysBetween(value.lastWorkingDay, noticeEnd) : 0
   return (
     <div className="grid">
@@ -438,7 +444,7 @@ function LastDayFields({ value, set, noticeEnd, kind, employees, exclude, prefix
       <div>
         <label htmlFor={`${prefix}-successor`}>Their reports move to</label>
         <select id={`${prefix}-successor`} value={value.newManagerId} onChange={(e) => set({ newManagerId: e.target.value })}>
-          <option value="">Their own manager</option>
+          <option value="">{managerName ? `Their own manager, ${managerName}` : 'Their own manager'}</option>
           {(employees || [])
             .filter((e) => e.id !== exclude)
             .map((e) => (
@@ -479,7 +485,13 @@ function Accept({ exit: x, onDone, onCancel }) {
         employees={employees.data}
         exclude={x.employmentId}
         prefix="acc"
+        managerName={x.managerName}
       />
+      <p className="hint">
+        {x.kind === 'resignation'
+          ? `Accepting tells ${nameOf(x)} and their manager, sends the acceptance letter, and starts the clearance checklist. The employment ends after the last working day.`
+          : `Confirming tells their manager and starts the clearance checklist. The employment ends after the last working day.`}
+      </p>
       <ErrorNote>{error}</ErrorNote>
       <div className="form-actions">
         <button type="submit" className="primary" disabled={busy}>
@@ -589,10 +601,10 @@ function CloseExit({ exit: x, onDone, onCancel }) {
   )
 }
 
-function StartExit({ onSaved, onCancel }) {
+function StartExit({ employmentId, onSaved, onCancel }) {
   const employees = useLoad(() => people.employees({ status: 'active' }))
   const [form, setForm] = useState({
-    employmentId: '',
+    employmentId: employmentId || '',
     kind: 'resignation',
     reasonCategory: '',
     note: '',
@@ -659,7 +671,15 @@ function StartExit({ onSaved, onCancel }) {
       {form.kind === 'death' && (
         <p className="hint">The employment ends at once. The settlement, with gratuity whatever the length of service, goes to the nominees.</p>
       )}
-      <LastDayFields value={form} set={set} kind={form.kind} employees={employees.data} exclude={form.employmentId} prefix="se" />
+      <LastDayFields
+        value={form}
+        set={set}
+        kind={form.kind}
+        employees={employees.data}
+        exclude={form.employmentId}
+        prefix="se"
+        managerName={(employees.data || []).find((e) => e.id === form.employmentId)?.managerName}
+      />
       <ErrorNote>{error}</ErrorNote>
       <div className="form-actions">
         <button type="submit" className="primary" disabled={busy}>

@@ -3,6 +3,8 @@ import { invitationLink, platform, startSupportSession } from '../api.js'
 import { formatDate, useAction, useLoad } from '../hooks.js'
 import { Badge, CopyLink, Empty, ErrorNote, StatusBadge } from '../ui.jsx'
 
+const PLAN_NAMES = { essential: 'Essential', growth: 'Growth', professional: 'Professional', enterprise: 'Enterprise' }
+
 function slugFrom(name) {
   return name
     .toLowerCase()
@@ -64,15 +66,19 @@ function OrganizationsTab({ me }) {
               <input id="org-name" value={form.name} onChange={(e) => setName(e.target.value)} />
             </div>
             <div>
-              <label htmlFor="org-slug">Slug</label>
+              <label htmlFor="org-slug">Short name (slug)</label>
               <input
                 id="org-slug"
+                aria-describedby="org-slug-hint"
                 value={form.slug}
                 onChange={(e) => {
                   setSlugEdited(true)
                   setForm((f) => ({ ...f, slug: e.target.value }))
                 }}
               />
+              <p id="org-slug-hint" className="hint">
+                3 to 40 lowercase letters, numbers and dashes, such as globex-ltd.
+              </p>
             </div>
             <div>
               <label htmlFor="org-plan">Plan</label>
@@ -130,7 +136,7 @@ function OrganizationsTab({ me }) {
                     {o.name}
                     <div className="hint">{o.slug}</div>
                   </td>
-                  <td>{o.planCode}</td>
+                  <td>{PLAN_NAMES[o.planCode] || o.planCode}</td>
                   <td>
                     <StatusBadge status={o.status} />
                     {o.status === 'provisioning' && <div className="hint">Awaiting Org Admin</div>}

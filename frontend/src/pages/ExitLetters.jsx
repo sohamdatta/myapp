@@ -16,7 +16,7 @@ function LetterList({ letters, onError }) {
     <ul className="letter-list">
       {letters.map((l) => (
         <li key={l.id} data-letter={l.title}>
-          <button type="button" className="quiet plain" onClick={() => onError(() => download(l.documentId, `${l.title}.pdf`))}>
+          <button type="button" className="text-link" onClick={() => onError(() => download(l.documentId, `${l.title}.pdf`))}>
             {l.title}
           </button>{' '}
           <span className="hint">issued {formatDate(l.issuedAt)}</span>
@@ -26,25 +26,37 @@ function LetterList({ letters, onError }) {
   )
 }
 
-/** HR: the letters issued for this exit, and the ones that can be issued now or later. */
+/** HR: each exit letter on one line: issued (to download) or what it still waits for, with Preview and Issue. */
 export function ExitLettersPanel({ exit: x, onChanged }) {
   const [preview, setPreview] = useState(null)
   const { busy, error, run } = useAction()
   const templates = x.letterTemplates || []
-  if (!x.letters?.length && !templates.length) return null
+  // Before acceptance there is nothing to issue, except the notices of an absence without leave.
+  const shown = ['accepted', 'closed'].includes(x.status) || x.kind === 'absconding'
+  if (!x.letters?.length && (!templates.length || !shown)) return null
+  const byKind = (kind) => x.letters.filter((l) => l.kind === kind)
+  const others = x.letters.filter((l) => !templates.some((t) => t.kind === l.kind))
+  const issued = (l) => (
+    <span key={l.id} data-letter={l.title} className="issued-letter">
+      <button type="button" className="text-link" onClick={() => run(() => download(l.documentId, `${l.title}.pdf`))}>
+        Download
+      </button>{' '}
+      <span className="hint">issued {formatDate(l.issuedAt)}</span>
+    </span>
+  )
   return (
     <section className="panel" data-testid="exit-letters">
       <h3>Letters</h3>
-      <LetterList letters={x.letters} onError={run} />
-      {templates.length > 0 && (
-        <div className="rows">
-          {templates.map((t) => {
-            const done = x.letters.some((l) => l.kind === t.kind)
+      <div className="rows">
+        {shown &&
+          templates.map((t) => {
+            const done = byKind(t.kind)
             return (
               <div key={t.id} className="letter-option" data-template={t.name}>
                 <div>
-                  <strong>{t.name}</strong> {done && <Badge tone="good">Issued</Badge>}
-                  {t.waitingFor && <div className="hint">{t.waitingFor}</div>}
+                  <strong>{t.name}</strong> {done.length > 0 && <Badge tone="good">Issued</Badge>}
+                  <div>{done.map(issued)}</div>
+                  {t.waitingFor && done.length === 0 && <div className="hint">{t.waitingFor}</div>}
                 </div>
                 <div className="form-actions">
                   <button
@@ -57,31 +69,40 @@ export function ExitLettersPanel({ exit: x, onChanged }) {
                   >
                     Preview
                   </button>
-                  <button
-                    type="button"
-                    className={done ? 'outline' : 'secondary'}
-                    disabled={busy || !!t.waitingFor}
-                    onClick={async () => {
-                      if (await run(() => exits.issueLetter(x.id, t.id))) {
-                        setPreview(null)
-                        onChanged()
-                      }
-                    }}
-                  >
-                    {done ? 'Issue again' : 'Issue'}
-                  </button>
+                  {!t.waitingFor && (
+                    <button
+                      type="button"
+                      className={done.length ? 'outline' : 'secondary'}
+                      disabled={busy}
+                      onClick={async () => {
+                        if (await run(() => exits.issueLetter(x.id, t.id))) {
+                          setPreview(null)
+                          onChanged()
+                        }
+                      }}
+                    >
+                      {done.length ? 'Issue again' : 'Issue'}
+                    </button>
+                  )}
                 </div>
               </div>
             )
           })}
-        </div>
-      )}
+        {others.map((l) => (
+          <div key={l.id} className="letter-option">
+            <div>
+              <strong>{l.title}</strong> <Badge tone="good">Issued</Badge>
+              <div>{issued(l)}</div>
+            </div>
+          </div>
+        ))}
+      </div>
       <ErrorNote>{error}</ErrorNote>
       {preview && (
         <>
           <p className="hint">
             {preview.name}, filled for this exit:{' '}
-            <button type="button" className="quiet plain" onClick={() => setPreview(null)}>
+            <button type="button" className="text-link" onClick={() => setPreview(null)}>
               Hide
             </button>
           </p>

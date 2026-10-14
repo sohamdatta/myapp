@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { attendance } from '../api.js'
-import { formatDay, formatMonth, formatMinutes, formatTime, localMonth, localToday, useAction, useLoad, useNow } from '../hooks.js'
+import { formatDay, formatMonth, formatMinutes, formatTime, localMonth, localToday, useAction, useLoad, useNow, formatLate } from '../hooks.js'
 import { Badge, DayStatus, Empty, ErrorNote, StatusBadge, Trail } from '../ui.jsx'
 
 const KINDS = {
@@ -18,7 +18,7 @@ const CHECKS = {
 
 const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
 
-const SOURCES = { web: 'punched here', import: 'from a device', manual: 'entered by HR', request: 'from a request' }
+const SOURCES = { web: 'in the app', import: 'from a device', manual: 'entered by HR', request: 'from a request' }
 
 /** Asks the browser where the device is. Resolves to null when it cannot or may not say. */
 function currentPosition() {
@@ -157,7 +157,7 @@ function DayRow({ day, today, timeZone, open, onToggle }) {
           {formatMinutes(day.workedMinutes)}
         </td>
         <td className="day-minor" data-label="Late">
-          {day.lateMinutes ? <Badge tone="warn">{day.lateMinutes} min</Badge> : '—'}
+          {day.lateMinutes ? <Badge tone="warn">{formatLate(day.lateMinutes)}</Badge> : '—'}
         </td>
         <td className="actions">
           <button type="button" className="quiet" aria-expanded={open} onClick={onToggle}>
@@ -168,7 +168,7 @@ function DayRow({ day, today, timeZone, open, onToggle }) {
       {open && (
         <tr className="detail-row">
           <td colSpan={7}>
-            <Trail steps={day.trail} />
+            <Trail steps={day.trail} inProgress={day.workDate === today} />
           </td>
         </tr>
       )}
@@ -181,7 +181,7 @@ function used(count, limit, period) {
   return limit ? `${Number(count)} of ${limit} used this ${period}` : null
 }
 
-function RequestForm({ home, onCreated }) {
+function RequestForm({ home, onCreated, onCancel }) {
   const [kind, setKind] = useState('regularization')
   const [fromDate, setFromDate] = useState(localToday())
   const [toDate, setToDate] = useState(localToday())
@@ -277,9 +277,14 @@ function RequestForm({ home, onCreated }) {
             : 'One request is made for each working day in the range, up to 31 days at a time.'}
       </p>
       <ErrorNote>{error}</ErrorNote>
-      <button type="submit" className="secondary" disabled={busy}>
-        {busy ? 'Sending…' : 'Send request'}
-      </button>
+      <div className="form-actions">
+        <button type="submit" className="secondary" disabled={busy}>
+          {busy ? 'Sending…' : 'Send request'}
+        </button>
+        <button type="button" className="quiet" onClick={onCancel}>
+          Cancel
+        </button>
+      </div>
     </form>
   )
 }
@@ -300,7 +305,7 @@ function MyRequests({ requests, timeZone, onChanged }) {
     <>
       <ErrorNote>{error}</ErrorNote>
       <div className="table-wrap">
-        <table>
+        <table className="stack">
           <thead>
             <tr>
               <th>Date</th>
@@ -326,7 +331,7 @@ function MyRequests({ requests, timeZone, onChanged }) {
                 <td>{r.reason}</td>
                 <td>
                   <StatusBadge status={r.status} />
-                  {r.decisionNote && <div className="hint">{r.decisionNote}</div>}
+                  {r.decisionNote && <div className="hint">Note: “{r.decisionNote}”</div>}
                 </td>
                 <td className="actions">
                   {r.canCancel && (
@@ -375,6 +380,7 @@ function MyMonth({ month, today, timeZone }) {
           <div className="tile-value">{days.data.filter((d) => d.lateMinutes > 0).length}</div>
         </div>
       </div>
+      <p className="hint">Today is counted once it is over. Present includes days on duty and at home.</p>
       <DaysTable days={days.data} today={today} timeZone={timeZone} />
     </>
   )
@@ -424,9 +430,11 @@ export default function MyAttendance() {
           )}
           <div className="section-head">
             <h2>My requests</h2>
-            <button type="button" className="outline" aria-expanded={requesting} onClick={() => setRequesting((v) => !v)}>
-              {requesting ? 'Close' : 'New request'}
-            </button>
+            {!requesting && (
+              <button type="button" className="outline" onClick={() => setRequesting(true)}>
+                New request
+              </button>
+            )}
           </div>
           {requesting && (
             <RequestForm
@@ -435,6 +443,7 @@ export default function MyAttendance() {
                 setRequesting(false)
                 refresh()
               }}
+              onCancel={() => setRequesting(false)}
             />
           )}
           <MyRequests requests={requests.data} timeZone={timeZone} onChanged={refresh} />

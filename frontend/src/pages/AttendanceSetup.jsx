@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { attendance } from '../api.js'
-import { formatDate, formatDay, localToday, useAction, useLoad } from '../hooks.js'
-import { Badge, Empty, ErrorNote } from '../ui.jsx'
+import { formatDate, formatDay, localToday, useAction, useLoad, whoName } from '../hooks.js'
+import { Badge, Empty, ErrorNote, Who } from '../ui.jsx'
 
 const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
 
@@ -34,7 +34,7 @@ function CodeCell({ person, canManage, onSaved }) {
     <>
       <input
         className="cell-input"
-        aria-label={`Employee code for ${person.email}`}
+        aria-label={`Employee code for ${whoName(person)}`}
         value={code}
         disabled={busy}
         onChange={(e) => setCode(e.target.value)}
@@ -64,7 +64,7 @@ function HomeCell({ person, canManage, onSaved }) {
       <label className="check">
         <input
           type="checkbox"
-          aria-label={`${person.email} may work from home`}
+          aria-label={`${whoName(person)} may work from home`}
           checked={Boolean(person.wfhAllowed)}
           disabled={!canManage || busy}
           onChange={change}
@@ -211,13 +211,15 @@ export function People({ canManage }) {
                   <td>
                     <input
                       type="checkbox"
-                      aria-label={`Select ${p.email}`}
+                      aria-label={`Select ${whoName(p)}`}
                       checked={selected.includes(p.membershipId)}
                       onChange={() => setSelected(toggle(selected, p.membershipId))}
                     />
                   </td>
                 )}
-                <td>{p.email}</td>
+                <td>
+                  <Who person={p} />
+                </td>
                 <td>
                   <CodeCell person={p} canManage={canManage} onSaved={people.reload} />
                 </td>
@@ -312,13 +314,22 @@ function LocationForm({ location, onSaved, onCancel }) {
           <input id="loc-tz" value={form.timezone} onChange={set('timezone')} />
         </div>
         <div>
-          <label htmlFor="loc-state">State code</label>
-          <input id="loc-state" value={form.stateCode} placeholder="WB" onChange={set('stateCode')} />
+          <label htmlFor="loc-state">State (optional)</label>
+          <input id="loc-state" value={form.stateCode} placeholder="WB" aria-describedby="loc-state-hint" onChange={set('stateCode')} />
+          <p id="loc-state-hint" className="hint">
+            Two letters, such as WB or MH.
+          </p>
         </div>
       </div>
-      <label htmlFor="loc-ips">Office network addresses</label>
-      <input id="loc-ips" value={form.allowedIps} placeholder="203.0.113.0/24, 198.51.100.7" onChange={set('allowedIps')} />
-      <p className="hint">The public addresses your office reaches the internet from, separated by commas. Ask whoever runs the office network.</p>
+      {form.punchCheck === 'none' && <p className="hint">Anyone assigned here can punch from anywhere.</p>}
+      {['ip', 'either'].includes(form.punchCheck) && (
+        <>
+          <label htmlFor="loc-ips">Office network addresses</label>
+          <input id="loc-ips" value={form.allowedIps} placeholder="203.0.113.0/24, 198.51.100.7" onChange={set('allowedIps')} />
+          <p className="hint">The public addresses your office reaches the internet from, separated by commas. Ask whoever runs the office network.</p>
+        </>
+      )}
+      {['location', 'either'].includes(form.punchCheck) && (
       <div className="grid">
         <div>
           <label htmlFor="loc-lat">Latitude</label>
@@ -333,6 +344,7 @@ function LocationForm({ location, onSaved, onCancel }) {
           <input id="loc-radius" inputMode="numeric" value={form.radiusM} onChange={set('radiusM')} />
         </div>
       </div>
+      )}
       <label className="check">
         <input type="checkbox" checked={form.active} onChange={set('active')} />
         Active (can be assigned to users)
@@ -342,9 +354,11 @@ function LocationForm({ location, onSaved, onCancel }) {
         <button type="submit" className="secondary" disabled={busy}>
           {busy ? 'Saving…' : 'Save location'}
         </button>
-        <button type="button" className="quiet" onClick={useMyPosition}>
-          Use where I am now
-        </button>
+        {['location', 'either'].includes(form.punchCheck) && (
+          <button type="button" className="quiet" onClick={useMyPosition}>
+            Use where I am now
+          </button>
+        )}
         {onCancel && (
           <button type="button" className="quiet" onClick={onCancel}>
             Cancel
@@ -645,9 +659,22 @@ export function Setup({ canManage }) {
     shifts.reload()
   }
 
+  const ready = locations.data.some((l) => l.active) && shifts.data.some((s) => s.active)
   return (
     <>
-      <h2>Work locations</h2>
+      {canManage && ready && (
+        <p className="notice" role="status">
+          Next: assign a location and shift to each user under <strong>People</strong>, above. Punching starts once they have one.
+        </p>
+      )}
+      <div className="section-head">
+        <h2>Work locations</h2>
+        {canManage && !editing && locations.data.length > 0 && (
+          <button type="button" className="outline" onClick={() => setEditing({ kind: 'location', item: null })}>
+            Add a work location
+          </button>
+        )}
+      </div>
       {locations.data.length === 0 ? (
         <Empty>No work locations yet.</Empty>
       ) : (
@@ -689,11 +716,18 @@ export function Setup({ canManage }) {
         </div>
       )}
       {canManage && editing?.kind === 'location' && (
-        <LocationForm key={editing.item.id} location={editing.item} onSaved={saved} onCancel={() => setEditing(null)} />
+        <LocationForm key={editing.item?.id || 'new'} location={editing.item} onSaved={saved} onCancel={() => setEditing(null)} />
       )}
-      {canManage && !editing && <LocationForm key={`new-location-${locations.data.length}`} onSaved={saved} />}
+      {canManage && !editing && locations.data.length === 0 && <LocationForm key="first-location" onSaved={saved} />}
 
-      <h2>Shifts</h2>
+      <div className="section-head">
+        <h2>Shifts</h2>
+        {canManage && !editing && shifts.data.length > 0 && (
+          <button type="button" className="outline" onClick={() => setEditing({ kind: 'shift', item: null })}>
+            Add a shift
+          </button>
+        )}
+      </div>
       {shifts.data.length === 0 ? (
         <Empty>No shifts yet.</Empty>
       ) : (
@@ -736,9 +770,9 @@ export function Setup({ canManage }) {
         </div>
       )}
       {canManage && editing?.kind === 'shift' && (
-        <ShiftForm key={editing.item.id} shift={editing.item} onSaved={saved} onCancel={() => setEditing(null)} />
+        <ShiftForm key={editing.item?.id || 'new'} shift={editing.item} onSaved={saved} onCancel={() => setEditing(null)} />
       )}
-      {canManage && !editing && <ShiftForm key={`new-shift-${shifts.data.length}`} onSaved={saved} />}
+      {canManage && !editing && shifts.data.length === 0 && <ShiftForm key="first-shift" onSaved={saved} />}
 
       <Holidays locations={locations.data} canManage={canManage} />
       <HomeWorking canManage={canManage} />
@@ -857,7 +891,7 @@ export function DeviceImport({ canManage }) {
                 <div>
                   <label htmlFor="map-format">Date and time format</label>
                   <select id="map-format" value={mapping.format ?? ''} onChange={(e) => setField('format')(e.target.value || null)}>
-                    <option value="">Work it out (day before month)</option>
+                    <option value="">Guess (day first: 13/10)</option>
                     {preview.formats.map((f) => (
                       <option key={f} value={f}>
                         {f}

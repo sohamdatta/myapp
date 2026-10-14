@@ -76,7 +76,7 @@ test.describe.serial('exit', () => {
     await owner.reload();
     await nav(owner, 'My tasks');
     // Kiran Pal's exit, recorded earlier, has its own clearance; Meera's handover is the one to do here.
-    const handover = owner.locator('.task-row[data-task="Plan the handover of work"]', { hasText: 'Meera Iyer, leaving' });
+    const handover = owner.locator('.task-group', { hasText: 'Meera Iyer, leaving' }).locator('.task-row[data-task="Plan the handover of work"]');
     await expect(handover).toBeVisible();
     await handover.getByRole('button', { name: 'Mark done' }).click();
     await expect(handover).toHaveCount(0);
@@ -90,7 +90,7 @@ test.describe.serial('exit', () => {
     await meera.locator('[id^="amount-note-"]').fill('Travel to the client in September');
     await shot(meera, '89-leaver-claim', true);
     await claims.getByRole('button', { name: 'Mark done' }).click();
-    await expect(claims).toContainText('₹1,500 owed to the leaver');
+    await expect(claims).toContainText('₹1,500 owed to you');
     await expectNoSidewaysScroll(meera);
   });
 
@@ -198,10 +198,10 @@ test.describe.serial('exit', () => {
     await nav(hr, 'Exits');
     await hr.getByRole('button', { name: 'Meera Iyer' }).click();
     const letters = hr.getByTestId('exit-letters');
-    await expect(letters.locator('li[data-letter="Resignation acceptance"]')).toBeVisible();   // issued on acceptance
+    await expect(letters.locator('[data-letter="Resignation acceptance"]')).toBeVisible();   // issued on acceptance
     const relieving = letters.locator('[data-template="Relieving letter"]');
     await expect(relieving).toContainText('Waits for the last working day');
-    await expect(relieving.getByRole('button', { name: 'Issue' })).toBeDisabled();
+    await expect(relieving.getByRole('button', { name: 'Issue' })).toHaveCount(0);
     await relieving.getByRole('button', { name: 'Preview' }).click();
     await expect(letters.locator('.letter-preview')).toContainText('Meera Iyer');
 
@@ -244,7 +244,7 @@ test.describe.serial('exit', () => {
     await expect(hr.getByTestId('absconding')).toContainText('Send the show-cause notice first');
     const notice = hr.getByTestId('exit-letters').locator('[data-template="Show-cause notice"]');
     await notice.getByRole('button', { name: 'Issue' }).click();
-    await expect(hr.getByTestId('exit-letters').locator('li[data-letter="Show-cause notice"]')).toBeVisible();
+    await expect(hr.getByTestId('exit-letters').locator('[data-letter="Show-cause notice"]')).toBeVisible();
     await expect(hr.getByTestId('absconding')).toContainText('The show-cause notice can be answered until');
     await shot(hr, '95-absconding', true);
   });

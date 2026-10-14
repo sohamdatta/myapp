@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { attendance } from '../api.js'
-import { formatDay, formatMinutes, formatMonth, formatTime, liveStatus, localToday, shiftDay, useAction, useLoad } from '../hooks.js'
-import { Badge, DayStatus, Empty, ErrorNote, StatusBadge, Tabs, Trail } from '../ui.jsx'
+import { formatDay, formatMinutes, formatMonth, formatTime, liveStatus, localToday, shiftDay, useAction, useLoad, whoName, formatLate } from '../hooks.js'
+import { Badge, DayStatus, Empty, ErrorNote, StatusBadge, Tabs, Trail, Who } from '../ui.jsx'
 import { DeviceImport, People, Setup } from './AttendanceSetup.jsx'
 
 const KINDS = { regularization: 'Punch correction', on_duty: 'On duty', work_from_home: 'Work from home' }
@@ -140,8 +140,7 @@ function BoardRow({ row, date, canManage, open, onToggle, onChanged }) {
     <>
       <tr>
         <td>
-          {row.email}
-          {row.employeeCode && <div className="hint">{row.employeeCode}</div>}
+          <Who person={row} code={row.employeeCode} />
         </td>
         <td>
           <DayStatus day={row} isToday={date === localToday()} />
@@ -149,7 +148,7 @@ function BoardRow({ row, date, canManage, open, onToggle, onChanged }) {
         <td>{formatTime(row.firstIn)}</td>
         <td>{formatTime(row.lastOut)}</td>
         <td>{formatMinutes(row.workedMinutes)}</td>
-        <td>{row.lateMinutes ? <Badge tone="warn">{row.lateMinutes} min</Badge> : '—'}</td>
+        <td>{row.lateMinutes ? <Badge tone="warn">{formatLate(row.lateMinutes)}</Badge> : '—'}</td>
         <td>{formatMinutes(row.overtimeMinutes)}</td>
         <td className="actions">
           <button type="button" className="quiet" aria-expanded={open} onClick={onToggle}>
@@ -160,7 +159,7 @@ function BoardRow({ row, date, canManage, open, onToggle, onChanged }) {
       {open && (
         <tr className="detail-row">
           <td colSpan={8}>
-            <Trail steps={row.trail} />
+            <Trail steps={row.trail} inProgress={date === localToday()} />
             {canManage && row.status !== 'not_assigned' && <ManualPunch row={row} date={date} onSaved={onChanged} />}
           </td>
         </tr>
@@ -230,7 +229,9 @@ function RequestRow({ request, canDecide, onDecided }) {
   return (
     <>
       <tr>
-        <td>{request.email}</td>
+        <td>
+          <Who person={request} />
+        </td>
         <td>
           {KINDS[request.kind]}
           <div className="hint">{formatDay(request.workDate)}</div>
@@ -238,7 +239,7 @@ function RequestRow({ request, canDecide, onDecided }) {
         <td>
           {request.requestedIn ? `${formatTime(request.requestedIn)} to ${formatTime(request.requestedOut)}` : request.half ? `${request.half[0].toUpperCase()}${request.half.slice(1)} half` : 'Whole day'}
           <div className="hint">
-            The day now: {request.dayStatus ? request.dayStatus.replaceAll('_', ' ') : 'not worked out'}
+            Recorded that day so far: {request.dayStatus ? request.dayStatus.replaceAll('_', ' ') : 'nothing yet'}
             {request.dayFirstIn && `, in ${formatTime(request.dayFirstIn)}`}
             {request.dayLastOut && `, out ${formatTime(request.dayLastOut)}`}
           </div>
@@ -256,7 +257,7 @@ function RequestRow({ request, canDecide, onDecided }) {
             <>
               <input
                 className="cell-input"
-                aria-label={`Note for ${request.email}`}
+                aria-label={`Note for ${whoName(request)}`}
                 placeholder="Note (optional)"
                 value={note}
                 onChange={(e) => setNote(e.target.value)}

@@ -175,6 +175,7 @@ function FlowEditor({ flow, isNew, lookups, onDone, onCancel }) {
               </option>
             ))}
           </select>
+          <p className="hint">How many people check each section the joiner sends, one after the other.</p>
         </div>
       </div>
       <RuleEditor idPrefix="fl" value={f.appliesTo} onChange={(appliesTo) => set({ appliesTo })} lookups={lookups} />

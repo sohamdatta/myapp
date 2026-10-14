@@ -7,6 +7,8 @@ import { pretty } from '../onboardingText.js'
 import { RuleEditor } from './SetupShared.jsx'
 import { TYPES } from './setupText.js'
 
+const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`
+
 /**
  * The joiner's form: each built-in field hidden, optional or required, with
  * its own label and help, for the whole Organization or overridden for one
@@ -105,6 +107,12 @@ function FieldSettings({ flowId, canConfigure, onChanged }) {
         return (
           <section key={section} className="panel field-section" data-section={section}>
             <h4>{pretty(section)}</h4>
+            <div className="field-row field-head" aria-hidden="true">
+              <span>Field</span>
+              <span>Asked</span>
+              <span>Label the joiner sees</span>
+              <span>Help under it</span>
+            </div>
             {list.map((f) => {
               const c = current(f)
               const visibility = c.visibility || (flowId ? '' : f.builtIn.visibility)
@@ -264,7 +272,17 @@ function CustomFieldEditor({ field, isNew, lookups, onDone, onCancel }) {
         </div>
         <div>
           <label htmlFor="cf-key">Key</label>
-          <input id="cf-key" className="mono" value={f.key} disabled={!isNew} onChange={(e) => set({ key: e.target.value })} />
+          <input
+            id="cf-key"
+            className="mono"
+            value={f.key}
+            disabled={!isNew}
+            aria-describedby="cf-key-hint"
+            onChange={(e) => set({ key: e.target.value })}
+          />
+          <p id="cf-key-hint" className="hint">
+            Made from the label. Matches a column of the same name when importing; fixed once saved.
+          </p>
         </div>
         <div>
           <label htmlFor="cf-section">Section</label>
@@ -406,7 +424,7 @@ function Preview({ flows, lookups }) {
               <section key={s.section} className="panel section-card" data-preview={s.section}>
                 <button type="button" className="section-toggle" aria-expanded={open === s.section} onClick={() => setOpen(open === s.section ? null : s.section)}>
                   <span className="section-title">{s.title}</span>
-                  <span className="hint">{s.fields.filter((f) => f.type !== 'file').length} fields</span>
+                  <span className="hint">{plural(s.fields.filter((f) => f.type !== 'file').length, 'field')}</span>
                 </button>
                 {open === s.section && (
                   <SectionForm

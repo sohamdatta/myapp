@@ -181,12 +181,16 @@ export function AcceptInvitation({ token, me, onAccepted, onCancel }) {
           <label htmlFor="new-password">Choose a password</label>
           <input
             id="new-password"
+            aria-describedby="new-password-hint"
             type="password"
             autoComplete="new-password"
             autoFocus
             value={password}
             onChange={(e) => setPassword(e.target.value)}
           />
+          <p id="new-password-hint" className="hint">
+            At least 12 characters. A few unrelated words make a strong one you can remember.
+          </p>
           <label htmlFor="confirm-password">Repeat the password</label>
           <input
             id="confirm-password"

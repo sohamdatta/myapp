@@ -4,6 +4,7 @@ import { formatDay, localToday, useAction, useLoad } from '../hooks.js'
 import { Badge, ErrorNote } from '../ui.jsx'
 import { KINDS, RESIGN_REASONS, SHORTFALL, STAGES } from './exitText.js'
 import { MyInterview, MyLetters } from './ExitLetters.jsx'
+import { ExitProgress } from './ExitProgress.jsx'
 import { MySettlement } from './Settlement.jsx'
 import { TaskRow } from './TaskList.jsx'
 
@@ -25,6 +26,7 @@ export default function MyExit() {
           You can sign in to download your letters and settlement until {formatDay(x.formerAccessUntil)}. Keep copies of anything you need.
         </p>
       )}
+      {open && x.status !== 'proposed' && <ExitProgress exit={x} mine />}
       {open ? <ExitSummary exit={x} onChanged={mine.reload} /> : null}
       {open && x.clearance?.total > 0 && (
         <section className="panel">
@@ -33,7 +35,7 @@ export default function MyExit() {
           </h3>
           {x.tasks.length === 0 && <p className="hint">Nothing for you to do; HR, IT and your manager clear the rest.</p>}
           {x.tasks.map((t) => (
-            <TaskRow key={t.id} task={t} onChanged={mine.reload} taskApi={exitTasks} />
+            <TaskRow key={t.id} task={t} onChanged={mine.reload} taskApi={exitTasks} leaver />
           ))}
         </section>
       )}

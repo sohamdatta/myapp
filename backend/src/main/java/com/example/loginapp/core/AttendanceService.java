@@ -156,12 +156,12 @@ public final class AttendanceService {
                 }
             }
             return Sql.query(c,
-                    "select m.id as membership_id, dir.email, m.employee_code, d.status, d.first_in, d.last_out, "
+                    "select m.id as membership_id, dir.email, " + Names.of("m.id") + " as name, m.employee_code, d.status, d.first_in, d.last_out, "
                             + "d.worked_minutes, d.late_minutes, d.early_minutes, d.overtime_minutes, d.incomplete, d.trail, "
                             + "d.leave_days, d.leave_unpaid, d.remote "
                             + "from app.membership m join app.member_directory() dir on dir.membership_id = m.id "
                             + "left join app.attendance_day d on d.membership_id = m.id and d.work_date = ? "
-                            + "where m.status = 'active'" + only + " order by dir.email",
+                            + "where m.status = 'active'" + only + " order by lower(coalesce(" + Names.of("m.id") + ", dir.email))",
                     team == null ? new Object[] {day} : new Object[] {day, team});
         });
     }
@@ -436,7 +436,7 @@ public final class AttendanceService {
         return db.inTenant(ctx.tenantId(), c -> {
             UUID[] team = Team.reach(c, ctx, "attendance.approve", today());
             return Sql.query(c,
-                "select r.id, r.membership_id, dir.email, r.kind, r.work_date, r.requested_in, r.requested_out, r.reason, "
+                "select r.id, r.membership_id, dir.email, " + Names.of("r.membership_id") + " as name, r.kind, r.work_date, r.requested_in, r.requested_out, r.reason, "
                         + "r.half, r.status, r.decision_note, r.decided_at, r.created_at, "
                         + "d.status as day_status, d.first_in as day_first_in, d.last_out as day_last_out, "
                         + "(r.membership_id = ?) as own "

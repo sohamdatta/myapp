@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { attendance, leave } from '../api.js'
-import { formatDay, formatDays, formatMonth, formatRange, leaveBody, localMonth, localToday, newLeave, useAction, useLoad } from '../hooks.js'
-import { Badge, Empty, ErrorNote, StatusBadge, Tabs } from '../ui.jsx'
+import { formatDay, formatDays, formatMonth, formatRange, leaveBody, localMonth, localToday, newLeave, useAction, useLoad, whoName } from '../hooks.js'
+import { Badge, Empty, ErrorNote, StatusBadge, Tabs, Who } from '../ui.jsx'
 import { LeaveFields, Ledger } from './MyLeave.jsx'
 
 const number = (value) => (value === '' || value === null || value === undefined ? null : Number(value))
@@ -24,7 +24,9 @@ function RequestRow({ request, canDecide, canManage, onChanged }) {
   return (
     <>
       <tr>
-        <td>{request.email}</td>
+        <td>
+          <Who person={request} />
+        </td>
         <td>
           {request.leaveType}
           <div className="hint">{formatRange(request.fromDate, request.toDate, request.half)}</div>
@@ -36,7 +38,7 @@ function RequestRow({ request, canDecide, canManage, onChanged }) {
           )}
           {request.paid && request.status === 'pending' && (
             <div className="hint">
-              Balance {Number(request.balance)} {short && <Badge tone="warn">not enough</Badge>}
+              {Number(request.balance)} available {short && <Badge tone="warn">not enough</Badge>}
             </div>
           )}
         </td>
@@ -51,7 +53,7 @@ function RequestRow({ request, canDecide, canManage, onChanged }) {
             <>
               <input
                 className="cell-input"
-                aria-label={`Note for ${request.email}`}
+                aria-label={`Note for ${whoName(request)}`}
                 placeholder="Note (optional)"
                 value={note}
                 onChange={(e) => setNote(e.target.value)}
@@ -66,7 +68,7 @@ function RequestRow({ request, canDecide, canManage, onChanged }) {
           ) : (
             <>
               <StatusBadge status={request.status} />
-              {request.decisionNote && <div className="hint">{request.decisionNote}</div>}
+              {request.decisionNote && <div className="hint">Note: “{request.decisionNote}”</div>}
               {request.status === 'approved' && canManage && !request.own && (
                 <div>
                   <button type="button" className="quiet danger" disabled={busy} onClick={() => act('cancel')}>
@@ -96,7 +98,7 @@ function RequestList({ status, canDecide, canManage }) {
   if (requests.data.length === 0) return <Empty>No {status} leave requests.</Empty>
   return (
     <div className="table-wrap">
-      <table>
+      <table className="stack">
         <thead>
           <tr>
             <th>User</th>
@@ -146,7 +148,7 @@ function Away({ month }) {
   if (rows.data.length === 0) return <Empty>Nobody is away in {formatMonth(month)}.</Empty>
   return (
     <div className="table-wrap">
-      <table>
+      <table className="stack">
         <thead>
           <tr>
             <th>Dates</th>
@@ -159,7 +161,9 @@ function Away({ month }) {
           {rows.data.map((r, index) => (
             <tr key={`${r.membershipId}-${r.kind}-${r.fromDate}-${index}`}>
               <td>{formatRange(r.fromDate, r.toDate, r.half)}</td>
-              <td>{r.email}</td>
+              <td>
+                <Who person={r} />
+              </td>
               <td>{r.label}</td>
               <td>
                 <StatusBadge status={r.status} />
@@ -256,7 +260,7 @@ function OnBehalfForm({ person, types, onSaved, onCancel }) {
       <ErrorNote>{error}</ErrorNote>
       <div className="form-actions">
         <button type="submit" className="secondary" disabled={busy || !value.leaveTypeId}>
-          {busy ? 'Saving…' : `Record leave for ${person.email}`}
+          {busy ? 'Saving…' : `Record leave for ${whoName(person)}`}
         </button>
         <button type="button" className="quiet" onClick={onCancel}>
           Close
@@ -287,7 +291,11 @@ function PersonLedger({ person, onCancel }) {
           Close
         </button>
       </div>
-      {typeId ? <Ledger key={typeId} load={() => leave.userLedger(person.membershipId, typeId)} /> : <Empty>No paid leave types yet.</Empty>}
+      {typeId ? (
+        <Ledger key={typeId} load={() => leave.userLedger(person.membershipId, typeId)} type={paid.find((b) => b.leaveTypeId === typeId)} />
+      ) : (
+        <Empty>No paid leave types yet.</Empty>
+      )}
     </>
   )
 }
@@ -328,7 +336,9 @@ function CompOff({ onGranted }) {
           <tbody>
             {candidates.data.map((row) => (
               <tr key={`${row.membershipId}-${row.workDate}`}>
-                <td>{row.email}</td>
+                <td>
+                  <Who person={row} />
+                </td>
                 <td>
                   {formatDay(row.workDate)}
                   <div className="hint">{row.status === 'holiday' ? 'A holiday' : 'A weekly off'}</div>
@@ -359,7 +369,7 @@ function Balances({ canManage, me }) {
   const active = types.data.filter((t) => t.active)
   if (active.length === 0) return <Empty>No leave types yet. Add them under Setup, then balances appear here.</Empty>
   const paid = active.filter((t) => t.paid)
-  const shown = people.data.filter((p) => p.email.toLowerCase().includes(search.trim().toLowerCase()))
+  const shown = people.data.filter((p) => `${p.name || ''} ${p.email}`.toLowerCase().includes(search.trim().toLowerCase()))
   // Acting for someone else needs a user of the Organization; a support session can only look.
   const canAct = canManage && me.kind === 'tenant'
 
@@ -407,7 +417,7 @@ function Balances({ canManage, me }) {
                   }
                 >
                   <td>
-                    {p.email}
+                    <Who person={p} />
                     {p.status === 'suspended' && (
                       <>
                         {' '}
@@ -435,6 +445,7 @@ function Balances({ canManage, me }) {
                         </button>
                       </>
                     )}
+                    {canAct && p.own && <div className="hint">Your own: another HR changes it</div>}
                   </td>
                 </PersonRows>
               )
@@ -622,7 +633,9 @@ function describe(t) {
   const carry =
     t.carryForwardCap === null || t.carryForwardCap === undefined
       ? 'all carries forward'
-      : `carries forward up to ${Number(t.carryForwardCap)}, the rest ${t.excessAtYearEnd === 'encash' ? 'is encashed' : 'lapses'}`
+      : Number(t.carryForwardCap) === 0
+        ? `nothing carries forward; what is left ${t.excessAtYearEnd === 'encash' ? 'is encashed' : 'lapses'} at year end`
+        : `carries forward up to ${Number(t.carryForwardCap)}, the rest ${t.excessAtYearEnd === 'encash' ? 'is encashed' : 'lapses'}`
   return `${credit} · ${carry}`
 }
 

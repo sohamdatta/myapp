@@ -144,3 +144,25 @@ export function leaveBody(value) {
     reason: value.reason,
   }
 }
+
+/** What to call a person in a sentence or a label: the name on their record, else their email. */
+export const whoName = (person) => person.name || person.email
+
+/** Lateness in words: "12 min", or "2 h 05 min" past an hour. */
+export const formatLate = (minutes) => (minutes < 60 ? `${minutes} min` : formatMinutes(minutes))
+
+/**
+ * What one page asks the next to open when it sends the person there (an exit to start for an
+ * employee, an exit to show). Read once by the page it was meant for.
+ */
+let pending = null
+export const handoff = {
+  set(value) {
+    pending = value
+  },
+  take() {
+    const value = pending
+    pending = null
+    return value
+  },
+}

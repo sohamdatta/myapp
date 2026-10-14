@@ -76,8 +76,8 @@ export function SettingsSetup({ canConfigure, onChanged }) {
           <div>
             <label htmlFor="set-activation">Activation on the joining date</label>
             <select id="set-activation" value={s.activation} onChange={(e) => set({ activation: e.target.value })}>
-              <option value="automatic">Automatic, once nothing is missing</option>
-              <option value="manual">Only when HR presses Activate</option>
+              <option value="automatic">Automatic, when ready</option>
+              <option value="manual">When HR presses Activate</option>
             </select>
           </div>
           <div>
@@ -112,7 +112,7 @@ export function SettingsSetup({ canConfigure, onChanged }) {
                 checked={(s.rehireMatch || []).includes(m)}
                 onChange={(e) => set({ rehireMatch: e.target.checked ? [...(s.rehireMatch || []), m] : s.rehireMatch.filter((x) => x !== m) })}
               />
-              {pretty(m.replace('aadhaar_last4', 'aadhaar_last_four'))}
+              {{ personal_email: 'Personal email', mobile: 'Mobile', pan: 'PAN', aadhaar_last4: 'Aadhaar last four' }[m]}
             </label>
           ))}
         </fieldset>
@@ -169,7 +169,7 @@ export function SettingsSetup({ canConfigure, onChanged }) {
  * The shape every list screen shares: the items with a summary line each, Edit on one, Add to start
  * a new one. The editor is given the item (or a blank one) and saves through `save`.
  */
-function ListScreen({ title, load, blank, addLabel, canConfigure, summary, Editor, onChanged, lookups, extra }) {
+function ListScreen({ title, load, blank, addLabel, canConfigure, summary, Editor, onChanged, lookups, extra, groups }) {
   const list = useLoad(load)
   const [editing, setEditing] = useState(null) // an item, or 'new'
   if (list.loading) return <p className="muted">Loading…</p>
@@ -192,8 +192,12 @@ function ListScreen({ title, load, blank, addLabel, canConfigure, summary, Edito
       </div>
       {editing === 'new' && <Editor item={blank()} isNew lookups={lookups} extra={extra} onDone={done} onCancel={() => setEditing(null)} />}
       {list.data.length === 0 && editing !== 'new' && <Empty>None yet.</Empty>}
-      <div className="setup-list">
-        {list.data.map((item) =>
+      {(groups ? groups.map(([label, test]) => [label, list.data.filter(test)]) : [[null, list.data]])
+        .filter(([, items]) => items.length > 0)
+        .map(([label, items]) => (
+      <div key={label || 'all'} className="setup-list">
+        {label && <h4 className="setup-group">{label}</h4>}
+        {items.map((item) =>
           editing && editing !== 'new' && editing.id === item.id ? (
             <Editor key={item.id} item={item} lookups={lookups} extra={extra} onDone={done} onCancel={() => setEditing(null)} />
           ) : (
@@ -217,6 +221,7 @@ function ListScreen({ title, load, blank, addLabel, canConfigure, summary, Edito
           ),
         )}
       </div>
+        ))}
     </>
   )
 }
@@ -256,7 +261,7 @@ function Active({ value, onChange, id }) {
 
 // ── documents ───────────────────────────────────────────────────────
 
-const REQUIRED = { before_activation: 'Before joining', within_days: 'Within days of joining', optional: 'Optional' }
+const REQUIRED = { before_activation: 'Before joining', within_days: 'Within some days of joining', optional: 'Optional' }
 
 export function DocumentsSetup(props) {
   return (
@@ -266,7 +271,7 @@ export function DocumentsSetup(props) {
       load={setup.documentTypes}
       addLabel="Add a document"
       blank={() => ({ name: '', required: 'optional', withinDays: 30, instructions: '', appliesTo: {}, active: true })}
-      summary={(d, l) => `${REQUIRED[d.required]}${d.required === 'within_days' ? ` (${d.withinDays})` : ''} · ${describeRules(d.appliesTo, l)}`}
+      summary={(d, l) => `${d.required === 'within_days' ? `Within ${d.withinDays} days of joining` : REQUIRED[d.required]} · ${describeRules(d.appliesTo, l)}`}
       Editor={DocumentEditor}
     />
   )
@@ -333,7 +338,11 @@ export function ChecklistsSetup(props) {
       load={setup.checklists}
       addLabel="Add a checklist"
       blank={() => ({ name: '', kind: 'joining', appliesTo: {}, active: true, tasks: [] })}
-      summary={(t, l) => `${t.kind === 'exit' ? 'Leaving' : 'Joining'} · ${t.tasks.length} tasks · ${describeRules(t.appliesTo, l)}`}
+      summary={(t, l) => `${t.tasks.length} tasks · ${describeRules(t.appliesTo, l)}`}
+      groups={[
+        ['People joining', (t) => t.kind !== 'exit'],
+        ['People leaving', (t) => t.kind === 'exit'],
+      ]}
       Editor={ChecklistEditor}
     />
   )
@@ -541,10 +550,14 @@ export function LettersSetup(props) {
       blank={() => ({ kind: 'other', name: '', body: '{{organization.name}}\n\n\n\nDear {{person.legal_name}},\n\n', response: 'accept', appliesTo: {}, active: true })}
       summary={(t, l) =>
         isExit(t.kind)
-          ? `Exit letter: ${EXIT_KINDS[t.kind]} · version ${t.version}`
+          ? `${EXIT_KINDS[t.kind]} · version ${t.version}`
           : `${pretty(t.kind)} · version ${t.version} · the joiner ${RESPONSES[t.response].toLowerCase()} · ${describeRules(t.appliesTo, l)}`
       }
       Editor={LetterEditor}
+      groups={[
+        ['Joining', (t) => !isExit(t.kind)],
+        ['Leaving', (t) => isExit(t.kind)],
+      ]}
     />
   )
 }
@@ -713,6 +726,8 @@ function PolicyEditor({ item, isNew, lookups, onDone, onCancel }) {
 
 // ── messages ────────────────────────────────────────────────────────
 
+const JOINING_EVENTS = ['joiner_invited', 'offer_issued', 'section_returned', 'reminder_joiner', 'joiner_ready', 'activated', 'welcome_team']
+
 export function MessagesSetup(props) {
   return (
     <ListScreen
@@ -722,6 +737,11 @@ export function MessagesSetup(props) {
       blank={() => ({})}
       summary={(m) => fill(m.subject ? `${m.subject}: ${m.body}` : m.body, SAMPLE_VALUES)}
       Editor={MessageEditor}
+      groups={[
+        ['Joining', (m) => JOINING_EVENTS.includes(m.event)],
+        ['Tasks', (m) => m.event.startsWith('task_')],
+        ['Leaving', (m) => !JOINING_EVENTS.includes(m.event) && !m.event.startsWith('task_')],
+      ]}
     />
   )
 }

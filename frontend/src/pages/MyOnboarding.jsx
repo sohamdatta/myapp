@@ -1,12 +1,12 @@
 import { useState } from 'react'
 import { onboarding, people, tasks } from '../api.js'
 import { formatDay, useAction, useLoad } from '../hooks.js'
-import { Badge, ErrorNote, StatusBadge } from '../ui.jsx'
+import { Badge, ErrorNote, StatusBadge, Chevron, SectionBadge } from '../ui.jsx'
 import DocumentList from './DocumentList.jsx'
 import FileViewer from './FileViewer.jsx'
 import SectionForm from './SectionForm.jsx'
 import { TaskRow } from './TaskList.jsx'
-import { SECTION_STATUS, letterState } from './onboardingText.js'
+import { letterState } from './onboardingText.js'
 
 /**
  * The joiner's own onboarding: a welcome, the privacy notice to accept, and
@@ -161,8 +161,8 @@ function MySection({ summary, open, onToggle, states, me, onChanged, onSent }) {
       <button type="button" className="section-toggle" aria-expanded={open} onClick={onToggle}>
         <span className="section-title">{summary.title}</span>
         <span className="section-state">
-          <StatusBadge status={summary.status} />
-          <span className="sr-only">{SECTION_STATUS[summary.status]}</span>
+          <SectionBadge status={summary.status} />
+          <Chevron open={open} />
         </span>
       </button>
       {summary.status === 'returned' && summary.note && (
