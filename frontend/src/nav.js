@@ -50,6 +50,7 @@ export function navFor(me) {
     {
       label: 'Organization',
       items: [
+        me.permissions.includes('orgchart.read') && { id: 'org-chart', label: 'Org chart' },
         seesPeople && { id: 'people', label: 'People' },
         seesOthersAttendance && { id: 'attendance', label: 'Attendance' },
         seesOthersLeave && { id: 'leave', label: 'Leave' },

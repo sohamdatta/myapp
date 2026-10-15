@@ -1083,7 +1083,8 @@ export default function People({ me, onNavigate }) {
     everyone && { id: 'setup', label: 'Setup' },
   ].filter(Boolean)
   const [view, setView] = useState('employees')
-  const [open, setOpen] = useState(null) // an employment id, or 'new'
+  // Sent here from the org chart: open that person's record.
+  const [open, setOpen] = useState(() => handoff.take()?.openEmployee || null) // an employment id, or 'new'
   const [joiner, setJoiner] = useState(null) // { id, invitation } of the joiner open, or 'new'
 
   if (joiner === 'new') {

@@ -7,6 +7,7 @@ import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -138,6 +139,82 @@ public final class EmployeeService {
             e.put("own", ctx.membershipId() != null && ctx.membershipId().toString().equals(e.get("membershipId")));
             return e;
         });
+    }
+
+    /**
+     * The org chart: everyone working here today, with their designation, department, work email
+     * and the employment they report to. Only directory details, so every employee may see it. A
+     * manager who is no longer active, or a reporting line that would loop, makes the person a top
+     * of the chart rather than losing them. Each person says whether the caller may open their record.
+     */
+    public Map<String, Object> orgChart(SessionCtx ctx) {
+        if (!ctx.reachesEveryone("orgchart.read")) {
+            throw ApiException.denied("orgchart.read");
+        }
+        LocalDate today = today();
+        return db.inTenant(ctx.tenantId(), c -> {
+            applyDueExits(c, ctx.tenantId(), today);
+            List<Map<String, Object>> people = Sql.query(c,
+                    "select e.id, coalesce(p.preferred_name, p.legal_name) as name, j.designation, d.name as department_name, "
+                            + "case when boss.status = 'active' then j.manager_id end as manager_id, dir.email, e.membership_id "
+                            + "from app.employment e join app.person p on p.id = e.person_id "
+                            + "left join lateral (select * from app.job_assignment j where j.employment_id = e.id "
+                            + "  and j.effective_from <= greatest(?::date, e.joining_date) "
+                            + "  order by j.effective_from desc, j.created_at desc limit 1) j on true "
+                            + "left join app.department d on d.id = j.department_id "
+                            + "left join app.employment boss on boss.id = j.manager_id "
+                            + "left join app.member_directory() dir on dir.membership_id = e.membership_id "
+                            + "where e.status = 'active' order by lower(coalesce(p.preferred_name, p.legal_name)), e.id",
+                    today);
+            breakLoops(people);
+            UUID[] reach = ctx.scopeOf("employee.read") == null ? new UUID[0] : Team.reach(c, ctx, "employee.read", today);
+            Set<String> reachable = reach == null ? null : new HashSet<>();
+            if (reach != null) {
+                for (UUID m : reach) {
+                    reachable.add(m.toString());
+                }
+            }
+            String self = ctx.membershipId() == null ? null : ctx.membershipId().toString();
+            String mine = null;
+            for (Map<String, Object> person : people) {
+                Object membership = person.remove("membershipId");
+                boolean own = self != null && self.equals(membership);
+                if (own) {
+                    mine = (String) person.get("id");
+                }
+                person.put("canOpen", ctx.scopeOf("employee.read") != null
+                        && (own || reachable == null || (membership != null && reachable.contains(membership))));
+            }
+            Map<String, Object> out = new LinkedHashMap<>();
+            out.put("people", people);
+            out.put("me", mine);
+            out.put("asOf", today.toString());
+            return out;
+        });
+    }
+
+    /** Clears the manager of anyone whose reporting line comes back to them, so the chart stays a tree. */
+    static void breakLoops(List<Map<String, Object>> people) {
+        Map<String, Map<String, Object>> byId = new HashMap<>();
+        for (Map<String, Object> p : people) {
+            byId.put((String) p.get("id"), p);
+        }
+        for (Map<String, Object> p : people) {
+            if (p.get("managerId") != null && !byId.containsKey((String) p.get("managerId"))) {
+                p.put("managerId", null);
+            }
+        }
+        for (Map<String, Object> p : people) {
+            Set<String> seen = new HashSet<>();
+            Map<String, Object> at = p;
+            while (at != null && at.get("managerId") != null) {
+                if (!seen.add((String) at.get("id"))) {
+                    at.put("managerId", null);
+                    break;
+                }
+                at = byId.get((String) at.get("managerId"));
+            }
+        }
     }
 
     /** The full value of one identifier, for someone with employee.sensitive; every reveal is audited with its reason. */

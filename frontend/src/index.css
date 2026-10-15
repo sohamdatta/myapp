@@ -2040,3 +2040,339 @@ fieldset:not([class]) {
   border: 1px solid var(--border);
   border-radius: 10px;
 }
+
+/* ── org chart ─────────────────────────────────────────────────────── */
+
+.org-tools {
+  position: relative;
+}
+
+.org-search {
+  position: relative;
+  flex: 1 1 280px;
+  max-width: 420px;
+}
+
+.org-search input {
+  width: 100%;
+}
+
+.org-matches {
+  position: absolute;
+  z-index: 5;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  background: var(--card);
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  box-shadow: 0 6px 20px rgb(0 0 0 / 0.12);
+}
+
+.org-matches li > .hint {
+  display: block;
+  padding: 6px 8px;
+}
+
+.org-matches button {
+  display: block;
+  width: 100%;
+  padding: 6px 8px;
+  text-align: left;
+  border-radius: 6px;
+}
+
+.org-matches button:hover,
+.org-matches button:focus-visible {
+  background: var(--accent-soft);
+}
+
+.org-person {
+  margin-bottom: 16px;
+}
+
+.org-person-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.org-person-head h2 {
+  margin: 0;
+  font-size: 1.2rem;
+}
+
+.org-person-head p {
+  margin: 2px 0 0;
+}
+
+.org-person .facts {
+  max-width: 560px;
+}
+
+.org-avatar {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: var(--accent-soft);
+  color: var(--accent-text);
+  font-weight: 600;
+  font-size: 0.85rem;
+  letter-spacing: 0.02em;
+}
+
+.org-avatar.large {
+  width: 48px;
+  height: 48px;
+  font-size: 1.05rem;
+}
+
+/* The tree: each level a row of cards, joined by lines drawn from the list items' edges. */
+.org-scroll {
+  overflow-x: auto;
+  padding: 4px 0 16px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.org-tree,
+.org-tree ul {
+  display: flex;
+  justify-content: center;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.org-tree {
+  width: max-content;
+  min-width: 100%;
+  padding: 16px 12px 0;
+}
+
+.org-tree ul {
+  position: relative;
+  padding-top: 20px;
+}
+
+.org-tree li {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 20px 6px 0;
+}
+
+.org-tree > li {
+  padding-top: 0;
+}
+
+.org-tree li::before,
+.org-tree li::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 50%;
+  width: 50%;
+  height: 20px;
+  border-top: 1px solid var(--border-strong);
+}
+
+.org-tree li::after {
+  right: auto;
+  left: 50%;
+  border-left: 1px solid var(--border-strong);
+}
+
+.org-tree > li::before,
+.org-tree > li::after,
+.org-tree li:only-child::before {
+  display: none;
+}
+
+.org-tree li:only-child::after {
+  border-top: 0;
+}
+
+.org-tree li:first-child::before,
+.org-tree li:last-child::after {
+  border-top: 0;
+}
+
+.org-tree li:last-child::before {
+  border-right: 1px solid var(--border-strong);
+  border-top: 1px solid var(--border-strong);
+  border-radius: 0 6px 0 0;
+}
+
+.org-tree li:first-child::after {
+  border-radius: 6px 0 0 0;
+}
+
+.org-tree li:only-child::after {
+  border-radius: 0;
+}
+
+.org-tree ul::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 50%;
+  height: 20px;
+  border-left: 1px solid var(--border-strong);
+}
+
+.org-card {
+  display: flex;
+  flex-direction: column;
+  width: 196px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.04);
+  text-align: left;
+}
+
+.org-card.is-me {
+  border-color: var(--good);
+}
+
+.org-card.selected {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-soft);
+}
+
+.org-who {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  width: 100%;
+  padding: 10px;
+  background: none;
+  border: 0;
+  border-radius: 10px 10px 0 0;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.org-who:hover {
+  background: var(--row);
+}
+
+.org-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.org-name {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.org-name .badge {
+  margin-left: 2px;
+  padding: 0 8px;
+  font-size: 0.75rem;
+}
+
+.org-role {
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.org-toggle {
+  padding: 6px 10px;
+  background: none;
+  border: 0;
+  border-top: 1px solid var(--border);
+  border-radius: 0 0 10px 10px;
+  color: var(--accent-text);
+  font: inherit;
+  font-size: 0.86rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.org-toggle:hover {
+  background: var(--accent-soft);
+}
+
+.org-alone {
+  margin-top: 16px;
+}
+
+.org-alone h3 {
+  margin-top: 0;
+}
+
+.org-alone-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* On a phone the chart reads top to bottom: each team indented under its manager. */
+@media (max-width: 760px) {
+  .org-scroll {
+    padding: 12px 8px;
+  }
+
+  .org-tree,
+  .org-tree ul {
+    display: block;
+    width: auto;
+    min-width: 0;
+  }
+
+  .org-tree {
+    padding: 0;
+  }
+
+  .org-tree ul {
+    padding: 8px 0 0 18px;
+  }
+
+  .org-tree li {
+    display: block;
+    padding: 0 0 8px;
+  }
+
+  .org-tree li::before,
+  .org-tree li::after,
+  .org-tree ul::before {
+    display: none;
+  }
+
+  .org-tree ul > li {
+    border-left: 1px solid var(--border-strong);
+    padding-left: 10px;
+  }
+
+  .org-tree ul > li:last-child {
+    border-left-color: transparent;
+    background: linear-gradient(var(--border-strong), var(--border-strong)) no-repeat 0 0 / 1px 22px;
+  }
+
+  .org-card {
+    width: 100%;
+  }
+
+  .org-search {
+    max-width: none;
+  }
+}

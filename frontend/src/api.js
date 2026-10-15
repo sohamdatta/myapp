@@ -315,6 +315,7 @@ export const leave = {
 export const people = {
   employees: (params) => get(`/org/people/employees${query(params || {})}`),
   employee: (id) => get(`/org/people/employees/${id}`),
+  orgChart: () => get('/org/people/org-chart'),
   addEmployee: (body) => post('/org/people/employees', body),
   changeJob: (id, body) => post(`/org/people/employees/${id}/job`, body),
   exit: (id, body) => post(`/org/people/employees/${id}/exit`, body),

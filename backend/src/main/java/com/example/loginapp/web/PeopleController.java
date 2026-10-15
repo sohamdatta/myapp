@@ -53,6 +53,12 @@ public class PeopleController {
         return employees.list(Requests.session(auth, authorization), q, status, department);
     }
 
+    /** The org chart: everyone working here and who they report to, for every employee. */
+    @GetMapping("/org-chart")
+    public Map<String, Object> orgChart(@RequestHeader(value = "Authorization", required = false) String authorization) {
+        return employees.orgChart(Requests.session(auth, authorization));
+    }
+
     @PostMapping("/employees")
     public Map<String, Object> add(@RequestHeader(value = "Authorization", required = false) String authorization,
                                    @RequestBody EmployeeService.NewEmployee request) {

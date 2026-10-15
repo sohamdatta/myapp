@@ -81,6 +81,10 @@ export function daysToNextMonday(): number {
   const dow = istToday().getUTCDay(); // 0 = Sunday
   return ((8 - dow) % 7) || 7;
 }
+/** Today's day of the week in India, 0 = Sunday. */
+export function istWeekday(): number {
+  return istToday().getUTCDay();
+}
 export function currentYear(): number {
   return istToday().getUTCFullYear();
 }

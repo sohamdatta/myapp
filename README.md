@@ -293,6 +293,15 @@ manager), identifiers and bank account.
   number is checked (12 digits, Verhoeff check digit) and discarded. A PAN
   must be a person's (fourth letter P) and is unique within an Organization;
   it can be recorded as pending with a reason.
+- **The org chart is for everyone.** "Org chart" shows everyone working here
+  in their reporting lines: name, designation, department and work email,
+  nothing else. Any employee, manager, HR or auditor can open it (the
+  `orgchart.read` permission, `V12__org_chart.sql`); joiners and former
+  employees cannot. Find someone by name, role or department, see who they
+  report to and how big their team is, and open the record when your access to
+  employee records allows it (your own, your team's, or everyone's for HR).
+  People who report to nobody and lead nobody are listed under the chart, and
+  on a phone the chart reads top to bottom.
 - **Leaving.** "Start an exit…" on the record opens Exits with the employee
   chosen; see "Exits" below. The day after it, the person's roles are replaced by
   Ex-employee. The record is kept. The only Org Admin cannot be exited.
@@ -511,7 +520,7 @@ The design, as built, is `docs/exit/design.md`; the schema is
 | Payroll Operator | Prepare payroll. Cannot approve it |
 | Payroll Approver | Approve payroll and release payment. Cannot prepare it |
 | Manager | See their team (the people who report to them): records, attendance and leave, and decide their requests |
-| Employee | See their own record |
+| Employee | See their own record, and the org chart |
 | Auditor | Read-only, including the audit log |
 
 A user can grant a role only if they already hold every permission in it, so
@@ -612,6 +621,7 @@ People, under `/api/org/people`:
 |---|---|---|
 | GET, POST | `/employees` | Lists employees (`?status=active\|exited\|all`, `q`, `department`); adds one |
 | GET | `/employees/{id}` | One employee, with job history; identifiers as last four only |
+| GET | `/org-chart` | Everyone working here with designation, department, work email and manager; `me` and, per person, `canOpen` |
 | POST | `/employees/{id}/reveal` | `{field, reason}`: one full value, audited. Fields `pan`, `uan`, `pf_member`, `esi_ip`, `bank_account` |
 | POST | `/employees/{id}/job` | A dated change of designation, department or manager |
 | POST | `/employees/{id}/exit` | `{lastWorkingDay, reason}` |
@@ -706,7 +716,7 @@ on GitHub and emails whoever pushed it.
 
 | Job | What it checks | Where the tests are |
 |---|---|---|
-| Backend build and tests | Maven builds the backend; 190 JUnit tests run against a real PostgreSQL 16: business rules, permissions, and isolation between Organizations | `backend/src/test/` |
+| Backend build and tests | Maven builds the backend; 191 JUnit tests run against a real PostgreSQL 16: business rules, permissions, and isolation between Organizations | `backend/src/test/` |
 | Frontend lint and build | `oxlint` finds no problems and the production build succeeds | `frontend/` |
 | Browser tests | The app is started from the backend jar, and Playwright clicks through it as the Super Admin, an Org Admin and an HR Admin | `e2e/tests/` |
 | Deployment images | The two images in `deploy/` are built and started as on a server, behind Caddy, against a PostgreSQL whose admin login is not a superuser; the API, the frontend and a sign-in answer through it | `deploy/`, `.github/workflows/ci.yml` |
@@ -724,6 +734,7 @@ The browser tests tell one story in order, each step depending on the one before
 8. `08-offer-and-codes`: a code series and two policies set up; an offer letter previewed and issued; the joiner reads it on a phone, accepts it and acknowledges the policies; the bell takes HR to their tasks; the joiner becomes an employee with the next code from the series.
 9. `09-setup-and-import`: a flow for interns set up on screen, a field made required for it and a field of HR's own, previewed on a phone and seen on a new intern; a code series and a message reworded; existing staff imported from a CSV with every refused row explained, the same file refused the second time; an imported employee invited and signed in.
 10. `10-exit`: an employee resigns on a phone; the manager recommends a day and HR accepts it with the shortfall set against leave; clearance tasks go to their owners and the leaver records a claim; a withdrawal is asked for and refused; HR starts a termination and sets notice periods; the settlement is worked out, approved by a second person, paid and downloaded by the employee; letters wait for their moment, and the exit interview is answered and read only by HR; an absconding case waits for its show-cause notice; an exit is put under legal hold.
+11. `11-org-chart`: an employee finds themselves, their manager and a colleague on the org chart, cannot open others' records, and reads it on a phone; HR opens a record from the chart.
 
 Every browser test also fails on any error in the browser console.
 

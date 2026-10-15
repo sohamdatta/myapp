@@ -25,7 +25,8 @@ public final class Migrator {
             "V8__documents_and_checklists.sql",
             "V9__letters_policies_codes_messages.sql",
             "V10__employee_import.sql",
-            "V11__employee_exit.sql");
+            "V11__employee_exit.sql",
+            "V12__org_chart.sql");
 
     /**
      * Lets app_definer see every row of every table under row-level security, for databases where it

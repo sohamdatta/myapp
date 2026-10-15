@@ -10,6 +10,7 @@ import MyOnboarding from './MyOnboarding.jsx'
 import Exits from './Exits.jsx'
 import MyExit from './MyExit.jsx'
 import MyTasks from './MyTasks.jsx'
+import OrgChart from './OrgChart.jsx'
 import People, { MyProfile } from './People.jsx'
 
 /** What each role is for, in plain words. The exact permissions are under User management → Roles. */
@@ -500,6 +501,7 @@ export default function Organization({ me, page, onNavigate }) {
       {page === 'my-leave' && <MyLeave me={me} />}
       {page === 'attendance' && <Attendance me={me} />}
       {page === 'leave' && <Leave me={me} />}
+      {page === 'org-chart' && <OrgChart onNavigate={onNavigate} />}
       {page === 'people' && <People me={me} onNavigate={onNavigate} />}
       {page === 'my-profile' && <MyProfile id={me.employment?.id} />}
       {page === 'my-onboarding' && <MyOnboarding me={me} />}

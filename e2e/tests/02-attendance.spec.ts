@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { OWNER, HR, signIn, nav, tab, isoDay, todayDmy, expectNoConsoleErrors, shot } from './helpers';
+import { OWNER, HR, istWeekday, signIn, nav, tab, isoDay, todayDmy, expectNoConsoleErrors, shot } from './helpers';
 
 // Attendance: the Org Admin sets up an office, shift and holiday, assigns people,
 // the HR Admin punches (refused off the office network, accepted on it), raises a
@@ -54,7 +54,10 @@ test.describe.serial('attendance', () => {
     await owner.getByLabel(`Select ${HR}`).check();
     await owner.getByLabel(`Select ${OWNER}`).check();
     await owner.getByLabel('Sunday').first().uncheck(); // no weekly off, so every day of the run is a working day
-    await owner.getByLabel('Friday').nth(1).check(); // Friday is a regular remote day
+    // Friday is a regular day at home, or Saturday when today is a Friday: the next test punches off the office
+    // network, which a day at home allows.
+    const remote = istWeekday() === 5 ? 'Saturday' : 'Friday';
+    await owner.getByLabel(remote).nth(1).check();
     await owner.selectOption('#as-location', { label: 'Kolkata office' });
     await owner.selectOption('#as-shift', { index: 1 });
     await owner.click('text=Assign to 2 selected');

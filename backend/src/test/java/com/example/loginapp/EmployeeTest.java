@@ -300,6 +300,62 @@ class EmployeeTest {
         assertEquals(List.of("Bina Boss", "Raju Report"), names);
     }
 
+    @Test
+    void everyEmployeeSeesTheOrgChartWithDirectoryDetailsOnly() throws Exception {
+        Org org = newOrg();
+        SessionCtx boss = join(org, "boss", List.of("manager", "employee"));
+        SessionCtx report = join(org, "report", List.of("employee"));
+        SessionCtx stranger = join(org, "stranger", List.of("employee"));
+        UUID dept = UUID.fromString((String) employees.saveDepartment(org.admin, null, "Engineering", null, null).get("id"));
+        UUID bossId = add(org.admin, linked(person("Bina Boss", PAN, null, null, ACCOUNT, "SBIN0001234", null, null), boss));
+        UUID reportId = add(org.admin, linked(reportingTo(person("Raju Report", null, null, null, null, null, null, null), bossId), report));
+        UUID strangerId = add(org.admin, linked(person("Sonal Stranger", null, null, null, null, null, null, null), stranger));
+        UUID unlinkedId = add(org.admin, reportingTo(person("Usha Unlinked", null, null, null, null, null, null, null), bossId));
+        employees.changeJob(org.admin, reportId, new JobChange(TODAY.toString(), "Analyst", dept.toString(), bossId.toString(), "Move"));
+
+        Map<String, Object> chart = employees.orgChart(report);
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> people = (List<Map<String, Object>>) chart.get("people");
+        assertEquals(List.of("Bina Boss", "Raju Report", "Sonal Stranger", "Usha Unlinked"), people.stream().map(p -> p.get("name")).toList());
+        assertEquals(reportId.toString(), chart.get("me"));
+        Map<String, Object> raju = people.get(1);
+        assertEquals(java.util.Set.of("id", "name", "designation", "departmentName", "managerId", "email", "canOpen"), raju.keySet());
+        assertEquals("Analyst", raju.get("designation"));
+        assertEquals("Engineering", raju.get("departmentName"));
+        assertEquals(bossId.toString(), raju.get("managerId"));
+        assertEquals("report@" + org.slug + ".test", raju.get("email"));
+        assertEquals(null, people.get(0).get("managerId"));
+        assertEquals(unlinkedId.toString(), people.get(3).get("id"));
+        assertEquals(bossId.toString(), people.get(3).get("managerId"));
+        assertFalse(people.toString().contains("9876543210"));   // no mobile, PAN or account anywhere
+        assertFalse(people.toString().contains("234F"));
+
+        // Anyone may see the chart; opening a record follows employee.read.
+        assertEquals(List.of(false, true, false, false), people.stream().map(p -> p.get("canOpen")).toList());
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> asBoss = (List<Map<String, Object>>) employees.orgChart(boss).get("people");
+        assertEquals(List.of(true, true, false, false), asBoss.stream().map(p -> p.get("canOpen")).toList());
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> asAdmin = (List<Map<String, Object>>) employees.orgChart(org.admin).get("people");
+        assertTrue(asAdmin.stream().allMatch(p -> Boolean.TRUE.equals(p.get("canOpen"))));
+        assertEquals(null, employees.orgChart(org.admin).get("me"));   // the Org Admin has no employee record here
+        assertEquals(strangerId.toString(), employees.orgChart(stranger).get("me"));
+
+        // Someone who has left drops off the chart, and their reports move to the top rather than vanish.
+        employees.exit(org.admin, bossId, TODAY.minusDays(1).toString(), "Resigned");
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> after = (List<Map<String, Object>>) employees.orgChart(report).get("people");
+        assertEquals(List.of("Raju Report", "Sonal Stranger", "Usha Unlinked"), after.stream().map(p -> p.get("name")).toList());
+        assertTrue(after.stream().allMatch(p -> p.get("managerId") == null));
+
+        // Joiners and former employees do not have the chart.
+        try (Connection c = DriverManager.getConnection(ownerUrl, ownerUser, ownerPassword);
+             ResultSet rs = c.createStatement().executeQuery("select r.code from app.role_permission rp join app.role r on r.id = rp.role_id "
+                     + "where rp.permission_code = 'orgchart.read' and r.code in ('joiner', 'ex_employee')")) {
+            assertFalse(rs.next());
+        }
+    }
+
     // ── departments, exit, isolation ────────────────────────────────────
 
     @Test
