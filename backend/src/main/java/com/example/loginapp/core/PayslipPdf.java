@@ -138,7 +138,7 @@ final class PayslipPdf {
             y += 14;
             items.add(Pdf.Item.text(LEFT, y, "Projected income " + money(tax.get("income")) + "   Deductions " + money(tax.get("deductions"))
                     + "   Taxable " + money(tax.get("taxableIncome")) + "   Tax for the year " + money(tax.get("annualTax"))
-                    + "   Deducted before this month " + money(tax.get("paidSoFar")), 8.5f, false));
+                    + "   Deducted so far " + money(tax.get("paidSoFar")), 8.5f, false));
             y += 22;
         }
 
