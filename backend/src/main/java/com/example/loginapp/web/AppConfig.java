@@ -36,6 +36,9 @@ import com.example.loginapp.core.Migrator;
 import com.example.loginapp.core.Notifications;
 import com.example.loginapp.core.NumberSeries;
 import com.example.loginapp.core.OnboardingConfigService;
+import com.example.loginapp.core.PayrollConfig;
+import com.example.loginapp.core.PayrollPay;
+import com.example.loginapp.core.PayrollRuns;
 import com.example.loginapp.core.PlatformService;
 import com.example.loginapp.core.PolicyService;
 import com.example.loginapp.core.UserService;
@@ -164,6 +167,21 @@ public class AppConfig {
     @Bean
     public ExitInterview exitInterview(Db db, Crypto crypto) {
         return new ExitInterview(db, crypto);
+    }
+
+    @Bean
+    public PayrollConfig payrollConfig(Db db) {
+        return new PayrollConfig(db);
+    }
+
+    @Bean
+    public PayrollPay payrollPay(Db db) {
+        return new PayrollPay(db);
+    }
+
+    @Bean
+    public PayrollRuns payrollRuns(Db db, Crypto crypto) {
+        return new PayrollRuns(db, crypto);
     }
 
     @Bean

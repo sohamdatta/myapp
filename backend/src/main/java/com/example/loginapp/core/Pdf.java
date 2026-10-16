@@ -49,6 +49,53 @@ public final class Pdf {
         return write(title, pages);
     }
 
+    /**
+     * One thing placed on a page: text at a point (right-aligned when asked), or a horizontal rule
+     * when the text is null. y is measured from the top of the page, as people lay out a form.
+     */
+    public record Item(float x, float y, String text, boolean bold, float size, boolean right, float ruleTo, boolean fill) {
+
+        public static Item text(float x, float y, String text, float size, boolean bold) {
+            return new Item(x, y, text, bold, size, false, 0, false);
+        }
+
+        public static Item right(float x, float y, String text, float size, boolean bold) {
+            return new Item(x, y, text, bold, size, true, 0, false);
+        }
+
+        public static Item rule(float x, float y, float to) {
+            return new Item(x, y, null, false, 0, false, to, false);
+        }
+
+        /** A light grey band from x to ruleTo, height size, its top at y. */
+        public static Item band(float x, float y, float to, float height) {
+            return new Item(x, y, null, false, height, false, to, true);
+        }
+    }
+
+    public static final float PAGE_WIDTH = WIDTH;
+
+    /** A single A4 page of placed text and rules, for forms such as a payslip. */
+    public static byte[] page(String title, List<Item> items) {
+        ByteArrayOutputStream c = new ByteArrayOutputStream();
+        for (Item it : items) {
+            float y = HEIGHT - it.y();
+            if (it.text() == null && it.fill()) {
+                put(c, "0.94 0.95 0.96 rg " + num(it.x()) + " " + num(y - it.size()) + " " + num(it.ruleTo() - it.x()) + " " + num(it.size())
+                        + " re f 0 0 0 rg\n");
+            } else if (it.text() == null) {
+                put(c, "0.75 0.78 0.82 RG 0.6 w " + num(it.x()) + " " + num(y) + " m " + num(it.ruleTo()) + " " + num(y) + " l S 0 0 0 RG\n");
+            } else {
+                String text = clean(it.text());
+                float x = it.right() ? it.x() - width(text, it.size(), it.bold()) : it.x();
+                put(c, "BT /" + (it.bold() ? "F2 " : "F1 ") + num(it.size()) + " Tf " + num(x) + " " + num(y) + " Td ");
+                c.writeBytes(string(text));
+                put(c, " Tj ET\n");
+            }
+        }
+        return writeContents(title, List.of(c.toByteArray()));
+    }
+
     // ── layout ──────────────────────────────────────────────────────────
 
     private static List<Line> layout(String text) {
@@ -151,6 +198,14 @@ public final class Pdf {
     // ── writing ─────────────────────────────────────────────────────────
 
     private static byte[] write(String title, List<List<Line>> pages) {
+        List<byte[]> contents = new ArrayList<>();
+        for (int i = 0; i < pages.size(); i++) {
+            contents.add(content(pages.get(i), i + 1, pages.size()));
+        }
+        return writeContents(title, contents);
+    }
+
+    private static byte[] writeContents(String title, List<byte[]> pages) {
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         List<Integer> offsets = new ArrayList<>();
         int pageCount = pages.size();
@@ -174,7 +229,7 @@ public final class Pdf {
             int pageObj = firstPage + 2 * i;
             object(out, offsets, pageObj, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 " + num(WIDTH) + " " + num(HEIGHT) + "] "
                     + "/Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents " + (pageObj + 1) + " 0 R >>");
-            byte[] content = content(pages.get(i), i + 1, pageCount);
+            byte[] content = pages.get(i);
             offsets.add(out.size());
             put(out, (pageObj + 1) + " 0 obj\n<< /Length " + content.length + " >>\nstream\n");
             out.writeBytes(content);

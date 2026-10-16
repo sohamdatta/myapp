@@ -130,6 +130,31 @@ public final class Db {
         if (state.equals("23505") && message.contains("employment_live_uq")) {
             return new ApiException(409, "employee.already_employed", "This person already has a current employment");
         }
+        if (state.equals("23514") && message.contains("own pay")) {
+            return new ApiException(409, "payroll.own_pay", "Nobody can change their own pay");
+        }
+        if (state.equals("23514") && message.contains("payroll_run_maker_checker")) {
+            return new ApiException(409, "payroll.maker_checker", "The person who calculated a run cannot approve it");
+        }
+        if (state.equals("23514") && message.contains("approved run cannot change")) {
+            return new ApiException(409, "payroll.locked", "This run is approved; nothing in it can change");
+        }
+        if (state.equals("23514") && message.contains("A run cannot go from")) {
+            String first = message.lines().findFirst().orElse(message).replaceFirst("^ERROR:\\s*", "");
+            return new ApiException(409, "payroll.state", first);
+        }
+        if (state.equals("23505") && message.contains("salary_structure_name_uq")) {
+            return new ApiException(409, "request.refused", "A structure with that name already exists");
+        }
+        if (state.equals("23505") && message.contains("pay_group_name_uq")) {
+            return new ApiException(409, "request.refused", "A pay group with that name already exists");
+        }
+        if (state.equals("23505") && message.contains("pay_component_tenant_id_code_key")) {
+            return new ApiException(409, "request.refused", "A component with that code already exists");
+        }
+        if (state.equals("23505") && message.contains("payroll_run_tenant_id_group_id_period_key")) {
+            return new ApiException(409, "request.refused", "That pay group already has a run for this month");
+        }
         if (state.equals("22P02") || state.equals("22007") || state.equals("22008")) {
             return new ApiException(400, "request.invalid", "One of the values is not in a valid format");
         }

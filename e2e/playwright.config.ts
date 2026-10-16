@@ -41,5 +41,6 @@ export default defineConfig({
     { name: 'setup', testMatch: /09-setup-and-import\.spec\.ts/, use: desktop, dependencies: ['offer'] },
     { name: 'exit', testMatch: /10-exit\.spec\.ts/, use: desktop, dependencies: ['setup'] },
     { name: 'org-chart', testMatch: /11-org-chart\.spec\.ts/, use: desktop, dependencies: ['exit'] },
+    { name: 'payroll', testMatch: /12-payroll\.spec\.ts/, use: desktop, dependencies: ['org-chart'] },
   ],
 });

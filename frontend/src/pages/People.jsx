@@ -5,6 +5,7 @@ import { Badge, Empty, ErrorNote, StatusBadge, Tabs } from '../ui.jsx'
 import { AddJoiner, JoinerList, JoinerPage } from './Joiners.jsx'
 import PeopleImport from './PeopleImport.jsx'
 import PeopleSetup from './setup/PeopleSetup.jsx'
+import EmployeePay from './EmployeePay.jsx'
 
 const TYPES = {
   permanent: 'Permanent',
@@ -674,7 +675,7 @@ export function MyProfile({ id }) {
   return <EmployeePage id={id} own />
 }
 
-function EmployeePage({ id, onBack, canExit, onExit, own }) {
+function EmployeePage({ id, onBack, canExit, onExit, own, canPay }) {
   const employee = useLoad(() => people.employee(id))
   const [view, setView] = useState('details')
   const [form, setForm] = useState(null)
@@ -748,7 +749,8 @@ function EmployeePage({ id, onBack, canExit, onExit, own }) {
         tabs={[
           { id: 'details', label: 'Details' },
           { id: 'job', label: 'Job history' },
-        ]}
+          canPay && !e.own && { id: 'pay', label: 'Pay' },
+        ].filter(Boolean)}
         current={view}
         onChange={setView}
       />
@@ -918,6 +920,7 @@ function EmployeePage({ id, onBack, canExit, onExit, own }) {
           </table>
         </div>
       )}
+      {view === 'pay' && <EmployeePay employmentId={e.id} />}
     </>
   )
 }
@@ -1103,6 +1106,7 @@ export default function People({ me, onNavigate }) {
         id={open}
         onBack={() => setOpen(null)}
         canExit={(me.scopes || {})['exit.manage'] === 'tenant' && me.kind === 'tenant'}
+        canPay={['tenant', 'assigned'].includes(scopes['compensation.read']) || ['tenant', 'assigned'].includes(scopes['payroll.prepare'])}
         onExit={(what) => {
           handoff.set(what)
           onNavigate('exits')

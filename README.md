@@ -511,12 +511,62 @@ The design, as built, is `docs/exit/design.md`; the schema is
   is removed, keeping only what other records need, unless an exit is under
   legal hold.
 
+## Payroll
+
+Under Payroll for the Payroll Operator and Approver (and the Org Admin), People → an
+employee → Pay for HR, and My pay for everyone paid. The design, as built, is
+`docs/payroll/design.md`; the schema is `V13__payroll.sql`.
+
+- **Configured, not coded.** Setup → Employer holds the employer's details, the
+  salary account debited, and the choices the law leaves open (proration,
+  absence as loss of pay, PF on the ceiling, metro locations for HRA).
+  Registrations for PF, ESI, PT and LWF are recorded; a run cannot be
+  approved while someone needs one the employer does not have.
+- **Components, formulas and structures.** Each payslip line is a component: a
+  formula, a fixed amount, an amount entered each month, or worked out by law.
+  Formulas use components in capitals (`BASIC`, `CTC_MONTHLY`), facts in
+  lower case (`location.state`, `days.paid`) and `if`, `case`, `min`, `max`,
+  `round`, `table("meal_card", location.state)` and `ytd()`; Check shows the
+  position of a mistake, and loops between formulas are refused. A structure
+  turns a yearly CTC or gross into monthly components, with one balancing
+  component. Every change applies from the first of a month; months already
+  paid keep the version they were paid with.
+- **Pay.** HR Admins set and revise everyone's pay except their own, with this
+  month before and after side by side before saving, and keep each
+  employee's statutory profile (PF, EPS, ESI, PT and LWF exemptions, tax regime).
+- **The monthly run.** Inputs and holds, then freeze (a snapshot of the setup,
+  the rules and every employee's attendance and leave), calculate, approve by
+  someone other than whoever calculated, mark paid with the bank reference,
+  and release payslips. Blocking exceptions (no salary, no bank account, no
+  PAN, no state for the work location, a missing registration) stop approval
+  until fixed or accepted by the approver with a reason; held pay is worked
+  out but not paid, and its problems do not block everyone else. An approved
+  run cannot change, in the database as well as on screen.
+- **Explain.** Every line of every payslip says how it was worked out: the
+  formula and the values it read, the days paid, the rule, the figure before
+  rounding.
+- **Statutory.** PF, ESI, professional tax and the labour welfare fund for Goa,
+  Karnataka and Maharashtra, and income tax under both regimes, projected over
+  the year. The rules are dated data shared by every Organization, and every
+  one is a **draft awaiting the payroll consultant's sign-off**, which the
+  screens say. Do not pay real salaries before that sign-off.
+- **Files.** The salary register, an accounting journal that must balance, an
+  HDFC-style bank file (held pay and people without an account left out; the
+  exact layout from the customer's HDFC setup is still to be confirmed), and
+  payslip PDFs.
+- **My pay.** Each released payslip with its PDF, and why pay changed from the
+  month before.
+
+Not yet: importing salaries and year-to-date history, a parallel run, PF and
+ESI return files, Form 130, loans, tax declarations, and arrears for a month
+already approved.
+
 ## Roles
 
 | Role | Can |
 |---|---|
 | Org Admin | Everything in the Organization, including users, roles and billing |
-| HR Admin | Manage people and invite users. No access to other people's pay |
+| HR Admin | Manage people and invite users; set and revise everyone's pay except their own |
 | Payroll Operator | Prepare payroll. Cannot approve it |
 | Payroll Approver | Approve payroll and release payment. Cannot prepare it |
 | Manager | See their team (the people who report to them): records, attendance and leave, and decide their requests |
@@ -528,10 +578,10 @@ an HR Admin can invite employees and managers but cannot hand out payroll or
 admin roles, and cannot suspend or remove an Org Admin. Nobody can change
 their own roles or status.
 
-The user-management, attendance, leave and employee permissions are used by screens today. The
-compensation and payroll permissions are defined and assigned to
-roles, ready for those modules. An HR Admin who should punch or apply for
-leave also needs the Employee role.
+The compensation and payroll permissions are used by the Payroll screens;
+`statutory.file` waits for the return files. Whoever calculated a run cannot
+approve it, even an Org Admin. An HR Admin who should punch or apply for leave also needs the
+Employee role.
 
 ## Layout
 
@@ -705,6 +755,23 @@ welcome and sections, POST `/notice` with `{noticeId}`, GET and PUT
 The bell: GET `/api/org/notifications`, POST `/api/org/notifications/read`
 `{ids}` (no ids marks all read).
 
+Payroll, under `/api/org/payroll`: GET `/setup`; PUT `/settings`; POST and
+DELETE `/registrations`; POST `/components`, PUT and DELETE
+`/components/{id}`, GET `/components/{id}/history`; POST `/formula/check`
+`{formula}`; POST `/tables`, PUT `/tables/{id}`; POST `/structures`, PUT
+`/structures/{id}`; POST `/groups`, PUT `/groups/{id}`, GET and POST
+`/groups/{id}/members`. Runs: GET and POST `/runs` `{groupId, period}`; GET
+`/runs/{id}`; POST `/runs/{id}/inputs`, DELETE `/runs/{id}/inputs/{input}`;
+POST `/runs/{id}/hold` and `/unhold` `{employmentId, reason}`; POST
+`/freeze`, `/calculate`, `/reopen` `{reason}`, `/exceptions/{id}/accept`
+`{reason}`, `/approve`, `/send-back` `{reason}`, `/paid` `{paidOn,
+reference}`, `/release`; GET `/runs/{id}/employees/{employment}` and its
+`/payslip` PDF; GET `/runs/{id}/outputs/register`, `/journal` or `/bank`.
+An employee's pay, under `/api/org/people/employees/{id}/pay`: GET; POST
+`/preview` and POST (revise) `{validFrom, structureId, annualAmount,
+reason}`; POST `/overrides`, DELETE `/overrides/{id}`; PUT `/profile`. My pay:
+GET `/api/org/me/pay`, `/api/org/me/pay/{id}` and `/api/org/me/pay/{id}/pdf`.
+
 The Organization a request acts on always comes from the server-side session.
 It is never read from the URL, a header or the request body.
 
@@ -716,7 +783,7 @@ on GitHub and emails whoever pushed it.
 
 | Job | What it checks | Where the tests are |
 |---|---|---|
-| Backend build and tests | Maven builds the backend; 191 JUnit tests run against a real PostgreSQL 16: business rules, permissions, and isolation between Organizations | `backend/src/test/` |
+| Backend build and tests | Maven builds the backend; 197 JUnit tests run against a real PostgreSQL 16: business rules, permissions, and isolation between Organizations | `backend/src/test/` |
 | Frontend lint and build | `oxlint` finds no problems and the production build succeeds | `frontend/` |
 | Browser tests | The app is started from the backend jar, and Playwright clicks through it as the Super Admin, an Org Admin and an HR Admin | `e2e/tests/` |
 | Deployment images | The two images in `deploy/` are built and started as on a server, behind Caddy, against a PostgreSQL whose admin login is not a superuser; the API, the frontend and a sign-in answer through it | `deploy/`, `.github/workflows/ci.yml` |
@@ -735,6 +802,7 @@ The browser tests tell one story in order, each step depending on the one before
 9. `09-setup-and-import`: a flow for interns set up on screen, a field made required for it and a field of HR's own, previewed on a phone and seen on a new intern; a code series and a message reworded; existing staff imported from a CSV with every refused row explained, the same file refused the second time; an imported employee invited and signed in.
 10. `10-exit`: an employee resigns on a phone; the manager recommends a day and HR accepts it with the shortfall set against leave; clearance tasks go to their owners and the leaver records a claim; a withdrawal is asked for and refused; HR starts a termination and sets notice periods; the settlement is worked out, approved by a second person, paid and downloaded by the employee; letters wait for their moment, and the exit interview is answered and read only by HR; an absconding case waits for its show-cause notice; an exit is put under legal hold.
 11. `11-org-chart`: an employee finds themselves, their manager and a colleague on the org chart, cannot open others' records, and reads it on a phone; HR opens a record from the chart.
+12. `12-payroll`: the HR Admin is made Payroll Operator and sets up the employer, registrations, a state-wise meal card from a table, the structure and the pay group; enters salaries with a preview but has no Pay tab on their own record, which the Org Admin sets and revises; runs October with a bonus, an incentive and a hold, freezes, calculates and explains a payslip; cannot approve their own calculation; the Org Admin accepts the exceptions with reasons, approves, downloads the register, journal and bank file, marks it paid and releases payslips; November follows without the person who left; the employee reads why her pay changed on a phone.
 
 Every browser test also fails on any error in the browser console.
 

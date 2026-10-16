@@ -2376,3 +2376,306 @@ fieldset:not([class]) {
     max-width: none;
   }
 }
+
+/* ── payroll ─────────────────────────────────────────────────────── */
+
+.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.small {
+  font-size: 0.85rem;
+}
+
+.plain-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.plain-list li {
+  padding: 6px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.plain-list li:last-child {
+  border-bottom: 0;
+}
+
+.good-text {
+  color: var(--good);
+  font-weight: 600;
+}
+
+.warn-notice {
+  background: var(--warn-bg);
+}
+
+textarea.code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.92rem;
+  width: 100%;
+}
+
+.formula-field {
+  margin: 8px 0 4px;
+}
+
+.formula-field .form-actions {
+  margin-top: 6px;
+  align-items: center;
+}
+
+.components td code,
+.structure-lines code {
+  word-break: break-word;
+}
+
+.structure-lines {
+  margin: 0 0 12px;
+  padding-left: 22px;
+}
+
+.structure-line {
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.rules td {
+  vertical-align: top;
+}
+
+.run-groups {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.run-group {
+  margin: 0;
+}
+
+.exceptions {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.exception {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  align-items: baseline;
+  padding: 10px 12px;
+  margin-bottom: 8px;
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--border-strong);
+  border-radius: 8px;
+  background: var(--row);
+}
+
+.exception.blocking {
+  border-left-color: var(--error);
+  background: var(--error-bg);
+}
+
+.register td,
+.register th {
+  white-space: nowrap;
+}
+
+.register tbody tr {
+  cursor: pointer;
+}
+
+.register tbody tr:hover {
+  background: var(--row);
+}
+
+.payslip {
+  padding: 16px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+
+.payslip-columns {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+  margin: 12px 0;
+}
+
+.payslip-block h4 {
+  margin: 0 0 6px;
+}
+
+.payslip-lines {
+  width: 100%;
+}
+
+.payslip-lines td {
+  padding: 6px 4px;
+  vertical-align: top;
+  border-bottom: 1px solid var(--border);
+}
+
+.payslip-totals {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 24px;
+  justify-content: flex-end;
+  padding: 12px 0;
+  border-top: 2px solid var(--border-strong);
+}
+
+.payslip-totals strong {
+  font-size: 1.15rem;
+}
+
+.explain {
+  margin: 8px 0 4px;
+  padding: 10px 12px;
+  background: var(--accent-soft);
+  border-radius: 8px;
+  font-size: 0.9rem;
+}
+
+.explain p {
+  margin: 0 0 6px;
+}
+
+.explain p:last-child {
+  margin-bottom: 0;
+}
+
+.explain-reads {
+  margin: 0 0 6px;
+  padding-left: 18px;
+}
+
+.why-changed {
+  margin: 12px 0;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--row);
+}
+
+.why-changed h4 {
+  margin: 0 0 8px;
+}
+
+.why-changed ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.why-changed li {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 4px 0;
+}
+
+.breakup {
+  width: 100%;
+}
+
+.breakup td {
+  padding: 5px 4px;
+  border-bottom: 1px solid var(--border);
+}
+
+.breakup tr.total td {
+  border-top: 1px solid var(--border-strong);
+  font-weight: 600;
+}
+
+.preview-compare {
+  margin: 14px 0;
+  padding: 12px;
+  border: 1px dashed var(--border-strong);
+  border-radius: 10px;
+}
+
+.payslip-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.payslip-list li + li {
+  margin-top: 8px;
+}
+
+.payslip-row {
+  display: flex;
+  width: 100%;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  cursor: pointer;
+}
+
+.payslip-row:hover {
+  border-color: var(--accent);
+}
+
+@media (max-width: 720px) {
+  .payslip-columns {
+    grid-template-columns: 1fr;
+  }
+
+  .payslip {
+    padding: 12px;
+  }
+}
+
+.holds {
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.holds h4 {
+  margin: 0 0 6px;
+}
+
+.check .hint {
+  margin: 0;
+}
+
+.check-list {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 10px 0 14px;
+}
+
+.structure-line input[type='radio'] {
+  width: auto;
+  height: auto;
+  margin: 0;
+}
+
+.structure-line .form-actions {
+  align-items: center;
+  align-self: end;
+}
+
+.why-changed li strong {
+  white-space: nowrap;
+}

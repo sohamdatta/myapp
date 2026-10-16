@@ -501,3 +501,65 @@ export async function endSupportSession() {
   setToken(read(CONSOLE_TOKEN_KEY))
   write(CONSOLE_TOKEN_KEY, null)
 }
+
+// ── payroll ─────────────────────────────────────────────────────────
+
+/** Saves a file the server makes on request (a register, a bank file, a payslip). */
+export async function downloadFile(path, name) {
+  const blob = await fetchFile(path)
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = name
+  a.click()
+  setTimeout(() => URL.revokeObjectURL(url), 10000)
+  return true
+}
+
+const payrollCalls = {
+  setup: () => get('/org/payroll/setup'),
+  saveSettings: (body) => put('/org/payroll/settings', body),
+  addRegistration: (body) => post('/org/payroll/registrations', body),
+  removeRegistration: (id) => del(`/org/payroll/registrations/${id}`),
+  saveComponent: (id, body) => (id ? put(`/org/payroll/components/${id}`, body) : post('/org/payroll/components', body)),
+  retireComponent: (id) => del(`/org/payroll/components/${id}`),
+  componentHistory: (id) => get(`/org/payroll/components/${id}/history`),
+  checkFormula: (formula) => post('/org/payroll/formula/check', { formula }),
+  saveTable: (id, body) => (id ? put(`/org/payroll/tables/${id}`, body) : post('/org/payroll/tables', body)),
+  saveStructure: (id, body) => (id ? put(`/org/payroll/structures/${id}`, body) : post('/org/payroll/structures', body)),
+  saveGroup: (id, body) => (id ? put(`/org/payroll/groups/${id}`, body) : post('/org/payroll/groups', body)),
+  members: (id) => get(`/org/payroll/groups/${id}/members`),
+  addMembers: (id, employmentIds, validFrom) => post(`/org/payroll/groups/${id}/members`, { employmentIds, validFrom }),
+  runs: () => get('/org/payroll/runs'),
+  open: (groupId, period) => post('/org/payroll/runs', { groupId, period }),
+  run: (id) => get(`/org/payroll/runs/${id}`),
+  addInput: (id, body) => post(`/org/payroll/runs/${id}/inputs`, body),
+  removeInput: (id, inputId) => del(`/org/payroll/runs/${id}/inputs/${inputId}`),
+  hold: (id, employmentId, reason) => post(`/org/payroll/runs/${id}/hold`, { employmentId, reason }),
+  unhold: (id, employmentId) => post(`/org/payroll/runs/${id}/unhold`, { employmentId }),
+  freeze: (id) => post(`/org/payroll/runs/${id}/freeze`),
+  calculate: (id) => post(`/org/payroll/runs/${id}/calculate`),
+  reopen: (id, reason) => post(`/org/payroll/runs/${id}/reopen`, { reason }),
+  accept: (id, exceptionId, reason) => post(`/org/payroll/runs/${id}/exceptions/${exceptionId}/accept`, { reason }),
+  approve: (id) => post(`/org/payroll/runs/${id}/approve`),
+  sendBack: (id, reason) => post(`/org/payroll/runs/${id}/send-back`, { reason }),
+  paid: (id, paidOn, reference) => post(`/org/payroll/runs/${id}/paid`, { paidOn, reference }),
+  release: (id) => post(`/org/payroll/runs/${id}/release`),
+  employee: (id, employmentId) => get(`/org/payroll/runs/${id}/employees/${employmentId}`),
+  payslipPdf: (id, employmentId, name) => downloadFile(`/org/payroll/runs/${id}/employees/${employmentId}/payslip`, name),
+  output: (id, kind, name) => downloadFile(`/org/payroll/runs/${id}/outputs/${kind}`, name),
+  pay: (employmentId) => get(`/org/people/employees/${employmentId}/pay`),
+  previewPay: (employmentId, body) => post(`/org/people/employees/${employmentId}/pay/preview`, body),
+  revisePay: (employmentId, body) => post(`/org/people/employees/${employmentId}/pay`, body),
+  addOverride: (employmentId, body) => post(`/org/people/employees/${employmentId}/pay/overrides`, body),
+  removeOverride: (employmentId, id) => del(`/org/people/employees/${employmentId}/pay/overrides/${id}`),
+  saveProfile: (employmentId, body) => put(`/org/people/employees/${employmentId}/pay/profile`, body),
+  myPay: () => get('/org/me/pay'),
+  myPayslip: (id) => get(`/org/me/pay/${id}`),
+  myPayslipPdf: (id, name) => downloadFile(`/org/me/pay/${id}/pdf`, name),
+}
+
+/** The payroll calls; one that answers with no content resolves to true, so callers can test for success. */
+export const payroll = Object.fromEntries(
+  Object.entries(payrollCalls).map(([name, call]) => [name, (...args) => Promise.resolve(call(...args)).then((r) => r ?? true)]),
+)
