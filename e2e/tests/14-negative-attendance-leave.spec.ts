@@ -166,6 +166,9 @@ test.describe.serial('negative: attendance, leave and work from home', () => {
       await expect(meera.locator('.punch-button')).toBeEnabled();
       await meera.locator('.punch-button').click();
       await expect(errorOn(meera)).toContainText('Wait a minute before punching again');
+      await meera.reload();
+      await expect(meera.locator('.sidebar')).toBeVisible();
+      await nav(meera, 'My attendance');
     }
 
     const request = async (kind: string, from: string, to: string | null, reason: string, expected: string | RegExp) => {
@@ -175,7 +178,7 @@ test.describe.serial('negative: attendance, leave and work from home', () => {
       if (to !== null && (await meera.locator('#req-to').isVisible())) await meera.fill('#req-to', to);
       await meera.fill('#req-reason', reason);
       await meera.click('text=Send request');
-      await expect(errorOn(meera)).toContainText(expected);
+      await expect(meera.locator('form .error')).toContainText(expected);
       await meera.getByRole('button', { name: 'Cancel', exact: true }).first().click();
     };
     const mon = next(1);
