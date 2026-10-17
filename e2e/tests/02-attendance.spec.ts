@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { OWNER, HR, istWeekday, signIn, nav, tab, isoDay, todayDmy, expectNoConsoleErrors, shot } from './helpers';
+import { OWNER, HR, istWeekday, signIn, nav, tab, isoDay, pastMidnightDmy, expectNoConsoleErrors, shot } from './helpers';
 
 // Attendance: the Org Admin sets up an office, shift and holiday, assigns people,
 // the HR Admin punches (refused off the office network, accepted on it), raises a
@@ -124,7 +124,7 @@ test.describe.serial('attendance', () => {
     await expect(owner.locator('td', { hasText: HR })).toBeVisible();
 
     await owner.locator('tr', { hasText: OWNER }).getByText('Details').click();
-    await owner.fill('.detail-row input[type=time]', '00:05');
+    await owner.fill('.detail-row input[type=time]', '00:00'); // never in the future, even just after midnight
     await owner.selectOption('.detail-row select', 'in');
     await owner.fill('.detail-row input[id^=mp-reason]', 'Turnstile was broken');
     await shot(owner, '17-daily-board');
@@ -144,7 +144,7 @@ test.describe.serial('attendance', () => {
   test('a device file imports once; unknown codes are reported; the same file again adds nothing', async () => {
     await tab(owner, 'Device import');
     await owner.fill('#imp-device', 'Main gate');
-    const dmy = todayDmy();
+    const dmy = pastMidnightDmy(); // the punches below must not be in the future
     const csv = `Emp Code,Punch Time,Direction\nE001,${dmy} 00:10:00,IN\nE001,${dmy} 00:40:00,OUT\nE777,${dmy} 00:15:00,IN\n`;
     const file = { name: 'gate.csv', mimeType: 'text/csv', buffer: Buffer.from(csv) };
 

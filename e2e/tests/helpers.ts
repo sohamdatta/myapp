@@ -76,6 +76,12 @@ export function todayDmy(): string {
   const [y, m, d] = isoDay(0).split('-');
   return `${d}/${m}/${y}`;
 }
+/** dd/mm/yyyy for a day whose 00:10 to 00:40 is already past: today, or yesterday in the first hour after midnight. */
+export function pastMidnightDmy(): string {
+  const minutes = Math.floor((Date.now() + IST_OFFSET_MS) / 60_000) % 1440;
+  const [y, m, d] = isoDay(minutes < 60 ? -1 : 0).split('-');
+  return `${d}/${m}/${y}`;
+}
 /** Days from today to the next Monday (1 to 7), so a run of weekdays stays inside one week. */
 export function daysToNextMonday(): number {
   const dow = istToday().getUTCDay(); // 0 = Sunday

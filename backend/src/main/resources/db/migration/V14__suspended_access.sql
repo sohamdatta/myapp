@@ -12,6 +12,8 @@ language sql stable security definer set search_path = app, platform, pg_temp as
      and t.status = 'active'
 $$;
 
+grant create on schema auth to app_definer;   -- needed to own a function there; see V1 and V9
 alter function auth.suspended_memberships_for_identity(uuid) owner to app_definer;
+revoke create on schema auth from app_definer;
 revoke all on function auth.suspended_memberships_for_identity(uuid) from public;
 grant execute on function auth.suspended_memberships_for_identity(uuid) to app_auth;
