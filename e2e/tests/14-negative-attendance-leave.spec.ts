@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { OWNER, HR, PASSWORD, signIn, newPage, nav, tab, isoDay, api, expectRefused, errorOn, expectNoSidewaysScroll, expectNoConsoleErrors } from './helpers';
+import { OWNER, HR, PASSWORD, signIn, newPage, nav, tab, isoDay, api, expectRefused, errorOn, expectNoSidewaysScroll, expectNoConsoleErrors, shot } from './helpers';
 
 // Negative cases for attendance, leave and work from home: what each form refuses, the limits,
 // and the rules no screen offers to break (deciding your own request, punching twice, the past).
@@ -67,6 +67,7 @@ test.describe.serial('negative: attendance, leave and work from home', () => {
     await save(/state/i);
     await owner.fill('#loc-state', 'ZZ');
     await save(/state/i);
+    await shot(owner, 'neg-20-location-bad-state', true);
     await owner.getByRole('button', { name: 'Cancel' }).first().click();
     await expect(owner.locator('td', { hasText: 'Pune office' })).toHaveCount(0);
     // A duplicate name is refused.
@@ -95,10 +96,12 @@ test.describe.serial('negative: attendance, leave and work from home', () => {
     await owner.fill('#sh-full', '8');
     await owner.fill('#sh-half', '8');
     await save('shorter than a full day');
+    await shot(owner, 'neg-21-shift-half-day');
     await owner.fill('#sh-half', '0.25');
     await save('at least 30 minutes');
     await owner.fill('#sh-half', 'four');
     await save(/hours|number|valid/i);
+    await shot(owner, 'neg-22-shift-not-a-number');
     await owner.getByRole('button', { name: 'Cancel' }).first().click();
 
     await owner.fill('#hol-name', 'No date day');
@@ -142,6 +145,7 @@ test.describe.serial('negative: attendance, leave and work from home', () => {
     }
     await owner.click('text=Assign to 1 selected');
     await expect(errorOn(owner)).toContainText('at most six');
+    await shot(owner, 'neg-23-seven-weekly-offs');
     await owner.fill('#as-from', '');
     await owner.getByLabel('Monday').first().uncheck();
     await owner.click('text=Assign to 1 selected');
@@ -166,6 +170,7 @@ test.describe.serial('negative: attendance, leave and work from home', () => {
       await expect(meera.locator('.punch-button')).toBeEnabled();
       await meera.locator('.punch-button').click();
       await expect(errorOn(meera)).toContainText('Wait a minute before punching again');
+      await shot(meera, 'neg-24-punch-twice');
       await meera.reload();
       await expect(meera.locator('.sidebar')).toBeVisible();
       await nav(meera, 'My attendance');
@@ -210,6 +215,7 @@ test.describe.serial('negative: attendance, leave and work from home', () => {
     await tab(owner, 'Requests');
     const row = owner.locator('tr, li', { hasText: 'Electrician at home' }).first();
     await expect(row.getByRole('button', { name: 'Approve', exact: true })).toHaveCount(0);
+    await shot(owner, 'neg-25-own-request-no-approve');
     await expectRefused(owner, 'POST', `/org/attendance/requests/${req.id}/approve`, [403, 409], { note: 'Fine by me' });
 
     // A manual punch in the future, and one without a reason.
@@ -241,6 +247,7 @@ test.describe.serial('negative: attendance, leave and work from home', () => {
     await owner.click('text=Import 2 rows');
     // Neither row is taken: one date cannot be read, the other code matches nobody.
     await expect(owner.getByText('0 of 2 rows imported')).toBeVisible();
+    await shot(owner, 'neg-26-device-rows-rejected', true);
     await expectRefused(owner, 'POST', '/org/attendance/imports/preview', [400],
       { device: 'Gate', csv: 'code,when\nE001,2026-10-01 09:00\n', codeColumn: 'code', timeColumn: 'when', format: 'not a %format', zone: 'Asia/Kolkata' });
   });
@@ -339,6 +346,7 @@ test.describe.serial('negative: attendance, leave and work from home', () => {
     await nav(owner, 'Leave');
     await tab(owner, 'Requests');
     await expect(owner.getByText('Your own request: someone else must decide it').first()).toBeVisible();
+    await shot(owner, 'neg-28-own-leave-request');
     await expectRefused(owner, 'POST', `/org/leave/requests/${mine.body.id}/approve`, [403, 409], { note: 'Approved' });
     // Meera cannot approve anyone's leave.
     await expectRefused(meera, 'POST', `/org/leave/requests/${mine.body.id}/approve`, [403, 404], { note: 'Sure' });
@@ -411,6 +419,7 @@ test.describe.serial('negative: attendance, leave and work from home', () => {
     await page.click('text=Send for approval');
     await expect(errorOn(page)).toContainText('before the first');
     await expect(errorOn(page)).toBeInViewport();
+    await shot(page, 'neg-29-phone-leave-error', true);
     await expectNoSidewaysScroll(page);
     await nav(page, 'My attendance');
     await page.click('text=New request');

@@ -1,6 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
 import {
-  OWNER, HR, PASSWORD, SUPER_ADMIN, newPage, signIn, nav, tab, api, expectRefused, errorOn, acceptInvite, expectNoConsoleErrors,
+  OWNER, HR, PASSWORD, SUPER_ADMIN, newPage, signIn, nav, tab, api, expectRefused, errorOn, acceptInvite, expectNoConsoleErrors, shot,
 } from './helpers';
 
 // Negative cases for signing in, invitations, user management and who may reach what. Every
@@ -42,6 +42,7 @@ test.describe.serial('negative: signing in, invitations, access', () => {
     await page.goto('/');
     await page.click('button.primary');
     await expect(errorOn(page)).toContainText('Enter your email and password');
+    await shot(page, 'neg-01-sign-in-empty');
 
     await page.fill('#email', 'nobody@nowhere.test');
     await page.fill('#password', 'some-password-123');
@@ -53,6 +54,7 @@ test.describe.serial('negative: signing in, invitations, access', () => {
     await page.fill('#password', 'not-the-password');
     await page.click('button.primary');
     await expect(errorOn(page)).toHaveText('Incorrect email or password');
+    await shot(page, 'neg-02-wrong-password');
 
     await page.fill('#email', `  ${OWNER.toUpperCase()}  `);
     await page.fill('#password', `${PASSWORD} `); // a trailing space is part of the password
@@ -67,6 +69,7 @@ test.describe.serial('negative: signing in, invitations, access', () => {
     const page = await newPage(browser);
     await page.goto('/?invite=not-a-real-token');
     await expect(page.getByRole('heading', { name: 'Invitation not available' })).toBeVisible();
+    await shot(page, 'neg-03-invitation-not-available');
     await expect(page.locator('#new-password')).toHaveCount(0);
 
     // Revoked: the link stops working at once.
@@ -104,6 +107,7 @@ test.describe.serial('negative: signing in, invitations, access', () => {
     await page.fill('#confirm-password', 'twelve-chars-two');
     await page.click('button.primary');
     await expect(errorOn(page)).toContainText('do not match');
+    await shot(page, 'neg-04-passwords-do-not-match');
     await expect(page.locator('.sidebar')).toHaveCount(0);
     // The server holds the same rule when the screen is bypassed.
     const token = new URL(link).searchParams.get('invite');
@@ -119,6 +123,7 @@ test.describe.serial('negative: signing in, invitations, access', () => {
     await other.fill('#existing-password', 'not-their-password');
     await other.click('button.primary');
     await expect(errorOn(other)).toContainText(`Enter the password for ${SUPER_ADMIN.email}`);
+    await shot(other, 'neg-05-existing-login-wrong-password');
     await other.context().close();
     await owner.locator('tr', { hasText: SUPER_ADMIN.email }).getByRole('button', { name: 'Revoke' }).click();
   });
@@ -131,6 +136,7 @@ test.describe.serial('negative: signing in, invitations, access', () => {
       await owner.click('text=Create invitation');
       await expect(errorOn(owner)).toContainText('Enter a valid email address');
     }
+    await shot(owner, 'neg-06a-invalid-email');
     await owner.fill('#invite-email', 'no.roles@globex.test');
     await owner.uncheck(".role-picker label:has-text('Employee') input");
     await owner.click('text=Create invitation');
@@ -140,6 +146,7 @@ test.describe.serial('negative: signing in, invitations, access', () => {
     await owner.check(".role-picker label:has-text('Payroll Approver') input");
     await owner.click('text=Create invitation');
     await expect(errorOn(owner)).toContainText('cannot be both Payroll Operator and Payroll Approver');
+    await shot(owner, 'neg-06-both-payroll-roles');
     await owner.uncheck(".role-picker label:has-text('Payroll Operator') input");
     await owner.uncheck(".role-picker label:has-text('Payroll Approver') input");
     await owner.check(".role-picker label:has-text('Employee') input");
@@ -147,6 +154,7 @@ test.describe.serial('negative: signing in, invitations, access', () => {
     await owner.fill('#invite-email', MEERA.toUpperCase());
     await owner.click('text=Create invitation');
     await expect(errorOn(owner)).toContainText('already a user of this Organization');
+    await shot(owner, 'neg-07-already-a-user');
     await expect(owner.locator('tr', { hasText: 'no.roles@globex.test' })).toHaveCount(0);
 
     // Sent anyway: an unknown role and a role list that is not a list.
@@ -180,6 +188,7 @@ test.describe.serial('negative: signing in, invitations, access', () => {
     await page.fill('#password', PASSWORD);
     await page.click('button.primary');
     await expect(errorOn(page)).toContainText('Too many failed sign-ins');
+    await shot(page, 'neg-08-locked-out');
     await expect(page.locator('.sidebar')).toHaveCount(0);
     await page.context().close();
   });
@@ -203,7 +212,9 @@ test.describe.serial('negative: signing in, invitations, access', () => {
     await again.fill('#password', PASSWORD);
     await again.click('button.primary');
     await expect(again.locator('.sidebar')).toHaveCount(0);
-    await expect(again.getByText(/suspended|no access|not available|no Organization/i).first()).toBeVisible();
+    await expect(again.getByRole('heading', { name: 'Access suspended' })).toBeVisible();
+    await expect(again.getByText('Your access to Globex Ltd is suspended')).toBeVisible();
+    await shot(again, 'neg-09-suspended-user');
     await again.context().close();
 
     // Sign out, then reuse the old token.
@@ -231,6 +242,7 @@ test.describe.serial('negative: signing in, invitations, access', () => {
     for (const hidden of ['People', 'Payroll', 'User management', 'Audit log', 'Attendance', 'Leave']) {
       expect(items, `menu shows ${hidden}`).not.toContain(hidden);
     }
+    await shot(meera, 'neg-10-employee-menu');
     for (const [method, path, body] of [
       ['GET', '/org/payroll/setup'],
       ['GET', '/org/payroll/runs'],
@@ -279,6 +291,7 @@ test.describe.serial('negative: signing in, invitations, access', () => {
     // On screen: his own record has no Pay tab.
     await nav(hr, 'My profile');
     await expect(hr.getByRole('tab', { name: 'Pay' })).toHaveCount(0);
+    await shot(hr, 'neg-11-no-pay-tab-on-own-record');
     await hr.context().close();
   });
 
@@ -302,6 +315,7 @@ test.describe.serial('negative: signing in, invitations, access', () => {
     await admin.fill('#org-slug', 'X!');
     await admin.click('text=Create and invite');
     await expect(errorOn(admin)).toContainText('slug');
+    await shot(admin, 'neg-12-bad-slug');
     await admin.fill('#org-slug', 'initech');
     await admin.click('text=Create and invite');
     const link = await admin.locator('.copy-row input').inputValue();

@@ -68,6 +68,7 @@ export function LoginForm({ onSignedIn }) {
 export function Chooser({ me, onEntered, onSignOut, onCancel }) {
   const { busy, error, run } = useAction()
   const nothing = me.organizations.length === 0 && !me.console
+  const suspended = me.suspendedIn || []
 
   async function enter(action) {
     const next = await run(action)
@@ -76,10 +77,12 @@ export function Chooser({ me, onEntered, onSignOut, onCancel }) {
 
   return (
     <div className="card">
-      <h1>{nothing ? 'No access yet' : 'Switch to'}</h1>
+      <h1>{nothing ? (suspended.length ? 'Access suspended' : 'No access yet') : 'Switch to'}</h1>
       <p className="muted">
         {nothing
-          ? `${me.email} does not belong to an Organization. Ask your administrator for an invitation.`
+          ? suspended.length
+            ? `Your access to ${suspended.join(', ')} is suspended. Ask its administrator to reactivate it.`
+            : `${me.email} does not belong to an Organization. Ask your administrator for an invitation.`
           : `Signed in as ${me.email}.`}
       </p>
 

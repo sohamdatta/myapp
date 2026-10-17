@@ -84,9 +84,10 @@ public final class EmployeeService {
                 params.add(wanted);
             }
             if (reach != null) {
-                sql.append(" and (e.membership_id = any(?) or e.membership_id = ?)");
+                sql.append(" and (e.membership_id = any(?) or e.membership_id = ? or e.id = any(?))");
                 params.add(reach);
                 params.add(ctx.membershipId());
+                params.add(Team.reportEmployments(c, ctx, "employee.read", today));
             }
             if (department != null) {
                 sql.append(" and j.department_id = ?");
@@ -657,8 +658,12 @@ public final class EmployeeService {
         if (membership != null && ctx.membershipId() != null && ctx.membershipId().toString().equals(membership)) {
             return true;
         }
-        return membership == null ? ctx.reachesEveryone("employee.read")
-                : Team.reaches(c, ctx, "employee.read", AuthService.uuid(membership), today);
+        if (membership == null) {
+            // Someone without a login: everyone-scope, or their manager.
+            return ctx.reachesEveryone("employee.read") || java.util.Arrays.asList(Team.reportEmployments(c, ctx, "employee.read", today))
+                    .contains(AuthService.uuid(e.get("id")));
+        }
+        return Team.reaches(c, ctx, "employee.read", AuthService.uuid(membership), today);
     }
 
     private static boolean canReveal(Connection c, SessionCtx ctx, Map<String, Object> e, LocalDate today) throws SQLException {

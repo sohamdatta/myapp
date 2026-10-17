@@ -47,5 +47,7 @@ export default defineConfig({
     { name: 'neg-attendance-leave', testMatch: /14-negative-attendance-leave\.spec\.ts/, use: desktop, dependencies: ['neg-access'] },
     { name: 'neg-people', testMatch: /15-negative-people\.spec\.ts/, use: desktop, dependencies: ['neg-attendance-leave'] },
     { name: 'neg-payroll', testMatch: /16-negative-payroll\.spec\.ts/, use: desktop, dependencies: ['neg-people'] },
+    // A tour of each role through its own login, for the guide's screenshots.
+    { name: 'role-tour', testMatch: /17-role-tour\.spec\.ts/, use: desktop, dependencies: ['neg-payroll'] },
   ],
 });

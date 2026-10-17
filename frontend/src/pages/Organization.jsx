@@ -250,6 +250,8 @@ function InvitationsTab({ me }) {
     if (created) {
       setIssued({ email: created.email, link: invitationLink(created.token) })
       setEmail('')
+      // Roles go back to the default, so the next invitation never carries the last one's roles by accident.
+      setSelected(['employee'])
       invitations.reload()
     }
   }

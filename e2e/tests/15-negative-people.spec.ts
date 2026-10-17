@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { OWNER, HR, signIn, nav, tab, isoDay, api, expectRefused, errorOn, expectNoConsoleErrors } from './helpers';
+import { OWNER, HR, signIn, nav, tab, isoDay, api, expectRefused, errorOn, expectNoConsoleErrors, shot } from './helpers';
 
 // Negative cases for employee records, identifiers, departments, joiners, imports, setup lists
 // and exits: each form's refusals, duplicates, impossible dates, and the rules about yourself.
@@ -46,12 +46,14 @@ test.describe.serial('negative: people, joiners and exits', () => {
     await owner.fill('#ne-designation', 'Tester');
     await owner.fill('#ne-dob', isoDay(-365 * 10));
     await submit('under 14');
+    await shot(owner, 'neg-30-employee-under-14', true);
     await owner.fill('#ne-dob', '1990-01-01');
     await owner.fill('#ne-pan', 'ABCDE12345');
     await submit(/PAN/);
     await owner.fill('#ne-pan', 'ABCPT1234Z');
     await owner.fill('#ne-aadhaar', '1234 5678 9012');
     await submit(/Aadhaar/i);
+    await shot(owner, 'neg-31-bad-aadhaar', true);
     await owner.fill('#ne-aadhaar', '');
     await owner.fill('#ne-uan', '12345');
     await submit(/UAN/);
@@ -68,6 +70,7 @@ test.describe.serial('negative: people, joiners and exits', () => {
     await owner.fill('#ne-account', '');
     await owner.selectOption('#ne-type', 'fixed_term');
     await submit('contract end date');
+    await shot(owner, 'neg-32-fixed-term-no-end', true);
     await owner.selectOption('#ne-type', 'permanent');
     await owner.fill('#ne-code', 'E001'); // Harish's code
     await submit(/already|in use|exists/i);
@@ -134,6 +137,7 @@ test.describe.serial('negative: people, joiners and exits', () => {
     await owner.fill('#bk-again', '50100200300401');
     await owner.click('text=Save account');
     await expect(owner.locator('form .error')).toContainText('different');
+    await shot(owner, 'neg-33-bank-numbers-differ');
     await owner.fill('#bk-again', '50100200300400');
     await owner.fill('#bk-ifsc', 'HDFC123');
     await owner.click('text=Save account');
@@ -157,6 +161,7 @@ test.describe.serial('negative: people, joiners and exits', () => {
     await owner.fill('#dep-name', 'engineering'); // same as Engineering, ignoring case
     await owner.click('text=Add department');
     await expect(errorOn(owner)).toContainText(/already|exists/i);
+    await shot(owner, 'neg-34-department-exists');
     await owner.fill('#dep-name', 'D'.repeat(200));
     await owner.click('text=Add department');
     await expect(errorOn(owner)).toBeVisible();
@@ -177,6 +182,7 @@ test.describe.serial('negative: people, joiners and exits', () => {
     await save('Save, invite later', /joining date/i);
     await hr.fill('#nj-joining', isoDay(-120));
     await save('Save, invite later', '90 days ago');
+    await shot(hr, 'neg-35-joiner-too-far-back', true);
     await hr.fill('#nj-joining', isoDay(10));
     await hr.selectOption('#nj-type', 'fixed_term');
     await save('Save, invite later', /contract ends|contract/i);
@@ -189,6 +195,7 @@ test.describe.serial('negative: people, joiners and exits', () => {
     await save('Save and invite', /email/i);
     await hr.fill('#nj-email', MEERA);
     await save('Save and invite', /already a user|already employed|joining/i);
+    await shot(hr, 'neg-36-joiner-email-taken', true);
     await hr.getByRole('button', { name: 'Cancel' }).first().click();
     await expect(hr.getByText('Late Joiner')).toHaveCount(0);
   });
@@ -222,6 +229,7 @@ test.describe.serial('negative: people, joiners and exits', () => {
       await owner.fill('#ser-prefix', 'AB#');
       await owner.getByRole('button', { name: /^Save|Add series$/ }).last().click();
       await expect(errorOn(owner)).toContainText(/letters, digits|token/i);
+      await shot(owner, 'neg-38-code-series-bad-prefix', true);
       await owner.fill('#ser-prefix', 'AB-');
       await owner.fill('#ser-digits', '11');
       await owner.getByRole('button', { name: /^Save|Add series$/ }).last().click();
@@ -237,6 +245,7 @@ test.describe.serial('negative: people, joiners and exits', () => {
       await owner.fill('#pol-body', 'Too short.');
       await owner.getByRole('button', { name: /^Save|Add policy$/ }).last().click();
       await expect(errorOn(owner)).toContainText('20 to 50,000 characters');
+      await shot(owner, 'neg-39-policy-too-short', true);
       await owner.getByRole('button', { name: 'Cancel' }).first().click();
     }
     const letters = owner.getByRole('tab', { name: /Letters/ });
@@ -278,6 +287,7 @@ test.describe.serial('negative: people, joiners and exits', () => {
     if (await owner.locator('#se-reason').isVisible()) await owner.selectOption('#se-reason', { index: 1 });
     await owner.getByRole('button', { name: 'Start the exit' }).click();
     await expect(errorOn(owner)).toContainText('before the joining date');
+    await shot(owner, 'neg-40-exit-before-joining', true);
     await owner.getByRole('button', { name: 'Cancel' }).first().click();
 
     // Meera, with her resignation accepted, cannot resign again or withdraw after the fact by request.

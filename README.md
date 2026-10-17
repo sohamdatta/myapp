@@ -810,6 +810,8 @@ The browser tests tell one story in order, each step depending on the one before
     - people (new employees, identifiers, bank accounts, revealing, job changes, departments), joiners, imports, setup lists and exits (a second exit, your own, before joining, resigning twice, HR-only actions);
     - payroll (employer settings, registrations, components, 18 kinds of bad formula, tables, structures, pay groups, pay revisions and overrides, the run's order of steps, inputs after freezing, holds, maker-checker even for the Org Admin, blocking exceptions, approved months locked, unreleased payslips hidden).
 
+14. `17-role-tour`: each role through its own login (Super Admin, Org Admin, a separate Payroll Approver, Auditor, IT Admin, HR Admin and Payroll Operator, a Manager, an Employee): the menu it gets, its main screens, and what it cannot do. The screenshots of the guide come from this run.
+
 Every browser test also fails on any error in the browser console.
 
 **When a browser test fails in CI**, open the run on the Actions tab and download

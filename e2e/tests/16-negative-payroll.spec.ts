@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { OWNER, HR, signIn, nav, tab, isoDay, api, expectRefused, errorOn, expectNoConsoleErrors } from './helpers';
+import { OWNER, HR, signIn, nav, tab, isoDay, api, expectRefused, errorOn, expectNoConsoleErrors, shot } from './helpers';
 
 // Negative cases for payroll: setup values, formulas, tables, structures and pay groups; pay
 // revisions; and the run's state machine, maker-checker, locks and what employees may see.
@@ -44,6 +44,7 @@ test.describe.serial('negative: payroll', () => {
     await hr.fill('#pe-pan', 'AAACG1234K');
     await hr.fill('#pe-tan', 'BLR12345E');
     await save('The TAN should look like ABCD12345E');
+    await shot(hr, 'neg-50-bad-tan');
     await hr.fill('#pe-tan', 'BLRG12345E');
     await hr.fill('#pe-ifsc', 'HDFC000123');
     await save('IFSC should be 11 characters');
@@ -53,6 +54,7 @@ test.describe.serial('negative: payroll', () => {
     await hr.fill('#pe-debit', '50200012345678');
     await hr.fill('#pe-variance', 'ten');
     await save('must be a number');
+    await shot(hr, 'neg-51-not-a-number', true);
     await hr.fill('#pe-variance', '10');
     await hr.fill('#pe-large', '25,000.5.0');
     await save('must be a number');
@@ -86,11 +88,13 @@ test.describe.serial('negative: payroll', () => {
     await add('A change applies from the first of a month');
     await hr.fill('#pc-from', firstOf(-1)); // October is paid
     await add(/approved up to|already paid|approved/i);
+    await shot(hr, 'neg-52-component-into-paid-month', true);
     await hr.fill('#pc-from', firstOf(2));
     await hr.fill('#pc-formula', '');
     await add('Type the formula');
     await hr.fill('#pc-formula', 'NIGHTS * 200');
     await add(/No component called NIGHTS|Unknown/);
+    await shot(hr, 'neg-53-unknown-component', true);
     await hr.selectOption('#pc-type', 'fixed');
     await hr.fill('#pc-fixed', '-500');
     await add('cannot be negative');
@@ -104,6 +108,7 @@ test.describe.serial('negative: payroll', () => {
     await hr.fill('#pc-formula', 'BASIC * (0.1');
     await hr.getByRole('button', { name: 'Check' }).click();
     await expect(hr.getByRole('status')).toContainText(/bracket is not closed/i);
+    await shot(hr, 'neg-54-formula-bracket', true);
     await hr.fill('#pc-formula', 'basic * 0.1');
     await hr.getByRole('button', { name: 'Check' }).click();
     await expect(hr.getByRole('status')).toContainText(/capitals|Unknown name/);
@@ -167,6 +172,7 @@ test.describe.serial('negative: payroll', () => {
     await hr.fill('#sl-formula-1', 'BASIC / 2');
     await hr.getByRole('button', { name: 'Add structure' }).click();
     await expect(errorOn(hr)).toContainText(/loop/i);
+    await shot(hr, 'neg-55-structure-loop', true);
     await hr.getByRole('button', { name: 'Remove' }).first().click();
     await hr.getByRole('button', { name: 'Remove' }).first().click();
     await hr.getByRole('button', { name: 'Add structure' }).click();
@@ -194,6 +200,7 @@ test.describe.serial('negative: payroll', () => {
     await hr.fill('#pg-name', 'Weekly');
     await hr.fill('#pg-cutoff', '29');
     await save('cut-off is a day from 1 to 28');
+    await shot(hr, 'neg-56-pay-group-cutoff');
     await hr.fill('#pg-cutoff', '25');
     await hr.fill('#pg-pay', '32');
     await save('pay day from 1 to 31');
@@ -221,12 +228,14 @@ test.describe.serial('negative: payroll', () => {
     await hr.fill('#pay-amount', '999999999999');
     await hr.getByRole('button', { name: 'Preview' }).click();
     await expect(errorOn(hr)).toContainText('looks too large');
+    await shot(hr, 'neg-57-pay-too-large', true);
     await hr.fill('#pay-amount', '300000');
     await hr.fill('#pay-from', firstOf(-1)); // October, approved and paid
     await hr.getByRole('button', { name: 'Preview' }).click();
     await expect(hr.getByTestId('pay-preview')).toBeVisible(); // the preview itself is allowed
     await hr.getByRole('button', { name: /^Save from/ }).click();
     await expect(errorOn(hr)).toContainText(/approved up to|arrears/i);
+    await shot(hr, 'neg-58-pay-into-paid-month', true);
     await hr.getByRole('button', { name: 'Cancel' }).first().click();
 
     await expectRefused(hr, 'POST', `/org/people/employees/${priya}/pay`, [400], { validFrom: '2001-01-01', structureId: staff, annualAmount: 300000, reason: 'Before joining' });
@@ -277,6 +286,7 @@ test.describe.serial('negative: payroll', () => {
     await hr.selectOption('#hold-employee', { label: 'Rahul Bose' });
     await hr.fill('#hold-reason', 'no');
     await expect(hr.getByRole('button', { name: 'Hold pay' })).toBeDisabled();
+    await shot(hr, 'neg-59-hold-needs-reason', true);
     await expectRefused(hr, 'POST', `/org/payroll/runs/${december}/hold`, [400], { employmentId: harish.employmentId, reason: '' });
 
     await hr.getByRole('button', { name: 'Freeze inputs' }).click();
@@ -296,6 +306,7 @@ test.describe.serial('negative: payroll', () => {
     await expect(owner.getByText('You calculated this run; someone else approves it')).toBeVisible();
     await expect(owner.getByRole('button', { name: 'Approve' })).toHaveCount(0);
     await expectRefused(owner, 'POST', `/org/payroll/runs/${december}/approve`, [409]);
+    await shot(owner, 'neg-60-own-calculation-no-approve', true);
 
     // Harish recalculates; now the Org Admin may approve, once the blocking exceptions are dealt with.
     const re = await api(hr, 'POST', `/org/payroll/runs/${december}/calculate`);
@@ -336,6 +347,7 @@ test.describe.serial('negative: payroll', () => {
     await expectRefused(priya, 'GET', '/org/me/pay/not-a-uuid', [400, 404]);
     await nav(priya, 'My pay');
     await expect(priya.getByText('December')).toHaveCount(0);
+    await shot(priya, 'neg-61-unreleased-payslip-hidden');
     await priya.context().close();
   });
 });

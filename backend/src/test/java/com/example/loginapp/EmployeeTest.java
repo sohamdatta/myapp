@@ -298,6 +298,14 @@ class EmployeeTest {
         // The employee list follows the same line: the manager sees their report and themselves.
         List<Object> names = employees.list(boss, null, null, null).stream().map(r -> r.get("legalName")).toList();
         assertEquals(List.of("Bina Boss", "Raju Report"), names);
+
+        // A report without a login is still on the team: listed and openable, while a stranger without one is not.
+        UUID quiet = add(org.admin, reportingTo(person("Qasim Quiet", null, null, null, null, null, null, null), bossId));
+        UUID loner = add(org.admin, person("Lata Loner", null, null, null, null, null, null, null));
+        names = employees.list(boss, null, null, null).stream().map(r -> r.get("legalName")).toList();
+        assertEquals(List.of("Bina Boss", "Qasim Quiet", "Raju Report"), names);
+        assertEquals("Qasim Quiet", employees.get(boss, quiet).get("legalName"));
+        assertError(404, "not_found", () -> employees.get(boss, loner));
     }
 
     @Test

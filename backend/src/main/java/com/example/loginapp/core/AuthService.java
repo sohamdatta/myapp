@@ -186,6 +186,8 @@ public final class AuthService {
             out.put("organizations", Sql.query(c,
                     "select tenant_id, tenant_name, tenant_slug, membership_id, status "
                             + "from auth.memberships_for_identity(?) order by tenant_name", ctx.identityId()));
+            out.put("suspendedIn", Sql.query(c, "select tenant_name from auth.suspended_memberships_for_identity(?) order by tenant_name",
+                    ctx.identityId()).stream().map(r -> r.get("tenantName")).toList());
             Map<String, Object> platform = Sql.one(c,
                     "select role from platform.platform_user where identity_id = ? and status = 'active'", ctx.identityId());
             out.put("console", platform == null ? null : platform.get("role"));
