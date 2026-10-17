@@ -113,6 +113,7 @@ public final class PayrollPay {
             }
             out.put("canWrite", ctx.reachesEveryone("compensation.write") || ctx.reachesEveryone("payroll.prepare"));
             out.put("thisMonth", period.toString());
+            out.put("openFrom", PayrollConfig.openFrom(c, today).toString());
             return out;
         });
     }
@@ -155,10 +156,10 @@ public final class PayrollPay {
     public Map<String, Object> preview(SessionCtx ctx, UUID employmentId, ReviseInput in) {
         canWrite(ctx);
         LocalDate today = today();
-        validate(in);
         return db.inTenant(ctx.tenantId(), c -> {
             PayrollDefaults.ensure(c, ctx.tenantId());
             notOwn(c, ctx, employmentId);
+            validate(in);
             if (Sql.one(c, "select 1 from app.salary_structure where id = ?::uuid and active", in.structureId()) == null) {
                 throw ApiException.badRequest("Choose a structure");
             }
@@ -175,11 +176,12 @@ public final class PayrollPay {
 
     public Map<String, Object> revise(SessionCtx ctx, UUID employmentId, ReviseInput in) {
         canWrite(ctx);
-        validate(in);
-        LocalDate from = PayrollConfig.date(in.validFrom(), "valid from");
         return db.inTenant(ctx.tenantId(), c -> {
             PayrollDefaults.ensure(c, ctx.tenantId());
+            // Your own pay is not found before anything about the request is checked.
             notOwn(c, ctx, employmentId);
+            validate(in);
+            LocalDate from = PayrollConfig.date(in.validFrom(), "valid from");
             Map<String, Object> e = Sql.one(c, "select joining_date, employment_type, status from app.employment where id = ?", employmentId);
             if (!Set.of("active", "onboarding").contains(e.get("status"))) {
                 throw new ApiException(409, "request.refused", "Pay is set only for current employees and joiners");
@@ -187,6 +189,12 @@ public final class PayrollPay {
             LocalDate joined = LocalDate.parse((String) e.get("joiningDate"));
             if (from.isBefore(joined)) {
                 throw ApiException.badRequest("Pay cannot start before they join, on " + joined);
+            }
+            Map<String, Object> leaving = Sql.one(c, "select last_working_day from app.exit_case where employment_id = ? and status = 'accepted' "
+                    + "and last_working_day is not null order by last_working_day limit 1", employmentId);
+            if (leaving != null && from.isAfter(LocalDate.parse((String) leaving.get("lastWorkingDay")))) {
+                throw new ApiException(409, "request.refused", "Their last working day is " + leaving.get("lastWorkingDay")
+                        + "; pay cannot start after it. Their last pay is settled through the exit");
             }
             if (Sql.one(c, "select 1 from app.salary_structure where id = ?::uuid and active", in.structureId()) == null) {
                 throw ApiException.badRequest("Choose a structure");

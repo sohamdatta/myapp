@@ -117,6 +117,9 @@ public final class EmployeeImport {
     public Map<String, Object> read(SessionCtx ctx, String content) {
         requireHr(ctx);
         List<List<String>> rows = AttendanceImportService.parse(content);
+        if (rows.size() < 2 && rows.stream().flatMap(List::stream).allMatch(String::isBlank)) {
+            throw ApiException.badRequest("The file has no rows");
+        }
         return db.inTenant(ctx.tenantId(), c -> {
             List<Map<String, Object>> fields = fields(c);
             Map<String, Object> saved = Sql.one(c, "select mapping from app.import_mapping where kind = 'employees'");

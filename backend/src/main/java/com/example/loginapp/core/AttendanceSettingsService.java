@@ -69,7 +69,11 @@ public final class AttendanceSettingsService {
         if (in.allowedIps() != null) {
             for (String ip : in.allowedIps()) {
                 if (ip != null && !ip.isBlank()) {
-                    ips.add(ip.trim());
+                    String v = ip.trim();
+                    if (!isNetwork(v)) {
+                        throw ApiException.badRequest(v + " is not a network address. Use one like 203.0.113.7 or 203.0.113.0/24");
+                    }
+                    ips.add(v);
                 }
             }
         }
@@ -82,7 +86,15 @@ public final class AttendanceSettingsService {
         if (check.equals("either") && ips.isEmpty() && !hasPosition) {
             throw ApiException.badRequest("Add an office network address or a position, or set the punch check to none");
         }
-        String state = in.stateCode() == null || in.stateCode().isBlank() ? null : in.stateCode().trim().toUpperCase();
+        String state = null;
+        if (in.stateCode() != null && !in.stateCode().isBlank()) {
+            state = in.stateCode().trim().toUpperCase();
+            if (!IdChecks.STATES.containsKey(state)) {
+                // Payroll's professional tax and labour welfare fund follow this code.
+                throw ApiException.badRequest("The state is the two-letter code of an Indian state or union territory, such as KA or MH");
+            }
+        }
+        final String stateCode = state;
         boolean active = in.active() == null || in.active();
         String[] ipArray = ips.toArray(new String[0]);
         return db.inTenant(ctx.tenantId(), c -> {
@@ -92,11 +104,11 @@ public final class AttendanceSettingsService {
             if (id == null) {
                 row = Sql.one(c, "insert into app.work_location (tenant_id, name, timezone, state_code, latitude, longitude, "
                                 + "radius_m, allowed_ips, punch_check, active) values (?, ?, ?, ?, ?, ?, ?, " + networks + ", ?, ?) returning id",
-                        ctx.tenantId(), name, timezone, state, in.latitude(), in.longitude(), in.radiusM(), ipArray, check, active);
+                        ctx.tenantId(), name, timezone, stateCode, in.latitude(), in.longitude(), in.radiusM(), ipArray, check, active);
             } else {
                 row = Sql.one(c, "update app.work_location set name = ?, timezone = ?, state_code = ?, latitude = ?, longitude = ?, "
                                 + "radius_m = ?, allowed_ips = " + networks + ", punch_check = ?, active = ? where id = ? returning id",
-                        name, timezone, state, in.latitude(), in.longitude(), in.radiusM(), ipArray, check, active, id);
+                        name, timezone, stateCode, in.latitude(), in.longitude(), in.radiusM(), ipArray, check, active, id);
                 if (row == null) {
                     throw ApiException.notFound("The work location");
                 }
@@ -410,5 +422,33 @@ public final class AttendanceSettingsService {
             throw ApiException.badRequest("The name can be at most 80 characters");
         }
         return name;
+    }
+
+    /** An IPv4 or IPv6 address, optionally with a prefix length, as PostgreSQL's inet takes it. */
+    public static boolean isNetwork(String value) {
+        String[] parts = value.split("/", -1);
+        if (parts.length > 2) {
+            return false;
+        }
+        String address = parts[0];
+        boolean v4 = address.matches("^(\\d{1,3})(\\.\\d{1,3}){3}$");
+        boolean v6 = !v4 && address.contains(":") && address.matches("^[0-9A-Fa-f:.]+$");
+        if (v4) {
+            for (String octet : address.split("\\.")) {
+                if (Integer.parseInt(octet) > 255) {
+                    return false;
+                }
+            }
+        } else if (!v6) {
+            return false;
+        }
+        if (parts.length == 2) {
+            if (!parts[1].matches("^\\d{1,3}$")) {
+                return false;
+            }
+            int bits = Integer.parseInt(parts[1]);
+            return bits <= (v4 ? 32 : 128);
+        }
+        return true;
     }
 }

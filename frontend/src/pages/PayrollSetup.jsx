@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { payroll } from '../api.js'
-import { formatDate, formatDay, useAction, useLoad } from '../hooks.js'
+import { formatDate, formatDay, useAction, useLoad, numeric, wholeNumber } from '../hooks.js'
 import { Badge, Empty, ErrorNote, Tabs } from '../ui.jsx'
 import { AMOUNT_TYPES, KINDS, PRORATION, ROUNDING, STATE_NAMES, STATUTES, WAGE, monthLabel } from './payrollText.js'
 
@@ -9,6 +9,8 @@ const nextMonth = (today) => {
   return new Date(Date.UTC(d.getFullYear(), d.getMonth() + 1, 1)).toISOString().slice(0, 10)
 }
 const thisMonth = (today) => `${today.slice(0, 7)}-01`
+/** The later of two ISO dates: a default date never falls in a month already approved. */
+const later = (a, b) => (b && b > a ? b : a)
 
 /**
  * Payroll setup: the employer and its registrations, the components and their formulas, the
@@ -77,7 +79,7 @@ function Entity({ s, onChanged }) {
         className="panel"
         onSubmit={async (e) => {
           e.preventDefault()
-          if (await run(() => payroll.saveSettings({ ...v, variancePct: Number(v.variancePct), largeOneTime: Number(v.largeOneTime) }))) {
+          if (await run(() => payroll.saveSettings({ ...v, variancePct: numeric(v.variancePct, 'The net pay change'), largeOneTime: numeric(v.largeOneTime, 'The one-time amount') }))) {
             setSaved('Saved.')
             onChanged()
           }
@@ -404,7 +406,7 @@ function ComponentForm({ s, component: c, onDone, onCancel }) {
     code: c?.code || '',
     name: c?.name || '',
     kind: c?.kind || 'earning',
-    validFrom: nextMonth(s.today),
+    validFrom: later(nextMonth(s.today), s.openFrom),
     amountType: c?.amountType || 'formula',
     formula: c?.formula || '',
     wage: c?.wage || 'exclude',
@@ -424,7 +426,7 @@ function ComponentForm({ s, component: c, onDone, onCancel }) {
       className="panel"
       onSubmit={async (e) => {
         e.preventDefault()
-        if (await run(() => payroll.saveComponent(c?.id, { ...v, position: Number(v.position) }))) onDone()
+        if (await run(() => payroll.saveComponent(c?.id, { ...v, position: wholeNumber(v.position, 'The order on the payslip') }))) onDone()
       }}
     >
       <h3>{c ? `Change ${c.name}` : 'Add a component'}</h3>
@@ -615,7 +617,7 @@ function StructureForm({ s, structure: st, onDone, onCancel }) {
   const [v, setV] = useState({
     name: st?.name || '',
     basis: st?.basis || 'ctc',
-    validFrom: st ? nextMonth(s.today) : thisMonth(s.today),
+    validFrom: later(st ? nextMonth(s.today) : thisMonth(s.today), s.openFrom),
     balancing: st?.balancing || '',
     lines: st ? st.lines.map((l) => ({ code: l.code, formula: l.formula || '' })) : [{ code: 'BASIC', formula: '' }],
   })
@@ -922,7 +924,7 @@ function GroupForm({ s, group: g, onDone, onCancel }) {
       className="panel"
       onSubmit={async (e) => {
         e.preventDefault()
-        if (await run(() => payroll.saveGroup(g?.id, { ...v, cutoffDay: Number(v.cutoffDay), payDay: Number(v.payDay) }))) onDone()
+        if (await run(() => payroll.saveGroup(g?.id, { ...v, cutoffDay: wholeNumber(v.cutoffDay, 'The cut-off day'), payDay: wholeNumber(v.payDay, 'The pay day') }))) onDone()
       }}
     >
       <div className="grid">

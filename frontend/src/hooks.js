@@ -166,3 +166,20 @@ export const handoff = {
     return value
   },
 }
+
+/**
+ * A number typed into a form, or null when the field is empty. Text that is not a number throws,
+ * so the form shows "… must be a number" instead of quietly sending nothing (which the server reads
+ * as "use the default"). Indian digit grouping (1,00,000) is accepted.
+ */
+export function numeric(value, what = 'This value', { whole = false } = {}) {
+  if (value === '' || value === null || value === undefined) return null
+  const text = String(value).replace(/,/g, '').trim()
+  const n = text === '' ? NaN : Number(text)
+  if (!Number.isFinite(n)) throw new Error(`${what} must be a number`)
+  if (whole && !Number.isInteger(n)) throw new Error(`${what} must be a whole number`)
+  return n
+}
+
+/** A whole number typed into a form (days, minutes, a position), or null when empty. */
+export const wholeNumber = (value, what) => numeric(value, what, { whole: true })

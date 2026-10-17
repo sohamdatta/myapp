@@ -95,6 +95,7 @@ public final class PayrollConfig {
             out.put("facts", PayrollEngine.FACTS.keySet().stream().sorted().toList());
             out.put("canEdit", ctx.reachesEveryone("payroll.prepare"));
             out.put("today", today.toString());
+            out.put("openFrom", openFrom(c, today).toString());
             return out;
         });
     }
@@ -701,6 +702,17 @@ public final class PayrollConfig {
     // ── helpers ─────────────────────────────────────────────────────────
 
     /** A change dated into a month already approved would rewrite paid pay; that needs arrears, which are not built yet. */
+    /** The first month a change can still apply to: after the last approved month, and not before this one. */
+    static LocalDate openFrom(Connection c, LocalDate today) throws SQLException {
+        Map<String, Object> r = Sql.one(c, "select max(period) as last from app.payroll_run where state in ('approved','paid','released')");
+        LocalDate month = today.withDayOfMonth(1);
+        if (r != null && r.get("last") != null) {
+            LocalDate after = LocalDate.parse((String) r.get("last")).withDayOfMonth(1).plusMonths(1);
+            return after.isAfter(month) ? after : month;
+        }
+        return month;
+    }
+
     static void refuseIntoApproved(Connection c, LocalDate from) throws SQLException {
         Map<String, Object> r = Sql.one(c, "select max(period) as last from app.payroll_run where state in ('approved','paid','released')");
         if (r != null && r.get("last") != null && !from.isAfter(LocalDate.parse((String) r.get("last")).withDayOfMonth(1).plusMonths(1).minusDays(1))) {

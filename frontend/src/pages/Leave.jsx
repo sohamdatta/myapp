@@ -1,10 +1,10 @@
 import { useState } from 'react'
 import { attendance, leave } from '../api.js'
-import { formatDay, formatDays, formatMonth, formatRange, leaveBody, localMonth, localToday, newLeave, useAction, useLoad, whoName } from '../hooks.js'
+import { formatDay, formatDays, formatMonth, formatRange, leaveBody, localMonth, localToday, newLeave, useAction, useLoad, whoName, numeric, wholeNumber } from '../hooks.js'
 import { Badge, Empty, ErrorNote, StatusBadge, Tabs, Who } from '../ui.jsx'
 import { LeaveFields, Ledger } from './MyLeave.jsx'
 
-const number = (value) => (value === '' || value === null || value === undefined ? null : Number(value))
+const number = (value, what) => numeric(value, what)
 
 // ── requests ────────────────────────────────────────────────────────
 
@@ -203,7 +203,7 @@ function AdjustForm({ person, types, onSaved, onCancel }) {
   async function submit(event) {
     event.preventDefault()
     const done = await run(async () => {
-      await leave.adjust(person.membershipId, { leaveTypeId, days: number(days), reason })
+      await leave.adjust(person.membershipId, { leaveTypeId, days: number(days, 'Days'), reason })
       return true
     })
     if (done) onSaved()
@@ -507,13 +507,13 @@ function TypeForm({ type, onSaved, onCancel }) {
         kind: form.kind,
         paid: compOff ? true : form.paid,
         accrual: compOff || !form.paid ? 'none' : form.accrual,
-        yearlyQuota: accrues ? number(form.yearlyQuota) : null,
+        yearlyQuota: accrues ? number(form.yearlyQuota, 'Days a year') : null,
         prorateJoiners: form.prorateJoiners,
-        carryForwardCap: compOff || !form.paid ? null : number(form.carryForwardCap),
+        carryForwardCap: compOff || !form.paid ? null : number(form.carryForwardCap, 'The carry-forward cap'),
         excessAtYearEnd: form.excessAtYearEnd,
         whenShort: form.whenShort,
         countDaysOff: form.countDaysOff,
-        expiryDays: compOff ? number(form.expiryDays) : null,
+        expiryDays: compOff ? wholeNumber(form.expiryDays, 'Expiry days') : null,
         active: form.active,
       }),
     )

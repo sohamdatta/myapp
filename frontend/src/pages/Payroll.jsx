@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { payroll } from '../api.js'
-import { formatDate, formatDay, localToday, useAction, useLoad } from '../hooks.js'
+import { formatDate, formatDay, localToday, useAction, useLoad, numeric } from '../hooks.js'
 import { Badge, Empty, ErrorNote, Tabs } from '../ui.jsx'
 import PayrollSetup from './PayrollSetup.jsx'
 import PayslipView from './PayslipView.jsx'
@@ -402,7 +402,7 @@ function Inputs({ run: x, onChanged }) {
           className="inline-form"
           onSubmit={async (e) => {
             e.preventDefault()
-            if (await run(() => payroll.addInput(x.id, { ...form, amount: Number(form.amount) }))) {
+            if (await run(() => payroll.addInput(x.id, { ...form, amount: numeric(form.amount, 'The amount') }))) {
               setForm((f) => ({ ...f, amount: '', note: '' }))
               onChanged()
             }

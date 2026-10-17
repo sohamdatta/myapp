@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { attendance } from '../api.js'
-import { formatDate, formatDay, localToday, useAction, useLoad, whoName } from '../hooks.js'
+import { formatDate, formatDay, localToday, useAction, useLoad, whoName, numeric, wholeNumber } from '../hooks.js'
 import { Badge, Empty, ErrorNote, Who } from '../ui.jsx'
 
 const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
@@ -12,7 +12,11 @@ const PUNCH_CHECKS = {
   none: 'No check',
 }
 
-const number = (value) => (value === '' || value === null || value === undefined ? null : Number(value))
+const number = (value, what) => numeric(value, what)
+const minutes = (hours, what) => {
+  const h = numeric(hours, what)
+  return h === null ? null : Math.round(h * 60)
+}
 
 // ── people: employee codes and who works where ──────────────────────
 
@@ -280,9 +284,9 @@ function LocationForm({ location, onSaved, onCancel }) {
         name: form.name,
         timezone: form.timezone,
         stateCode: form.stateCode,
-        latitude: number(form.latitude),
-        longitude: number(form.longitude),
-        radiusM: number(form.radiusM),
+        latitude: number(form.latitude, 'Latitude'),
+        longitude: number(form.longitude, 'Longitude'),
+        radiusM: wholeNumber(form.radiusM, 'The radius'),
         allowedIps: form.allowedIps.split(/[\s,]+/).filter(Boolean),
         punchCheck: form.punchCheck,
         active: form.active,
@@ -385,9 +389,9 @@ function ShiftForm({ shift, onSaved, onCancel }) {
         name: form.name,
         startTime: form.startTime,
         endTime: form.endTime,
-        graceMinutes: number(form.graceMinutes),
-        fullDayMinutes: Math.round(Number(form.fullDayHours) * 60),
-        halfDayMinutes: Math.round(Number(form.halfDayHours) * 60),
+        graceMinutes: wholeNumber(form.graceMinutes, 'Grace'),
+        fullDayMinutes: minutes(form.fullDayHours, 'A full day'),
+        halfDayMinutes: minutes(form.halfDayHours, 'A half day'),
         active: form.active,
       }),
     )
@@ -567,8 +571,8 @@ function HomeWorking({ canManage }) {
         leaveYearStartMonth: settings.data.leaveYearStartMonth,
         wfhEnabled: s.wfhEnabled,
         wfhRequiresPunch: s.wfhRequiresPunch,
-        wfhLimitPerWeek: number(s.wfhLimitPerWeek),
-        wfhLimitPerMonth: number(s.wfhLimitPerMonth),
+        wfhLimitPerWeek: wholeNumber(s.wfhLimitPerWeek, 'Days a week'),
+        wfhLimitPerMonth: wholeNumber(s.wfhLimitPerMonth, 'Days a month'),
       }),
     )
     if (done) {
@@ -858,7 +862,7 @@ export function DeviceImport({ canManage }) {
           {preview && mapping && (
             <>
               <p>
-                <strong>{file.name}</strong>: {preview.rows} rows.{' '}
+                <strong>{file.name}</strong>: {preview.rows} {preview.rows === 1 ? 'row' : 'rows'}.{' '}
                 {preview.mappingSaved
                   ? 'The columns below are as you set them last time for this device.'
                   : 'Check which column holds what; this is remembered for the device.'}
@@ -909,7 +913,7 @@ export function DeviceImport({ canManage }) {
           <ErrorNote>{error}</ErrorNote>
           {preview && (
             <button type="submit" className="secondary" disabled={busy}>
-              {busy ? 'Importing…' : `Import ${preview.rows} rows`}
+              {busy ? 'Importing…' : `Import ${preview.rows} ${preview.rows === 1 ? 'row' : 'rows'}`}
             </button>
           )}
         </form>

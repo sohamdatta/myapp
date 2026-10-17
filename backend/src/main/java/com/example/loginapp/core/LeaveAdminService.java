@@ -53,14 +53,14 @@ public final class LeaveAdminService {
             throw ApiException.badRequest("Accrual must be none, monthly or yearly");
         }
         BigDecimal quota = compOff || accrual.equals("none") || in.yearlyQuota() == null ? BigDecimal.ZERO : in.yearlyQuota();
-        if (quota.signum() < 0 || quota.compareTo(BigDecimal.valueOf(366)) > 0 || quota.scale() > 1) {
+        if (quota.signum() < 0 || quota.compareTo(BigDecimal.valueOf(366)) > 0 || !wholeOrHalf(quota)) {
             throw ApiException.badRequest("The yearly quota must be between 0 and 366 days, in whole or half days");
         }
         if (!accrual.equals("none") && quota.signum() == 0) {
             throw ApiException.badRequest("Give the number of days a year, or set accrual to none");
         }
         BigDecimal cap = in.carryForwardCap();
-        if (cap != null && (cap.signum() < 0 || cap.scale() > 1)) {
+        if (cap != null && (cap.signum() < 0 || !wholeOrHalf(cap))) {
             throw ApiException.badRequest("The carry-forward cap must be zero or more, in whole or half days");
         }
         String excess = in.excessAtYearEnd() == null ? "lapse" : in.excessAtYearEnd();
@@ -330,5 +330,10 @@ public final class LeaveAdminService {
         if (Sql.one(c, "select 1 from app.membership where id = ?", membershipId) == null) {
             throw ApiException.notFound("The user");
         }
+    }
+
+    /** 1, 1.5 and 2 are days of leave; 1.3 is not. */
+    public static boolean wholeOrHalf(BigDecimal days) {
+        return days.multiply(BigDecimal.valueOf(2)).stripTrailingZeros().scale() <= 0;
     }
 }

@@ -42,5 +42,10 @@ export default defineConfig({
     { name: 'exit', testMatch: /10-exit\.spec\.ts/, use: desktop, dependencies: ['setup'] },
     { name: 'org-chart', testMatch: /11-org-chart\.spec\.ts/, use: desktop, dependencies: ['exit'] },
     { name: 'payroll', testMatch: /12-payroll\.spec\.ts/, use: desktop, dependencies: ['org-chart'] },
+    // Negative cases run last, against everything the story above has built.
+    { name: 'neg-access', testMatch: /13-negative-access\.spec\.ts/, use: desktop, dependencies: ['payroll'] },
+    { name: 'neg-attendance-leave', testMatch: /14-negative-attendance-leave\.spec\.ts/, use: desktop, dependencies: ['neg-access'] },
+    { name: 'neg-people', testMatch: /15-negative-people\.spec\.ts/, use: desktop, dependencies: ['neg-attendance-leave'] },
+    { name: 'neg-payroll', testMatch: /16-negative-payroll\.spec\.ts/, use: desktop, dependencies: ['neg-people'] },
   ],
 });

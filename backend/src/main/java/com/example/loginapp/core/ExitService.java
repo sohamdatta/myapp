@@ -253,7 +253,11 @@ public final class ExitService {
         return db.inTenant(ctx.tenantId(), c -> {
             applyDue(c, ctx.tenantId(), today);
             requireSee(c, ctx, id, today);
-            return view(c, ctx, id, today, false);
+            // An employee opening their own exit here sees what My exit shows them, not HR's view.
+            Map<String, Object> who = Sql.one(c, "select e.membership_id from app.exit_case x join app.employment e on e.id = x.employment_id "
+                    + "where x.id = ?", id);
+            boolean mine = ctx.membershipId() != null && ctx.membershipId().toString().equals(who.get("membershipId"));
+            return view(c, ctx, id, today, mine && !canManage(ctx));
         });
     }
 

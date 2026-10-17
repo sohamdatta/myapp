@@ -405,6 +405,9 @@ public final class AttendanceImportService {
             throw ApiException.badRequest("The file is too large; split it into files under 5 MB");
         }
         String text = content.charAt(0) == '﻿' ? content.substring(1) : content;
+        if (!looksLikeText(text)) {
+            throw ApiException.badRequest("This is not a CSV or text file. Save the sheet as CSV and choose that file");
+        }
         int lineEnd = text.indexOf('\n');
         String firstLine = lineEnd < 0 ? text : text.substring(0, lineEnd);
         char delimiter = ',';
@@ -458,5 +461,21 @@ public final class AttendanceImportService {
             throw ApiException.badRequest("The file has more than " + MAX_ROWS + " rows; split it into smaller files");
         }
         return rows;
+    }
+
+    /** A spreadsheet saved as CSV is text: no NUL bytes, and few characters the browser could not decode. */
+    public static boolean looksLikeText(String text) {
+        int sample = Math.min(text.length(), 8192);
+        int odd = 0;
+        for (int i = 0; i < sample; i++) {
+            char ch = text.charAt(i);
+            if (ch == 0) {
+                return false;
+            }
+            if (ch == '\uFFFD' || (ch < 0x20 && ch != '\n' && ch != '\r' && ch != '\t')) {
+                odd++;
+            }
+        }
+        return odd * 20 <= sample;
     }
 }

@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { payroll } from '../api.js'
-import { formatDate, formatDay, useAction, useLoad } from '../hooks.js'
+import { formatDate, formatDay, useAction, useLoad, numeric } from '../hooks.js'
 import { Badge, Empty, ErrorNote } from '../ui.jsx'
 import { monthLabel, rupees, signed } from './payrollText.js'
 
@@ -60,7 +60,7 @@ function Breakup({ b, compare, testid }) {
 function ReviseForm({ p, employmentId, onDone, onCancel }) {
   const current = p.history[0]
   const [v, setV] = useState({
-    validFrom: current ? firstOfNextMonth(p.thisMonth) : p.thisMonth,
+    validFrom: [current ? firstOfNextMonth(p.thisMonth) : p.thisMonth, p.openFrom].filter(Boolean).sort().pop(),
     structureId: current?.structureId || p.structures[0]?.id || '',
     annualAmount: current ? String(Number(current.annualAmount)) : '',
     reason: current ? '' : 'Pay on joining',
@@ -71,7 +71,7 @@ function ReviseForm({ p, employmentId, onDone, onCancel }) {
     setPreview(null)
     setV({ ...v, ...patch })
   }
-  const body = () => ({ ...v, annualAmount: Number(v.annualAmount) })
+  const body = () => ({ ...v, annualAmount: numeric(v.annualAmount, 'The yearly amount') })
   const basis = p.structures.find((s) => s.id === v.structureId)?.basis
   return (
     <form
@@ -153,7 +153,7 @@ function OverrideForm({ p, employmentId, onDone, onCancel }) {
       className="panel"
       onSubmit={async (e) => {
         e.preventDefault()
-        if (await run(() => payroll.addOverride(employmentId, { ...v, monthlyAmount: Number(v.monthlyAmount), validTo: v.validTo || null }))) onDone()
+        if (await run(() => payroll.addOverride(employmentId, { ...v, monthlyAmount: numeric(v.monthlyAmount, 'The monthly amount'), validTo: v.validTo || null }))) onDone()
       }}
     >
       <h3>A different amount for one component</h3>

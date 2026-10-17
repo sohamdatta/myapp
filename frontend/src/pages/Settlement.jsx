@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { downloadDocument as download, exits } from '../api.js'
-import { formatDay, localToday, useAction } from '../hooks.js'
+import { formatDay, localToday, useAction, numeric } from '../hooks.js'
 import { Badge, ErrorNote } from '../ui.jsx'
 
 const rupees = (n) =>
@@ -347,7 +347,7 @@ function AddLine({ exitId, onDone, onCancel }) {
       className="panel"
       onSubmit={async (e) => {
         e.preventDefault()
-        const body = { ...form, amount: form.amount === '' ? null : Number(form.amount), dueDate: form.dueDate || null }
+        const body = { ...form, amount: numeric(form.amount, 'The amount'), dueDate: form.dueDate || null }
         if (await run(() => exits.addSettlementLine(exitId, body))) onDone()
       }}
       noValidate

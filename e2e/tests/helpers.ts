@@ -99,3 +99,55 @@ export async function shot(page: Page, name: string, full = false) {
   await page.waitForTimeout(300); // let lists and transitions settle
   await page.screenshot({ path: `${dir}/${name}.png`, fullPage: full });
 }
+
+/** The result of calling the API directly as whoever is signed in on the page. */
+export type ApiResult = { status: number; body: any };
+
+/**
+ * Calls the API with the page's own session, as a user tampering with requests would: the
+ * negative tests use it to prove the server refuses what the screens never offer.
+ */
+export async function api(page: Page, method: string, path: string, body?: unknown, token?: string | null): Promise<ApiResult> {
+  return page.evaluate(
+    async ({ method, path, body, token }) => {
+      const t = token === undefined ? sessionStorage.getItem('hrms-token') : token;
+      const headers: Record<string, string> = {};
+      if (t) headers.Authorization = `Bearer ${t}`;
+      if (body !== undefined) headers['Content-Type'] = 'application/json';
+      const r = await fetch(`/api${path}`, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) });
+      const text = await r.text();
+      let parsed: any = text;
+      try {
+        parsed = JSON.parse(text);
+      } catch {
+        // not JSON: keep the text
+      }
+      return { status: r.status, body: parsed };
+    },
+    { method, path, body, token },
+  );
+}
+
+/** Expects the server to refuse with one of the given statuses (and, if given, this error code). */
+export async function expectRefused(page: Page, method: string, path: string, statuses: number[], body?: unknown, code?: string) {
+  const r = await api(page, method, path, body);
+  expect(statuses, `${method} ${path} answered ${r.status} ${JSON.stringify(r.body).slice(0, 200)}`).toContain(r.status);
+  if (code) expect(r.body.code, `${method} ${path}`).toBe(code);
+  return r;
+}
+
+/** The error shown on screen after an action. */
+export function errorOn(page: Page) {
+  return page.locator('.error').first();
+}
+
+/** Accepts an invitation link with a new password and returns the signed-in page. */
+export async function acceptInvite(browser: Browser, link: string, password = PASSWORD, width = 1280): Promise<Page> {
+  const page = await newPage(browser, width);
+  await page.goto(link);
+  await page.fill('#new-password', password);
+  await page.fill('#confirm-password', password);
+  await page.click('button.primary');
+  await expect(page.locator('.sidebar')).toBeVisible();
+  return page;
+}
