@@ -200,6 +200,10 @@ test.describe.serial('negative: people, joiners and exits', () => {
     const next = hr.getByRole('button', { name: /Check|Preview|Next/ });
     if (await next.count()) await next.first().click();
     await expect(hr.getByText(/No row can be imported|Choose|refused|cannot/i).first()).toBeVisible();
+    await hr.reload();
+    await expect(hr.locator('.sidebar')).toBeVisible();
+    await nav(hr, 'People');
+    await tab(hr, 'Import');
     await hr.setInputFiles('#import-file', { name: 'photo.png', mimeType: 'image/png', buffer: Buffer.from([0x89, 0x50, 0x4e, 0x47, 0, 0, 0, 0]) });
     await expect(errorOn(hr)).toBeVisible();
   });
