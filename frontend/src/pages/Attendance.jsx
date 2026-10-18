@@ -65,7 +65,55 @@ function ManualPunch({ row, date, onSaved }) {
   )
 }
 
-function Board({ date, canManage, onChanged }) {
+const MARKS = { absent: 'Absent', half_day: 'Half day', present: 'Present (take back the mark)' }
+
+/**
+ * Where nobody punches, a working day counts as present; HR, or the manager for their team,
+ * marks the exceptions. Each mark needs a reason, and a later one replaces it.
+ */
+function MarkDay({ row, date, onSaved }) {
+  const choices = Object.keys(MARKS).filter((m) => m !== (row.mark || 'present'))
+  const [status, setStatus] = useState(choices[0])
+  const [reason, setReason] = useState('')
+  const { busy, error, run } = useAction()
+
+  async function submit(event) {
+    event.preventDefault()
+    const done = await run(() => attendance.mark(row.membershipId, { date, status, reason }))
+    if (done) onSaved()
+  }
+
+  return (
+    <form onSubmit={submit} noValidate>
+      <div className="toolbar">
+        <div>
+          <label htmlFor={`mk-status-${row.membershipId}`}>Mark the day</label>
+          <select id={`mk-status-${row.membershipId}`} value={status} onChange={(e) => setStatus(e.target.value)}>
+            {choices.map((m) => (
+              <option key={m} value={m}>
+                {MARKS[m]}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label htmlFor={`mk-reason-${row.membershipId}`}>Reason</label>
+          <input id={`mk-reason-${row.membershipId}`} value={reason} onChange={(e) => setReason(e.target.value)} />
+        </div>
+        <button type="submit" className="secondary" disabled={busy}>
+          {busy ? 'Saving…' : 'Save mark'}
+        </button>
+      </div>
+      <p className="hint">
+        Nobody punches at this location: the day counts as present unless it is marked. The mark and its reason show in the day's
+        steps and in the audit log.
+      </p>
+      <ErrorNote>{error}</ErrorNote>
+    </form>
+  )
+}
+
+function Board({ date, canManage, canMark, meId, onChanged }) {
   const board = useLoad(() => attendance.board(date))
   const [open, setOpen] = useState(null)
 
@@ -120,6 +168,7 @@ function Board({ date, canManage, onChanged }) {
                 row={r}
                 date={date}
                 canManage={canManage}
+                canMark={canMark && r.mode === 'present' && r.membershipId !== meId}
                 open={open === r.membershipId}
                 onToggle={() => setOpen(open === r.membershipId ? null : r.membershipId)}
                 onChanged={() => {
@@ -135,7 +184,9 @@ function Board({ date, canManage, onChanged }) {
   )
 }
 
-function BoardRow({ row, date, canManage, open, onToggle, onChanged }) {
+const OFF = ['holiday', 'weekly_off', 'on_leave', 'not_assigned']
+
+function BoardRow({ row, date, canManage, canMark, open, onToggle, onChanged }) {
   return (
     <>
       <tr>
@@ -144,6 +195,9 @@ function BoardRow({ row, date, canManage, open, onToggle, onChanged }) {
         </td>
         <td>
           <DayStatus day={row} isToday={date === localToday()} />
+          {row.mode === 'present' && !OFF.includes(row.status) && (
+            <div className="hint">{row.mark ? 'marked by hand' : 'present by default'}</div>
+          )}
         </td>
         <td>{formatTime(row.firstIn)}</td>
         <td>{formatTime(row.lastOut)}</td>
@@ -160,7 +214,8 @@ function BoardRow({ row, date, canManage, open, onToggle, onChanged }) {
         <tr className="detail-row">
           <td colSpan={8}>
             <Trail steps={row.trail} inProgress={date === localToday()} />
-            {canManage && row.status !== 'not_assigned' && <ManualPunch row={row} date={date} onSaved={onChanged} />}
+            {canMark && !OFF.includes(row.status) && <MarkDay row={row} date={date} onSaved={onChanged} />}
+            {canManage && row.status !== 'not_assigned' && row.mode !== 'present' && <ManualPunch row={row} date={date} onSaved={onChanged} />}
           </td>
         </tr>
       )}
@@ -168,7 +223,7 @@ function BoardRow({ row, date, canManage, open, onToggle, onChanged }) {
   )
 }
 
-function Daily({ canManage, canExport }) {
+function Daily({ canManage, canMark, meId, canExport }) {
   const [date, setDate] = useState(localToday())
   const [version, setVersion] = useState(0)
   const { busy, error, run } = useAction()
@@ -206,7 +261,14 @@ function Daily({ canManage, canExport }) {
         )}
       </div>
       <ErrorNote>{error}</ErrorNote>
-      <Board key={`${date}-${version}`} date={date} canManage={canManage} onChanged={() => setVersion((v) => v + 1)} />
+      <Board
+        key={`${date}-${version}`}
+        date={date}
+        canManage={canManage}
+        canMark={canMark}
+        meId={meId}
+        onChanged={() => setVersion((v) => v + 1)}
+      />
       <p className="hint" style={{ marginTop: 12 }}>
         Times are shown in your own time zone.
       </p>
@@ -340,14 +402,21 @@ export default function Attendance({ me }) {
     canApprove && { id: 'requests', label: 'Requests' },
     everyone && { id: 'people', label: 'People' },
     everyone && { id: 'setup', label: 'Setup' },
-    everyone && { id: 'import', label: 'Device import' },
+    everyone && { id: 'import', label: 'Devices' },
   ].filter(Boolean)
   const [view, setView] = useState('daily')
 
   return (
     <>
       <Tabs tabs={views} current={view} onChange={setView} />
-      {view === 'daily' && <Daily canManage={canManage && me.kind === 'tenant'} canExport={everyone} />}
+      {view === 'daily' && (
+        <Daily
+          canManage={canManage && me.kind === 'tenant'}
+          canMark={canApprove && me.kind === 'tenant'}
+          meId={me.membershipId}
+          canExport={everyone}
+        />
+      )}
       {view === 'requests' && <Requests canDecide={canDecide} />}
       {view === 'people' && <People canManage={canManage} />}
       {view === 'setup' && <Setup canManage={canManage} />}

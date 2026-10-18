@@ -49,5 +49,6 @@ export default defineConfig({
     { name: 'neg-payroll', testMatch: /16-negative-payroll\.spec\.ts/, use: desktop, dependencies: ['neg-people'] },
     // A tour of each role through its own login, for the guide's screenshots.
     { name: 'role-tour', testMatch: /17-role-tour\.spec\.ts/, use: desktop, dependencies: ['neg-payroll'] },
+    { name: 'modes', testMatch: /18-attendance-modes\.spec\.ts/, use: desktop, dependencies: ['role-tour'] },
   ],
 });

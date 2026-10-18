@@ -35,6 +35,21 @@ final class Requests {
         }
     }
 
+    /**
+     * The address the request came from. X-Forwarded-For is used only when the application runs
+     * behind a proxy that sets it (app.trust-forwarded-for); otherwise anyone could claim an office address.
+     */
+    static String clientIp(jakarta.servlet.http.HttpServletRequest http, boolean trustForwardedFor) {
+        if (trustForwardedFor) {
+            String forwarded = http.getHeader("X-Forwarded-For");
+            if (forwarded != null && !forwarded.isBlank()) {
+                String[] hops = forwarded.split(",");
+                return hops[hops.length - 1].trim();   // the entry added by the nearest proxy
+            }
+        }
+        return http.getRemoteAddr();
+    }
+
     static UUID id(String value) {
         try {
             return UUID.fromString(value);

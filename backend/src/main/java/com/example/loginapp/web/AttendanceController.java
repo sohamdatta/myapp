@@ -36,6 +36,8 @@ public class AttendanceController {
 
     public record ManualPunch(String at, String direction, String reason) {}
 
+    public record MarkRequest(String date, String status, String reason) {}
+
     private final AuthService auth;
     private final AttendanceService attendance;
     private final boolean trustForwardedFor;
@@ -145,6 +147,13 @@ public class AttendanceController {
      * when the application is configured as running behind a proxy that sets it;
      * otherwise anyone could claim to be on the office network.
      */
+    /** Marks an exception on a present-by-default day: absent, half_day, or present to take a mark back. */
+    @PostMapping("/users/{id}/marks")
+    public Map<String, Object> mark(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                    @PathVariable("id") String id, @RequestBody MarkRequest request) {
+        return attendance.mark(Requests.session(auth, authorization), Requests.id(id), request.date(), request.status(), request.reason());
+    }
+
     private String clientIp(HttpServletRequest http) {
         if (trustForwardedFor) {
             String forwarded = http.getHeader("X-Forwarded-For");

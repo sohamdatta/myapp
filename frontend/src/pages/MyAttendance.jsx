@@ -16,9 +16,12 @@ const CHECKS = {
   either: 'Office network, or your location at the office',
 }
 
+/** Where nobody punches, the day's result is the headline, in words. */
+const PRESENT_DAY = { present: 'Present', absent: 'Absent', half_day: 'Half day' }
+
 const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
 
-const SOURCES = { web: 'in the app', import: 'from a device', manual: 'entered by HR', request: 'from a request' }
+const SOURCES = { web: 'in the app', import: 'from a device file', device: 'from the attendance device', manual: 'entered by HR', request: 'from a request' }
 
 /** Asks the browser where the device is. Resolves to null when it cannot or may not say. */
 function currentPosition() {
@@ -75,20 +78,36 @@ function PunchPanel({ today, onPunched }) {
         <div>
           <div className="hero-label">Today · {formatDay(data.workDate)}</div>
           <div className="hero-value">
-            {worked > 0 ? formatMinutes(worked) : '0 h 00 min'}
-            {data.day && <DayStatus day={data.day} isToday />}
+            {data.mode === 'present'
+              ? PRESENT_DAY[data.day?.status] || ''
+              : worked > 0
+                ? formatMinutes(worked)
+                : '0 h 00 min'}
+            {data.day && (data.mode !== 'present' || !PRESENT_DAY[data.day.status]) && <DayStatus day={data.day} isToday />}
           </div>
           <p>
             {data.remote ? 'Working from home' : data.location} · {data.shift}
             {firstIn && ` · In at ${formatTime(firstIn.at, data.timezone)}`}
           </p>
         </div>
-        <div className="hero-action">
-          <button type="button" className="secondary punch-button" disabled={busy} onClick={punch}>
-            {busy ? 'Checking…' : data.nextDirection === 'in' ? 'Punch in' : 'Punch out'}
-          </button>
-          <p className="hint">{data.remote ? 'Working from home today: no location check' : CHECKS[data.punchCheck]}</p>
-        </div>
+        {data.mode === 'present' ? (
+          <div className="hero-action hero-note">
+            <strong>No punching needed</strong>
+            <p className="hint">Each working day counts as present unless your manager or HR marks it otherwise.</p>
+          </div>
+        ) : data.mode === 'device' && !data.remote ? (
+          <div className="hero-action hero-note">
+            <strong>Punch at the attendance device</strong>
+            <p className="hint">Your punches at {data.location} come from the device by themselves, usually within a minute.</p>
+          </div>
+        ) : (
+          <div className="hero-action">
+            <button type="button" className="secondary punch-button" disabled={busy} onClick={punch}>
+              {busy ? 'Checking…' : data.nextDirection === 'in' ? 'Punch in' : 'Punch out'}
+            </button>
+            <p className="hint">{data.remote ? 'Working from home today: no location check' : CHECKS[data.punchCheck]}</p>
+          </div>
+        )}
       </div>
       {error && (
         <div style={{ padding: '0 24px' }}>

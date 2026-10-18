@@ -25,17 +25,32 @@ public final class DayCalculator {
     public record Schedule(String shiftName, LocalTime start, LocalTime end, int graceMinutes,
                            int fullDayMinutes, int halfDayMinutes, Set<Integer> weeklyOffs, ZoneId zone) {}
 
-    /** @param source web, import, manual, or request (added by an approved correction) */
+    /** @param source web, import, manual, device, or request (added by an approved correction) */
     public record Punch(Instant at, String direction, String source) {}
+
+    /**
+     * An exception marked on a present-by-default day: absent or half_day. A later
+     * "present" mark takes it back, so it never reaches the calculation.
+     */
+    public record Mark(String status, String reason, String markedBy) {}
 
     /**
      * @param schedule    null when the user has no assignment in force
      * @param holidayName null when the day is not a holiday
      * @param awayRequest on_duty or work_from_home when such a request is approved, otherwise null
      * @param punches     the day's punches, oldest first
+     * @param presentByDefault true when the location counts working days as present unless marked otherwise
+     * @param mark        the exception marked for the day, or null
      */
     public record Input(LocalDate date, Schedule schedule, String holidayName, String awayRequest, List<Punch> punches,
-                        Leave leave, String awayHalf, boolean remote, boolean remoteNeedsPunches) {
+                        Leave leave, String awayHalf, boolean remote, boolean remoteNeedsPunches,
+                        boolean presentByDefault, Mark mark) {
+
+        /** A day at a location where people punch. */
+        public Input(LocalDate date, Schedule schedule, String holidayName, String awayRequest, List<Punch> punches,
+                     Leave leave, String awayHalf, boolean remote, boolean remoteNeedsPunches) {
+            this(date, schedule, holidayName, awayRequest, punches, leave, awayHalf, remote, remoteNeedsPunches, false, null);
+        }
 
         /** A day with no leave and no remote working, as before those existed. */
         public Input(LocalDate date, Schedule schedule, String holidayName, String awayRequest, List<Punch> punches) {
@@ -79,6 +94,9 @@ public final class DayCalculator {
         if (punches.stream().anyMatch(p -> p.source().equals("request"))) {
             punches = punches.stream().filter(p -> p.source().equals("request")).toList();
             trail.add("Times taken from an approved correction request");
+        } else if (punches.stream().anyMatch(p -> p.source().equals("device"))) {
+            punches = byOrder(punches);
+            trail.add("Device punches taken as in and out by their order");
         }
 
         Instant firstIn = null;
@@ -159,6 +177,10 @@ public final class DayCalculator {
             trail.add(wholeDayRemote ? "Remote day, judged on its punches" : "Working from home for the " + in.awayHalf() + " half");
         }
 
+        if (in.presentByDefault()) {
+            return presentByDefault(in, trail, punches, firstIn, lastOut, worked, creditedHalf, leaveDays, leaveUnpaid);
+        }
+
         if (punches.isEmpty()) {
             trail.add("No punches");
             String status = creditedHalf != null ? "half_day" : "absent";
@@ -210,6 +232,52 @@ public final class DayCalculator {
         }
         trail.add("Result: " + label(status));
         return new Result(status, firstIn, lastOut, worked, late, early, overtime, incomplete, trail, leaveDays, leaveUnpaid, in.remote());
+    }
+
+    /**
+     * A working day where nobody punches: present, unless someone marked it otherwise.
+     * Punches, if any, are kept on the day for reference but do not decide it.
+     */
+    private static Result presentByDefault(Input in, List<String> trail, List<Punch> punches, Instant firstIn, Instant lastOut,
+                                           int worked, String creditedHalf, double leaveDays, boolean leaveUnpaid) {
+        Mark mark = in.mark();
+        String status;
+        if (mark == null) {
+            trail.add("Present by default; no exception marked");
+            status = "present";
+        } else {
+            trail.add("Marked " + label(mark.status()) + " by " + mark.markedBy() + ": " + mark.reason());
+            boolean absent = mark.status().equals("absent");
+            if (creditedHalf != null) {
+                // the other half is the one marked: absent leaves half a day, a half day fills it
+                status = absent ? "half_day" : "present";
+            } else {
+                status = absent ? "absent" : "half_day";
+            }
+        }
+        if (!punches.isEmpty()) {
+            trail.add("Punches are recorded for reference; this location does not count them");
+        }
+        trail.add("Result: " + label(status) + (status.equals("half_day") && creditedHalf != null ? ", only the " + creditedHalf + " half counts" : ""));
+        return new Result(status, firstIn, lastOut, worked, 0, 0, 0, false, trail, leaveDays, leaveUnpaid, in.remote());
+    }
+
+    /**
+     * A device's In and Out keys are rarely pressed, so its punches alternate: the first of the day
+     * is an in, the next an out, and so on. A punch entered with a direction (by HR, in the app) keeps it.
+     */
+    static List<Punch> byOrder(List<Punch> punches) {
+        List<Punch> out = new ArrayList<>();
+        String last = null;
+        for (Punch p : punches) {
+            String direction = p.direction();
+            if (p.source().equals("device")) {
+                direction = "in".equals(last) ? "out" : "in";
+            }
+            out.add(new Punch(p.at(), direction, p.source()));
+            last = direction;
+        }
+        return out;
     }
 
     private static String local(Instant at, ZoneId zone) {

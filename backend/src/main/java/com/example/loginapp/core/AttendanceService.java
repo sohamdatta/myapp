@@ -49,10 +49,15 @@ public final class AttendanceService {
     }
 
     /** The location, shift and weekly offs in force for a user on a date. */
+    /** @param mode how the location records attendance on the date: app, device or present */
     record Assigned(UUID locationId, String locationName, String punchCheck, Double latitude, Double longitude,
-                    Integer radiusM, UUID shiftId, DayCalculator.Schedule schedule, Set<Integer> remoteDays) {
+                    Integer radiusM, UUID shiftId, DayCalculator.Schedule schedule, Set<Integer> remoteDays, String mode) {
         ZoneId zone() {
             return schedule.zone();
+        }
+
+        boolean presentByDefault() {
+            return "present".equals(mode);
         }
 
         boolean weeklyOff(LocalDate day) {
@@ -117,6 +122,14 @@ public final class AttendanceService {
             }
             // On a remote day the office checks do not apply. The server decides that from the day, not from the browser.
             boolean remote = remoteOn(c, ctx.membershipId(), workDate, a) != null;
+            if (a.presentByDefault()) {
+                throw new ApiException(409, "attendance.present_by_default", "There is nothing to punch at " + a.locationName()
+                        + ": each working day counts as present unless your manager or HR marks it otherwise");
+            }
+            if ("device".equals(a.mode()) && !remote) {
+                throw new ApiException(409, "attendance.device_location", "Punch at the attendance device at " + a.locationName()
+                        + ". The app takes punches there only on a day you work from home");
+            }
             String check = remote ? "remote" : verify(c, a, latitude, longitude, accuracyM, ip);
             Sql.update(c, "insert into app.punch (tenant_id, membership_id, at, direction, source, work_location_id, "
                             + "latitude, longitude, accuracy_m, ip, check_result) values (?, ?, ?, ?, 'web', ?, ?, ?, ?, ?::inet, ?)",
@@ -155,7 +168,7 @@ public final class AttendanceService {
                     recompute(c, ctx.tenantId(), AuthService.uuid(m.get("id")), day);
                 }
             }
-            return Sql.query(c,
+            List<Map<String, Object>> rows = Sql.query(c,
                     "select m.id as membership_id, dir.email, " + Names.of("m.id") + " as name, m.employee_code, d.status, d.first_in, d.last_out, "
                             + "d.worked_minutes, d.late_minutes, d.early_minutes, d.overtime_minutes, d.incomplete, d.trail, "
                             + "d.leave_days, d.leave_unpaid, d.remote "
@@ -163,6 +176,15 @@ public final class AttendanceService {
                             + "left join app.attendance_day d on d.membership_id = m.id and d.work_date = ? "
                             + "where m.status = 'active'" + only + " order by lower(coalesce(" + Names.of("m.id") + ", dir.email))",
                     team == null ? new Object[] {day} : new Object[] {day, team});
+            // How each person's location records the day, and any exception marked on it.
+            for (Map<String, Object> r : rows) {
+                UUID id = AuthService.uuid(r.get("membershipId"));
+                Assigned a = assigned(c, id, day);
+                r.put("mode", a == null ? null : a.mode());
+                DayCalculator.Mark mark = a != null && a.presentByDefault() ? markOn(c, id, day) : null;
+                r.put("mark", mark == null ? null : mark.status());
+            }
+            return rows;
         });
     }
 
@@ -213,6 +235,72 @@ public final class AttendanceService {
             UserService.audit(c, ctx, "attendance.manual_punch", "punch", AuthService.uuid(row.get("id")),
                     Map.of("date", workDate.toString(), "direction", direction, "reason", reason.trim()));
             return null;
+        });
+    }
+
+    private static final List<String> MARKS = List.of("absent", "half_day", "present");
+
+    /**
+     * Marks an exception on a present-by-default day: absent, half_day, or present to take back an
+     * earlier mark. HR for anyone, a manager for their team; nobody for themselves. Returns the day.
+     */
+    public Map<String, Object> mark(SessionCtx ctx, UUID membershipId, String date, String status, String reason) {
+        if (!canSeeOthers(ctx, "attendance.approve") || ctx.membershipId() == null) {
+            throw ApiException.denied("attendance.approve");
+        }
+        if (status == null || !MARKS.contains(status)) {
+            throw ApiException.badRequest("Mark the day absent, half_day or present");
+        }
+        if (reason == null || reason.trim().length() < 5) {
+            throw ApiException.badRequest("Give a reason of at least 5 characters");
+        }
+        LocalDate day = date(date);
+        LocalDate today = today();
+        if (day.isAfter(today)) {
+            throw ApiException.badRequest("A day can be marked once it has come; for days ahead, apply for leave");
+        }
+        return db.inTenant(ctx.tenantId(), c -> {
+            Map<String, Object> m = Sql.one(c, "select (mm.joined_at at time zone 'Asia/Kolkata')::date as joined, "
+                    + "coalesce(" + Names.of("mm.id") + ", 'this person') as name from app.membership mm where mm.id = ?", membershipId);
+            if (m != null && membershipId.equals(ctx.membershipId())) {
+                throw new ApiException(409, "attendance.own_mark", "You cannot mark your own attendance");
+            }
+            if (m == null || !Team.reaches(c, ctx, "attendance.approve", membershipId, today)) {
+                throw ApiException.notFound("The user");
+            }
+            if (day.isBefore(LocalDate.parse((String) m.get("joined")))) {
+                throw ApiException.badRequest("That is before " + m.get("name") + " joined");
+            }
+            Assigned a = assigned(c, membershipId, day);
+            if (a == null) {
+                throw notAssigned();
+            }
+            if (!a.presentByDefault()) {
+                throw new ApiException(409, "attendance.not_present_by_default", a.locationName()
+                        + " counts punches on that day, so there is nothing to mark. Enter a punch instead");
+            }
+            String off = dayOff(c, a, day);
+            if (off != null) {
+                throw new ApiException(409, "attendance.day_off", day + " is not a working day: " + off);
+            }
+            DayCalculator.Leave leave = LeaveService.leaveOn(c, membershipId, day, false);
+            if (leave != null && leave.half() == null && !"present".equals(status)) {
+                throw new ApiException(409, "attendance.leave_on_date", m.get("name") + " is on " + leave.typeName() + " that day");
+            }
+            DayCalculator.Mark current = markOn(c, membershipId, day);
+            if ("present".equals(status) && current == null) {
+                throw new ApiException(409, "attendance.nothing_to_undo", "The day already counts as present");
+            }
+            if (current != null && current.status().equals(status)) {
+                throw new ApiException(409, "attendance.already_marked", "The day is already marked " + status.replace('_', ' '));
+            }
+            Map<String, Object> row = Sql.one(c, "insert into app.attendance_mark (tenant_id, membership_id, work_date, status, reason, marked_by) "
+                    + "values (?, ?, ?, ?, ?, ?) returning id", ctx.tenantId(), membershipId, day, status, reason.trim(), ctx.membershipId());
+            recompute(c, ctx.tenantId(), membershipId, day);
+            UserService.audit(c, ctx, "attendance.marked", "attendance_mark", AuthService.uuid(row.get("id")),
+                    Map.of("date", day.toString(), "status", status, "reason", reason.trim()));
+            return Sql.one(c, "select work_date, status, trail, leave_days from app.attendance_day where membership_id = ? and work_date = ?",
+                    membershipId, day);
         });
     }
 
@@ -522,10 +610,11 @@ public final class AttendanceService {
             String awayKind = away == null ? null : (String) away.get("kind");
             boolean dayOff = holiday != null || a.weeklyOff(day);
             boolean remote = "work_from_home".equals(awayKind) || (awayKind == null && a.regularRemote(day));
+            boolean present = a.presentByDefault();
             input = new DayCalculator.Input(day, s, holiday == null ? null : (String) holiday.get("name"), awayKind, punches,
                     LeaveService.leaveOn(c, membershipId, day, dayOff),
                     "work_from_home".equals(awayKind) ? (String) away.get("half") : null,
-                    remote, settings(c).wfhRequiresPunch());
+                    remote, !present && settings(c).wfhRequiresPunch(), present, present ? markOn(c, membershipId, day) : null);
         }
         DayCalculator.Result r = DayCalculator.calculate(input);
         Sql.update(c, "insert into app.attendance_day (tenant_id, membership_id, work_date, status, shift_id, first_in, last_out, "
@@ -541,6 +630,17 @@ public final class AttendanceService {
                 r.firstIn() == null ? null : Timestamp.from(r.firstIn()), r.lastOut() == null ? null : Timestamp.from(r.lastOut()),
                 r.workedMinutes(), r.lateMinutes(), r.earlyMinutes(), r.overtimeMinutes(), r.incomplete(),
                 r.trail().toArray(new String[0]), java.math.BigDecimal.valueOf(r.leaveDays()), r.leaveUnpaid(), r.remote());
+    }
+
+    /** The exception in force for a day: the newest mark, unless that one says present. */
+    static DayCalculator.Mark markOn(Connection c, UUID membershipId, LocalDate day) throws SQLException {
+        Map<String, Object> m = Sql.one(c, "select k.status, k.reason, coalesce(" + Names.of("k.marked_by") + ", dir.email) as marked_by "
+                + "from app.attendance_mark k left join app.member_directory() dir on dir.membership_id = k.marked_by "
+                + "where k.membership_id = ? and k.work_date = ? order by k.created_at desc limit 1", membershipId, day);
+        if (m == null || "present".equals(m.get("status"))) {
+            return null;
+        }
+        return new DayCalculator.Mark((String) m.get("status"), (String) m.get("reason"), (String) m.get("markedBy"));
     }
 
     /** Forgets stored results so they are worked out again when next read. */
@@ -630,11 +730,13 @@ public final class AttendanceService {
         Map<String, Object> r = Sql.one(c,
                 "select l.id as location_id, l.name as location_name, l.timezone, l.punch_check, l.latitude, l.longitude, l.radius_m, "
                         + "s.id as shift_id, s.name as shift_name, s.start_time, s.end_time, s.grace_minutes, s.full_day_minutes, "
-                        + "s.half_day_minutes, a.weekly_offs, a.remote_days "
+                        + "s.half_day_minutes, a.weekly_offs, a.remote_days, "
+                        + "coalesce((select lm.mode from app.location_mode lm where lm.work_location_id = l.id and lm.effective_from <= ? "
+                        + "          order by lm.effective_from desc, lm.created_at desc limit 1), 'app') as mode "
                         + "from app.attendance_assignment a join app.work_location l on l.id = a.work_location_id "
                         + "join app.shift s on s.id = a.shift_id "
                         + "where a.membership_id = ? and a.effective_from <= ? "
-                        + "order by a.effective_from desc, a.created_at desc limit 1", membershipId, asOf);
+                        + "order by a.effective_from desc, a.created_at desc limit 1", asOf, membershipId, asOf);
         if (r == null) {
             return null;
         }
@@ -654,7 +756,7 @@ public final class AttendanceService {
                 r.get("latitude") == null ? null : ((Number) r.get("latitude")).doubleValue(),
                 r.get("longitude") == null ? null : ((Number) r.get("longitude")).doubleValue(),
                 r.get("radiusM") == null ? null : ((Number) r.get("radiusM")).intValue(),
-                AuthService.uuid(r.get("shiftId")), schedule, remoteDays);
+                AuthService.uuid(r.get("shiftId")), schedule, remoteDays, (String) r.get("mode"));
     }
 
     static ZoneId zone(String id) {
@@ -698,6 +800,7 @@ public final class AttendanceService {
         out.put("location", a.locationName());
         out.put("shift", s.shiftName() + " " + s.start() + " to " + s.end());
         out.put("punchCheck", a.punchCheck());
+        out.put("mode", a.mode());
         boolean remote = remoteOn(c, ctx.membershipId(), workDate, a) != null;
         out.put("remote", remote);
         out.put("wantsPosition", !remote && a.latitude() != null && List.of("location", "either").contains(a.punchCheck()));

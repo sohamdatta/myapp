@@ -33,6 +33,8 @@ public class AttendanceSettingsController {
 
     public record CodeRequest(String code) {}
 
+    public record ModeRequest(String mode, String effectiveFrom) {}
+
     public record ImportRequest(String deviceLabel, String fileName, String content, AttendanceImportService.Mapping mapping) {}
 
     private final AuthService auth;
@@ -61,6 +63,13 @@ public class AttendanceSettingsController {
                                               @PathVariable("id") String id,
                                               @RequestBody AttendanceSettingsService.LocationInput request) {
         return settings.saveLocation(Requests.session(auth, authorization), Requests.id(id), request);
+    }
+
+    /** How the location records attendance (app, device or present), from a date. */
+    @PostMapping("/locations/{id}/mode")
+    public Map<String, Object> setMode(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                       @PathVariable("id") String id, @RequestBody ModeRequest request) {
+        return settings.setMode(Requests.session(auth, authorization), Requests.id(id), request.mode(), request.effectiveFrom());
     }
 
     @GetMapping("/shifts")

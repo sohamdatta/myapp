@@ -19,6 +19,7 @@ import com.example.loginapp.core.AuthService;
 import com.example.loginapp.core.ChecklistService;
 import com.example.loginapp.core.Crypto;
 import com.example.loginapp.core.Db;
+import com.example.loginapp.core.DeviceService;
 import com.example.loginapp.core.DocumentService;
 import com.example.loginapp.core.EmployeeImport;
 import com.example.loginapp.core.EmployeeService;
@@ -90,6 +91,11 @@ public class AppConfig {
     @Bean
     public AttendanceImportService attendanceImportService(Db db) {
         return new AttendanceImportService(db);
+    }
+
+    @Bean
+    public DeviceService deviceService(Db db) {
+        return new DeviceService(db);
     }
 
     @Bean

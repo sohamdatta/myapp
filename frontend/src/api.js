@@ -279,6 +279,12 @@ export const attendance = {
   saveSettings: (body) => put('/org/attendance/settings', body),
   setHomeWorking: (id, allowed) => put(`/org/attendance/users/${id}/wfh`, { allowed }),
 
+  setMode: (id, body) => post(`/org/attendance/locations/${id}/mode`, body),
+  mark: (id, body) => post(`/org/attendance/users/${id}/marks`, body),
+  devices: () => get('/org/attendance/devices'),
+  saveDevice: (id, body) => (id ? put(`/org/attendance/devices/${id}`, body) : post('/org/attendance/devices', body)),
+  deviceLog: (id) => get(`/org/attendance/devices/${id}/log`),
+
   importHealth: () => get('/org/attendance/imports'),
   previewImport: (body) => post('/org/attendance/imports/preview', body),
   importFile: (body) => post('/org/attendance/imports', body),

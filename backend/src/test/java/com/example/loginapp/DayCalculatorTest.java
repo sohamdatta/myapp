@@ -221,6 +221,64 @@ class DayCalculatorTest {
         assertEquals(day(THURSDAY, GENERAL, "09:50 in", "17:00 out"), day(THURSDAY, GENERAL, "09:50 in", "17:00 out"));
     }
 
+    // ── present by default, and device punches ──────────────────────────
+
+    private static Result present(LocalDate date, Leave leave, DayCalculator.Mark mark, List<Punch> punches) {
+        return DayCalculator.calculate(new Input(date, GENERAL, null, null, punches, leave, null, false, false, true, mark));
+    }
+
+    @Test
+    void aPresentByDefaultDayIsPresentWithoutPunches() {
+        Result r = present(THURSDAY, null, null, List.of());
+        assertEquals("present", r.status());
+        assertEquals(0, r.lateMinutes());
+        assertTrue(r.trail().contains("Present by default; no exception marked"));
+    }
+
+    @Test
+    void aMarkDecidesThePresentByDefaultDay() {
+        DayCalculator.Mark absent = new DayCalculator.Mark("absent", "Did not come in", "Priya Shah");
+        Result r = present(THURSDAY, null, absent, List.of());
+        assertEquals("absent", r.status());
+        assertTrue(r.trail().contains("Marked absent by Priya Shah: Did not come in"));
+        assertEquals("half_day", present(THURSDAY, null, new DayCalculator.Mark("half_day", "Left at lunch", "HR"), List.of()).status());
+    }
+
+    @Test
+    void halfALeaveDayAndAMarkMeetInTheMiddle() {
+        Leave morning = new Leave("Casual leave", "first", false);
+        assertEquals("present", present(THURSDAY, morning, null, List.of()).status());
+        Result absentAfter = present(THURSDAY, morning, new DayCalculator.Mark("absent", "Not back after leave", "HR"), List.of());
+        assertEquals("half_day", absentAfter.status());
+        assertEquals(0.5, absentAfter.leaveDays());
+        // whole-day leave, holidays and weekly offs come first, as at any location
+        assertEquals("on_leave", present(THURSDAY, new Leave("Casual leave", null, false), null, List.of()).status());
+        assertEquals("weekly_off", present(THURSDAY.plusDays(3), null, null, List.of()).status());
+    }
+
+    @Test
+    void punchesAtAPresentByDefaultLocationAreKeptButDoNotDecide() {
+        Result r = present(THURSDAY, null, null, punches(THURSDAY, GENERAL, "11:00 in", "12:00 out"));
+        assertEquals("present", r.status());
+        assertEquals(60, r.workedMinutes());
+        assertEquals(0, r.lateMinutes());
+    }
+
+    @Test
+    void devicePunchesGoInAndOutByTheirOrder() {
+        // The device sent every punch as an "in": nobody pressed its keys.
+        List<Punch> raw = List.of(new Punch(at(THURSDAY, "09:31"), "in", "device"), new Punch(at(THURSDAY, "13:00"), "in", "device"),
+                new Punch(at(THURSDAY, "13:45"), "in", "device"), new Punch(at(THURSDAY, "18:40"), "in", "device"));
+        Result r = DayCalculator.calculate(new Input(THURSDAY, GENERAL, null, null, raw));
+        assertEquals("present", r.status());
+        assertEquals(3 * 60 + 29 + 4 * 60 + 55, r.workedMinutes());
+        assertFalse(r.incomplete());
+        assertTrue(r.trail().contains("Device punches taken as in and out by their order"));
+        // HR's manual punch keeps its direction; the device carries on from it
+        List<Punch> mixed = List.of(new Punch(at(THURSDAY, "09:30"), "in", "manual"), new Punch(at(THURSDAY, "18:30"), "in", "device"));
+        assertEquals(540, DayCalculator.calculate(new Input(THURSDAY, GENERAL, null, null, mixed)).workedMinutes());
+    }
+
     // ── helpers ─────────────────────────────────────────────────────────
 
     private static Result day(LocalDate date, Schedule schedule, String... punches) {

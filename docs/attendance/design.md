@@ -4,6 +4,8 @@ Oct 3, 2026
 
 ## Status: built
 
+Since Oct 18, 2026 each work location also chooses how attendance is recorded: punching in the app (below), a biometric device that pushes punches, or present by default. See [modes.md](modes.md).
+
 All six build steps are implemented and pushed to `main` of sohamdatta/myapp (commit `3aeabe4`). 59 backend tests pass against PostgreSQL 16 (22 user module, 37 attendance), and the screens were exercised in a browser. The project has still not been built with Maven, and the office-network check has not been tried behind a real proxy.
 
 Where the build differs from this design:

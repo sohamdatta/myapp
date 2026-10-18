@@ -191,6 +191,11 @@ jobs:
           # Signing in as the Super Admin works end to end.
           curl -sf -X POST http://localhost/api/auth/login -H 'Content-Type: application/json' \
             -d '{"email":"admin@example.com","password":"ChangeMe-12345"}' | grep -q token
+          # Biometric devices reach the app, on the site and on the plain-HTTP device port;
+          # an unregistered serial number is turned away by the app itself.
+          curl -s 'http://localhost/iclock/cdata?SN=CI-UNKNOWN-1' | grep -q device.unknown
+          curl -s 'http://localhost:8081/iclock/cdata?SN=CI-UNKNOWN-1' | grep -q device.unknown
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8081/)" = 404
           # The app's roles have no way around row-level security.
           docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.ci.yml exec -T db \
             psql -U postgres -d hrms -Atc "select count(*) from pg_roles where rolname like 'app_%' and (rolbypassrls or rolsuper)" | grep -qx 0

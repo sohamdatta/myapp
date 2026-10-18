@@ -22,10 +22,34 @@
 		reverse_proxy app:8080
 	}
 
+	# Biometric devices (eSSL / ZKTeco cloud push) that can use HTTPS send punches here.
+	handle /iclock/* {
+		request_body {
+			max_size 2MB
+		}
+		reverse_proxy app:8080
+	}
+
 	# The frontend: built files, and index.html for anything else.
 	handle {
 		root * /srv
 		try_files {path} /index.html
 		file_server
+	}
+}
+
+# Many biometric devices cannot use HTTPS. They send punches over plain HTTP to this port
+# (8081 unless DEVICE_PORT says otherwise), which answers nothing but the device protocol.
+# A device names itself by its serial number, which HR registers; a location with office
+# network addresses takes punches only from those addresses.
+http://:{$DEVICE_PORT:8081} {
+	handle /iclock/* {
+		request_body {
+			max_size 2MB
+		}
+		reverse_proxy app:8080
+	}
+	handle {
+		respond 404
 	}
 }

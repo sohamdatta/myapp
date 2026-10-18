@@ -48,7 +48,9 @@ apart.
 4. Create it. Then, on the instance:
    - **Networking** → **Create static IP** and attach it, so the address never changes.
    - **Networking** → IPv4 firewall: add **HTTPS (443)**; HTTP (80) and SSH (22) are
-     there already. Restrict SSH to your own IP address.
+     there already. Restrict SSH to your own IP address. If a biometric device that
+     cannot use HTTPS will send punches, also add **Custom TCP 8081** (or the
+     `DEVICE_PORT` you set), restricted to the office's IP address if it has a fixed one.
    - **Snapshots** → turn on **automatic snapshots**.
 
 ## 3. The domain

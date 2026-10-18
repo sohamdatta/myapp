@@ -27,9 +27,11 @@ services:
       dockerfile: deploy/web.Dockerfile
     environment:
       DOMAIN: ${DOMAIN:?Set DOMAIN in deploy/.env}
+      DEVICE_PORT: ${DEVICE_PORT:-8081}
     ports:
       - "80:80"
       - "443:443"
+      - "${DEVICE_PORT:-8081}:${DEVICE_PORT:-8081}"   # biometric devices that cannot use HTTPS
     depends_on:
       app:
         condition: service_healthy

@@ -112,6 +112,8 @@ export function shiftDay(date, days) {
 /** What to call a day that is still going: working, not in yet, or null when its stored result stands. */
 export function liveStatus(day, isToday) {
   if (!isToday) return null
+  // A present-by-default day is settled already: present, or as someone marked it.
+  if ((day.trail || []).some((step) => step.startsWith('Present by default') || step.startsWith('Marked '))) return null
   // Punched in and not yet out, whatever kind of day it is.
   if (day.incomplete && day.firstIn && !['on_duty', 'work_from_home'].includes(day.status)) return 'working'
   if (['absent', 'half_day'].includes(day.status) && !day.firstIn) return 'not in yet'

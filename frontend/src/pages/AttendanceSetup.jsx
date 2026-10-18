@@ -1,6 +1,6 @@
-import { useState } from 'react'
+import { Fragment, useState } from 'react'
 import { attendance } from '../api.js'
-import { formatDate, formatDay, localToday, useAction, useLoad, whoName, numeric, wholeNumber } from '../hooks.js'
+import { formatDate, formatDay, localToday, useAction, useLoad, useNow, whoName, numeric, wholeNumber } from '../hooks.js'
 import { Badge, Empty, ErrorNote, Who } from '../ui.jsx'
 
 const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
@@ -10,6 +10,21 @@ const PUNCH_CHECKS = {
   ip: 'Office network only',
   location: 'Location only',
   none: 'No check',
+}
+
+const MODES = {
+  app: {
+    label: 'Punch in the app',
+    hint: 'People punch in and out on their phone or computer. The punch check for the location applies.',
+  },
+  device: {
+    label: 'Biometric device',
+    hint: 'A registered device at the door sends each punch by itself. The app takes punches only on work-from-home days.',
+  },
+  present: {
+    label: 'Present by default',
+    hint: 'Nobody punches. Every working day counts as present unless HR, or the manager, marks it absent or a half day.',
+  },
 }
 
 const number = (value, what) => numeric(value, what)
@@ -649,10 +664,66 @@ function HomeWorking({ canManage }) {
   )
 }
 
+/** How a location records attendance, from a date. Days before the date keep the mode they had. */
+function ModeForm({ location, earliest, onSaved, onCancel }) {
+  const [mode, setMode] = useState(location.mode === 'present' ? 'app' : location.mode === 'app' ? 'present' : 'app')
+  const [from, setFrom] = useState(earliest && earliest > localToday() ? earliest : localToday())
+  const { busy, error, run } = useAction()
+
+  async function submit(event) {
+    event.preventDefault()
+    const done = await run(() => attendance.setMode(location.id, { mode, effectiveFrom: from }))
+    if (done) onSaved()
+  }
+
+  return (
+    <form className="panel" onSubmit={submit} noValidate>
+      <h2>How {location.name} records attendance</h2>
+      <fieldset className="choice-list">
+        <legend className="sr-only">Attendance mode</legend>
+        {Object.entries(MODES).map(([key, m]) => (
+          <label key={key} className={mode === key ? 'choice choice-current' : 'choice'}>
+            <input type="radio" name="attendance-mode" value={key} checked={mode === key} onChange={() => setMode(key)} />
+            <span>
+              <span>
+                <strong>{m.label}</strong> {key === location.mode && <Badge>now</Badge>}
+              </span>
+              <span className="hint">{m.hint}</span>
+            </span>
+          </label>
+        ))}
+      </fieldset>
+      <div className="grid">
+        <div>
+          <label htmlFor="mode-from">Starting on</label>
+          <input id="mode-from" type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
+        </div>
+      </div>
+      <p className="hint">
+        Days before this date keep the mode they had. The date cannot fall in a month whose payroll is already approved
+        {earliest && earliest > localToday() ? `, so the earliest is ${formatDay(earliest)}` : ''}.
+      </p>
+      {mode === 'device' && location.devices === 0 && (
+        <p className="hint">Next, register the device under the Devices tab, so its punches are taken.</p>
+      )}
+      <ErrorNote>{error}</ErrorNote>
+      <div className="form-actions">
+        <button type="submit" className="secondary" disabled={busy}>
+          {busy ? 'Saving…' : 'Change how attendance is recorded'}
+        </button>
+        <button type="button" className="quiet" onClick={onCancel}>
+          Cancel
+        </button>
+      </div>
+    </form>
+  )
+}
+
 export function Setup({ canManage }) {
   const locations = useLoad(attendance.locations)
   const shifts = useLoad(attendance.shifts)
-  const [editing, setEditing] = useState(null) // { kind: 'location' | 'shift', item } or null
+  const settings = useLoad(attendance.settings)
+  const [editing, setEditing] = useState(null) // { kind: 'location' | 'shift' | 'mode', item } or null
 
   if (locations.loading || shifts.loading) return <p className="muted">Loading…</p>
   if (locations.error || shifts.error) return <ErrorNote>{locations.error || shifts.error}</ErrorNote>
@@ -687,6 +758,7 @@ export function Setup({ canManage }) {
             <thead>
               <tr>
                 <th>Location</th>
+                <th>Attendance</th>
                 <th>Punch check</th>
                 <th>Office network</th>
                 <th>Position</th>
@@ -703,14 +775,28 @@ export function Setup({ canManage }) {
                       {l.stateCode && ` · ${l.stateCode}`}
                     </div>
                   </td>
-                  <td>{PUNCH_CHECKS[l.punchCheck]}</td>
+                  <td>
+                    {MODES[l.mode].label}
+                    {l.mode === 'device' && <div className="hint">{l.devices === 1 ? '1 device' : `${l.devices} devices`}</div>}
+                    {l.nextMode && (
+                      <div className="hint">
+                        {MODES[l.nextMode].label} from {formatDay(l.nextModeFrom)}
+                      </div>
+                    )}
+                  </td>
+                  <td>{l.mode === 'app' ? PUNCH_CHECKS[l.punchCheck] : '—'}</td>
                   <td>{l.allowedIps.length ? l.allowedIps.join(', ') : '—'}</td>
                   <td>{l.latitude !== null ? `${l.latitude}, ${l.longitude} within ${l.radiusM} m` : '—'}</td>
                   <td className="actions">
                     {canManage && (
-                      <button type="button" className="quiet" onClick={() => setEditing({ kind: 'location', item: l })}>
-                        Change
-                      </button>
+                      <>
+                        <button type="button" className="quiet" onClick={() => setEditing({ kind: 'mode', item: l })}>
+                          Attendance mode
+                        </button>
+                        <button type="button" className="quiet" onClick={() => setEditing({ kind: 'location', item: l })}>
+                          Change
+                        </button>
+                      </>
                     )}
                   </td>
                 </tr>
@@ -721,6 +807,15 @@ export function Setup({ canManage }) {
       )}
       {canManage && editing?.kind === 'location' && (
         <LocationForm key={editing.item?.id || 'new'} location={editing.item} onSaved={saved} onCancel={() => setEditing(null)} />
+      )}
+      {canManage && editing?.kind === 'mode' && (
+        <ModeForm
+          key={editing.item.id}
+          location={editing.item}
+          earliest={settings.data?.modeFrom}
+          onSaved={saved}
+          onCancel={() => setEditing(null)}
+        />
       )}
       {canManage && !editing && locations.data.length === 0 && <LocationForm key="first-location" onSaved={saved} />}
 
@@ -802,6 +897,231 @@ function ColumnSelect({ id, label, columns, value, onChange, optional }) {
   )
 }
 
+const OUTCOMES = {
+  imported: 'Taken',
+  duplicate: 'Already here',
+  unknown_code: 'Nobody has this employee code',
+  in_the_future: 'In the future: check the device clock',
+  unreadable: 'Could not be read',
+}
+
+function DeviceLog({ device }) {
+  const log = useLoad(() => attendance.deviceLog(device.id))
+  if (log.loading) return <p className="muted">Loading…</p>
+  if (log.error) return <ErrorNote>{log.error}</ErrorNote>
+  if (log.data.length === 0) return <p className="hint">Nothing received yet.</p>
+  return (
+    <div className="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Received</th>
+            <th>User id</th>
+            <th>Punch</th>
+            <th>What happened</th>
+          </tr>
+        </thead>
+        <tbody>
+          {log.data.map((l, index) => (
+            <tr key={index}>
+              <td>{formatDate(l.receivedAt)}</td>
+              <td>{l.employeeCode || '—'}</td>
+              <td>{l.punchedAt ? formatDate(l.punchedAt) : <span className="hint">{l.line}</span>}</td>
+              <td>
+                {l.outcome === 'imported' ? <Badge tone="good">{OUTCOMES[l.outcome]}</Badge> : l.outcome === 'duplicate' ? OUTCOMES[l.outcome] : <Badge tone="warn">{OUTCOMES[l.outcome]}</Badge>}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+/** What needs looking at on a device: never heard from, silent, turned away, or sending codes nobody has. */
+function DeviceProblems({ device }) {
+  const now = useNow()
+  const notes = []
+  const day = 24 * 60 * 60 * 1000
+  if (!device.lastSeenAt) notes.push(<Badge key="never" tone="warn">not heard from yet</Badge>)
+  else if (now - new Date(device.lastSeenAt).getTime() > day) notes.push(<Badge key="silent" tone="warn">silent for over a day</Badge>)
+  if (device.lastRefusedAt && (!device.lastSeenAt || device.lastRefusedAt > device.lastSeenAt)) {
+    notes.push(
+      <div key="refused">
+        <Badge tone="warn">turned away</Badge> <span className="hint">{device.lastRefused}</span>
+      </div>,
+    )
+  }
+  if (device.unknownCodes.length > 0) {
+    notes.push(
+      <div key="codes" className="hint">
+        User ids nobody has: {device.unknownCodes.map((u) => `${u.code} (${u.lines})`).join(', ')}
+      </div>,
+    )
+  }
+  return notes.length ? notes : '—'
+}
+
+const NEW_DEVICE = { name: '', serialNumber: '', workLocationId: '' }
+
+/** Devices that push each punch as it happens (eSSL / ZKTeco cloud push, "ADMS"). */
+function PushDevices() {
+  const devices = useLoad(attendance.devices)
+  const locations = useLoad(attendance.locations)
+  const [form, setForm] = useState(NEW_DEVICE)
+  const [registered, setRegistered] = useState(null)
+  const [logFor, setLogFor] = useState(null)
+  const { busy, error, run } = useAction()
+  const toggle = useAction()
+  const host = window.location.hostname
+
+  async function register(event) {
+    event.preventDefault()
+    const done = await run(() => attendance.saveDevice(null, form))
+    if (done) {
+      setRegistered(form.name.trim())
+      setForm(NEW_DEVICE)
+      devices.reload()
+    }
+  }
+
+  async function switchOver(d) {
+    const done = await toggle.run(() => attendance.saveDevice(d.id, { name: d.name, workLocationId: d.workLocationId, active: !d.active }))
+    if (done) devices.reload()
+  }
+
+  const set = (field) => (e) => setForm({ ...form, [field]: e.target.value })
+  const active = (locations.data || []).filter((l) => l.active)
+
+  return (
+    <>
+      <h2>Devices that send punches</h2>
+      <p className="hint">
+        An eSSL or ZKTeco device with cloud push (ADMS) sends each punch here as it happens, so nobody uploads files. Punches are
+        matched to people by employee code.
+      </p>
+      {devices.loading && <p className="muted">Loading…</p>}
+      <ErrorNote>{devices.error || toggle.error}</ErrorNote>
+      {devices.data &&
+        (devices.data.length === 0 ? (
+          <Empty>No devices registered yet.</Empty>
+        ) : (
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Device</th>
+                  <th>Location</th>
+                  <th>Last heard from</th>
+                  <th>Punches, last day</th>
+                  <th>Needs a look</th>
+                  <th aria-label="Actions" />
+                </tr>
+              </thead>
+              <tbody>
+                {devices.data.map((d) => (
+                  <Fragment key={d.id}>
+                    <tr>
+                      <td>
+                        {d.name} {!d.active && <Badge>switched off</Badge>}
+                        <div className="hint">{d.serialNumber}</div>
+                      </td>
+                      <td>
+                        {d.location}
+                        {!d.networkLocked && <div className="hint">any network</div>}
+                      </td>
+                      <td>
+                        {d.lastSeenAt ? formatDate(d.lastSeenAt) : '—'}
+                        {d.lastIp && <div className="hint">from {d.lastIp}</div>}
+                      </td>
+                      <td>{d.importedLastDay}</td>
+                      <td>
+                        <DeviceProblems device={d} />
+                      </td>
+                      <td className="actions">
+                        <button type="button" className="quiet" aria-expanded={logFor === d.id} onClick={() => setLogFor(logFor === d.id ? null : d.id)}>
+                          {logFor === d.id ? 'Hide log' : 'Log'}
+                        </button>
+                        <button type="button" className="quiet" disabled={toggle.busy} onClick={() => switchOver(d)}>
+                          {d.active ? 'Switch off' : 'Switch on'}
+                        </button>
+                      </td>
+                    </tr>
+                    {logFor === d.id && (
+                      <tr className="detail-row">
+                        <td colSpan={6}>
+                          <DeviceLog device={d} />
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ))}
+      {registered && (
+        <p className="notice" role="status">
+          {registered} is registered. Set it up as below; its first call shows under Last heard from.
+        </p>
+      )}
+      <form className="panel" onSubmit={register} noValidate>
+        <h2>Register a device</h2>
+        <div className="grid">
+          <div>
+            <label htmlFor="dev-name">Name</label>
+            <input id="dev-name" value={form.name} placeholder="Main gate" onChange={set('name')} />
+          </div>
+          <div>
+            <label htmlFor="dev-serial">Serial number</label>
+            <input id="dev-serial" value={form.serialNumber} placeholder="CQZ7232060123" onChange={set('serialNumber')} />
+          </div>
+          <div>
+            <label htmlFor="dev-location">Work location</label>
+            <select id="dev-location" value={form.workLocationId} onChange={set('workLocationId')}>
+              <option value="">Choose…</option>
+              {active.map((l) => (
+                <option key={l.id} value={l.id}>
+                  {l.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+        <ErrorNote>{error}</ErrorNote>
+        <button type="submit" className="secondary" disabled={busy}>
+          {busy ? 'Registering…' : 'Register device'}
+        </button>
+        <details className="setup-steps">
+          <summary>How to connect a device</summary>
+          <ol>
+            <li>
+              Register it here with its serial number. The device shows it under <strong>System info</strong> (or{' '}
+              <strong>Device info</strong>); it is also on the label at the back.
+            </li>
+            <li>
+              On the device, open the cloud server settings: usually <strong>Comm.</strong> → <strong>Cloud Server Setting</strong>,
+              sometimes called <strong>ADMS</strong>. Turn on <strong>Enable domain name</strong> and set the server address to{' '}
+              <code>{host}</code>.
+            </li>
+            <li>
+              Set the port to <code>443</code> with HTTPS on, if the device offers HTTPS. Otherwise use port <code>8081</code> with
+              HTTPS off.
+            </li>
+            <li>
+              Make each person's user ID on the device the same as their employee code, under the People tab here.
+            </li>
+            <li>
+              Under Setup, set the location's attendance mode to <strong>Biometric device</strong>. If the location lists office
+              network addresses, the device is heard only from those.
+            </li>
+          </ol>
+        </details>
+      </form>
+    </>
+  )
+}
+
 export function DeviceImport({ canManage }) {
   const health = useLoad(attendance.importHealth)
   const [deviceLabel, setDeviceLabel] = useState('')
@@ -841,6 +1161,7 @@ export function DeviceImport({ canManage }) {
 
   return (
     <>
+      {canManage && <PushDevices />}
       {canManage && (
         <form className="panel" onSubmit={upload} noValidate>
           <h2>Upload a device file</h2>
@@ -934,7 +1255,7 @@ export function DeviceImport({ canManage }) {
       <ErrorNote>{health.error}</ErrorNote>
       {health.data && (
         <>
-          <h2>Devices</h2>
+          <h2>Device files</h2>
           {health.data.devices.length === 0 ? (
             <Empty>No device files have been uploaded yet.</Empty>
           ) : (

@@ -38,6 +38,8 @@ import com.example.loginapp.core.AttendanceSettingsService.SettingsInput;
 import com.example.loginapp.core.AttendanceSettingsService.ShiftInput;
 import com.example.loginapp.core.AuthService;
 import com.example.loginapp.core.Db;
+import com.example.loginapp.core.DeviceService;
+import com.example.loginapp.core.DeviceService.DeviceInput;
 import com.example.loginapp.core.InvitationService;
 import com.example.loginapp.core.Migrator;
 import com.example.loginapp.core.PlatformService;
@@ -72,6 +74,7 @@ class AttendanceTest {
     private static AttendanceService attendance;
     private static AttendanceSettingsService settings;
     private static AttendanceImportService imports;
+    private static DeviceService devices;
     private static SessionCtx superAdmin;
 
     @BeforeAll
@@ -106,6 +109,7 @@ class AttendanceTest {
         attendance = new AttendanceService(db, CLOCK);
         settings = new AttendanceSettingsService(db);
         imports = new AttendanceImportService(db, CLOCK);
+        devices = new DeviceService(db, CLOCK);
         platform.ensureFirstSuperAdmin("root@platform.test", PASSWORD);
         superAdmin = auth.resolve(auth.enterConsole(auth.resolve(auth.login("root@platform.test", PASSWORD))));
     }
@@ -709,6 +713,193 @@ class AttendanceTest {
         Map<String, Object> day = day(emp, MONDAY);
         assertEquals(480, number(day, "workedMinutes"));
         assertEquals("present", day.get("status"));
+    }
+
+    // ── present by default ──────────────────────────────────────────────
+
+    /** The first day a new mode may start: today, as the real calendar has it (the test week lies ahead). */
+    private static String modeStart() {
+        return LocalDate.now(IST).toString();
+    }
+
+    @Test
+    void presentByDefaultCountsWorkingDaysUntilSomeoneMarksAnException() {
+        Org org = newOrg();
+        SessionCtx emp = join(org, "emp", List.of("employee"));
+        UUID branch = location(org, "Branch", "none");
+        assign(org, emp, branch, shift(org, "General", "09:30", "18:30"));
+        settings.setMode(org.admin, branch, "present", modeStart());
+
+        now(MONDAY.plusDays(1), "10:00");
+        assertEquals("present", attendance.today(emp).get("mode"));
+        assertError(409, "attendance.present_by_default", () -> attendance.punch(emp, null, null, null, "10.0.0.1"));
+        Map<String, Object> monday = day(emp, MONDAY);
+        assertEquals("present", monday.get("status"));
+        assertTrue(((List<?>) monday.get("trail")).contains("Present by default; no exception marked"));
+
+        attendance.mark(org.admin, emp.membershipId(), MONDAY.toString(), "absent", "Did not come in, no call");
+        Map<String, Object> absent = day(emp, MONDAY);
+        assertEquals("absent", absent.get("status"));
+        assertTrue(((List<?>) absent.get("trail")).stream().anyMatch(t -> t.toString().startsWith("Marked absent by ")));
+        assertError(409, "attendance.already_marked",
+                () -> attendance.mark(org.admin, emp.membershipId(), MONDAY.toString(), "absent", "Did not come in"));
+        attendance.mark(org.admin, emp.membershipId(), MONDAY.toString(), "half_day", "Came in after lunch");
+        assertEquals("half_day", day(emp, MONDAY).get("status"));
+        attendance.mark(org.admin, emp.membershipId(), MONDAY.toString(), "present", "Was at a client all day");
+        assertEquals("present", day(emp, MONDAY).get("status"));
+        assertError(409, "attendance.nothing_to_undo",
+                () -> attendance.mark(org.admin, emp.membershipId(), MONDAY.toString(), "present", "Already present"));
+
+        // the board says how each person is counted, and what is marked
+        attendance.mark(org.admin, emp.membershipId(), MONDAY.toString(), "absent", "Did not come in after all");
+        Map<String, Object> row = attendance.board(org.admin, MONDAY.toString()).stream()
+                .filter(r -> r.get("membershipId").equals(emp.membershipId().toString())).findFirst().orElseThrow();
+        assertEquals("present", row.get("mode"));
+        assertEquals("absent", row.get("mark"));
+        assertEquals("absent", row.get("status"));
+        assertTrue(actions(org).containsAll(List.of("attendance.mode_changed", "attendance.marked")));
+    }
+
+    @Test
+    void marksHaveRules() {
+        Org org = newOrg();
+        SessionCtx emp = join(org, "emp", List.of("employee"));
+        SessionCtx other = join(org, "other", List.of("employee"));
+        UUID branch = location(org, "Branch", "none");
+        UUID shift = shift(org, "General", "09:30", "18:30");
+        assign(org, emp, branch, shift);
+        UUID office = location(org, "Office", "none");
+        assign(org, other, office, shift);
+        settings.setMode(org.admin, branch, "present", modeStart());
+        now(MONDAY.plusDays(7), "10:00");
+
+        String reason = "Did not come in";
+        assertError(400, "request.invalid", () -> attendance.mark(org.admin, emp.membershipId(), MONDAY.toString(), "late", reason));
+        assertError(400, "request.invalid", () -> attendance.mark(org.admin, emp.membershipId(), MONDAY.toString(), "absent", "no"));
+        assertError(400, "request.invalid",
+                () -> attendance.mark(org.admin, emp.membershipId(), MONDAY.plusDays(8).toString(), "absent", reason));
+        assertError(409, "attendance.day_off", () -> attendance.mark(org.admin, emp.membershipId(), SUNDAY.toString(), "absent", reason));
+        assertError(409, "attendance.not_present_by_default",
+                () -> attendance.mark(org.admin, other.membershipId(), MONDAY.toString(), "absent", reason));
+        assertError(403, "permission.denied", () -> attendance.mark(emp, other.membershipId(), MONDAY.toString(), "absent", reason));
+        assertError(409, "attendance.own_mark",
+                () -> attendance.mark(org.admin, org.admin.membershipId(), MONDAY.toString(), "absent", reason));
+        assertError(404, "not_found", () -> attendance.mark(org.admin, UUID.randomUUID(), MONDAY.toString(), "absent", reason));
+    }
+
+    @Test
+    void aModeChangeHasADateAndCannotReachIntoTheClosedPast() {
+        Org org = newOrg();
+        UUID branch = location(org, "Branch", "none");
+        assertError(400, "request.invalid", () -> settings.setMode(org.admin, branch, "magic", modeStart()));
+        assertError(400, "request.invalid", () -> settings.setMode(org.admin, branch, "present", "soon"));
+        assertError(409, "attendance.mode_date",
+                () -> settings.setMode(org.admin, branch, "present", LocalDate.now(IST).minusMonths(2).toString()));
+        assertError(409, "attendance.mode_unchanged", () -> settings.setMode(org.admin, branch, "app", modeStart()));
+        settings.setMode(org.admin, branch, "device", LocalDate.now(IST).plusDays(10).toString());
+        Map<String, Object> loc = settings.locations(org.admin).stream().filter(l -> l.get("id").equals(branch.toString())).findFirst().orElseThrow();
+        assertEquals("app", loc.get("mode"));
+        assertEquals("device", loc.get("nextMode"));
+        assertEquals(LocalDate.now(IST).plusDays(10).toString(), loc.get("nextModeFrom"));
+        SessionCtx emp = join(org, "emp", List.of("employee"));
+        assertError(403, "permission.denied", () -> settings.setMode(emp, branch, "present", modeStart()));
+    }
+
+    // ── biometric devices ───────────────────────────────────────────────
+
+    @Test
+    void aRegisteredDevicePushesPunchesFromTheOfficeNetwork() {
+        Org org = newOrg();
+        SessionCtx emp = join(org, "emp", List.of("employee"));
+        UUID gate = UUID.fromString((String) settings.saveLocation(org.admin, null, new LocationInput("Gate office", "Asia/Kolkata", "KA",
+                null, null, null, List.of("203.0.113.0/24"), "ip", true)).get("id"));
+        assign(org, emp, gate, shift(org, "General", "09:30", "18:30"));
+        settings.setEmployeeCode(org.admin, emp.membershipId(), "E17");
+        settings.setMode(org.admin, gate, "device", modeStart());
+        String serial = "zk-" + org.slug();
+        devices.save(org.admin, null, new DeviceInput("Main gate", serial, gate.toString(), true));
+        String sn = serial.toUpperCase();
+
+        // nobody else can claim the same machine
+        Org rival = newOrg();
+        UUID rivalSite = location(rival, "Site", "none");
+        assertError(409, "device.serial_taken",
+                () -> devices.save(rival.admin, null, new DeviceInput("Copy", serial, rivalSite.toString(), true)));
+
+        now(MONDAY, "09:40");
+        assertError(409, "attendance.device_location", () -> attendance.punch(emp, null, null, null, "203.0.113.9"));
+
+        // calls from outside the office network are turned away, and HR can see why
+        assertError(403, "device.outside_network", () -> devices.handshake(sn, "198.51.100.9"));
+        Map<String, Object> listed = devices.devices(org.admin).get(0);
+        assertTrue(((String) listed.get("lastRefused")).contains("198.51.100.9"));
+
+        String options = devices.handshake(sn, "203.0.113.5");
+        assertTrue(options.startsWith("GET OPTION FROM: " + sn));
+        assertTrue(options.contains("ATTLOGStamp=None"));
+        assertEquals("OK", devices.commands(sn, "203.0.113.5"));
+
+        now(MONDAY, "18:45");
+        String body = "E17\t" + iso(MONDAY, "09:31:00") + "\t0\t1\t0\t0\t0\n"
+                + "E17\t" + iso(MONDAY, "18:35:00") + "\t0\t1\t0\t0\t0\n"
+                + "E99\t" + iso(MONDAY, "10:00:00") + "\t0\t1\n"
+                + "rubbish\n"
+                + "E17\t" + iso(MONDAY, "23:30:00") + "\t0\t1\n";
+        assertEquals("OK: 5", devices.receive(sn, "ATTLOG", "1001", body, "203.0.113.5"));
+        Map<String, Object> monday = day(emp, MONDAY);
+        assertEquals("present", monday.get("status"));
+        assertEquals(544, number(monday, "workedMinutes"));
+        assertEquals(List.of("in", "out"), db.inTenant(org.id(), c -> Sql.query(c,
+                "select direction from app.punch where membership_id = ? and source = 'device' order by at", emp.membershipId()))
+                .stream().map(p -> p.get("direction")).toList());
+
+        // the same lines again add nothing; the device picks up where it left off
+        assertEquals("OK: 5", devices.receive(sn, "ATTLOG", "1001", body, "203.0.113.5"));
+        assertTrue(devices.handshake(sn, "203.0.113.5").contains("ATTLOGStamp=1001"));
+        List<String> outcomes = devices.log(org.admin, UUID.fromString((String) listed.get("id"))).stream()
+                .map(l -> (String) l.get("outcome")).toList();
+        assertEquals(2, outcomes.stream().filter("imported"::equals).count());
+        assertEquals(2, outcomes.stream().filter("duplicate"::equals).count());
+        assertEquals(2, outcomes.stream().filter("unknown_code"::equals).count());
+        assertEquals(2, outcomes.stream().filter("unreadable"::equals).count());
+        assertEquals(2, outcomes.stream().filter("in_the_future"::equals).count());
+        assertEquals("E99", ((List<Map<String, Object>>) devices.devices(org.admin).get(0).get("unknownCodes")).get(0).get("code"));
+
+        // other tables are acknowledged and dropped
+        assertEquals("OK: 0", devices.receive(sn, "OPERLOG", null, "OPLOG 4\t0\t2026-01-01 10:00:00", "203.0.113.5"));
+        assertError(404, "device.unknown", () -> devices.handshake("NOT-A-DEVICE", "203.0.113.5"));
+        assertError(400, "device.serial", () -> devices.handshake("x", "203.0.113.5"));
+        assertError(400, "device.serial", () -> devices.handshake(null, "203.0.113.5"));
+
+        // switched off, it is a stranger again
+        devices.save(org.admin, UUID.fromString((String) listed.get("id")), new DeviceInput("Main gate", null, gate.toString(), false));
+        assertError(404, "device.unknown", () -> devices.handshake(sn, "203.0.113.5"));
+        assertTrue(actions(org).containsAll(List.of("attendance.device_registered", "attendance.device_changed")));
+        assertError(403, "permission.denied", () -> devices.devices(emp));
+    }
+
+    @Test
+    void aDeviceAtALocationWithNoNetworkSetTakesCallsFromAnywhere() {
+        Org org = newOrg();
+        UUID site = location(org, "Site", "none");
+        String serial = "ESSL" + org.slug().replace("-", "");
+        devices.save(org.admin, null, new DeviceInput("Site door", serial, site.toString(), true));
+        assertTrue(devices.handshake(serial.toLowerCase(), "198.51.100.20").contains("GET OPTION FROM: " + serial.toUpperCase()));
+        assertError(400, "request.invalid", () -> devices.save(org.admin, null, new DeviceInput("Bad", "a b", site.toString(), true)));
+        assertError(400, "request.invalid", () -> devices.save(org.admin, null, new DeviceInput("", "GOODSERIAL1", site.toString(), true)));
+        assertError(400, "request.invalid", () -> devices.save(org.admin, null, new DeviceInput("No place", "GOODSERIAL2", null, true)));
+        assertError(404, "not_found",
+                () -> devices.save(org.admin, null, new DeviceInput("Nowhere", "GOODSERIAL3", UUID.randomUUID().toString(), true)));
+    }
+
+    @Test
+    void deviceLinesAreReadLeniently() {
+        List<DeviceService.Line> lines = DeviceService.parse("17\t2026-10-05 09:31:00\t0\t1\r\n\n  18 2026-10-05 09:40:12 1 1\nnot a punch\n");
+        assertEquals(3, lines.size());
+        assertEquals("17", lines.get(0).code());
+        assertEquals("2026-10-05T09:31", lines.get(0).at().toString());
+        assertEquals("18", lines.get(1).code());
+        assertNull(lines.get(2).at());
     }
 
     // ── helpers ─────────────────────────────────────────────────────────

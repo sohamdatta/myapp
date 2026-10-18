@@ -41,7 +41,68 @@ public final class AttendanceSettingsService {
                 "select id, name, timezone, state_code, latitude, longitude, radius_m, "
                         + "array(select host(ip) || case when masklen(ip) < 32 and family(ip) = 4 or masklen(ip) < 128 and family(ip) = 6 "
                         + "      then '/' || masklen(ip) else '' end from unnest(allowed_ips) ip) as allowed_ips, "
-                        + "punch_check, active from app.work_location order by lower(name)"));
+                        + "punch_check, active, "
+                        + MODE_ON.formatted("(now() at time zone 'Asia/Kolkata')::date") + " as mode, "
+                        + NEXT.formatted("lm.mode") + " as next_mode, " + NEXT.formatted("lm.effective_from") + " as next_mode_from, "
+                        + "(select count(*) from app.attendance_device dv where dv.work_location_id = work_location.id and dv.active) as devices "
+                        + "from app.work_location order by lower(name)"));
+    }
+
+    static final List<String> MODES = List.of("app", "device", "present");
+
+    /** The next mode change after today, if one is set ahead. */
+    private static final String NEXT = "(select %s from app.location_mode lm where lm.work_location_id = work_location.id "
+            + "and lm.effective_from > (now() at time zone 'Asia/Kolkata')::date order by lm.effective_from, lm.created_at desc limit 1)";
+
+    /** The location's mode on a date (an SQL expression), 'app' when none was ever set. */
+    private static final String MODE_ON = "coalesce((select lm.mode from app.location_mode lm where lm.work_location_id = work_location.id "
+            + "and lm.effective_from <= %s order by lm.effective_from desc, lm.created_at desc limit 1), 'app')";
+
+    /**
+     * Changes how a location records attendance, from a date. Days already counted in approved
+     * pay keep their mode, so the date is no earlier than the first month payroll has not approved.
+     */
+    public Map<String, Object> setMode(SessionCtx ctx, UUID locationId, String mode, String from) {
+        ctx.require("attendance.manage");
+        if (mode == null || !MODES.contains(mode)) {
+            throw ApiException.badRequest("The mode must be app, device or present");
+        }
+        if (from == null || from.isBlank()) {
+            throw ApiException.badRequest("Give the date the new mode starts");
+        }
+        LocalDate start;
+        try {
+            start = LocalDate.parse(from.trim());
+        } catch (java.time.format.DateTimeParseException e) {
+            throw ApiException.badRequest("The start date must be yyyy-mm-dd");
+        }
+        LocalDate today = LocalDate.now(ZoneId.of("Asia/Kolkata"));
+        if (start.isAfter(today.plusYears(1))) {
+            throw ApiException.badRequest("The start date must be within the next year");
+        }
+        return db.inTenant(ctx.tenantId(), c -> {
+            Map<String, Object> loc = Sql.one(c, "select name, " + MODE_ON.formatted("?") + " as mode from app.work_location where id = ?",
+                    start, locationId);
+            if (loc == null) {
+                throw ApiException.notFound("The work location");
+            }
+            LocalDate earliest = PayrollConfig.openFrom(c, today);
+            if (start.isBefore(earliest)) {
+                throw new ApiException(409, "attendance.mode_date", "A new mode can start on " + earliest
+                        + " at the earliest; earlier days may already be counted in pay");
+            }
+            if (mode.equals(loc.get("mode"))) {
+                throw new ApiException(409, "attendance.mode_unchanged", loc.get("name") + " already uses that mode on " + start);
+            }
+            Map<String, Object> row = Sql.one(c, "insert into app.location_mode (tenant_id, work_location_id, mode, effective_from, created_by) "
+                    + "values (?, ?, ?, ?, ?) returning id", ctx.tenantId(), locationId, mode, start, ctx.membershipId());
+            // results from the start date on are worked out again under the new mode
+            Sql.update(c, "delete from app.attendance_day d where d.work_date >= ? and exists (select 1 from app.attendance_assignment a "
+                    + "where a.membership_id = d.membership_id and a.work_location_id = ?)", start, locationId);
+            UserService.audit(c, ctx, "attendance.mode_changed", "work_location", locationId,
+                    Map.of("name", loc.get("name"), "mode", mode, "from", start.toString()));
+            return Map.of("id", AuthService.uuid(row.get("id")).toString());
+        });
     }
 
     /** Creates a work location (id null) or changes one. */
@@ -322,7 +383,12 @@ public final class AttendanceSettingsService {
         if (ctx.scopeOf("attendance.read") == null && ctx.scopeOf("leave.read") == null) {
             throw ApiException.denied("attendance.read");
         }
-        return db.inTenant(ctx.tenantId(), c -> view(AttendanceService.settings(c)));
+        return db.inTenant(ctx.tenantId(), c -> {
+            Map<String, Object> out = new LinkedHashMap<>(view(AttendanceService.settings(c)));
+            // the earliest date a location's attendance mode can change from
+            out.put("modeFrom", PayrollConfig.openFrom(c, LocalDate.now(ZoneId.of("Asia/Kolkata"))).toString());
+            return out;
+        });
     }
 
     public Map<String, Object> saveSettings(SessionCtx ctx, SettingsInput in) {

@@ -232,7 +232,7 @@ test.describe.serial('negative: attendance, leave and work from home', () => {
   });
 
   test('a device file refuses no device name, an empty file and a bad date format', async () => {
-    await tab(owner, 'Device import');
+    await tab(owner, 'Devices');
     await owner.setInputFiles('#imp-file', { name: 'empty.csv', mimeType: 'text/csv', buffer: Buffer.from('') });
     await expect(errorOn(owner)).toContainText(/empty|no rows/i);
     await owner.setInputFiles('#imp-file', { name: 'punches.csv', mimeType: 'text/csv', buffer: Buffer.from('code,when\nE001,yesterday\nNOPE,2026-10-01 09:00\n') });
