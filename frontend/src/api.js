@@ -483,6 +483,39 @@ export const performance = {
 
   probationSettings: () => get('/org/performance/setup/probation'),
   saveProbationSettings: (body) => put('/org/performance/setup/probation', body),
+
+  team: () => get('/org/performance/team'),
+
+  goals: (employmentId, period) => get(`/org/performance/goals${query({ employmentId, period })}`),
+  addGoal: (body) => post('/org/performance/goals', body),
+  changeGoal: (id, body) => put(`/org/performance/goals/${id}`, body),
+  removeGoal: (id) => del(`/org/performance/goals/${id}`),
+  dropGoal: (id, reason) => post(`/org/performance/goals/${id}/drop`, { reason }),
+  goalCheckin: (id, body) => post(`/org/performance/goals/${id}/checkins`, body),
+  submitGoals: (periodStart) => post('/org/me/performance/goals/submit', { periodStart }),
+  agreeGoals: (employmentId, periodStart) => post('/org/performance/goals/agree', { employmentId, periodStart }),
+  returnGoals: (employmentId, periodStart, note) => post('/org/performance/goals/return', { employmentId, periodStart, note }),
+  departmentGoals: (period) => get(`/org/performance/department-goals${query({ period })}`),
+
+  oneToOnes: (withId) => get(`/org/performance/one-to-ones${query({ with: withId })}`),
+  addOneToOne: (body) => post('/org/performance/one-to-ones', body),
+  changeOneToOne: (id, body) => put(`/org/performance/one-to-ones/${id}`, body),
+  addItem: (id, body) => post(`/org/performance/one-to-ones/${id}/items`, body),
+  markItem: (id, done) => put(`/org/performance/one-to-one-items/${id}`, { done }),
+
+  feedbackAbout: (employmentId) => get(`/org/performance/feedback${query({ employmentId })}`),
+  giveFeedback: (body) => post('/org/performance/feedback', body),
+  editFeedback: (id, text) => put(`/org/performance/feedback/${id}`, { text }),
+  withdrawFeedback: (id) => post(`/org/performance/feedback/${id}/withdraw`),
+  givenFeedback: () => get('/org/me/performance/feedback/given'),
+  colleagues: () => get('/org/performance/colleagues'),
+
+  setup: () => get('/org/performance/setup'),
+  saveGeneral: (body) => put('/org/performance/setup/general', body),
+  saveScale: (levels) => put('/org/performance/setup/scale', { levels }),
+  saveCompetency: (id, body) => (id ? put(`/org/performance/setup/competencies/${id}`, body) : post('/org/performance/setup/competencies', body)),
+  saveCompetencySet: (id, body) =>
+    id ? put(`/org/performance/setup/competency-sets/${id}`, body) : post('/org/performance/setup/competency-sets', body),
 }
 
 export const notifications = {

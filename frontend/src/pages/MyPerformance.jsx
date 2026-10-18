@@ -1,20 +1,79 @@
 import { useState } from 'react'
 import { downloadDocument as download, performance } from '../api.js'
 import { formatDate, formatDay, useAction, useLoad } from '../hooks.js'
-import { Badge, ErrorNote } from '../ui.jsx'
+import { Badge, Empty, ErrorNote, Tabs } from '../ui.jsx'
+import { FeedbackList, GiveFeedback } from './FeedbackPanel.jsx'
+import GoalsPanel from './GoalsPanel.jsx'
+import OneToOnePanel from './OneToOnePanel.jsx'
 import { DECIDED, RATINGS } from './performanceText.js'
 
-/** My performance: the employee's own probation, with their manager's check-ins to read and answer, and its letters. */
+/**
+ * My performance: the employee's goals, their probation (check-ins to read and answer, and its
+ * letters), their one-to-ones, and feedback received and given.
+ */
 export default function MyPerformance() {
   const mine = useLoad(performance.mine)
+  const [tab, setTab] = useState(null)
   if (mine.loading) return <p className="muted">Loading…</p>
   if (mine.error) return <ErrorNote>{mine.error}</ErrorNote>
   const m = mine.data
-  const nothing = !m.probation
+  const tabs = [
+    m.probation && { id: 'probation', label: m.probation.onProbation ? 'Probation' : 'Probation' },
+    m.goals && { id: 'goals', label: 'Goals' },
+    m.oneToOnes?.length > 0 && { id: 'one-to-ones', label: 'One-to-ones' },
+    { id: 'feedback', label: 'Feedback' },
+  ].filter(Boolean)
+  const current = tab || (m.probation?.onProbation ? 'probation' : m.goals ? 'goals' : tabs[0].id)
   return (
     <div className="my-performance">
-      {m.probation && <MyProbation probation={m.probation} onChanged={mine.reload} />}
-      {nothing && <p className="muted">There is nothing about your performance to show yet.</p>}
+      <Tabs tabs={tabs} current={current} onChange={setTab} />
+      {current === 'probation' && m.probation && <MyProbation probation={m.probation} onChanged={mine.reload} />}
+      {current === 'goals' && m.goals && <GoalsPanel employmentId={m.goals.employee.id} />}
+      {current === 'one-to-ones' && <MyOneToOnes people={m.oneToOnes} />}
+      {current === 'feedback' && <MyFeedback received={m.feedback} onChanged={mine.reload} />}
+    </div>
+  )
+}
+
+function MyOneToOnes({ people }) {
+  const [withId, setWithId] = useState(people[0].id)
+  return (
+    <>
+      {people.length > 1 && (
+        <div className="filters">
+          {people.map((p) => (
+            <button key={p.id} type="button" className={withId === p.id ? 'chip chip-current' : 'chip'} onClick={() => setWithId(p.id)}>
+              {p.name}
+              {p.relation === 'manager' ? ' (your manager)' : ''}
+            </button>
+          ))}
+        </div>
+      )}
+      <OneToOnePanel key={withId} withId={withId} />
+    </>
+  )
+}
+
+function MyFeedback({ received, onChanged }) {
+  const given = useLoad(performance.givenFeedback)
+  return (
+    <div className="panels">
+      <section className="panel" data-testid="feedback-received">
+        <h3>Feedback for you</h3>
+        <FeedbackList items={received} empty="Nobody has given you feedback yet." />
+      </section>
+      <div>
+        <GiveFeedback
+          onGiven={() => {
+            given.reload()
+            onChanged()
+          }}
+        />
+        <section className="panel">
+          <h3>Feedback you gave</h3>
+          {given.data ? <FeedbackList items={given.data} onChanged={given.reload} showReceiver empty="You have not given any feedback yet." /> : <Empty>Loading…</Empty>}
+        </section>
+      </div>
     </div>
   )
 }

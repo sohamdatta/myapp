@@ -2790,3 +2790,81 @@ textarea.code {
 .pre {
   white-space: pre-wrap;
 }
+
+.goal {
+  padding: 12px 0;
+  border-top: 1px solid var(--border);
+}
+
+.goal-dropped {
+  opacity: 0.6;
+}
+
+.goal-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.goal-weight {
+  margin-left: auto;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.goal-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 6px;
+}
+
+.goal-form,
+.meeting {
+  margin: 12px 0;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.progress {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 6px 0;
+}
+
+.progress-track {
+  flex: 0 0 160px;
+  height: 8px;
+  background: var(--border);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  background: var(--accent);
+}
+
+.warn-text {
+  color: var(--warn, #9a6700);
+}
+
+.feedback-list,
+.checklist {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.feedback {
+  padding: 10px 0;
+  border-top: 1px solid var(--border);
+}
+
+.feedback:first-child,
+.goal:first-of-type {
+  border-top: 0;
+}

@@ -2,6 +2,7 @@ package com.example.loginapp.core;
 
 import java.sql.Connection;
 import java.sql.SQLException;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -62,15 +63,39 @@ final class PerformanceDefaults {
 
             For {{organization.name}}""";
 
-    /** Writes the defaults unless the Organization has them. */
+    /** The default rating scale: [value, label, description]. */
+    static final String[][] SCALE = {
+            {"5", "Outstanding", "Far beyond what the role asks, and a model for others"},
+            {"4", "Exceeds expectations", "Regularly goes beyond what the role asks"},
+            {"3", "Meets expectations", "Does what the role asks, well and reliably"},
+            {"2", "Partly meets expectations", "Meets some of what the role asks; needs to improve in places"},
+            {"1", "Does not meet expectations", "Falls short of what the role asks"},
+    };
+
+    private static final String[][] GOAL_MESSAGES = {
+            {"goals_submitted", "Goals to agree", "{{employee.name}} has sent their goals for {{goals.period}} for you to agree."},
+            {"goals_agreed", "Your goals are agreed", "Hello {{person.first_name}}, your goals for {{goals.period}} are agreed."},
+            {"goals_returned", "Your goals need a change",
+                    "Hello {{person.first_name}}, your manager returned your goals for {{goals.period}}: {{note}}"},
+            {"goal_changed", "A goal changed", "{{employee.name}} changed a goal, \"{{goal.title}}\", and sent it for you to agree again."},
+            {"one_to_one_nudge", "Time for a one-to-one", "You have not had a one-to-one with {{employee.name}} for a while."},
+            {"feedback_received", "New feedback", "Hello {{person.first_name}}, {{giver.name}} gave you feedback. It is in My performance."},
+    };
+
+    /** Writes the defaults unless the Organization has them, and adds what later stages need to an Organization that had the earlier ones. */
     static void ensure(Connection c, UUID tenantId) throws SQLException {
-        if (Sql.one(c, "select 1 from app.perf_settings where tenant_id = ?", tenantId) != null) {
+        Map<String, Object> s = Sql.one(c, "select rating_scale_id from app.perf_settings where tenant_id = ?", tenantId);
+        if (s != null) {
+            if (s.get("ratingScaleId") == null) {
+                stageTwo(c, tenantId);
+            }
             return;
         }
         // Read by another request at the same moment: the second insert finds the row and stops here.
         if (Sql.update(c, "insert into app.perf_settings (tenant_id) values (?) on conflict do nothing", tenantId) == 0) {
             return;
         }
+        stageTwo(c, tenantId);
         for (String[] m : MESSAGES) {
             Sql.update(c, "insert into app.message_template (tenant_id, event, subject, body) values (?, ?, ?, ?) "
                     + "on conflict (tenant_id, event, channel) do nothing", tenantId, m[0], m[1], m[2]);
@@ -82,5 +107,23 @@ final class PerformanceDefaults {
         }
         Sql.update(c, "insert into app.letter_template (tenant_id, kind, name, body, response) values (?, 'probation_extension', "
                 + "'Probation extension letter', ?, 'none')", tenantId, EXTENSION);
+    }
+
+    /** The rating scale and the goal, one-to-one and feedback messages. The scale is the marker. */
+    private static void stageTwo(Connection c, UUID tenantId) throws SQLException {
+        if (Sql.one(c, "select 1 from app.perf_settings where tenant_id = ? and rating_scale_id is null for update", tenantId) == null) {
+            return;   // another request did it a moment ago
+        }
+        UUID scale = AuthService.uuid(Sql.one(c, "insert into app.rating_scale (tenant_id, version) values (?, 1) returning id", tenantId)
+                .get("id"));
+        for (String[] l : SCALE) {
+            Sql.update(c, "insert into app.rating_level (tenant_id, scale_id, value, label, description) values (?, ?, ?, ?, ?)",
+                    tenantId, scale, Short.parseShort(l[0]), l[1], l[2]);
+        }
+        Sql.update(c, "update app.perf_settings set rating_scale_id = ? where tenant_id = ?", scale, tenantId);
+        for (String[] m : GOAL_MESSAGES) {
+            Sql.update(c, "insert into app.message_template (tenant_id, event, subject, body) values (?, ?, ?, ?) "
+                    + "on conflict (tenant_id, event, channel) do nothing", tenantId, m[0], m[1], m[2]);
+        }
     }
 }

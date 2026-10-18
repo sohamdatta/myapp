@@ -85,6 +85,9 @@ public final class Templates {
         m.put("probation.checkin_due", "When the check-in is due");
         m.put("probation.recommendation", "The manager's recommendation, in words");
         m.put("probation.decision", "HR's decision, in words");
+        m.put("goals.period", "The goal period, as FY 2026-27");
+        m.put("goal.title", "The goal's title");
+        m.put("giver.name", "Who gave the feedback");
         MESSAGE = java.util.Collections.unmodifiableMap(m);
     }
 

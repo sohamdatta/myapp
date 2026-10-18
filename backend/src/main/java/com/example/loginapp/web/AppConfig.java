@@ -43,6 +43,11 @@ import com.example.loginapp.core.PayrollRuns;
 import com.example.loginapp.core.PlatformService;
 import com.example.loginapp.core.PolicyService;
 import com.example.loginapp.core.Probation;
+import com.example.loginapp.core.Goals;
+import com.example.loginapp.core.OneToOnes;
+import com.example.loginapp.core.Feedback;
+import com.example.loginapp.core.PerformanceSetup;
+import com.example.loginapp.core.PerformanceTeam;
 import com.example.loginapp.core.UserService;
 import com.zaxxer.hikari.HikariDataSource;
 
@@ -164,6 +169,31 @@ public class AppConfig {
     @Bean
     public Probation probation(Db db, Crypto crypto, ExitService exits) {
         return new Probation(db, crypto, exits);
+    }
+
+    @Bean
+    public Goals goals(Db db) {
+        return new Goals(db);
+    }
+
+    @Bean
+    public OneToOnes oneToOnes(Db db, Crypto crypto) {
+        return new OneToOnes(db, crypto);
+    }
+
+    @Bean
+    public Feedback feedback(Db db, Crypto crypto) {
+        return new Feedback(db, crypto);
+    }
+
+    @Bean
+    public PerformanceSetup performanceSetup(Db db) {
+        return new PerformanceSetup(db);
+    }
+
+    @Bean
+    public PerformanceTeam performanceTeam(Db db) {
+        return new PerformanceTeam(db);
     }
 
     @Bean

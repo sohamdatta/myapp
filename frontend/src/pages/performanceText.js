@@ -31,5 +31,22 @@ export const PROBATION_STAGES = {
   cancelled: ['neutral', 'Ended'],
 }
 
+/** Where a goal, or a person's set of goals, stands: [badge tone, words]. */
+export const GOAL_STATUS = {
+  none: ['neutral', 'No goals yet'],
+  draft: ['neutral', 'Draft'],
+  submitted: ['warn', 'Waiting to be agreed'],
+  agreed: ['good', 'Agreed'],
+  returned: ['warn', 'Returned'],
+  dropped: ['neutral', 'Dropped'],
+}
+
+/** How a goal is measured. */
+export const MEASURES = {
+  rating: 'Rated at the review',
+  number: 'A number to reach',
+  done: 'Done or not done',
+}
+
 /** "3 months", "1 month". */
 export const months = (n) => `${n} ${Number(n) === 1 ? 'month' : 'months'}`

@@ -43,6 +43,7 @@ test.describe.serial('performance', () => {
 
     priya = await signIn(browser, PRIYA);
     await nav(priya, 'Performance');
+    await tab(priya, 'Probation');
     const row = priya.locator('tr[data-probation="Ishita Menon"]');
     await expect(row).toContainText('0 of 3');
     await expect(row).toContainText('Recommendation due');
@@ -88,6 +89,7 @@ test.describe.serial('performance', () => {
   test('HR confirms, the letter is issued, and the employee sees it', async ({ browser }) => {
     hr = await signIn(browser, HR);
     await nav(hr, 'Performance');
+    await tab(hr, 'Probation');
     await hr.getByRole('button', { name: 'Ishita Menon' }).click();
     await expect(hr.locator('[data-checkin="30"]')).toContainText('sit with the data team');
     await hr.getByRole('button', { name: 'Decide' }).click();
@@ -100,6 +102,7 @@ test.describe.serial('performance', () => {
 
     await ishita.reload();
     await nav(ishita, 'My performance');
+    await tab(ishita, 'Probation');
     await expect(ishita.getByTestId('my-probation')).toContainText('Your employment is confirmed');
     await expect(ishita.locator('[data-letter="Confirmation letter"]')).toBeVisible();
   });
@@ -109,11 +112,118 @@ test.describe.serial('performance', () => {
     await tab(hr, 'Setup');
     await hr.fill('#perf-checkin-days', '45, 90');
     await hr.fill('#perf-recommend-days', '30');
-    await hr.getByRole('button', { name: 'Save' }).click();
+    await hr.getByTestId('save-probation').click();
     await expect(hr.getByText('Saved.')).toBeVisible();
     await shot(hr, 'perf-07-setup', true);
     const saved = (await api(hr, 'GET', '/org/performance/setup/probation')).body;
     expect(saved.checkinDays).toEqual([45, 90]);
     expect(saved.recommendDays).toBe(30);
+  });
+
+  // ── goals, one-to-ones and feedback ──────────────────────────────────
+
+  test('the employee writes weighted goals and sends them to her manager', async () => {
+    await nav(ishita, 'My performance');
+    await tab(ishita, 'Goals');
+    const goals = ishita.getByTestId('goals');
+    await expect(goals).toContainText('No goals yet');
+    await goals.getByRole('button', { name: 'Add a goal' }).click();
+    await ishita.fill('#goal-new-title', 'Publish the weekly sales dashboard every Monday');
+    await ishita.selectOption('#goal-new-weight', '60');
+    await ishita.selectOption('#goal-new-measure', 'done');
+    await goals.getByRole('button', { name: 'Add the goal' }).click();
+    await expect(goals.getByTestId('goal-weights')).toContainText('60 of 100');
+    await goals.getByRole('button', { name: 'Add a goal' }).click();
+    await ishita.fill('#goal-new-title', 'Automate 12 manual reports');
+    await ishita.selectOption('#goal-new-weight', '40');
+    await ishita.selectOption('#goal-new-measure', 'number');
+    await ishita.fill('#goal-new-target', '12');
+    await ishita.fill('#goal-new-unit', 'reports');
+    await goals.getByRole('button', { name: 'Add the goal' }).click();
+    await expect(goals.getByTestId('goal-weights')).toContainText('100 of 100');
+    await goals.getByRole('button', { name: 'Send to my manager' }).click();
+    await expect(goals).toContainText('Waiting to be agreed');
+    await expectNoSidewaysScroll(ishita);
+    await shot(ishita, 'perf-08-my-goals-phone', true);
+  });
+
+  test('the manager agrees the goals from the Team tab, and progress is recorded', async () => {
+    await nav(priya, 'Performance');
+    await tab(priya, 'Team');
+    await expect(priya.locator('tr[data-person="Ishita Menon"]')).toContainText('Waiting to be agreed');
+    await shot(priya, 'perf-09-team', true);
+    await priya.getByRole('button', { name: 'Ishita Menon' }).click();
+    const goals = priya.getByTestId('goals');
+    await goals.getByRole('button', { name: 'Agree the goals' }).click();
+    await expect(goals.locator('h3')).toContainText('Agreed');
+    await shot(priya, 'perf-10-goals-agreed', true);
+
+    await ishita.reload();
+    await nav(ishita, 'My performance');
+    await tab(ishita, 'Goals');
+    const reports = ishita.locator('[data-goal="Automate 12 manual reports"]');
+    await reports.getByRole('button', { name: 'Record progress' }).click();
+    await reports.getByLabel(/Reached so far/).fill('3');
+    await reports.getByRole('button', { name: 'Record' }).click();
+    await expect(reports).toContainText('25%');
+  });
+
+  test('a one-to-one: shared notes both read, private notes stay with their writer', async () => {
+    await tab(priya, 'One-to-ones');
+    const panel = priya.getByTestId('one-to-ones');
+    await panel.getByRole('button', { name: 'New one-to-one' }).click();
+    await panel.locator('textarea').first().fill('Agenda: the dashboard, and the reporting course');
+    await panel.locator('textarea').nth(1).fill('Ready for more ownership');
+    await panel.getByRole('button', { name: 'Save' }).click();
+    await panel.getByLabel('Add an action').fill('Book the reporting course');
+    await panel.getByLabel('Whose').selectOption('report');
+    await panel.getByRole('button', { name: 'Add', exact: true }).click();
+    await expect(panel).toContainText('Open actions');
+    await shot(priya, 'perf-11-one-to-one', true);
+
+    await ishita.reload();
+    await nav(ishita, 'My performance');
+    await tab(ishita, 'One-to-ones');
+    const mine = ishita.getByTestId('one-to-ones');
+    await expect(mine).toContainText('Agenda: the dashboard');
+    await expect(mine).not.toContainText('Ready for more ownership');
+    await mine.locator('.open-items').getByLabel(/Book the reporting course/).click();
+    await expect(mine.locator('.open-items')).toHaveCount(0);
+  });
+
+  test('praise reaches the person; private feedback reaches only the manager', async () => {
+    await nav(hr, 'Performance');
+    await tab(hr, 'Team');
+    await hr.getByRole('button', { name: 'Ishita Menon' }).click();
+    await tab(hr, 'Feedback');
+    const give = hr.getByTestId('give-feedback');
+    await give.locator('textarea').fill('The Monday dashboard has saved the sales team hours. Thank you.');
+    await give.getByRole('button', { name: 'Send' }).click();
+    await expect(give.getByText('Sent.')).toBeVisible();
+    await give.getByLabel(/^Private/).check();
+    await give.locator('textarea').fill('Could speak up more in the weekly review');
+    await give.getByRole('button', { name: 'Send' }).click();
+    await expect(hr.locator('.feedback-list')).toContainText('Could speak up more');
+
+    await ishita.reload();
+    await nav(ishita, 'My performance');
+    await tab(ishita, 'Feedback');
+    const received = ishita.getByTestId('feedback-received');
+    await expect(received).toContainText('saved the sales team hours');
+    await expect(received).not.toContainText('Could speak up more');
+    await shot(ishita, 'perf-12-feedback-phone', true);
+  });
+
+  test('HR keeps the rating scale and adds a competency', async () => {
+    await nav(hr, 'Performance');
+    await tab(hr, 'Setup');
+    await expect(hr.getByTestId('rating-scale')).toContainText('Meets expectations');
+    const competencies = hr.getByTestId('competencies');
+    await competencies.getByRole('button', { name: 'Add a competency' }).click();
+    await hr.fill('#comp-name', 'Ownership');
+    await hr.fill('#comp-description', 'Sees work through to the end, and says early when it will slip');
+    await competencies.getByRole('button', { name: 'Save' }).click();
+    await expect(competencies.locator('[data-competency="Ownership"]')).toBeVisible();
+    await shot(hr, 'perf-13-setup', true);
   });
 });

@@ -1,8 +1,10 @@
 package com.example.loginapp.web;
 
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -14,7 +16,13 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.example.loginapp.core.AuthService;
+import com.example.loginapp.core.Feedback;
+import com.example.loginapp.core.Goals;
+import com.example.loginapp.core.OneToOnes;
+import com.example.loginapp.core.PerformanceSetup;
+import com.example.loginapp.core.PerformanceTeam;
 import com.example.loginapp.core.Probation;
+import com.example.loginapp.core.SessionCtx;
 
 /** Performance: the employee's own (My performance), and their team's or everyone's for managers and HR. */
 @RestController
@@ -23,23 +31,55 @@ public class PerformanceController {
 
     private final AuthService auth;
     private final Probation probation;
+    private final Goals goals;
+    private final OneToOnes oneToOnes;
+    private final Feedback feedback;
+    private final PerformanceSetup setup;
+    private final PerformanceTeam team;
 
-    public PerformanceController(AuthService auth, Probation probation) {
+    public PerformanceController(AuthService auth, Probation probation, Goals goals, OneToOnes oneToOnes, Feedback feedback,
+                                 PerformanceSetup setup, PerformanceTeam team) {
         this.auth = auth;
         this.probation = probation;
+        this.goals = goals;
+        this.oneToOnes = oneToOnes;
+        this.feedback = feedback;
+        this.setup = setup;
+        this.team = team;
+    }
+
+    private SessionCtx session(String authorization) {
+        return Requests.session(auth, authorization);
     }
 
     // ── the employee's own ──────────────────────────────────────────────
 
+    /** Everything on My performance: probation, this period's goals, feedback received and one-to-ones. */
     @GetMapping("/me/performance")
     public Map<String, Object> mine(@RequestHeader(value = "Authorization", required = false) String authorization) {
-        return probation.mine(Requests.session(auth, authorization));
+        SessionCtx ctx = session(authorization);
+        Map<String, Object> out = new LinkedHashMap<>(probation.mine(ctx));
+        out.put("goals", goals.mine(ctx));
+        out.put("feedback", feedback.received(ctx));
+        out.put("oneToOnes", oneToOnes.people(ctx));
+        return out;
     }
 
     @PostMapping("/me/performance/probation/checkins/{id}/reply")
     public Map<String, Object> reply(@RequestHeader(value = "Authorization", required = false) String authorization,
                                      @PathVariable String id, @RequestBody Probation.ReplyInput request) {
-        return probation.reply(Requests.session(auth, authorization), Requests.id(id), request);
+        return probation.reply(session(authorization), Requests.id(id), request);
+    }
+
+    @PostMapping("/me/performance/goals/submit")
+    public Map<String, Object> submitGoals(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                           @RequestBody Goals.SetInput request) {
+        return goals.submit(session(authorization), request);
+    }
+
+    @GetMapping("/me/performance/feedback/given")
+    public List<Map<String, Object>> given(@RequestHeader(value = "Authorization", required = false) String authorization) {
+        return feedback.given(session(authorization));
     }
 
     // ── probation ───────────────────────────────────────────────────────
@@ -47,43 +87,216 @@ public class PerformanceController {
     @GetMapping("/performance/probation")
     public List<Map<String, Object>> probations(@RequestHeader(value = "Authorization", required = false) String authorization,
                                                 @RequestParam(required = false) String status) {
-        return probation.list(Requests.session(auth, authorization), status);
+        return probation.list(session(authorization), status);
     }
 
     @GetMapping("/performance/probation/{id}")
     public Map<String, Object> probation(@RequestHeader(value = "Authorization", required = false) String authorization,
                                          @PathVariable String id) {
-        return probation.get(Requests.session(auth, authorization), Requests.id(id));
+        return probation.get(session(authorization), Requests.id(id));
     }
 
     @PutMapping("/performance/probation/{id}/checkins/{checkinId}")
     public Map<String, Object> checkin(@RequestHeader(value = "Authorization", required = false) String authorization,
                                        @PathVariable String id, @PathVariable String checkinId, @RequestBody Probation.CheckinInput request) {
-        return probation.writeCheckin(Requests.session(auth, authorization), Requests.id(id), Requests.id(checkinId), request);
+        return probation.writeCheckin(session(authorization), Requests.id(id), Requests.id(checkinId), request);
     }
 
     @PostMapping("/performance/probation/{id}/recommend")
     public Map<String, Object> recommend(@RequestHeader(value = "Authorization", required = false) String authorization,
                                          @PathVariable String id, @RequestBody Probation.RecommendInput request) {
-        return probation.recommend(Requests.session(auth, authorization), Requests.id(id), request);
+        return probation.recommend(session(authorization), Requests.id(id), request);
     }
 
     @PostMapping("/performance/probation/{id}/decide")
     public Map<String, Object> decide(@RequestHeader(value = "Authorization", required = false) String authorization,
                                       @PathVariable String id, @RequestBody Probation.DecideInput request) {
-        return probation.decide(Requests.session(auth, authorization), Requests.id(id), request);
+        return probation.decide(session(authorization), Requests.id(id), request);
+    }
+
+    // ── team ────────────────────────────────────────────────────────────
+
+    @GetMapping("/performance/team")
+    public Map<String, Object> team(@RequestHeader(value = "Authorization", required = false) String authorization) {
+        return team.team(session(authorization));
+    }
+
+    // ── goals ───────────────────────────────────────────────────────────
+
+    @GetMapping("/performance/goals")
+    public Map<String, Object> goals(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                     @RequestParam String employmentId, @RequestParam(required = false) String period) {
+        return goals.view(session(authorization), Requests.id(employmentId), period);
+    }
+
+    @PostMapping("/performance/goals")
+    public Map<String, Object> addGoal(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                       @RequestBody Goals.GoalInput request) {
+        return goals.create(session(authorization), request);
+    }
+
+    @PutMapping("/performance/goals/{id}")
+    public Map<String, Object> changeGoal(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                          @PathVariable String id, @RequestBody Goals.GoalInput request) {
+        return goals.update(session(authorization), Requests.id(id), request);
+    }
+
+    @DeleteMapping("/performance/goals/{id}")
+    public Map<String, Object> removeGoal(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                          @PathVariable String id) {
+        return goals.delete(session(authorization), Requests.id(id));
+    }
+
+    @PostMapping("/performance/goals/{id}/drop")
+    public Map<String, Object> dropGoal(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                        @PathVariable String id, @RequestBody Goals.ReasonInput request) {
+        return goals.drop(session(authorization), Requests.id(id), request);
+    }
+
+    @PostMapping("/performance/goals/{id}/checkins")
+    public Map<String, Object> goalCheckin(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                           @PathVariable String id, @RequestBody Goals.CheckinInput request) {
+        return goals.checkin(session(authorization), Requests.id(id), request);
+    }
+
+    @PostMapping("/performance/goals/agree")
+    public Map<String, Object> agreeGoals(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                          @RequestBody Goals.SetInput request) {
+        return goals.agree(session(authorization), request);
+    }
+
+    @PostMapping("/performance/goals/return")
+    public Map<String, Object> returnGoals(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                           @RequestBody Goals.SetInput request) {
+        return goals.returnSet(session(authorization), request);
+    }
+
+    @GetMapping("/performance/department-goals")
+    public List<Map<String, Object>> departmentGoals(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                                     @RequestParam(required = false) String period) {
+        return goals.departmentGoals(session(authorization), period);
+    }
+
+    // ── one-to-ones ─────────────────────────────────────────────────────
+
+    @GetMapping("/performance/one-to-ones")
+    public Map<String, Object> oneToOnes(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                         @RequestParam String with) {
+        return oneToOnes.with(session(authorization), Requests.id(with));
+    }
+
+    @PostMapping("/performance/one-to-ones")
+    public Map<String, Object> addOneToOne(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                           @RequestBody OneToOnes.MeetingInput request) {
+        return oneToOnes.create(session(authorization), request);
+    }
+
+    @PutMapping("/performance/one-to-ones/{id}")
+    public Map<String, Object> changeOneToOne(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                              @PathVariable String id, @RequestBody OneToOnes.MeetingInput request) {
+        return oneToOnes.update(session(authorization), Requests.id(id), request);
+    }
+
+    @PostMapping("/performance/one-to-ones/{id}/items")
+    public Map<String, Object> addItem(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                       @PathVariable String id, @RequestBody OneToOnes.ItemInput request) {
+        return oneToOnes.addItem(session(authorization), Requests.id(id), request);
+    }
+
+    @PutMapping("/performance/one-to-one-items/{id}")
+    public Map<String, Object> markItem(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                        @PathVariable String id, @RequestBody OneToOnes.DoneInput request) {
+        return oneToOnes.markItem(session(authorization), Requests.id(id), request);
+    }
+
+    // ── feedback ────────────────────────────────────────────────────────
+
+    @GetMapping("/performance/feedback")
+    public List<Map<String, Object>> feedbackAbout(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                                   @RequestParam String employmentId) {
+        return feedback.about(session(authorization), Requests.id(employmentId));
+    }
+
+    @PostMapping("/performance/feedback")
+    public Map<String, Object> giveFeedback(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                            @RequestBody Feedback.GiveInput request) {
+        return feedback.give(session(authorization), request);
+    }
+
+    @PutMapping("/performance/feedback/{id}")
+    public Map<String, Object> editFeedback(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                            @PathVariable String id, @RequestBody Feedback.TextInput request) {
+        return feedback.edit(session(authorization), Requests.id(id), request);
+    }
+
+    @PostMapping("/performance/feedback/{id}/withdraw")
+    public Map<String, Object> withdrawFeedback(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                                @PathVariable String id) {
+        return feedback.withdraw(session(authorization), Requests.id(id));
+    }
+
+    @GetMapping("/performance/colleagues")
+    public List<Map<String, Object>> colleagues(@RequestHeader(value = "Authorization", required = false) String authorization) {
+        return feedback.colleagues(session(authorization));
     }
 
     // ── setup ───────────────────────────────────────────────────────────
 
+    @GetMapping("/performance/setup")
+    public Map<String, Object> setup(@RequestHeader(value = "Authorization", required = false) String authorization) {
+        return setup.get(session(authorization));
+    }
+
+    @PutMapping("/performance/setup/general")
+    public Map<String, Object> saveGeneral(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                           @RequestBody PerformanceSetup.GeneralInput request) {
+        return setup.saveGeneral(session(authorization), request);
+    }
+
+    @PutMapping("/performance/setup/scale")
+    public Map<String, Object> saveScale(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                         @RequestBody PerformanceSetup.ScaleInput request) {
+        return setup.saveScale(session(authorization), request);
+    }
+
+    @PostMapping("/performance/setup/competencies")
+    public Map<String, Object> addCompetency(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                             @RequestBody PerformanceSetup.CompetencyInput request) {
+        return setup.saveCompetency(session(authorization), null, request);
+    }
+
+    @PutMapping("/performance/setup/competencies/{id}")
+    public Map<String, Object> changeCompetency(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                                @PathVariable String id, @RequestBody PerformanceSetup.CompetencyInput request) {
+        return setup.saveCompetency(session(authorization), Requests.id(id), request);
+    }
+
+    @PostMapping("/performance/setup/competency-sets")
+    public Map<String, Object> addSet(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                      @RequestBody PerformanceSetup.SetInput request) {
+        return setup.saveSet(session(authorization), null, request);
+    }
+
+    @PutMapping("/performance/setup/competency-sets/{id}")
+    public Map<String, Object> changeSet(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                         @PathVariable String id, @RequestBody PerformanceSetup.SetInput request) {
+        return setup.saveSet(session(authorization), Requests.id(id), request);
+    }
+
+    @PutMapping("/performance/setup/competency-sets/order")
+    public Map<String, Object> orderSets(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                         @RequestBody PerformanceSetup.OrderInput request) {
+        return setup.orderSets(session(authorization), request);
+    }
+
     @GetMapping("/performance/setup/probation")
     public Map<String, Object> probationSettings(@RequestHeader(value = "Authorization", required = false) String authorization) {
-        return probation.getSettings(Requests.session(auth, authorization));
+        return probation.getSettings(session(authorization));
     }
 
     @PutMapping("/performance/setup/probation")
     public Map<String, Object> saveProbationSettings(@RequestHeader(value = "Authorization", required = false) String authorization,
                                                      @RequestBody Probation.SettingsInput request) {
-        return probation.saveSettings(Requests.session(auth, authorization), request);
+        return probation.saveSettings(session(authorization), request);
     }
 }

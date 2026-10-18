@@ -143,6 +143,9 @@ export const SAMPLE_VALUES = {
   'probation.checkin_due': '11 November 2026',
   'probation.recommendation': 'confirm',
   'probation.decision': 'confirmed',
+  'goals.period': 'FY 2026-27',
+  'goal.title': 'Close 40 accounts',
+  'giver.name': 'Ravi Sen',
 }
 
 /** Fills placeholders with values, as the server does: unknown or empty ones become nothing. */
