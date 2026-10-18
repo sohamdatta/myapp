@@ -420,6 +420,60 @@ class UserModuleTest {
     // ── helpers ─────────────────────────────────────────────────────────
 
     /** An Organization with its first Org Admin signed in. */
+    // ── what an Organization has bought ─────────────────────────────────
+
+    @Test
+    void anOrganizationHasTheModulesItBoughtUntilATrialEnds() {
+        java.time.LocalDate today = java.time.LocalDate.now(java.time.ZoneId.of("Asia/Kolkata"));
+        // Created without saying: everything, as Organizations made before modules existed.
+        Org all = newOrg();
+        assertEquals(java.util.Set.of("attendance", "payroll"), all.admin().modules());
+
+        String slug = "mod-" + SEQUENCE.incrementAndGet();
+        Map<String, Object> created = platform.createOrganization(superAdmin, "Payroll only " + slug, slug, "growth",
+                "admin@" + slug + ".test", List.of("payroll"));
+        UUID id = UUID.fromString((String) created.get("id"));
+        String token = invitations.accept((String) created.get("invitationToken"), PASSWORD, null);
+        SessionCtx admin = auth.resolve(token);
+        assertTrue(admin.hasModule("payroll"));
+        assertFalse(admin.hasModule("attendance"));
+        assertEquals(List.of("payroll"), auth.me(admin).get("modules"));
+        assertFalse(superAdmin.hasModule("payroll"), "the console is in no Organization");
+
+        Map<String, Object> row = platform.organizations(superAdmin).stream()
+                .filter(o -> o.get("id").equals(id.toString())).findFirst().orElseThrow();
+        List<?> modules = (List<?>) row.get("modules");
+        assertEquals("off", ((Map<?, ?>) modules.get(0)).get("status"));
+        assertEquals("on", ((Map<?, ?>) modules.get(1)).get("status"));
+
+        // A trial of Attendance: on until the day it ends, then off without anyone touching it.
+        platform.setModule(superAdmin, id, "attendance", true, today.plusDays(14).toString());
+        assertTrue(auth.resolve(token).hasModule("attendance"));
+        db.inOwner(c -> Sql.update(c, "update platform.tenant_module set trial_ends_on = ? where tenant_id = ? and module = 'attendance'",
+                today.minusDays(1), id));
+        assertFalse(auth.resolve(token).hasModule("attendance"));
+        assertEquals(false, ((Map<?, ?>) ((List<?>) platform.organizations(superAdmin).stream()
+                .filter(o -> o.get("id").equals(id.toString())).findFirst().orElseThrow().get("modules")).get(0)).get("active"));
+
+        // Off and on again.
+        platform.setModule(superAdmin, id, "payroll", false, null);
+        assertFalse(auth.resolve(token).hasModule("payroll"));
+        platform.setModule(superAdmin, id, "payroll", true, null);
+        assertTrue(auth.resolve(token).hasModule("payroll"));
+
+        assertError(400, "request.invalid", () -> platform.setModule(superAdmin, id, "chess", true, null));
+        assertError(400, "request.invalid", () -> platform.setModule(superAdmin, id, "attendance", true, today.minusDays(1).toString()));
+        assertError(400, "request.invalid", () -> platform.setModule(superAdmin, id, "attendance", true, today.plusYears(2).toString()));
+        assertError(400, "request.invalid", () -> platform.setModule(superAdmin, id, "attendance", true, "next week"));
+        assertError(404, "not_found", () -> platform.setModule(superAdmin, UUID.randomUUID(), "payroll", true, null));
+        assertError(403, "permission.denied", () -> platform.setModule(admin, id, "attendance", true, null));
+        assertError(400, "request.invalid", () -> platform.createOrganization(superAdmin, "Bad", "bad-" + slug, "growth",
+                "a@bad-" + slug + ".test", List.of("chess")));
+        List<String> actions = db.inOwner(c -> Sql.query(c, "select action from platform.platform_audit where target_id = ?", id))
+                .stream().map(r -> (String) r.get("action")).toList();
+        assertTrue(actions.containsAll(List.of("tenant.created", "tenant.module_on", "tenant.module_off")), actions.toString());
+    }
+
     private record Org(UUID id, String slug, String adminEmail, String adminToken, SessionCtx admin) {}
 
     private static final Map<String, String> TOKENS = new java.util.concurrent.ConcurrentHashMap<>();

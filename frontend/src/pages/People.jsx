@@ -1106,7 +1106,10 @@ export default function People({ me, onNavigate }) {
         id={open}
         onBack={() => setOpen(null)}
         canExit={(me.scopes || {})['exit.manage'] === 'tenant' && me.kind === 'tenant'}
-        canPay={['tenant', 'assigned'].includes(scopes['compensation.read']) || ['tenant', 'assigned'].includes(scopes['payroll.prepare'])}
+        canPay={
+          (me.modules || []).includes('payroll') &&
+          (['tenant', 'assigned'].includes(scopes['compensation.read']) || ['tenant', 'assigned'].includes(scopes['payroll.prepare']))
+        }
         onExit={(what) => {
           handoff.set(what)
           onNavigate('exits')

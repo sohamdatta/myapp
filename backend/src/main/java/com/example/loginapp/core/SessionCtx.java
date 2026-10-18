@@ -23,13 +23,22 @@ public record SessionCtx(
         String grantExpiresAt,
         UUID platformUserId,
         String platformRole,
-        List<Perm> permissions) {
+        List<Perm> permissions,
+        Set<String> modules) {
 
     public record Perm(String code, String scope) {}
 
     /** Never available in a support session, whatever the role rows say. */
     private static final Set<String> NEVER_UNDER_SUPPORT = Set.of(
             "payroll.approve", "payroll.release", "role.assign", "billing.manage", "tenant.manage");
+
+    /**
+     * Whether the Organization has the module (attendance or payroll) on today. Core HR is always on.
+     * Outside an Organization nothing is.
+     */
+    public boolean hasModule(String module) {
+        return inOrganization() && modules != null && modules.contains(module);
+    }
 
     public boolean inOrganization() {
         return kind.equals("tenant") || kind.equals("support");

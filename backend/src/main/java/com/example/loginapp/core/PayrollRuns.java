@@ -157,7 +157,8 @@ public final class PayrollRuns {
             }
             r.put("people", people);
             r.put("inputs", Sql.query(c, "select i.id, i.employment_id, coalesce(p.preferred_name, p.legal_name) as name, i.component_code, "
-                    + "pc.name as component_name, i.amount, i.note from app.run_input i join app.employment e on e.id = i.employment_id "
+                    + "coalesce(pc.name, case when i.component_code = '" + LOP_DAYS + "' then 'Loss of pay (days)' end) as component_name, "
+                    + "i.amount, i.note from app.run_input i join app.employment e on e.id = i.employment_id "
                     + "join app.person p on p.id = e.person_id left join app.pay_component pc on pc.code = i.component_code "
                     + "where i.run_id = ? order by i.created_at", runId));
             r.put("holds", Sql.query(c, "select h.employment_id, coalesce(p.preferred_name, p.legal_name) as name, h.reason, h.held_at "
@@ -173,9 +174,13 @@ public final class PayrollRuns {
             for (Map<String, Object> a : PayrollEngine.list(r, "attempts")) {
                 a.put("totals", parse(a.get("totals")));
             }
-            r.put("inputComponents", Sql.query(c, "select pc.code, pc.name, pc.kind from app.pay_component pc join lateral (select amount_type "
+            List<Map<String, Object>> inputComponents = new java.util.ArrayList<>(Sql.query(c, "select pc.code, pc.name, pc.kind from app.pay_component pc join lateral (select amount_type "
                     + "from app.pay_component_version v where v.component_id = pc.id and v.valid_from <= ? order by valid_from desc limit 1) v on true "
                     + "where v.amount_type = 'input' and pc.retired_at is null order by pc.position", period.plusMonths(1).minusDays(1)));
+            // Days without pay, entered by hand: how a payroll-only Organization gives loss of pay.
+            inputComponents.add(new LinkedHashMap<>(Map.of("code", LOP_DAYS, "name", "Loss of pay (days)", "kind", "days")));
+            r.put("inputComponents", inputComponents);
+            r.put("attendanceOn", Modules.on(c, Modules.ATTENDANCE));
             long open = Sql.query(c, "select 1 from app.run_exception where run_id = ? and level = 'blocking' and accepted_at is null", runId).size();
             boolean me = ctx.membershipId() != null;
             r.put("openBlocking", open);
@@ -193,13 +198,21 @@ public final class PayrollRuns {
         });
     }
 
+    /** The run input that carries loss-of-pay days rather than an amount. */
+    static final String LOP_DAYS = "LOP_DAYS";
+
     public Map<String, Object> addInput(SessionCtx ctx, UUID runId, InputInput in) {
         PayrollConfig.need(ctx, "payroll.prepare");
+        String code = PayrollConfig.upper(in.componentCode());
+        boolean lopDays = LOP_DAYS.equals(code);
         if (in.amount() == null || in.amount().signum() <= 0) {
-            throw ApiException.badRequest("Type an amount above zero");
+            throw ApiException.badRequest(lopDays ? "Type the days without pay, above zero" : "Type an amount above zero");
+        }
+        if (lopDays && (in.amount().compareTo(BigDecimal.valueOf(31)) > 0
+                || in.amount().multiply(BigDecimal.valueOf(2)).stripTrailingZeros().scale() > 0)) {
+            throw ApiException.badRequest("Loss of pay is in whole or half days, up to 31");
         }
         UUID employment = PayrollConfig.id(in.employmentId(), "employee");
-        String code = PayrollConfig.upper(in.componentCode());
         return db.inTenant(ctx.tenantId(), c -> {
             Map<String, Object> r = run(c, runId);
             if (!"draft".equals(r.get("state"))) {
@@ -210,9 +223,17 @@ public final class PayrollRuns {
             if (!member) {
                 throw ApiException.badRequest("That employee is not in this pay group for " + monthWords(period));
             }
-            Map<String, Object> pc = Sql.one(c, "select pc.name from app.pay_component pc join lateral (select amount_type from app.pay_component_version v "
+            Map<String, Object> pc = lopDays ? Map.of("name", "Loss of pay (days)") : Sql.one(c, "select pc.name from app.pay_component pc join lateral (select amount_type from app.pay_component_version v "
                     + "where v.component_id = pc.id and v.valid_from <= ? order by valid_from desc limit 1) v on true where pc.code = ? "
                     + "and v.amount_type = 'input' and pc.retired_at is null", period.plusMonths(1).minusDays(1), code);
+            if (lopDays) {
+                BigDecimal already = (BigDecimal) Sql.one(c, "select coalesce(sum(amount), 0) as n from app.run_input where run_id = ? "
+                        + "and employment_id = ? and component_code = ?", runId, employment, LOP_DAYS).get("n");
+                int inMonth = period.lengthOfMonth();
+                if (already.add(in.amount()).compareTo(BigDecimal.valueOf(inMonth)) > 0) {
+                    throw ApiException.badRequest("That makes more days without pay than the " + inMonth + " days in " + monthWords(period));
+                }
+            }
             if (pc == null) {
                 throw ApiException.badRequest("Choose a component that takes an amount each month");
             }
@@ -989,6 +1010,8 @@ public final class PayrollRuns {
             }
             held = Sql.one(c, "select 1 from app.pay_hold where run_id = ? and employment_id = ?", runId, employmentId) != null;
         }
+        // Loss-of-pay days entered for the month are not a pay component: they go to the day count below.
+        Object enteredLop = inputs.remove(LOP_DAYS);
         out.put("inputs", inputs);
         out.put("held", held);
 
@@ -1008,7 +1031,8 @@ public final class PayrollRuns {
             out.put("metro", false);
         }
 
-        out.put("days", days(c, config, membership, a, joined, leaving, period, today, preview));
+        out.put("days", days(c, config, membership, a, joined, leaving, period, today, preview,
+                enteredLop == null ? BigDecimal.ZERO : new BigDecimal(String.valueOf(enteredLop))));
 
         // Identity and bank, for the checks and the payslip (last four only).
         UUID person = AuthService.uuid(e.get("personId"));
@@ -1060,10 +1084,13 @@ public final class PayrollRuns {
 
     /**
      * Days in the month, days paid and loss of pay. Unpaid leave counts as loss of pay; absence
-     * without leave too when the Organization says so. Days not yet come count as worked.
+     * without leave too when the Organization says so. Days not yet come count as worked. Loss-of-pay
+     * days HR entered for the month are added; without the Attendance module they are the only source.
      */
     static Map<String, Object> days(Connection c, Map<String, Object> config, UUID membership, AttendanceService.Assigned a, LocalDate joined,
-                                    LocalDate leaving, LocalDate period, LocalDate today, boolean preview) throws SQLException {
+                                    LocalDate leaving, LocalDate period, LocalDate today, boolean preview, BigDecimal enteredLop)
+            throws SQLException {
+        boolean attendanceOn = Modules.on(c, Modules.ATTENDANCE);
         Map<String, Object> settings = PayrollEngine.map(config, "settings");
         String method = String.valueOf(settings.getOrDefault("proration", "calendar"));
         boolean absentIsLop = Boolean.TRUE.equals(settings.get("absenceIsLop"));
@@ -1071,7 +1098,7 @@ public final class PayrollRuns {
         LocalDate from = joined.isAfter(period) ? joined : period;
         LocalDate to = leaving != null && leaving.isBefore(end) ? leaving : end;
         BigDecimal lop = BigDecimal.ZERO;
-        if (membership != null && !to.isBefore(from)) {
+        if (attendanceOn && membership != null && !to.isBefore(from)) {
             Map<String, Map<String, Object>> rows = new HashMap<>();
             if (!preview && !from.isAfter(today)) {
                 for (Map<String, Object> d : AttendanceService.monthOf(c, (UUID) app(c), membership, java.time.YearMonth.from(period), today)) {
@@ -1129,8 +1156,9 @@ public final class PayrollRuns {
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("method", used);
         out.put("base", base);
-        out.put("paid", paid.max(BigDecimal.ZERO));
-        out.put("lop", lop);
+        out.put("paid", paid.subtract(enteredLop).max(BigDecimal.ZERO));
+        out.put("lop", lop.add(enteredLop));
+        out.put("lopEntered", enteredLop);
         out.put("notEmployed", notEmployed);
         return out;
     }

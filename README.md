@@ -783,7 +783,7 @@ on GitHub and emails whoever pushed it.
 
 | Job | What it checks | Where the tests are |
 |---|---|---|
-| Backend build and tests | Maven builds the backend; 211 JUnit tests run against a real PostgreSQL 16: business rules, permissions, and isolation between Organizations | `backend/src/test/` |
+| Backend build and tests | Maven builds the backend; 213 JUnit tests run against a real PostgreSQL 16: business rules, permissions, and isolation between Organizations | `backend/src/test/` |
 | Frontend lint and build | `oxlint` finds no problems and the production build succeeds | `frontend/` |
 | Browser tests | The app is started from the backend jar, and Playwright clicks through it as the Super Admin, an Org Admin and an HR Admin | `e2e/tests/` |
 | Deployment images | The two images in `deploy/` are built and started as on a server, behind Caddy, against a PostgreSQL whose admin login is not a superuser; the API, the frontend, a sign-in and the biometric device routes answer through it | `deploy/`, `.github/workflows/ci.yml` |
@@ -812,6 +812,7 @@ The browser tests tell one story in order, each step depending on the one before
 
 14. `17-role-tour`: each role through its own login (Super Admin, Org Admin, a separate Payroll Approver, Auditor, IT Admin, HR Admin and Payroll Operator, a Manager, an Employee): the menu it gets, its main screens, and what it cannot do. The screenshots of the guide come from this run.
 15. `18-attendance-modes`: in an Organization of its own, a location made present by default and another given a biometric device; a manager marks his report absent with a reason and she sees who did it; a device is registered, calls in as a real device would, and sends a log with every kind of line; a device off its office network is turned away.
+16. `19-modules`: the Super Admin creates a payroll-only Organization; its owner gets no attendance or leave, on screen or through the API, and keeps the work calendar; an Attendance trial is switched on, and Payroll off and on again, each seen at once.
 
 Every browser test also fails on any error in the browser console.
 

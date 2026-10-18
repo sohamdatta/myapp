@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.example.loginapp.core.AuthService;
+import com.example.loginapp.core.Modules;
 import com.example.loginapp.core.DeviceService;
 
 /** Registering biometric devices and seeing what they sent. */
@@ -30,24 +31,24 @@ public class DeviceController {
 
     @GetMapping
     public List<Map<String, Object>> devices(@RequestHeader(value = "Authorization", required = false) String authorization) {
-        return devices.devices(Requests.session(auth, authorization));
+        return devices.devices(Requests.session(auth, authorization, Modules.ATTENDANCE));
     }
 
     @PostMapping
     public Map<String, Object> register(@RequestHeader(value = "Authorization", required = false) String authorization,
                                         @RequestBody DeviceService.DeviceInput request) {
-        return devices.save(Requests.session(auth, authorization), null, request);
+        return devices.save(Requests.session(auth, authorization, Modules.ATTENDANCE), null, request);
     }
 
     @PutMapping("/{id}")
     public Map<String, Object> change(@RequestHeader(value = "Authorization", required = false) String authorization,
                                       @PathVariable("id") String id, @RequestBody DeviceService.DeviceInput request) {
-        return devices.save(Requests.session(auth, authorization), Requests.id(id), request);
+        return devices.save(Requests.session(auth, authorization, Modules.ATTENDANCE), Requests.id(id), request);
     }
 
     @GetMapping("/{id}/log")
     public List<Map<String, Object>> log(@RequestHeader(value = "Authorization", required = false) String authorization,
                                          @PathVariable("id") String id) {
-        return devices.log(Requests.session(auth, authorization), Requests.id(id));
+        return devices.log(Requests.session(auth, authorization, Modules.ATTENDANCE), Requests.id(id));
     }
 }

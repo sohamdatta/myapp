@@ -22,7 +22,10 @@ import com.example.loginapp.core.PlatformService;
 @RequestMapping("/api/platform")
 public class PlatformController {
 
-    public record CreateOrganizationRequest(String name, String slug, String plan, String adminEmail) {}
+    /** modules: the add-ons bought (attendance, payroll); left out, the Organization gets all of them. */
+    public record CreateOrganizationRequest(String name, String slug, String plan, String adminEmail, List<String> modules) {}
+
+    public record ModuleRequest(String module, Boolean on, String trialEndsOn) {}
 
     public record InviteAdminRequest(String adminEmail) {}
 
@@ -47,7 +50,17 @@ public class PlatformController {
     public Map<String, Object> createOrganization(@RequestHeader(value = "Authorization", required = false) String authorization,
                                                   @RequestBody CreateOrganizationRequest request) {
         return platform.createOrganization(Requests.session(auth, authorization),
-                request.name(), request.slug(), request.plan(), request.adminEmail());
+                request.name(), request.slug(), request.plan(), request.adminEmail(), request.modules());
+    }
+
+    /** Switches Attendance or Payroll on (until a trial end, if given) or off for an Organization. */
+    @PostMapping("/organizations/{id}/modules")
+    public Map<String, Object> setModule(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                         @PathVariable("id") String id, @RequestBody ModuleRequest request) {
+        if (request.on() == null) {
+            throw com.example.loginapp.core.ApiException.badRequest("Say whether the module is on or off");
+        }
+        return platform.setModule(Requests.session(auth, authorization), Requests.id(id), request.module(), request.on(), request.trialEndsOn());
     }
 
     @PostMapping("/organizations/{id}/invite-admin")

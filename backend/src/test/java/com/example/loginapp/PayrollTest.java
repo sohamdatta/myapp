@@ -362,6 +362,65 @@ class PayrollTest {
     }
 
     @Test
+    void withoutAttendanceLossOfPayIsTheDaysHrEnters() {
+        assumeTrue(reachable, "PostgreSQL is not reachable");
+        Org org = newOrg();
+        SessionCtx operator = join(org, "payroll", List.of("payroll_operator"));
+        SessionCtx asha = join(org, "asha", List.of("employee"));
+        // The shared work calendar stays: it says which state Asha works in.
+        String loc = (String) settings.saveLocation(org.admin, null,
+                new LocationInput("Bengaluru office", "Asia/Kolkata", "KA", null, null, null, null, "none", true)).get("id");
+        String shift = (String) settings.saveShift(org.admin, null, new ShiftInput("General", "09:30", "18:30", 10, 480, 240, true)).get("id");
+        settings.assign(org.admin, List.of(asha.membershipId().toString()), UUID.fromString(loc), UUID.fromString(shift), List.of(0),
+                TODAY.minusDays(120).toString());
+        UUID ashaId = UUID.fromString((String) employees.add(org.admin, person("Asha Rao", "ABCPR1234F", asha)).get("id"));
+        Map<String, Object> setup = config.setup(operator);
+        String staff = (String) ((Map<?, ?>) ((List<?>) setup.get("structures")).get(0)).get("id");
+        pay.revise(org.admin, ashaId, new PayrollPay.ReviseInput(TODAY.withDayOfMonth(1).toString(), staff, new BigDecimal("900000"), "Joining salary"));
+        LocalDate period = TODAY.withDayOfMonth(1).plusMonths(1);
+        int days = period.lengthOfMonth();
+
+        // Two days of unpaid leave were recorded while the Organization still had Attendance.
+        UUID unpaid = UUID.fromString((String) leaveAdmin.saveType(org.admin, null,
+                new TypeInput("Leave without pay", "regular", false, "none", BigDecimal.ZERO, true, null, "lapse", "unpaid", false, null, true)).get("id"));
+        LocalDate tue = period.with(TemporalAdjusters.firstInMonth(DayOfWeek.TUESDAY));
+        leave.decide(org.admin, UUID.fromString((String) leave.apply(asha, unpaid, tue.toString(), tue.plusDays(1).toString(), null,
+                "Family wedding").get("id")), true, null);
+        platform.setModule(superAdmin, org.id, "attendance", false, null);
+
+        String group = (String) ((Map<?, ?>) ((List<?>) runs.list(operator).get("groups")).get(0)).get("id");
+        UUID run = UUID.fromString((String) runs.open(operator, UUID.fromString(group), period.toString()).get("id"));
+        Map<String, Object> opened = runs.get(operator, run);
+        assertEquals(false, opened.get("attendanceOn"));
+        assertTrue(((List<?>) opened.get("inputComponents")).stream().anyMatch(i -> "LOP_DAYS".equals(((Map<?, ?>) i).get("code"))));
+
+        // Whole or half days, and never more than the month has.
+        assertError(400, "request.invalid", () -> runs.addInput(operator, run, new PayrollRuns.InputInput(ashaId.toString(), "LOP_DAYS",
+                new BigDecimal("1.3"), null)));
+        assertError(400, "request.invalid", () -> runs.addInput(operator, run, new PayrollRuns.InputInput(ashaId.toString(), "LOP_DAYS",
+                new BigDecimal("40"), null)));
+        runs.addInput(operator, run, new PayrollRuns.InputInput(ashaId.toString(), "LOP_DAYS", new BigDecimal("1.5"), "Absent without notice"));
+        assertError(400, "request.invalid", () -> runs.addInput(operator, run, new PayrollRuns.InputInput(ashaId.toString(), "LOP_DAYS",
+                BigDecimal.valueOf(days), null)));
+        assertEquals("Loss of pay (days)", ((Map<?, ?>) ((List<?>) runs.get(operator, run).get("inputs")).get(0)).get("componentName"));
+
+        // Without Attendance the leave is not read: the days entered are the loss of pay.
+        runs.freeze(operator, run);
+        runs.calculate(operator, run);
+        Map<String, Object> slip = runs.employee(operator, run, ashaId);
+        assertEquals(0, new BigDecimal(days).subtract(new BigDecimal("1.5")).compareTo((BigDecimal) slip.get("daysPaid")));
+        assertEquals(0, new BigDecimal("1.5").compareTo((BigDecimal) slip.get("lopDays")));
+
+        // With Attendance back, and the run reopened (freezing fixed the month's inputs), the unpaid leave counts as well.
+        platform.setModule(superAdmin, org.id, "attendance", true, null);
+        runs.reopen(operator, run, "Attendance switched back on");
+        runs.freeze(operator, run);
+        runs.calculate(operator, run);
+        Map<String, Object> again = runs.employee(operator, run, ashaId);
+        assertEquals(0, new BigDecimal(days).subtract(new BigDecimal("3.5")).compareTo((BigDecimal) again.get("daysPaid")));
+    }
+
+    @Test
     void heldPayIsWorkedOutButDoesNotBlockTheRun() {
         assumeTrue(reachable, "PostgreSQL is not reachable");
         Org org = newOrg();

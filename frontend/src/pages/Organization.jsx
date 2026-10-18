@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { invitationLink, org } from '../api.js'
-import { formatDate, useAction, useLoad } from '../hooks.js'
+import { formatDate, formatDay, useAction, useLoad } from '../hooks.js'
 import { Badge, CopyLink, Empty, ErrorNote, StatusBadge, Tabs } from '../ui.jsx'
 import Attendance from './Attendance.jsx'
 import Leave from './Leave.jsx'
@@ -14,6 +14,7 @@ import OrgChart from './OrgChart.jsx'
 import MyPay from './MyPay.jsx'
 import Payroll from './Payroll.jsx'
 import People, { MyProfile } from './People.jsx'
+import { People as WhoWorksWhere, Setup as CalendarSetup } from './AttendanceSetup.jsx'
 
 /** What each role is for, in plain words. The exact permissions are under User management → Roles. */
 const ROLE_SUMMARIES = {
@@ -35,7 +36,11 @@ const ROLE_SUMMARIES = {
 const SCOPES = { tenant: 'everyone', team: 'their team', self: 'themselves', assigned: 'those assigned to them' }
 
 /** Checkboxes for roles. A role the signed-in user may not grant is shown but cannot be changed. */
-function RolePicker({ roles, selected, onChange }) {
+const PAYROLL_ROLES = ['payroll_operator', 'payroll_approver']
+
+function RolePicker({ me, roles, selected, onChange }) {
+  // Payroll's roles are offered only when the Organization has Payroll.
+  const payroll = (me?.modules || []).includes('payroll')
   function toggle(code) {
     onChange(selected.includes(code) ? selected.filter((c) => c !== code) : [...selected, code])
   }
@@ -44,7 +49,7 @@ function RolePicker({ roles, selected, onChange }) {
       <legend>Roles</legend>
       <div className="role-options">
         {roles
-          .filter((r) => r.assignable)
+          .filter((r) => r.assignable && (payroll || !PAYROLL_ROLES.includes(r.code)))
           .map((r) => (
             <div key={r.code} className="role-option">
               <label className={r.grantable ? 'check' : 'check check-disabled'}>
@@ -157,7 +162,7 @@ function UserRow({ user, me, roles, onChanged }) {
           <td colSpan={5}>
             {editing && (
               <div className="inline-form">
-                <RolePicker roles={roles} selected={selected} onChange={setSelected} />
+                <RolePicker me={me} roles={roles} selected={selected} onChange={setSelected} />
                 <button type="button" className="secondary" disabled={busy} onClick={() => act(() => org.changeRoles(user.id, selected))}>
                   {busy ? 'Saving…' : 'Save roles'}
                 </button>
@@ -282,7 +287,7 @@ function InvitationsTab({ me }) {
           <h2>Invite a user</h2>
           <label htmlFor="invite-email">Email</label>
           <input id="invite-email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
-          <RolePicker roles={roles.data} selected={selected} onChange={setSelected} />
+          <RolePicker me={me} roles={roles.data} selected={selected} onChange={setSelected} />
           <p className="hint">Roles you are not allowed to grant are greyed out.</p>
           <button type="submit" className="secondary" disabled={busy}>
             {busy ? 'Inviting…' : 'Create invitation'}
@@ -470,20 +475,95 @@ function AuditTab() {
   )
 }
 
-/** Users, invitations and roles: one page with a tab for each. */
+const MODULE_ABOUT = {
+  attendance: 'Punching, devices, the daily board, requests, leave and work from home',
+  payroll: 'Salary setup, monthly runs, statutory deductions, payslips and the bank file',
+}
+
+/** What the Organization has bought. Changes are made by the HRMS team, not here. */
+function SubscriptionTab({ me }) {
+  return (
+    <>
+      <div className="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Module</th>
+              <th>What it covers</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Core HR</td>
+              <td>People, the org chart, users and roles, joining and leaving, work locations</td>
+              <td>
+                <Badge tone="good">included</Badge>
+              </td>
+            </tr>
+            {(me.subscription || []).map((m) => (
+              <tr key={m.module}>
+                <td>{m.name}</td>
+                <td>{MODULE_ABOUT[m.module]}</td>
+                <td>
+                  {m.active ? <Badge tone="good">on</Badge> : <Badge>not included</Badge>}
+                  {m.active && m.trialEndsOn && <div className="hint">Trial until {formatDay(m.trialEndsOn)}</div>}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p className="hint" style={{ marginTop: 12 }}>
+        To add a module or end a trial early, contact the HRMS team. Switching a module off hides it and keeps its records; they come
+        back when it is switched on again.
+      </p>
+    </>
+  )
+}
+
+/** Users, invitations and roles: one page with a tab for each, and what the Organization has bought. */
 function UserManagement({ me }) {
   const [tab, setTab] = useState('users')
   const tabs = [
     { id: 'users', label: 'Users' },
     { id: 'invitations', label: 'Invitations' },
     { id: 'roles', label: 'Roles' },
-  ]
+    me.subscription && { id: 'subscription', label: 'Subscription' },
+  ].filter(Boolean)
   return (
     <>
       <Tabs tabs={tabs} current={tab} onChange={setTab} />
       {tab === 'users' && <UsersTab me={me} onInvite={() => setTab('invitations')} />}
       {tab === 'invitations' && <InvitationsTab me={me} />}
       {tab === 'roles' && <RolesTab />}
+      {tab === 'subscription' && <SubscriptionTab me={me} />}
+    </>
+  )
+}
+
+/**
+ * Without the Attendance module: where people work, on which shift and weekly offs. Payroll takes the
+ * state for professional tax from the location, and working days from the shift and holidays.
+ */
+function WorkCalendar({ me }) {
+  const [tab, setTab] = useState('people')
+  const canManage = (me.scopes || {})['attendance.manage'] === 'tenant' && me.kind === 'tenant'
+  return (
+    <>
+      <Tabs
+        tabs={[
+          { id: 'people', label: 'People' },
+          { id: 'setup', label: 'Locations and shifts' },
+        ]}
+        current={tab}
+        onChange={setTab}
+      />
+      <p className="hint">
+        Payroll takes each person's state from their work location, and working days from their shift, weekly offs and holidays.
+      </p>
+      {tab === 'people' && <WhoWorksWhere canManage={canManage} attendanceOn={false} />}
+      {tab === 'setup' && <CalendarSetup canManage={canManage} attendanceOn={false} />}
     </>
   )
 }
@@ -504,6 +584,7 @@ export default function Organization({ me, page, onNavigate }) {
       {page === 'my-attendance' && <MyAttendance />}
       {page === 'my-leave' && <MyLeave me={me} />}
       {page === 'attendance' && <Attendance me={me} />}
+      {page === 'work-calendar' && <WorkCalendar me={me} />}
       {page === 'leave' && <Leave me={me} />}
       {page === 'org-chart' && <OrgChart onNavigate={onNavigate} />}
       {page === 'payroll' && <Payroll me={me} />}

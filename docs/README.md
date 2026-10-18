@@ -8,6 +8,7 @@ The versions here are Markdown exports. The live, editable versions are the clau
 
 | Module | Status | Documents | Live version |
 | --- | --- | --- | --- |
+| Modules (what a customer pays for) | Built (V16) | [Core HR, Attendance and Payroll; switching, trials, payroll without attendance](modules.md) | |
 | Users and access | Built | [Access model, detailed design and tested schema](notes/user-access-model.md) | [claude.ai](https://claude.ai/artifact/EZsRyKnqKYNWb7okS6Fszx) |
 | Attendance | Built (commit `3aeabe4`) | [Features and competitive position](attendance/features.md) · [Implementation design](attendance/design.md) · [Schema (V3)](attendance/schema.md) · [Modes: present by default and biometric devices (V15)](attendance/modes.md) | [Features](https://claude.ai/code/artifact/61c2baf4-f684-46bf-9e89-8ad4828facae) · [Design](https://claude.ai/code/artifact/e10d5bc8-ad11-4ae5-8ed0-6ba6773fe050) · [Modes](https://claude.ai/code/artifact/976dcb87-e698-4983-8994-3408cd0b5d3d) |
 | Leave and work from home | Built (commit `ebbeff0`) | [Features summary](notes/leave-and-wfh-features.md) · [Implementation design](leave-and-wfh/design.md) · [Schema (V4)](leave-and-wfh/schema.md) | [Design](https://claude.ai/code/artifact/669d7b0f-b526-4966-8bed-cf1e6d6b28b2) |

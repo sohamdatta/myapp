@@ -481,6 +481,7 @@ export const platform = {
   createOrganization: (body) => post('/platform/organizations', body),
   inviteAdmin: (id, adminEmail) => post(`/platform/organizations/${id}/invite-admin`, { adminEmail }),
   changeOrganization: (id, action) => post(`/platform/organizations/${id}/${action}`),
+  setModule: (id, body) => post(`/platform/organizations/${id}/modules`, body),
   users: () => get('/platform/users'),
   addUser: (body) => post('/platform/users', body),
   changeUser: (id, action) => post(`/platform/users/${id}/${action}`),

@@ -17,6 +17,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.example.loginapp.core.ApiException;
 import com.example.loginapp.core.AuthService;
+import com.example.loginapp.core.Modules;
 import com.example.loginapp.core.LeaveAdminService;
 import com.example.loginapp.core.LeaveService;
 import com.example.loginapp.core.SessionCtx;
@@ -48,6 +49,7 @@ public class LeaveController {
 
     // ── the caller's own leave ──────────────────────────────────────────
 
+    /** Readable without the Attendance module: exit settings name the leave types a settlement encashes. */
     @GetMapping("/types")
     public List<Map<String, Object>> types(@RequestHeader(value = "Authorization", required = false) String authorization) {
         return leave.types(Requests.session(auth, authorization));
@@ -55,38 +57,38 @@ public class LeaveController {
 
     @GetMapping("/me/balances")
     public List<Map<String, Object>> balances(@RequestHeader(value = "Authorization", required = false) String authorization) {
-        return leave.balances(Requests.session(auth, authorization));
+        return leave.balances(Requests.session(auth, authorization, Modules.ATTENDANCE));
     }
 
     @GetMapping("/me/ledger")
     public List<Map<String, Object>> ledger(@RequestHeader(value = "Authorization", required = false) String authorization,
                                             @RequestParam(value = "type", required = false) String type) {
-        return leave.ledger(Requests.session(auth, authorization), null, typeId(type));
+        return leave.ledger(Requests.session(auth, authorization, Modules.ATTENDANCE), null, typeId(type));
     }
 
     @GetMapping("/me/requests")
     public List<Map<String, Object>> myRequests(@RequestHeader(value = "Authorization", required = false) String authorization) {
-        return leave.myRequests(Requests.session(auth, authorization));
+        return leave.myRequests(Requests.session(auth, authorization, Modules.ATTENDANCE));
     }
 
     @PostMapping("/me/requests/preview")
     public Map<String, Object> preview(@RequestHeader(value = "Authorization", required = false) String authorization,
                                        @RequestBody LeaveRequest request) {
-        return leave.preview(Requests.session(auth, authorization), typeId(request.leaveTypeId()), request.fromDate(),
+        return leave.preview(Requests.session(auth, authorization, Modules.ATTENDANCE), typeId(request.leaveTypeId()), request.fromDate(),
                 request.toDate(), request.half());
     }
 
     @PostMapping("/me/requests")
     public Map<String, Object> apply(@RequestHeader(value = "Authorization", required = false) String authorization,
                                      @RequestBody LeaveRequest request) {
-        return leave.apply(Requests.session(auth, authorization), typeId(request.leaveTypeId()), request.fromDate(),
+        return leave.apply(Requests.session(auth, authorization, Modules.ATTENDANCE), typeId(request.leaveTypeId()), request.fromDate(),
                 request.toDate(), request.half(), request.reason());
     }
 
     @PostMapping("/me/requests/{id}/cancel")
     public ResponseEntity<Void> cancel(@RequestHeader(value = "Authorization", required = false) String authorization,
                                        @PathVariable("id") String id) {
-        leave.cancel(Requests.session(auth, authorization), Requests.id(id));
+        leave.cancel(Requests.session(auth, authorization, Modules.ATTENDANCE), Requests.id(id));
         return ResponseEntity.noContent().build();
     }
 
@@ -95,7 +97,7 @@ public class LeaveController {
     @GetMapping("/requests")
     public List<Map<String, Object>> requests(@RequestHeader(value = "Authorization", required = false) String authorization,
                                               @RequestParam(value = "status", required = false) String status) {
-        return leave.requests(Requests.session(auth, authorization), status);
+        return leave.requests(Requests.session(auth, authorization, Modules.ATTENDANCE), status);
     }
 
     /** action is approve, reject or cancel. */
@@ -103,7 +105,7 @@ public class LeaveController {
     public ResponseEntity<Void> decide(@RequestHeader(value = "Authorization", required = false) String authorization,
                                        @PathVariable("id") String id, @PathVariable("action") String action,
                                        @RequestBody Decision decision) {
-        SessionCtx ctx = Requests.session(auth, authorization);
+        SessionCtx ctx = Requests.session(auth, authorization, Modules.ATTENDANCE);
         switch (action) {
             case "approve" -> leave.decide(ctx, Requests.id(id), true, decision == null ? null : decision.note());
             case "reject" -> leave.decide(ctx, Requests.id(id), false, decision == null ? null : decision.note());
@@ -117,25 +119,25 @@ public class LeaveController {
     public List<Map<String, Object>> calendar(@RequestHeader(value = "Authorization", required = false) String authorization,
                                               @RequestParam(value = "from", required = false) String from,
                                               @RequestParam(value = "to", required = false) String to) {
-        return leave.calendar(Requests.session(auth, authorization), from, to);
+        return leave.calendar(Requests.session(auth, authorization, Modules.ATTENDANCE), from, to);
     }
 
     @GetMapping("/balances")
     public List<Map<String, Object>> allBalances(@RequestHeader(value = "Authorization", required = false) String authorization) {
-        return admin.allBalances(Requests.session(auth, authorization));
+        return admin.allBalances(Requests.session(auth, authorization, Modules.ATTENDANCE));
     }
 
     @GetMapping("/users/{id}/balances")
     public List<Map<String, Object>> userBalances(@RequestHeader(value = "Authorization", required = false) String authorization,
                                                   @PathVariable("id") String id) {
-        return leave.userBalances(Requests.session(auth, authorization), Requests.id(id));
+        return leave.userBalances(Requests.session(auth, authorization, Modules.ATTENDANCE), Requests.id(id));
     }
 
     @GetMapping("/users/{id}/ledger")
     public List<Map<String, Object>> userLedger(@RequestHeader(value = "Authorization", required = false) String authorization,
                                                 @PathVariable("id") String id,
                                                 @RequestParam(value = "type", required = false) String type) {
-        return leave.ledger(Requests.session(auth, authorization), Requests.id(id), typeId(type));
+        return leave.ledger(Requests.session(auth, authorization, Modules.ATTENDANCE), Requests.id(id), typeId(type));
     }
 
     // ── what HR does ────────────────────────────────────────────────────
@@ -143,14 +145,14 @@ public class LeaveController {
     @PostMapping("/users/{id}/requests")
     public Map<String, Object> applyOnBehalf(@RequestHeader(value = "Authorization", required = false) String authorization,
                                              @PathVariable("id") String id, @RequestBody LeaveRequest request) {
-        return admin.applyOnBehalf(Requests.session(auth, authorization), Requests.id(id), typeId(request.leaveTypeId()),
+        return admin.applyOnBehalf(Requests.session(auth, authorization, Modules.ATTENDANCE), Requests.id(id), typeId(request.leaveTypeId()),
                 request.fromDate(), request.toDate(), request.half(), request.reason());
     }
 
     @PostMapping("/users/{id}/adjustments")
     public ResponseEntity<Void> adjust(@RequestHeader(value = "Authorization", required = false) String authorization,
                                        @PathVariable("id") String id, @RequestBody Adjustment request) {
-        admin.adjust(Requests.session(auth, authorization), Requests.id(id), typeId(request.leaveTypeId()), request.days(),
+        admin.adjust(Requests.session(auth, authorization, Modules.ATTENDANCE), Requests.id(id), typeId(request.leaveTypeId()), request.days(),
                 request.onDate(), request.reason());
         return ResponseEntity.noContent().build();
     }
@@ -158,7 +160,7 @@ public class LeaveController {
     @PostMapping("/users/{id}/comp-off")
     public ResponseEntity<Void> grantCompOff(@RequestHeader(value = "Authorization", required = false) String authorization,
                                              @PathVariable("id") String id, @RequestBody CompOff request) {
-        admin.grantCompOff(Requests.session(auth, authorization), Requests.id(id),
+        admin.grantCompOff(Requests.session(auth, authorization, Modules.ATTENDANCE), Requests.id(id),
                 request.leaveTypeId() == null || request.leaveTypeId().isBlank() ? null : Requests.id(request.leaveTypeId()),
                 request.workDate(), request.days());
         return ResponseEntity.noContent().build();
@@ -166,25 +168,25 @@ public class LeaveController {
 
     @GetMapping("/comp-off/candidates")
     public List<Map<String, Object>> compOffCandidates(@RequestHeader(value = "Authorization", required = false) String authorization) {
-        return admin.compOffCandidates(Requests.session(auth, authorization));
+        return admin.compOffCandidates(Requests.session(auth, authorization, Modules.ATTENDANCE));
     }
 
     @PostMapping("/types")
     public Map<String, Object> createType(@RequestHeader(value = "Authorization", required = false) String authorization,
                                           @RequestBody LeaveAdminService.TypeInput request) {
-        return admin.saveType(Requests.session(auth, authorization), null, request);
+        return admin.saveType(Requests.session(auth, authorization, Modules.ATTENDANCE), null, request);
     }
 
     @PutMapping("/types/{id}")
     public Map<String, Object> changeType(@RequestHeader(value = "Authorization", required = false) String authorization,
                                           @PathVariable("id") String id, @RequestBody LeaveAdminService.TypeInput request) {
-        return admin.saveType(Requests.session(auth, authorization), Requests.id(id), request);
+        return admin.saveType(Requests.session(auth, authorization, Modules.ATTENDANCE), Requests.id(id), request);
     }
 
     @GetMapping("/year-end/preview")
     public Map<String, Object> yearEndPreview(@RequestHeader(value = "Authorization", required = false) String authorization,
                                               @RequestParam(value = "year", required = false) String year) {
-        return admin.yearEndPreview(Requests.session(auth, authorization), year(year));
+        return admin.yearEndPreview(Requests.session(auth, authorization, Modules.ATTENDANCE), year(year));
     }
 
     @PostMapping("/year-end")
@@ -193,7 +195,7 @@ public class LeaveController {
         if (request.year() == null) {
             throw ApiException.badRequest("Say which leave year to close");
         }
-        return admin.yearEndRun(Requests.session(auth, authorization), request.year());
+        return admin.yearEndRun(Requests.session(auth, authorization, Modules.ATTENDANCE), request.year());
     }
 
     private static java.util.UUID typeId(String value) {

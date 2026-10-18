@@ -871,6 +871,12 @@ class AttendanceTest {
         assertError(400, "device.serial", () -> devices.handshake("x", "203.0.113.5"));
         assertError(400, "device.serial", () -> devices.handshake(null, "203.0.113.5"));
 
+        // without Attendance in the subscription the device is a stranger too, and back when it returns
+        platform.setModule(superAdmin, org.id(), "attendance", false, null);
+        assertError(404, "device.unknown", () -> devices.handshake(sn, "203.0.113.5"));
+        platform.setModule(superAdmin, org.id(), "attendance", true, null);
+        assertTrue(devices.handshake(sn, "203.0.113.5").contains("GET OPTION FROM: " + sn));
+
         // switched off, it is a stranger again
         devices.save(org.admin, UUID.fromString((String) listed.get("id")), new DeviceInput("Main gate", null, gate.toString(), false));
         assertError(404, "device.unknown", () -> devices.handshake(sn, "203.0.113.5"));

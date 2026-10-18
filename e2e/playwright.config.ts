@@ -50,5 +50,6 @@ export default defineConfig({
     // A tour of each role through its own login, for the guide's screenshots.
     { name: 'role-tour', testMatch: /17-role-tour\.spec\.ts/, use: desktop, dependencies: ['neg-payroll'] },
     { name: 'modes', testMatch: /18-attendance-modes\.spec\.ts/, use: desktop, dependencies: ['role-tour'] },
+    { name: 'modules', testMatch: /19-modules\.spec\.ts/, use: desktop, dependencies: ['modes'] },
   ],
 });

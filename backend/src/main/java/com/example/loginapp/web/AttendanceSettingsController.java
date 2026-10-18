@@ -18,6 +18,7 @@ import com.example.loginapp.core.ApiException;
 import com.example.loginapp.core.AttendanceImportService;
 import com.example.loginapp.core.AttendanceSettingsService;
 import com.example.loginapp.core.AuthService;
+import com.example.loginapp.core.Modules;
 
 /** Work locations, shifts, holidays, assignments and device imports of the caller's Organization. */
 @RestController
@@ -69,7 +70,7 @@ public class AttendanceSettingsController {
     @PostMapping("/locations/{id}/mode")
     public Map<String, Object> setMode(@RequestHeader(value = "Authorization", required = false) String authorization,
                                        @PathVariable("id") String id, @RequestBody ModeRequest request) {
-        return settings.setMode(Requests.session(auth, authorization), Requests.id(id), request.mode(), request.effectiveFrom());
+        return settings.setMode(Requests.session(auth, authorization, Modules.ATTENDANCE), Requests.id(id), request.mode(), request.effectiveFrom());
     }
 
     @GetMapping("/shifts")
@@ -152,13 +153,13 @@ public class AttendanceSettingsController {
     @PutMapping("/settings")
     public Map<String, Object> saveSettings(@RequestHeader(value = "Authorization", required = false) String authorization,
                                             @RequestBody AttendanceSettingsService.SettingsInput request) {
-        return settings.saveSettings(Requests.session(auth, authorization), request);
+        return settings.saveSettings(Requests.session(auth, authorization, Modules.ATTENDANCE), request);
     }
 
     @PutMapping("/users/{id}/wfh")
     public ResponseEntity<Void> wfhAllowed(@RequestHeader(value = "Authorization", required = false) String authorization,
                                            @PathVariable("id") String id, @RequestBody AllowedRequest request) {
-        settings.setWfhAllowed(Requests.session(auth, authorization), Requests.id(id), Boolean.TRUE.equals(request.allowed()));
+        settings.setWfhAllowed(Requests.session(auth, authorization, Modules.ATTENDANCE), Requests.id(id), Boolean.TRUE.equals(request.allowed()));
         return ResponseEntity.noContent().build();
     }
 
@@ -166,19 +167,19 @@ public class AttendanceSettingsController {
 
     @GetMapping("/imports")
     public Map<String, Object> importHealth(@RequestHeader(value = "Authorization", required = false) String authorization) {
-        return imports.health(Requests.session(auth, authorization));
+        return imports.health(Requests.session(auth, authorization, Modules.ATTENDANCE));
     }
 
     @PostMapping("/imports/preview")
     public Map<String, Object> preview(@RequestHeader(value = "Authorization", required = false) String authorization,
                                        @RequestBody ImportRequest request) {
-        return imports.preview(Requests.session(auth, authorization), request.deviceLabel(), request.content());
+        return imports.preview(Requests.session(auth, authorization, Modules.ATTENDANCE), request.deviceLabel(), request.content());
     }
 
     @PostMapping("/imports")
     public Map<String, Object> importFile(@RequestHeader(value = "Authorization", required = false) String authorization,
                                           @RequestBody ImportRequest request) {
-        return imports.importFile(Requests.session(auth, authorization), request.deviceLabel(), request.fileName(),
+        return imports.importFile(Requests.session(auth, authorization, Modules.ATTENDANCE), request.deviceLabel(), request.fileName(),
                 request.content(), request.mapping());
     }
 }

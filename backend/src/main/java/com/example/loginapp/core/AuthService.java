@@ -8,6 +8,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 import com.example.loginapp.core.SessionCtx.Perm;
@@ -73,7 +74,10 @@ public final class AuthService {
                             + "t.name as tenant_name, t.status as tenant_status, "
                             + "g.mode as grant_mode, g.expires_at as grant_expires_at, "
                             + "(g.status = 'approved' and g.revoked_at is null and g.expires_at > now()) as grant_live, "
-                            + "p.id as platform_user_id, p.role as platform_role, p.status as platform_status "
+                            + "p.id as platform_user_id, p.role as platform_role, p.status as platform_status, "
+                            + "array(select m.module from platform.tenant_module m where m.tenant_id = s.tenant_id and m.status = 'on' "
+                            + "  and (m.trial_ends_on is null or m.trial_ends_on >= (now() at time zone 'Asia/Kolkata')::date) "
+                            + "  order by m.module) as modules "
                             + "from auth.session s join auth.identity i on i.id = s.identity_id "
                             + "left join platform.tenant t on t.id = s.tenant_id "
                             + "left join platform.impersonation_grant g on g.id = s.impersonation_grant_id "
@@ -139,7 +143,16 @@ public final class AuthService {
                 uuid(s.get("impersonationGrantId")), (String) s.get("grantMode"), (String) s.get("grantExpiresAt"),
                 kind.equals("platform") ? uuid(s.get("platformUserId")) : null,
                 kind.equals("platform") ? (String) s.get("platformRole") : null,
-                permissions);
+                permissions,
+                modules(s.get("modules")));
+    }
+
+    private static Set<String> modules(Object value) {
+        Set<String> out = new java.util.TreeSet<>();
+        if (value instanceof List<?> list) {
+            list.forEach(m -> out.add(String.valueOf(m)));
+        }
+        return Set.copyOf(out);
     }
 
     /** What the signed-in person sees about themselves, and what they can enter. */
@@ -160,6 +173,24 @@ public final class AuthService {
             }
         }
         me.put("scopes", scopes);   // the widest scope held for each permission
+        me.put("modules", ctx.inOrganization() ? ctx.modules().stream().sorted().toList() : List.of());
+        // What the Organization has bought, with any trial end, for its Org Admin to see.
+        if (ctx.inOrganization() && ctx.can("tenant.manage")) {
+            me.put("subscription", db.inAuth(c -> {
+                List<Map<String, Object>> out = new ArrayList<>();
+                for (String module : Modules.ALL) {
+                    Map<String, Object> m = Sql.one(c, "select status, trial_ends_on from platform.tenant_module where tenant_id = ? and module = ?",
+                            ctx.tenantId(), module);
+                    Map<String, Object> row = new LinkedHashMap<>();
+                    row.put("module", module);
+                    row.put("name", Modules.name(module));
+                    row.put("active", ctx.hasModule(module));
+                    row.put("trialEndsOn", m == null || !"on".equals(m.get("status")) ? null : m.get("trialEndsOn"));
+                    out.add(row);
+                }
+                return out;
+            }));
+        }
         me.put("openTasks", ctx.membershipId() == null ? 0 : db.inTenant(ctx.tenantId(), c -> ChecklistService.openCount(c, ctx.membershipId())
                 + ExitTasks.openCount(c, ctx.membershipId())));
         // Whether the person has an employment record (so My exit can be offered), and their exit if one is open.

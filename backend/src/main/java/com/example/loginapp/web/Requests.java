@@ -4,6 +4,7 @@ import java.util.UUID;
 
 import com.example.loginapp.core.ApiException;
 import com.example.loginapp.core.AuthService;
+import com.example.loginapp.core.Modules;
 import com.example.loginapp.core.SessionCtx;
 
 /** Reads the caller's session from the Authorization header. */
@@ -20,6 +21,19 @@ final class Requests {
 
     static SessionCtx session(AuthService auth, String authorization) {
         return auth.resolve(bearer(authorization));
+    }
+
+    /**
+     * The caller's session, refused when the Organization does not have the module the endpoint
+     * belongs to (attendance or payroll). The platform console and identity sessions pass: they
+     * reach nothing inside an Organization anyway.
+     */
+    static SessionCtx session(AuthService auth, String authorization, String module) {
+        SessionCtx ctx = auth.resolve(bearer(authorization));
+        if (ctx.inOrganization() && !ctx.hasModule(module)) {
+            throw Modules.off(module, ctx.tenantName());
+        }
+        return ctx;
     }
 
     /** The session when the header carries a valid one, otherwise null. */

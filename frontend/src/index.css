@@ -2736,3 +2736,30 @@ textarea.code {
   display: grid;
   gap: 6px;
 }
+
+/* An Organization's modules in the platform console. */
+.module-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.module-editor {
+  display: grid;
+  gap: 12px;
+}
+
+.module-row {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) auto;
+  gap: 16px;
+  align-items: end;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+@media (max-width: 720px) {
+  .module-row {
+    grid-template-columns: 1fr;
+  }
+}

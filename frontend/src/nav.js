@@ -29,12 +29,15 @@ export function navFor(me) {
   }
 
   const scopes = me.scopes || {}
+  // What the Organization has bought: Core HR always; Attendance (with leave) and Payroll as add-ons.
+  const hasAttendance = (me.modules || []).includes('attendance')
+  const hasPayroll = (me.modules || []).includes('payroll')
   // Punching is for users of the Organization, never for a support session.
-  const canPunch = me.permissions.includes('attendance.punch') && me.kind === 'tenant'
+  const canPunch = hasAttendance && me.permissions.includes('attendance.punch') && me.kind === 'tenant'
   const seesOthersAttendance = Boolean(scopes['attendance.read']) && scopes['attendance.read'] !== 'self'
   // A support session has no leave of its own; a former employee can still look at theirs.
-  const hasOwnLeave = Boolean(scopes['leave.read']) && me.kind === 'tenant' && (scopes['leave.read'] === 'self' || me.permissions.includes('leave.apply'))
-  const seesOthersLeave = Boolean(scopes['leave.read']) && scopes['leave.read'] !== 'self'
+  const hasOwnLeave = hasAttendance && Boolean(scopes['leave.read']) && me.kind === 'tenant' && (scopes['leave.read'] === 'self' || me.permissions.includes('leave.apply'))
+  const seesOthersLeave = hasAttendance && Boolean(scopes['leave.read']) && scopes['leave.read'] !== 'self'
   const seesPeople = Boolean(scopes['employee.read']) && scopes['employee.read'] !== 'self'
   return [
     {
@@ -43,7 +46,7 @@ export function navFor(me) {
         canPunch && { id: 'my-attendance', label: 'My attendance' },
         hasOwnLeave && { id: 'my-leave', label: 'My leave' },
         me.openTasks > 0 && { id: 'my-tasks', label: 'My tasks' },
-        me.employment && me.kind === 'tenant' && { id: 'my-pay', label: 'My pay' },
+        hasPayroll && me.employment && me.kind === 'tenant' && { id: 'my-pay', label: 'My pay' },
         me.employment && me.kind === 'tenant' && { id: 'my-profile', label: 'My profile' },
         me.employment && me.kind === 'tenant' && { id: 'my-exit', label: 'My exit' },
       ].filter(Boolean),
@@ -53,10 +56,12 @@ export function navFor(me) {
       items: [
         me.permissions.includes('orgchart.read') && { id: 'org-chart', label: 'Org chart' },
         seesPeople && { id: 'people', label: 'People' },
-        seesOthersAttendance && { id: 'attendance', label: 'Attendance' },
+        hasAttendance && seesOthersAttendance && { id: 'attendance', label: 'Attendance' },
+        // Without Attendance, payroll and joining still need the work calendar: locations, shifts and who works where.
+        !hasAttendance && scopes['attendance.manage'] === 'tenant' && { id: 'work-calendar', label: 'Work locations' },
         seesOthersLeave && { id: 'leave', label: 'Leave' },
         Boolean(scopes['exit.read']) && scopes['exit.read'] !== 'self' && { id: 'exits', label: 'Exits' },
-        (me.permissions.includes('payroll.read') || me.permissions.includes('payroll.prepare')) && { id: 'payroll', label: 'Payroll' },
+        hasPayroll && (me.permissions.includes('payroll.read') || me.permissions.includes('payroll.prepare')) && { id: 'payroll', label: 'Payroll' },
         me.permissions.includes('user.read') && { id: 'users', label: 'User management' },
         me.permissions.includes('audit.read') && { id: 'audit', label: 'Audit log' },
       ].filter(Boolean),

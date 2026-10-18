@@ -365,16 +365,23 @@ function RunPage({ id, me, onBack }) {
   )
 }
 
+/** The run input that carries days without pay rather than an amount. */
+const LOP_DAYS = 'LOP_DAYS'
+
 function Inputs({ run: x, onChanged }) {
   const [form, setForm] = useState({ employmentId: '', componentCode: x.inputComponents[0]?.code || '', amount: '', note: '' })
   const { busy, error, run } = useAction()
+  const lopDays = form.componentCode === LOP_DAYS
   return (
     <section className="panel" data-testid="inputs">
       <h3>
         This month’s inputs <span className="hint">{x.people.length} people in the group</span>
       </h3>
       <p className="hint">
-        Days paid and loss of pay come from attendance and leave when the run is frozen. Add one-time amounts here: a bonus, an incentive, a recovery.
+        {x.attendanceOn
+          ? 'Days paid and loss of pay come from attendance and leave when the run is frozen. '
+          : 'Without the Attendance module, enter loss of pay here as days, under Loss of pay (days). '}
+        Add one-time amounts here: a bonus, an incentive, a recovery.
       </p>
       {x.inputs.length > 0 && (
         <table>
@@ -383,7 +390,7 @@ function Inputs({ run: x, onChanged }) {
               <tr key={i.id}>
                 <td>{i.name}</td>
                 <td>{i.componentName}</td>
-                <td className="num">{rupees(i.amount)}</td>
+                <td className="num">{i.componentCode === LOP_DAYS ? `${Number(i.amount)} ${Number(i.amount) === 1 ? 'day' : 'days'}` : rupees(i.amount)}</td>
                 <td className="hint">{i.note}</td>
                 <td>
                   {x.canPrepare && (
@@ -402,7 +409,7 @@ function Inputs({ run: x, onChanged }) {
           className="inline-form"
           onSubmit={async (e) => {
             e.preventDefault()
-            if (await run(() => payroll.addInput(x.id, { ...form, amount: numeric(form.amount, 'The amount') }))) {
+            if (await run(() => payroll.addInput(x.id, { ...form, amount: numeric(form.amount, lopDays ? 'The days' : 'The amount') }))) {
               setForm((f) => ({ ...f, amount: '', note: '' }))
               onChanged()
             }
@@ -430,7 +437,7 @@ function Inputs({ run: x, onChanged }) {
             </select>
           </div>
           <div>
-            <label htmlFor="in-amount">Amount (₹)</label>
+            <label htmlFor="in-amount">{lopDays ? 'Days without pay' : 'Amount (₹)'}</label>
             <input id="in-amount" inputMode="decimal" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} />
           </div>
           <div>

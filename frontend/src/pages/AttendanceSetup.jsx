@@ -98,7 +98,11 @@ function HomeCell({ person, canManage, onSaved }) {
   )
 }
 
-export function People({ canManage }) {
+/**
+ * Who works where, on which shift and weekly offs. Without the Attendance module this is still
+ * the work calendar payroll needs (the state, and working days), without the work-from-home parts.
+ */
+export function People({ canManage, attendanceOn = true }) {
   const people = useLoad(attendance.people)
   const locations = useLoad(attendance.locations)
   const shifts = useLoad(attendance.shifts)
@@ -188,6 +192,7 @@ export function People({ canManage }) {
               </label>
             ))}
           </fieldset>
+          {attendanceOn && (
           <fieldset className="days">
             <legend>Regular days at home (optional)</legend>
             {WEEKDAYS.map((name, day) => (
@@ -202,6 +207,7 @@ export function People({ canManage }) {
               </label>
             ))}
           </fieldset>
+          )}
           <ErrorNote>{error}</ErrorNote>
           <button type="submit" className="secondary" disabled={busy || selected.length === 0}>
             {busy ? 'Assigning…' : `Assign to ${selected.length} selected`}
@@ -219,7 +225,7 @@ export function People({ canManage }) {
               <th>Work location</th>
               <th>Shift</th>
               <th>Weekly offs</th>
-              <th>Work from home</th>
+              {attendanceOn && <th>Work from home</th>}
               <th>Since</th>
             </tr>
           </thead>
@@ -245,9 +251,11 @@ export function People({ canManage }) {
                 <td>{p.locationName || <Badge tone="warn">not assigned</Badge>}</td>
                 <td>{p.shiftName || '—'}</td>
                 <td>{p.weeklyOffs ? p.weeklyOffs.map((d) => WEEKDAYS[d].slice(0, 3)).join(', ') || 'None' : '—'}</td>
-                <td>
-                  <HomeCell person={p} canManage={canManage} onSaved={people.reload} />
-                </td>
+                {attendanceOn && (
+                  <td>
+                    <HomeCell person={p} canManage={canManage} onSaved={people.reload} />
+                  </td>
+                )}
                 <td>
                   {p.effectiveFrom ? formatDay(p.effectiveFrom) : '—'}
                   {p.nextChange && <div className="hint">Changes on {formatDay(p.nextChange)}</div>}
@@ -269,7 +277,7 @@ export function People({ canManage }) {
 
 const NEW_LOCATION = { name: '', timezone: 'Asia/Kolkata', stateCode: '', latitude: '', longitude: '', radiusM: '', allowedIps: '', punchCheck: 'none', active: true }
 
-function LocationForm({ location, onSaved, onCancel }) {
+function LocationForm({ location, onSaved, onCancel, attendanceOn = true }) {
   const [form, setForm] = useState(
     location
       ? {
@@ -318,6 +326,7 @@ function LocationForm({ location, onSaved, onCancel }) {
           <label htmlFor="loc-name">Name</label>
           <input id="loc-name" value={form.name} onChange={set('name')} />
         </div>
+        {attendanceOn && (
         <div>
           <label htmlFor="loc-check">To punch, a user must be on</label>
           <select id="loc-check" value={form.punchCheck} onChange={set('punchCheck')}>
@@ -328,6 +337,7 @@ function LocationForm({ location, onSaved, onCancel }) {
             ))}
           </select>
         </div>
+        )}
         <div>
           <label htmlFor="loc-tz">Time zone</label>
           <input id="loc-tz" value={form.timezone} onChange={set('timezone')} />
@@ -336,19 +346,19 @@ function LocationForm({ location, onSaved, onCancel }) {
           <label htmlFor="loc-state">State (optional)</label>
           <input id="loc-state" value={form.stateCode} placeholder="WB" aria-describedby="loc-state-hint" onChange={set('stateCode')} />
           <p id="loc-state-hint" className="hint">
-            Two letters, such as WB or MH.
+            Two letters, such as WB or MH.{!attendanceOn && ' Payroll takes professional tax and labour welfare fund from it.'}
           </p>
         </div>
       </div>
-      {form.punchCheck === 'none' && <p className="hint">Anyone assigned here can punch from anywhere.</p>}
-      {['ip', 'either'].includes(form.punchCheck) && (
+      {attendanceOn && form.punchCheck === 'none' && <p className="hint">Anyone assigned here can punch from anywhere.</p>}
+      {attendanceOn && ['ip', 'either'].includes(form.punchCheck) && (
         <>
           <label htmlFor="loc-ips">Office network addresses</label>
           <input id="loc-ips" value={form.allowedIps} placeholder="203.0.113.0/24, 198.51.100.7" onChange={set('allowedIps')} />
           <p className="hint">The public addresses your office reaches the internet from, separated by commas. Ask whoever runs the office network.</p>
         </>
       )}
-      {['location', 'either'].includes(form.punchCheck) && (
+      {attendanceOn && ['location', 'either'].includes(form.punchCheck) && (
       <div className="grid">
         <div>
           <label htmlFor="loc-lat">Latitude</label>
@@ -373,7 +383,7 @@ function LocationForm({ location, onSaved, onCancel }) {
         <button type="submit" className="secondary" disabled={busy}>
           {busy ? 'Saving…' : 'Save location'}
         </button>
-        {['location', 'either'].includes(form.punchCheck) && (
+        {attendanceOn && ['location', 'either'].includes(form.punchCheck) && (
           <button type="button" className="quiet" onClick={useMyPosition}>
             Use where I am now
           </button>
@@ -719,7 +729,7 @@ function ModeForm({ location, earliest, onSaved, onCancel }) {
   )
 }
 
-export function Setup({ canManage }) {
+export function Setup({ canManage, attendanceOn = true }) {
   const locations = useLoad(attendance.locations)
   const shifts = useLoad(attendance.shifts)
   const settings = useLoad(attendance.settings)
@@ -739,7 +749,8 @@ export function Setup({ canManage }) {
     <>
       {canManage && ready && (
         <p className="notice" role="status">
-          Next: assign a location and shift to each user under <strong>People</strong>, above. Punching starts once they have one.
+          Next: assign a location and shift to each user under <strong>People</strong>, above.
+          {attendanceOn ? ' Punching starts once they have one.' : ' Payroll takes the state and working days from it.'}
         </p>
       )}
       <div className="section-head">
@@ -758,10 +769,10 @@ export function Setup({ canManage }) {
             <thead>
               <tr>
                 <th>Location</th>
-                <th>Attendance</th>
-                <th>Punch check</th>
-                <th>Office network</th>
-                <th>Position</th>
+                {attendanceOn && <th>Attendance</th>}
+                {attendanceOn && <th>Punch check</th>}
+                {attendanceOn && <th>Office network</th>}
+                {attendanceOn && <th>Position</th>}
                 <th aria-label="Actions" />
               </tr>
             </thead>
@@ -775,6 +786,7 @@ export function Setup({ canManage }) {
                       {l.stateCode && ` · ${l.stateCode}`}
                     </div>
                   </td>
+                  {attendanceOn && (
                   <td>
                     {MODES[l.mode].label}
                     {l.mode === 'device' && <div className="hint">{l.devices === 1 ? '1 device' : `${l.devices} devices`}</div>}
@@ -784,15 +796,18 @@ export function Setup({ canManage }) {
                       </div>
                     )}
                   </td>
-                  <td>{l.mode === 'app' ? PUNCH_CHECKS[l.punchCheck] : '—'}</td>
-                  <td>{l.allowedIps.length ? l.allowedIps.join(', ') : '—'}</td>
-                  <td>{l.latitude !== null ? `${l.latitude}, ${l.longitude} within ${l.radiusM} m` : '—'}</td>
+                  )}
+                  {attendanceOn && <td>{l.mode === 'app' ? PUNCH_CHECKS[l.punchCheck] : '—'}</td>}
+                  {attendanceOn && <td>{l.allowedIps.length ? l.allowedIps.join(', ') : '—'}</td>}
+                  {attendanceOn && <td>{l.latitude !== null ? `${l.latitude}, ${l.longitude} within ${l.radiusM} m` : '—'}</td>}
                   <td className="actions">
                     {canManage && (
                       <>
-                        <button type="button" className="quiet" onClick={() => setEditing({ kind: 'mode', item: l })}>
-                          Attendance mode
-                        </button>
+                        {attendanceOn && (
+                          <button type="button" className="quiet" onClick={() => setEditing({ kind: 'mode', item: l })}>
+                            Attendance mode
+                          </button>
+                        )}
                         <button type="button" className="quiet" onClick={() => setEditing({ kind: 'location', item: l })}>
                           Change
                         </button>
@@ -806,7 +821,13 @@ export function Setup({ canManage }) {
         </div>
       )}
       {canManage && editing?.kind === 'location' && (
-        <LocationForm key={editing.item?.id || 'new'} location={editing.item} onSaved={saved} onCancel={() => setEditing(null)} />
+        <LocationForm
+          key={editing.item?.id || 'new'}
+          location={editing.item}
+          attendanceOn={attendanceOn}
+          onSaved={saved}
+          onCancel={() => setEditing(null)}
+        />
       )}
       {canManage && editing?.kind === 'mode' && (
         <ModeForm
@@ -817,7 +838,7 @@ export function Setup({ canManage }) {
           onCancel={() => setEditing(null)}
         />
       )}
-      {canManage && !editing && locations.data.length === 0 && <LocationForm key="first-location" onSaved={saved} />}
+      {canManage && !editing && locations.data.length === 0 && <LocationForm key="first-location" attendanceOn={attendanceOn} onSaved={saved} />}
 
       <div className="section-head">
         <h2>Shifts</h2>
@@ -874,7 +895,7 @@ export function Setup({ canManage }) {
       {canManage && !editing && shifts.data.length === 0 && <ShiftForm key="first-shift" onSaved={saved} />}
 
       <Holidays locations={locations.data} canManage={canManage} />
-      <HomeWorking canManage={canManage} />
+      {attendanceOn && <HomeWorking canManage={canManage} />}
     </>
   )
 }

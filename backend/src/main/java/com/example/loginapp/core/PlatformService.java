@@ -2,6 +2,9 @@ package com.example.loginapp.core;
 
 import java.sql.Connection;
 import java.sql.SQLException;
+import java.time.LocalDate;
+import java.time.ZoneId;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -26,16 +29,100 @@ public final class PlatformService {
 
     public List<Map<String, Object>> organizations(SessionCtx ctx) {
         ctx.requirePlatform("super_admin", "support", "billing");
-        return db.inPlatform(c -> Sql.query(c,
-                "select t.id, t.name, t.slug, t.status, t.plan_code, t.created_at, "
-                        + "s.active_members, s.pending_invitations, s.owners "
-                        + "from platform.tenant t cross join lateral platform.tenant_stats(t.id) s "
-                        + "order by t.created_at desc"));
+        return db.inPlatform(c -> {
+            List<Map<String, Object>> rows = Sql.query(c,
+                    "select t.id, t.name, t.slug, t.status, t.plan_code, t.created_at, "
+                            + "s.active_members, s.pending_invitations, s.owners "
+                            + "from platform.tenant t cross join lateral platform.tenant_stats(t.id) s "
+                            + "order by t.created_at desc");
+            for (Map<String, Object> r : rows) {
+                r.put("modules", modules(c, AuthService.uuid(r.get("id"))));
+            }
+            return rows;
+        });
+    }
+
+    /**
+     * Each module for an Organization: on, off, or on until a trial ends (and whether that day has
+     * passed), in the order of {@link Modules#ALL}.
+     */
+    private static List<Map<String, Object>> modules(Connection c, UUID tenantId) throws SQLException {
+        List<Map<String, Object>> out = new java.util.ArrayList<>();
+        for (String module : Modules.ALL) {
+            Map<String, Object> m = Sql.one(c, "select status, trial_ends_on, changed_at, "
+                    + "(status = 'on' and (trial_ends_on is null or trial_ends_on >= (now() at time zone 'Asia/Kolkata')::date)) as active "
+                    + "from platform.tenant_module where tenant_id = ? and module = ?", tenantId, module);
+            Map<String, Object> row = new LinkedHashMap<>();
+            row.put("module", module);
+            row.put("name", Modules.name(module));
+            row.put("status", m == null ? "off" : m.get("status"));
+            row.put("trialEndsOn", m == null ? null : m.get("trialEndsOn"));
+            row.put("active", m != null && Boolean.TRUE.equals(m.get("active")));
+            out.add(row);
+        }
+        return out;
+    }
+
+    /**
+     * Switches a module on (optionally until a trial ends) or off for an Organization. Off hides the
+     * module's screens and refuses its requests; its records stay, and come back when it is switched on.
+     */
+    public Map<String, Object> setModule(SessionCtx ctx, UUID tenantId, String module, boolean on, String trialEndsOn) {
+        ctx.requirePlatform("super_admin", "billing");
+        if (module == null || !Modules.ALL.contains(module)) {
+            throw ApiException.badRequest("The module must be one of " + String.join(", ", Modules.ALL));
+        }
+        LocalDate trial = null;
+        if (on && trialEndsOn != null && !trialEndsOn.isBlank()) {
+            try {
+                trial = LocalDate.parse(trialEndsOn.trim());
+            } catch (java.time.format.DateTimeParseException e) {
+                throw ApiException.badRequest("The trial end must be a date like 2026-11-30");
+            }
+            LocalDate today = LocalDate.now(ZoneId.of("Asia/Kolkata"));
+            if (trial.isBefore(today)) {
+                throw ApiException.badRequest("The trial end cannot be in the past");
+            }
+            if (trial.isAfter(today.plusYears(1))) {
+                throw ApiException.badRequest("A trial can run for a year at most");
+            }
+        }
+        final LocalDate trialEnd = trial;
+        return db.inPlatform(c -> {
+            if (Sql.one(c, "select 1 from platform.tenant where id = ?", tenantId) == null) {
+                throw ApiException.notFound("The Organization");
+            }
+            Sql.update(c, "insert into platform.tenant_module (tenant_id, module, status, trial_ends_on, changed_by) values (?, ?, ?, ?, ?) "
+                    + "on conflict (tenant_id, module) do update set status = excluded.status, trial_ends_on = excluded.trial_ends_on, "
+                    + "changed_by = excluded.changed_by, changed_at = now()", tenantId, module, on ? "on" : "off", trialEnd, ctx.platformUserId());
+            Map<String, Object> detail = new LinkedHashMap<>();
+            detail.put("module", module);
+            if (trialEnd != null) {
+                detail.put("trialEndsOn", trialEnd.toString());
+            }
+            audit(c, ctx, on ? "tenant.module_on" : "tenant.module_off", "tenant", tenantId, detail);
+            return Map.of("modules", modules(c, tenantId));
+        });
     }
 
     /** Creates an Organization and invites its first Org Admin. Returns the Organization and the invitation token. */
     public Map<String, Object> createOrganization(SessionCtx ctx, String name, String slug, String planCode, String adminEmail) {
+        return createOrganization(ctx, name, slug, planCode, adminEmail, null);
+    }
+
+    /**
+     * Creates an Organization with the modules it has bought (null: all of them) and invites its first
+     * Org Admin. Returns the Organization and the invitation token.
+     */
+    public Map<String, Object> createOrganization(SessionCtx ctx, String name, String slug, String planCode, String adminEmail,
+                                                  List<String> modules) {
         ctx.requirePlatform("super_admin");
+        List<String> chosen = modules == null ? Modules.ALL : modules;
+        for (String m : chosen) {
+            if (!Modules.ALL.contains(m)) {
+                throw ApiException.badRequest("Unknown module: " + m + ". Choose from " + String.join(", ", Modules.ALL));
+            }
+        }
         if (name == null || name.isBlank()) {
             throw ApiException.badRequest("Enter the Organization's name");
         }
@@ -52,7 +139,12 @@ public final class PlatformService {
                     ctx.platformUserId());
             UUID tenantId = AuthService.uuid(tenant.get("id"));
             Sql.query(c, "select platform.invite_first_owner(?, ?::citext, ?)", tenantId, adminEmail.trim(), Secrets.sha256(token));
-            audit(c, ctx, "tenant.created", "tenant", tenantId, Map.of("name", name.trim(), "slug", slug));
+            for (String m : Modules.ALL) {
+                Sql.update(c, "insert into platform.tenant_module (tenant_id, module, status, changed_by) values (?, ?, ?, ?)",
+                        tenantId, m, chosen.contains(m) ? "on" : "off", ctx.platformUserId());
+            }
+            audit(c, ctx, "tenant.created", "tenant", tenantId, Map.of("name", name.trim(), "slug", slug,
+                    "modules", String.join(", ", chosen.stream().map(Modules::name).toList())));
             audit(c, ctx, "tenant.first_owner_invited", "tenant", tenantId, Map.of("email", adminEmail.trim()));
             tenant.put("invitationEmail", adminEmail.trim());
             tenant.put("invitationToken", token);

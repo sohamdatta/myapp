@@ -17,6 +17,7 @@ import org.springframework.web.bind.annotation.RestController;
 import com.example.loginapp.core.ApiException;
 import com.example.loginapp.core.AttendanceService;
 import com.example.loginapp.core.AuthService;
+import com.example.loginapp.core.Modules;
 import com.example.loginapp.core.SessionCtx;
 
 import jakarta.servlet.http.HttpServletRequest;
@@ -53,44 +54,44 @@ public class AttendanceController {
 
     @GetMapping("/me/today")
     public Map<String, Object> today(@RequestHeader(value = "Authorization", required = false) String authorization) {
-        return attendance.today(Requests.session(auth, authorization));
+        return attendance.today(Requests.session(auth, authorization, Modules.ATTENDANCE));
     }
 
     @PostMapping("/me/punch")
     public Map<String, Object> punch(@RequestHeader(value = "Authorization", required = false) String authorization,
                                      @RequestBody PunchRequest request, HttpServletRequest http) {
-        return attendance.punch(Requests.session(auth, authorization), request.latitude(), request.longitude(),
+        return attendance.punch(Requests.session(auth, authorization, Modules.ATTENDANCE), request.latitude(), request.longitude(),
                 request.accuracyM(), clientIp(http));
     }
 
     @GetMapping("/me/days")
     public List<Map<String, Object>> myDays(@RequestHeader(value = "Authorization", required = false) String authorization,
                                             @RequestParam(value = "month", required = false) String month) {
-        return attendance.myDays(Requests.session(auth, authorization), month);
+        return attendance.myDays(Requests.session(auth, authorization, Modules.ATTENDANCE), month);
     }
 
     @GetMapping("/me/wfh")
     public Map<String, Object> homeWorking(@RequestHeader(value = "Authorization", required = false) String authorization) {
-        return attendance.homeWorking(Requests.session(auth, authorization));
+        return attendance.homeWorking(Requests.session(auth, authorization, Modules.ATTENDANCE));
     }
 
     @GetMapping("/me/requests")
     public List<Map<String, Object>> myRequests(@RequestHeader(value = "Authorization", required = false) String authorization) {
-        return attendance.myRequests(Requests.session(auth, authorization));
+        return attendance.myRequests(Requests.session(auth, authorization, Modules.ATTENDANCE));
     }
 
     @PostMapping("/me/requests")
     public Map<String, Object> createRequest(@RequestHeader(value = "Authorization", required = false) String authorization,
                                              @RequestBody NewRequest request) {
         String from = request.fromDate() != null ? request.fromDate() : request.workDate();
-        return attendance.createRequests(Requests.session(auth, authorization), request.kind(), from,
+        return attendance.createRequests(Requests.session(auth, authorization, Modules.ATTENDANCE), request.kind(), from,
                 request.toDate() != null ? request.toDate() : from, request.half(), request.inTime(), request.outTime(), request.reason());
     }
 
     @PostMapping("/me/requests/{id}/cancel")
     public ResponseEntity<Void> cancelRequest(@RequestHeader(value = "Authorization", required = false) String authorization,
                                               @PathVariable("id") String id) {
-        attendance.cancelRequest(Requests.session(auth, authorization), Requests.id(id));
+        attendance.cancelRequest(Requests.session(auth, authorization, Modules.ATTENDANCE), Requests.id(id));
         return ResponseEntity.noContent().build();
     }
 
@@ -99,27 +100,27 @@ public class AttendanceController {
     @GetMapping("/days")
     public List<Map<String, Object>> board(@RequestHeader(value = "Authorization", required = false) String authorization,
                                            @RequestParam(value = "date", required = false) String date) {
-        return attendance.board(Requests.session(auth, authorization), date);
+        return attendance.board(Requests.session(auth, authorization, Modules.ATTENDANCE), date);
     }
 
     @GetMapping("/users/{id}/days")
     public List<Map<String, Object>> userDays(@RequestHeader(value = "Authorization", required = false) String authorization,
                                               @PathVariable("id") String id,
                                               @RequestParam(value = "month", required = false) String month) {
-        return attendance.userDays(Requests.session(auth, authorization), Requests.id(id), month);
+        return attendance.userDays(Requests.session(auth, authorization, Modules.ATTENDANCE), Requests.id(id), month);
     }
 
     @PostMapping("/users/{id}/punches")
     public ResponseEntity<Void> manualPunch(@RequestHeader(value = "Authorization", required = false) String authorization,
                                             @PathVariable("id") String id, @RequestBody ManualPunch request) {
-        attendance.manualPunch(Requests.session(auth, authorization), Requests.id(id), request.at(), request.direction(), request.reason());
+        attendance.manualPunch(Requests.session(auth, authorization, Modules.ATTENDANCE), Requests.id(id), request.at(), request.direction(), request.reason());
         return ResponseEntity.noContent().build();
     }
 
     @GetMapping("/requests")
     public List<Map<String, Object>> requests(@RequestHeader(value = "Authorization", required = false) String authorization,
                                               @RequestParam(value = "status", required = false) String status) {
-        return attendance.requests(Requests.session(auth, authorization), status);
+        return attendance.requests(Requests.session(auth, authorization, Modules.ATTENDANCE), status);
     }
 
     /** action is approve or reject. */
@@ -127,7 +128,7 @@ public class AttendanceController {
     public ResponseEntity<Void> decide(@RequestHeader(value = "Authorization", required = false) String authorization,
                                        @PathVariable("id") String id, @PathVariable("action") String action,
                                        @RequestBody Decision decision) {
-        SessionCtx ctx = Requests.session(auth, authorization);
+        SessionCtx ctx = Requests.session(auth, authorization, Modules.ATTENDANCE);
         if (!action.equals("approve") && !action.equals("reject")) {
             throw ApiException.badRequest("Unknown action: " + action);
         }
@@ -139,7 +140,7 @@ public class AttendanceController {
     @GetMapping("/register")
     public Map<String, Object> register(@RequestHeader(value = "Authorization", required = false) String authorization,
                                         @RequestParam(value = "month", required = false) String month) {
-        return attendance.register(Requests.session(auth, authorization), month);
+        return attendance.register(Requests.session(auth, authorization, Modules.ATTENDANCE), month);
     }
 
     /**
@@ -151,7 +152,7 @@ public class AttendanceController {
     @PostMapping("/users/{id}/marks")
     public Map<String, Object> mark(@RequestHeader(value = "Authorization", required = false) String authorization,
                                     @PathVariable("id") String id, @RequestBody MarkRequest request) {
-        return attendance.mark(Requests.session(auth, authorization), Requests.id(id), request.date(), request.status(), request.reason());
+        return attendance.mark(Requests.session(auth, authorization, Modules.ATTENDANCE), Requests.id(id), request.date(), request.status(), request.reason());
     }
 
     private String clientIp(HttpServletRequest http) {
