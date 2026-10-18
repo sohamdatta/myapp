@@ -49,6 +49,8 @@ export default defineConfig({
     { name: 'neg-payroll', testMatch: /16-negative-payroll\.spec\.ts/, use: desktop, dependencies: ['neg-people'] },
     // A tour of each role through its own login, for the guide's screenshots.
     { name: 'role-tour', testMatch: /17-role-tour\.spec\.ts/, use: desktop, dependencies: ['neg-payroll'] },
+    // Performance, last: it adds a joiner on probation to the Organization the story has built.
+    { name: 'performance', testMatch: /19-performance\.spec\.ts/, use: desktop, dependencies: ['role-tour'] },
     { name: 'modes', testMatch: /18-attendance-modes\.spec\.ts/, use: desktop, dependencies: ['role-tour'] },
   ],
 });

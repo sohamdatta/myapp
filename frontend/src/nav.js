@@ -36,6 +36,7 @@ export function navFor(me) {
   const hasOwnLeave = Boolean(scopes['leave.read']) && me.kind === 'tenant' && (scopes['leave.read'] === 'self' || me.permissions.includes('leave.apply'))
   const seesOthersLeave = Boolean(scopes['leave.read']) && scopes['leave.read'] !== 'self'
   const seesPeople = Boolean(scopes['employee.read']) && scopes['employee.read'] !== 'self'
+  const seesOthersPerformance = Boolean(scopes['performance.read']) && scopes['performance.read'] !== 'self'
   return [
     {
       label: 'My work',
@@ -44,6 +45,7 @@ export function navFor(me) {
         hasOwnLeave && { id: 'my-leave', label: 'My leave' },
         me.openTasks > 0 && { id: 'my-tasks', label: 'My tasks' },
         me.employment && me.kind === 'tenant' && { id: 'my-pay', label: 'My pay' },
+        me.employment && me.kind === 'tenant' && Boolean(scopes['performance.read']) && { id: 'my-performance', label: 'My performance' },
         me.employment && me.kind === 'tenant' && { id: 'my-profile', label: 'My profile' },
         me.employment && me.kind === 'tenant' && { id: 'my-exit', label: 'My exit' },
       ].filter(Boolean),
@@ -56,6 +58,7 @@ export function navFor(me) {
         seesOthersAttendance && { id: 'attendance', label: 'Attendance' },
         seesOthersLeave && { id: 'leave', label: 'Leave' },
         Boolean(scopes['exit.read']) && scopes['exit.read'] !== 'self' && { id: 'exits', label: 'Exits' },
+        seesOthersPerformance && { id: 'performance', label: 'Performance' },
         (me.permissions.includes('payroll.read') || me.permissions.includes('payroll.prepare')) && { id: 'payroll', label: 'Payroll' },
         me.permissions.includes('user.read') && { id: 'users', label: 'User management' },
         me.permissions.includes('audit.read') && { id: 'audit', label: 'Audit log' },

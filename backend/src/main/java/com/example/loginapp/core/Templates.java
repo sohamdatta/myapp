@@ -41,10 +41,21 @@ public final class Templates {
     /** What exit letters can say: everything other letters can, and the exit's own details. */
     public static final Map<String, String> EXIT_LETTER;
 
+    /** What performance letters can say: everything other letters can, and the probation's and review's own details. */
+    public static final Map<String, String> PERFORMANCE_LETTER;
+
     /** What messages can say: everything letters can, and the event's own details. */
     public static final Map<String, String> MESSAGE;
 
     static {
+        java.util.Map<String, String> p = new java.util.TreeMap<>(LETTER);
+        p.put("probation.end_date", "The end of the probation the letter is about");
+        p.put("probation.confirmed_from", "The day a confirmation takes effect");
+        p.put("probation.new_end_date", "The new end of an extended probation");
+        p.put("probation.extension_months", "How many months the probation is extended by, as 3 months");
+        p.put("employment.tenure", "Length of service, as 3 years 2 months");
+        PERFORMANCE_LETTER = java.util.Collections.unmodifiableMap(p);
+
         java.util.Map<String, String> x = new java.util.TreeMap<>(LETTER);
         x.put("exit.kind", "The kind of exit, in words: resignation, retirement and so on");
         x.put("exit.submitted_on", "When the resignation was given, or the exit started");
@@ -69,6 +80,11 @@ public final class Templates {
         m.put("letter.title", "The letter's title");
         m.put("settlement.line", "A settlement line, such as Gratuity");
         m.put("settlement.due_date", "When a settlement line is due");
+        m.putAll(PERFORMANCE_LETTER);
+        m.put("probation.checkin_day", "The check-in, as day 30");
+        m.put("probation.checkin_due", "When the check-in is due");
+        m.put("probation.recommendation", "The manager's recommendation, in words");
+        m.put("probation.decision", "HR's decision, in words");
         MESSAGE = java.util.Collections.unmodifiableMap(m);
     }
 

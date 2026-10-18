@@ -469,6 +469,22 @@ export const exitTasks = {
   reassign: (id, membershipId) => post(`/org/people/exit-tasks/${id}/reassign`, { membershipId }),
 }
 
+// ── performance: the employee's own, and their team's or everyone's ──
+
+export const performance = {
+  mine: () => get('/org/me/performance'),
+  replyToCheckin: (id, reply) => post(`/org/me/performance/probation/checkins/${id}/reply`, { reply }),
+
+  probations: (status) => get(`/org/performance/probation${query({ status })}`),
+  probation: (id) => get(`/org/performance/probation/${id}`),
+  writeCheckin: (id, checkinId, body) => put(`/org/performance/probation/${id}/checkins/${checkinId}`, body),
+  recommend: (id, body) => post(`/org/performance/probation/${id}/recommend`, body),
+  decide: (id, body) => post(`/org/performance/probation/${id}/decide`, body),
+
+  probationSettings: () => get('/org/performance/setup/probation'),
+  saveProbationSettings: (body) => put('/org/performance/setup/probation', body),
+}
+
 export const notifications = {
   list: () => get('/org/notifications'),
   read: (ids) => post('/org/notifications/read', { ids }),

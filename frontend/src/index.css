@@ -2736,3 +2736,57 @@ textarea.code {
   display: grid;
   gap: 6px;
 }
+
+/* ── performance ───────────────────────────────────────────────────── */
+
+.perf-choices legend {
+  margin-bottom: 6px;
+  font-weight: 600;
+}
+
+.perf-choices .choice {
+  align-items: center;
+}
+
+.perf-choices .choice input {
+  margin-top: 0;
+}
+
+.checkin {
+  padding: 12px 0;
+  border-top: 1px solid var(--border);
+}
+
+.checkin:first-of-type {
+  border-top: 0;
+}
+
+.checkin-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.checkin .pre,
+.reply .pre {
+  margin: 4px 0;
+}
+
+.reply {
+  margin: 8px 0 4px;
+  padding: 8px 12px;
+  background: var(--accent-soft);
+  border-radius: 8px;
+}
+
+.plain-list {
+  margin: 0;
+  padding-left: 18px;
+}
+
+/* Text people typed, with their line breaks kept. */
+.pre {
+  white-space: pre-wrap;
+}

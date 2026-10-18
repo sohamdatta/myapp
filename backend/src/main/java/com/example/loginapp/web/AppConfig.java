@@ -42,6 +42,7 @@ import com.example.loginapp.core.PayrollPay;
 import com.example.loginapp.core.PayrollRuns;
 import com.example.loginapp.core.PlatformService;
 import com.example.loginapp.core.PolicyService;
+import com.example.loginapp.core.Probation;
 import com.example.loginapp.core.UserService;
 import com.zaxxer.hikari.HikariDataSource;
 
@@ -158,6 +159,11 @@ public class AppConfig {
     @Bean
     public ExitService exitService(Db db, Crypto crypto) {
         return new ExitService(db, crypto);
+    }
+
+    @Bean
+    public Probation probation(Db db, Crypto crypto, ExitService exits) {
+        return new Probation(db, crypto, exits);
     }
 
     @Bean

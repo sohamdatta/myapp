@@ -66,9 +66,24 @@ export const EXIT_LETTER_PLACEHOLDERS = {
   'employment.designations': 'Every designation held, with dates',
 }
 
+/** Placeholders a performance letter can use: a letter's, and the probation's own details. */
+export const PERFORMANCE_LETTER_PLACEHOLDERS = {
+  ...LETTER_PLACEHOLDERS,
+  'probation.end_date': 'The end of the probation the letter is about',
+  'probation.confirmed_from': 'The day a confirmation takes effect',
+  'probation.new_end_date': 'The new end of an extended probation',
+  'probation.extension_months': 'How many months the probation is extended by, as 3 months',
+  'employment.tenure': 'Length of service, as 3 years 2 months',
+}
+
 /** Placeholders a message can use: a letter's, and the event's own details. */
 export const MESSAGE_PLACEHOLDERS = {
   ...EXIT_LETTER_PLACEHOLDERS,
+  ...PERFORMANCE_LETTER_PLACEHOLDERS,
+  'probation.checkin_day': 'The check-in, as day 30',
+  'probation.checkin_due': 'When the check-in is due',
+  'probation.recommendation': "The manager's recommendation, in words",
+  'probation.decision': "HR's decision, in words",
   link: 'The link the message is about',
   note: "HR's note",
   'section.title': "The section's title",
@@ -120,6 +135,14 @@ export const SAMPLE_VALUES = {
   'letter.title': 'relieving letter',
   'settlement.line': 'Gratuity',
   'settlement.due_date': '30 November 2026',
+  'probation.end_date': '11 April 2027',
+  'probation.confirmed_from': '12 April 2027',
+  'probation.new_end_date': '11 July 2027',
+  'probation.extension_months': '3 months',
+  'probation.checkin_day': 'day 30',
+  'probation.checkin_due': '11 November 2026',
+  'probation.recommendation': 'confirm',
+  'probation.decision': 'confirmed',
 }
 
 /** Fills placeholders with values, as the server does: unknown or empty ones become nothing. */

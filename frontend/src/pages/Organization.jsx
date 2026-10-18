@@ -12,6 +12,8 @@ import MyExit from './MyExit.jsx'
 import MyTasks from './MyTasks.jsx'
 import OrgChart from './OrgChart.jsx'
 import MyPay from './MyPay.jsx'
+import MyPerformance from './MyPerformance.jsx'
+import Performance from './Performance.jsx'
 import Payroll from './Payroll.jsx'
 import People, { MyProfile } from './People.jsx'
 
@@ -508,6 +510,8 @@ export default function Organization({ me, page, onNavigate }) {
       {page === 'org-chart' && <OrgChart onNavigate={onNavigate} />}
       {page === 'payroll' && <Payroll me={me} />}
       {page === 'my-pay' && <MyPay />}
+      {page === 'my-performance' && <MyPerformance />}
+      {page === 'performance' && <Performance me={me} />}
       {page === 'people' && <People me={me} onNavigate={onNavigate} />}
       {page === 'my-profile' && <MyProfile id={me.employment?.id} />}
       {page === 'my-onboarding' && <MyOnboarding me={me} />}
