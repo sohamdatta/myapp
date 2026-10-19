@@ -2977,3 +2977,14 @@ textarea.code {
 [data-testid='merit-table'] input {
   max-width: 7rem;
 }
+
+/* ── improvement plans ───────────────────────────────────────────────── */
+.plan-objectives {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.75rem;
+  margin: 0.75rem 0;
+}
+.plan-objective-list li {
+  margin-bottom: 0.5rem;
+}

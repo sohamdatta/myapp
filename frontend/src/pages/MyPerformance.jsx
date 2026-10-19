@@ -5,6 +5,7 @@ import { Badge, Empty, ErrorNote, Tabs } from '../ui.jsx'
 import { FeedbackList, GiveFeedback } from './FeedbackPanel.jsx'
 import GoalsPanel from './GoalsPanel.jsx'
 import OneToOnePanel from './OneToOnePanel.jsx'
+import { PlanView } from './Plans.jsx'
 import { DECIDED, RATINGS, REVIEW_STATUS } from './performanceText.js'
 import ReviewPage from './ReviewPage.jsx'
 
@@ -22,16 +23,20 @@ export default function MyPerformance() {
   const pressing = (m.reviews || []).find((r) => ['self_review', 'released'].includes(r.status))
   const tabs = [
     (m.reviews?.length > 0 || m.outcomeLetters?.length > 0) && { id: 'reviews', label: 'Reviews' },
+    m.plan && { id: 'plan', label: 'Improvement plan' },
     m.probation && { id: 'probation', label: 'Probation' },
     m.goals && { id: 'goals', label: 'Goals' },
     m.oneToOnes?.length > 0 && { id: 'one-to-ones', label: 'One-to-ones' },
     { id: 'feedback', label: 'Feedback' },
   ].filter(Boolean)
-  const current = tab || (pressing ? 'reviews' : m.probation?.onProbation ? 'probation' : m.goals ? 'goals' : tabs[0].id)
+  const planPressing = m.plan && m.plan.status === 'active' && (!m.plan.acknowledgedAt || m.plan.checkins.some((k) => k.canReply))
+  const current =
+    tab || (planPressing ? 'plan' : pressing ? 'reviews' : m.probation?.onProbation ? 'probation' : m.goals ? 'goals' : tabs[0].id)
   return (
     <div className="my-performance">
       <Tabs tabs={tabs} current={current} onChange={setTab} />
       {current === 'reviews' && <MyReviews reviews={m.reviews} letters={m.outcomeLetters || []} onChanged={mine.reload} />}
+      {current === 'plan' && m.plan && <PlanView plan={m.plan} onChanged={() => (setTab('plan'), mine.reload())} />}
       {current === 'probation' && m.probation && <MyProbation probation={m.probation} onChanged={mine.reload} />}
       {current === 'goals' && m.goals && <GoalsPanel employmentId={m.goals.employee.id} />}
       {current === 'one-to-ones' && <MyOneToOnes people={m.oneToOnes} />}

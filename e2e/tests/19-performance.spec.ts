@@ -7,6 +7,7 @@ import { HR, OWNER, acceptInvite, api, expectNoConsoleErrors, expectNoSidewaysSc
 
 const PRIYA = 'priya.shah@mail.test';
 const ISHITA = 'ishita.menon@mail.test';
+const RAHUL = 'rahul.bose@mail.test';
 
 async function employmentId(page: Page, name: string): Promise<string> {
   const r = await api(page, 'GET', '/org/people/employees?status=all');
@@ -20,10 +21,11 @@ test.describe.serial('performance', () => {
   let hr: Page;
   let priya: Page;
   let ishita: Page;
+  let rahul: Page;
 
   test.afterAll(async () => {
     expectNoConsoleErrors();
-    for (const p of [owner, hr, priya, ishita]) await p?.context().close();
+    for (const p of [owner, hr, priya, ishita, rahul]) await p?.context().close();
   });
 
   test('a joiner on probation appears for their manager and for HR', async ({ browser }) => {
@@ -403,5 +405,93 @@ test.describe.serial('performance', () => {
     await expect(letters).toContainText('Promotion letter');
     await expectNoSidewaysScroll(ishita);
     await shot(ishita, 'perf-21-outcome-letters-phone', true);
+  });
+
+  // ── improvement plans ────────────────────────────────────────────────
+
+  test('Priya drafts an improvement plan for Rahul and HR starts it', async ({ browser }) => {
+    // Rahul, who reports to Priya, gets a login linked to his record.
+    const invited = await api(owner, 'POST', '/org/invitations', { email: RAHUL, roles: ['employee'] });
+    expect(invited.status, JSON.stringify(invited.body)).toBe(200);
+    rahul = await acceptInvite(browser, `/?invite=${encodeURIComponent(invited.body.token)}`, undefined, 390);
+    const users = (await api(owner, 'GET', '/org/users')).body;
+    const membership = (users.users || users).find((u: any) => u.email === RAHUL).id;
+    const linked = await api(owner, 'POST', `/org/people/employees/${await employmentId(owner, 'Rahul Bose')}/link`, { membershipId: membership });
+    expect(linked.status, JSON.stringify(linked.body)).toBeLessThan(300);
+
+    await priya.reload();
+    await nav(priya, 'Performance');
+    await tab(priya, 'Improvement plans');
+    await priya.getByTestId('plans').getByRole('button', { name: 'New plan' }).click();
+    await priya.getByLabel('For').selectOption({ label: 'Rahul Bose' });
+    await priya.getByLabel('Check in').selectOption('7');
+    await priya.fill('#plan-reason', 'The weekly stock report was late on five of the last eight Mondays, and twice had wrong totals.');
+    await priya.fill('#obj-title-0', 'Send the weekly stock report on time');
+    await priya.fill('#obj-measure-0', 'By 11 am every Monday');
+    await priya.fill('#obj-title-1', 'Correct totals');
+    await priya.fill('#obj-measure-1', 'No corrections needed after sending');
+    await priya.fill('#plan-support', 'A session on the stock system with Meera, and a 15-minute check every Monday morning.');
+    await shot(priya, 'perf-22-plan-draft', true);
+    await priya.getByRole('button', { name: 'Save the draft' }).click();
+    const plan = priya.getByTestId('plan');
+    await expect(plan).toContainText('Draft, waiting for HR');
+    await expect(plan.getByRole('button', { name: 'Start the plan' })).toHaveCount(0);
+
+    await hr.reload();
+    await nav(hr, 'Performance');
+    await tab(hr, 'Improvement plans');
+    await hr.getByTestId('plans').getByRole('button', { name: 'Rahul Bose' }).click();
+    await hr.getByTestId('start-plan').getByRole('button', { name: 'Start the plan' }).click();
+    const started = hr.getByTestId('plan');
+    await expect(started).toContainText('Performance improvement plan');
+    await expect(started.locator('[data-plan-checkin]')).toHaveCount(9);
+  });
+
+  test('Rahul reads his plan on his phone and acknowledges it with a response', async () => {
+    await rahul.reload();
+    await nav(rahul, 'My performance');
+    const plan = rahul.getByTestId('plan');
+    await expect(plan).toContainText('Your improvement plan');
+    await expect(plan).toContainText('Send the weekly stock report on time');
+    await rahul.fill('#plan-response', 'The Monday delay is the warehouse upload; I have asked for it by 9 am.');
+    await plan.getByRole('button', { name: 'I have read it' }).click();
+    await expect(plan).toContainText('Acknowledged');
+    await expectNoSidewaysScroll(rahul);
+    await shot(rahul, 'perf-23-plan-phone', true);
+  });
+
+  test('Priya writes the first check-in; Rahul replies; HR records the plan as completed', async () => {
+    await priya.reload();
+    await nav(priya, 'Performance');
+    await tab(priya, 'Improvement plans');
+    await priya.getByTestId('plans').getByRole('button', { name: 'Rahul Bose' }).click();
+    const plan = priya.getByTestId('plan');
+    await expect(plan).toContainText('The Monday delay is the warehouse upload');
+    const first = plan.locator('[data-plan-checkin]').first();
+    await first.getByRole('button', { name: 'Write the check-in' }).click();
+    await first.getByRole('group', { name: 'Send the weekly stock report on time' }).getByLabel('On track').check();
+    await first.getByRole('group', { name: 'Correct totals' }).getByLabel('At risk').check();
+    await first.getByLabel(/^Note/).fill('On time this week; one total was off by a day of stock.');
+    await first.getByRole('button', { name: 'Save the check-in' }).click();
+    await expect(first).toContainText('At risk');
+
+    await rahul.reload();
+    await nav(rahul, 'My performance');
+    const mine = rahul.getByTestId('plan').locator('[data-plan-checkin]').first();
+    await mine.getByRole('button', { name: 'Reply' }).click();
+    await mine.getByLabel(/Your reply/).fill("The stock total used Friday's count; fixed from next week.");
+    await mine.getByRole('button', { name: 'Send' }).click();
+    await expect(mine).toContainText("Friday's count");
+
+    await hr.reload();
+    await nav(hr, 'Performance');
+    await tab(hr, 'Improvement plans');
+    await hr.getByTestId('plans').getByRole('button', { name: 'Rahul Bose' }).click();
+    const decide = hr.getByTestId('decide-plan');
+    await decide.getByLabel(/Completed/).check();
+    await decide.getByLabel('Note on the decision').fill('Both objectives met; closed early, agreed with Priya.');
+    await decide.getByRole('button', { name: 'Record the decision' }).click();
+    await expect(hr.getByTestId('plan')).toContainText('Completed');
+    await shot(hr, 'perf-24-plan-completed', true);
   });
 });

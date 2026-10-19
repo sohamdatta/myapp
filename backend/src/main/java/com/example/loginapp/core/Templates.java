@@ -61,6 +61,10 @@ public final class Templates {
         p.put("outcome.new_designation", "The designation of a promotion");
         p.put("outcome.bonus", "The bonus, as ₹50,000, or nothing");
         p.put("outcome.effective_from", "The day the outcome takes effect");
+        p.put("plan.start_date", "The day an improvement plan starts");
+        p.put("plan.end_date", "The day an improvement plan ends");
+        p.put("plan.objectives", "The plan's objectives and how each is measured, one to a line");
+        p.put("plan.checkin_every", "How often the manager checks in, as every 2 weeks");
         PERFORMANCE_LETTER = java.util.Collections.unmodifiableMap(p);
 
         java.util.Map<String, String> x = new java.util.TreeMap<>(LETTER);
@@ -97,6 +101,8 @@ public final class Templates {
         m.put("giver.name", "Who gave the feedback");
         m.put("review.cycle", "The review cycle, as Annual review FY 2026-27");
         m.put("review.due", "When the review is due");
+        m.put("plan.decision", "HR's decision on an improvement plan, in words");
+        m.put("plan.checkin_due", "When a plan check-in is due");
         MESSAGE = java.util.Collections.unmodifiableMap(m);
     }
 

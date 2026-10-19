@@ -532,6 +532,15 @@ export const performance = {
   saveCompetencySet: (id, body) =>
     id ? put(`/org/performance/setup/competency-sets/${id}`, body) : post('/org/performance/setup/competency-sets', body),
 
+  plans: (status) => get(`/org/performance/plans${status ? `?status=${status}` : ''}`),
+  plan: (id) => get(`/org/performance/plans/${id}`),
+  savePlan: (id, body) => (id ? put(`/org/performance/plans/${id}`, body) : post('/org/performance/plans', body)),
+  startPlan: (id, startDate) => post(`/org/performance/plans/${id}/start`, { startDate }),
+  decidePlan: (id, body) => post(`/org/performance/plans/${id}/decide`, body),
+  planCheckin: (id, checkinId, body) => put(`/org/performance/plans/${id}/checkins/${checkinId}`, body),
+  acknowledgePlan: (id, text) => post(`/org/me/performance/plan/${id}/acknowledge`, { text }),
+  replyToPlanCheckin: (id, text) => post(`/org/me/performance/plan/checkins/${id}/reply`, { text }),
+
   calibration: (cycleId) => get(`/org/performance/cycles/${cycleId}/calibration`),
   openSession: (cycleId, body) => post(`/org/performance/cycles/${cycleId}/calibration/sessions`, body),
   session: (id) => get(`/org/performance/calibration/${id}`),

@@ -134,6 +134,43 @@ final class PerformanceDefaults {
 
             For {{organization.name}}""";
 
+    private static final String[][] PLAN_MESSAGES = {
+            {"plan_drafted", "An improvement plan to start", "A draft improvement plan for {{employee.name}} is waiting for HR to start it."},
+            {"plan_started", "Your improvement plan",
+                    "Hello {{person.first_name}}, an improvement plan starts for you on {{plan.start_date}} and runs to {{plan.end_date}}. "
+                            + "Please read it in My performance; you can respond there."},
+            {"plan_checkin_due", "Improvement plan check-in due",
+                    "A check-in on {{employee.name}}'s improvement plan is due on {{plan.checkin_due}}."},
+            {"plan_checkin_written", "A check-in on your plan",
+                    "Hello {{person.first_name}}, your manager wrote a check-in on your improvement plan. It is in My performance."},
+            {"plan_overdue", "Improvement plan to decide",
+                    "{{employee.name}}'s improvement plan ended on {{plan.end_date}} and has not been decided."},
+            {"plan_decided", "Improvement plan decided", "{{employee.name}}'s improvement plan: {{plan.decision}}."},
+    };
+
+    static final String PLAN = """
+            {{organization.name}}
+
+            Performance improvement plan
+
+            {{today}}
+
+            Dear {{person.legal_name}},
+
+            We have discussed with you where your work as {{job.designation}} is falling short of what the role needs. This \
+            letter sets out a performance improvement plan from {{plan.start_date}} to {{plan.end_date}}.
+
+            What needs to improve, and how it will be measured:
+            {{plan.objectives}}
+
+            {{job.manager_name}} will check in with you {{plan.checkin_every}}. The full plan, with the support we will give \
+            you, is in My performance, where you can respond to it.
+
+            If the objectives are met, the plan closes. If they are not met by {{plan.end_date}}, further action may follow, \
+            which may include ending your employment.
+
+            For {{organization.name}}""";
+
     /** The questions of the default review form. */
     static final String QUESTIONS = """
             [
@@ -160,6 +197,9 @@ final class PerformanceDefaults {
             if (((Number) s.get("defaultsStage")).intValue() < 4) {
                 stageFour(c, tenantId);
             }
+            if (((Number) s.get("defaultsStage")).intValue() < 5) {
+                stageFive(c, tenantId);
+            }
             return;
         }
         // Read by another request at the same moment: the second insert finds the row and stops here.
@@ -169,6 +209,7 @@ final class PerformanceDefaults {
         stageTwo(c, tenantId);
         stageThree(c, tenantId);
         stageFour(c, tenantId);
+        stageFive(c, tenantId);
         for (String[] m : MESSAGES) {
             Sql.update(c, "insert into app.message_template (tenant_id, event, subject, body) values (?, ?, ?, ?) "
                     + "on conflict (tenant_id, event, channel) do nothing", tenantId, m[0], m[1], m[2]);
@@ -196,6 +237,20 @@ final class PerformanceDefaults {
                     + "on conflict (tenant_id, event, channel) do nothing", tenantId, m[0], m[1], m[2]);
         }
         Sql.update(c, "update app.perf_settings set defaults_stage = 4 where tenant_id = ?", tenantId);
+    }
+
+    /** The improvement plan letter and messages. defaults_stage is the marker. */
+    private static void stageFive(Connection c, UUID tenantId) throws SQLException {
+        if (Sql.one(c, "select 1 from app.perf_settings where tenant_id = ? and defaults_stage < 5 for update", tenantId) == null) {
+            return;   // another request did it a moment ago
+        }
+        Sql.update(c, "insert into app.letter_template (tenant_id, kind, name, body, response) values (?, 'improvement_plan', "
+                + "'Performance improvement plan', ?, 'none')", tenantId, PLAN);
+        for (String[] m : PLAN_MESSAGES) {
+            Sql.update(c, "insert into app.message_template (tenant_id, event, subject, body) values (?, ?, ?, ?) "
+                    + "on conflict (tenant_id, event, channel) do nothing", tenantId, m[0], m[1], m[2]);
+        }
+        Sql.update(c, "update app.perf_settings set defaults_stage = 5 where tenant_id = ?", tenantId);
     }
 
     /** The default review form and the review messages. A review form is the marker. */

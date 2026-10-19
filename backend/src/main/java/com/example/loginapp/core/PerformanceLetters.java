@@ -8,14 +8,14 @@ import java.util.Set;
 import java.util.UUID;
 
 /**
- * The letters performance decisions issue: confirmation, probation extension, increment and promotion. Each is filled
+ * The letters performance decisions issue: confirmation, probation extension, increment, promotion and the improvement plan. Each is filled
  * from the Organization's active template of its kind, made a PDF in the employee's documents, and
  * the employee is told. An Organization that has turned a template off issues nothing for it.
  */
 public final class PerformanceLetters {
 
     /** The letter kinds that belong to performance. */
-    public static final Set<String> KINDS = Set.of("confirmation", "probation_extension", "increment", "promotion");
+    public static final Set<String> KINDS = Set.of("confirmation", "probation_extension", "increment", "promotion", "improvement_plan");
 
     private PerformanceLetters() {}
 
@@ -26,7 +26,7 @@ public final class PerformanceLetters {
      */
     static UUID issue(Connection c, SessionCtx ctx, DocumentService documents, UUID employmentId, String kind,
                       Map<String, String> values, String linkColumn, UUID linkId) throws SQLException {
-        if (!Set.of("probation_review_id", "review_outcome_id").contains(linkColumn)) {
+        if (!Set.of("probation_review_id", "review_outcome_id", "improvement_plan_id").contains(linkColumn)) {
             throw new IllegalArgumentException("Not a letter link: " + linkColumn);
         }
         Map<String, Object> t = Sql.one(c, "select * from app.letter_template where kind = ? and active order by created_at limit 1", kind);

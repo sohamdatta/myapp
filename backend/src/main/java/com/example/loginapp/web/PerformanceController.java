@@ -23,6 +23,7 @@ import com.example.loginapp.core.OneToOnes;
 import com.example.loginapp.core.Outcomes;
 import com.example.loginapp.core.PerformanceSetup;
 import com.example.loginapp.core.PerformanceTeam;
+import com.example.loginapp.core.Plans;
 import com.example.loginapp.core.Probation;
 import com.example.loginapp.core.Reviews;
 import com.example.loginapp.core.SessionCtx;
@@ -42,9 +43,12 @@ public class PerformanceController {
     private final Reviews reviews;
     private final Calibration calibration;
     private final Outcomes outcomes;
+    private final Plans plans;
 
     public PerformanceController(AuthService auth, Probation probation, Goals goals, OneToOnes oneToOnes, Feedback feedback,
-                                 PerformanceSetup setup, PerformanceTeam team, Reviews reviews, Calibration calibration, Outcomes outcomes) {
+                                 PerformanceSetup setup, PerformanceTeam team, Reviews reviews, Calibration calibration, Outcomes outcomes,
+                                 Plans plans) {
+        this.plans = plans;
         this.reviews = reviews;
         this.calibration = calibration;
         this.outcomes = outcomes;
@@ -73,6 +77,7 @@ public class PerformanceController {
         out.put("oneToOnes", oneToOnes.people(ctx));
         out.put("reviews", reviews.mine(ctx));
         out.put("outcomeLetters", outcomes.myLetters(ctx));
+        out.put("plan", plans.mine(ctx));
         return out;
     }
 
@@ -288,6 +293,61 @@ public class PerformanceController {
             case "close" -> reviews.closeCycle(ctx, Requests.id(id));
             default -> throw com.example.loginapp.core.ApiException.notFound("That action");
         };
+    }
+
+    // ── improvement plans ───────────────────────────────────────────────
+
+    @GetMapping("/performance/plans")
+    public List<Map<String, Object>> plans(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                           @RequestParam(value = "status", required = false) String status) {
+        return plans.list(session(authorization), status);
+    }
+
+    @PostMapping("/performance/plans")
+    public Map<String, Object> createPlan(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                          @RequestBody Plans.PlanInput request) {
+        return plans.create(session(authorization), request);
+    }
+
+    @GetMapping("/performance/plans/{id}")
+    public Map<String, Object> plan(@RequestHeader(value = "Authorization", required = false) String authorization, @PathVariable String id) {
+        return plans.get(session(authorization), Requests.id(id));
+    }
+
+    @PutMapping("/performance/plans/{id}")
+    public Map<String, Object> updatePlan(@RequestHeader(value = "Authorization", required = false) String authorization, @PathVariable String id,
+                                          @RequestBody Plans.PlanInput request) {
+        return plans.update(session(authorization), Requests.id(id), request);
+    }
+
+    @PostMapping("/performance/plans/{id}/start")
+    public Map<String, Object> startPlan(@RequestHeader(value = "Authorization", required = false) String authorization, @PathVariable String id,
+                                         @RequestBody(required = false) Plans.StartInput request) {
+        return plans.start(session(authorization), Requests.id(id), request);
+    }
+
+    @PostMapping("/performance/plans/{id}/decide")
+    public Map<String, Object> decidePlan(@RequestHeader(value = "Authorization", required = false) String authorization, @PathVariable String id,
+                                          @RequestBody Plans.DecideInput request) {
+        return plans.decide(session(authorization), Requests.id(id), request);
+    }
+
+    @PutMapping("/performance/plans/{id}/checkins/{checkinId}")
+    public Map<String, Object> planCheckin(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                           @PathVariable String id, @PathVariable String checkinId, @RequestBody Plans.CheckinInput request) {
+        return plans.checkin(session(authorization), Requests.id(id), Requests.id(checkinId), request);
+    }
+
+    @PostMapping("/me/performance/plan/{id}/acknowledge")
+    public Map<String, Object> acknowledgePlan(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                               @PathVariable String id, @RequestBody(required = false) Plans.TextInput request) {
+        return plans.acknowledge(session(authorization), Requests.id(id), request);
+    }
+
+    @PostMapping("/me/performance/plan/checkins/{id}/reply")
+    public Map<String, Object> replyToPlanCheckin(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                                  @PathVariable String id, @RequestBody Plans.TextInput request) {
+        return plans.reply(session(authorization), Requests.id(id), request);
     }
 
     // ── calibration ─────────────────────────────────────────────────────

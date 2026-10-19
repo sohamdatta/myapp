@@ -47,6 +47,7 @@ import com.example.loginapp.core.PayrollPay;
 import com.example.loginapp.core.PayrollRuns;
 import com.example.loginapp.core.PerformanceSetup;
 import com.example.loginapp.core.PerformanceTeam;
+import com.example.loginapp.core.Plans;
 import com.example.loginapp.core.PlatformService;
 import com.example.loginapp.core.PolicyService;
 import com.example.loginapp.core.Probation;
@@ -212,6 +213,11 @@ public class AppConfig {
     @Bean
     public Outcomes outcomes(Db db, Crypto crypto) {
         return new Outcomes(db, crypto);
+    }
+
+    @Bean
+    public Plans plans(Db db, Crypto crypto, ExitService exits) {
+        return new Plans(db, crypto, exits);
     }
 
     @Bean

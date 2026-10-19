@@ -81,6 +81,10 @@ export const PERFORMANCE_LETTER_PLACEHOLDERS = {
   'outcome.new_designation': 'The designation of a promotion',
   'outcome.bonus': 'The bonus, as ₹50,000, or nothing',
   'outcome.effective_from': 'The day the outcome takes effect',
+  'plan.start_date': 'The day an improvement plan starts',
+  'plan.end_date': 'The day an improvement plan ends',
+  'plan.objectives': "The plan's objectives and how each is measured, one to a line",
+  'plan.checkin_every': 'How often the manager checks in, as every 2 weeks',
 }
 
 /** Placeholders a message can use: a letter's, and the event's own details. */
@@ -92,6 +96,8 @@ export const MESSAGE_PLACEHOLDERS = {
   'probation.recommendation': "The manager's recommendation, in words",
   'probation.decision': "HR's decision, in words",
   'review.due': 'When the review is due',
+  'plan.decision': "HR's decision on an improvement plan, in words",
+  'plan.checkin_due': 'When a plan check-in is due',
   link: 'The link the message is about',
   note: "HR's note",
   'section.title': "The section's title",
@@ -162,6 +168,12 @@ export const SAMPLE_VALUES = {
   'outcome.new_designation': 'Senior Analyst',
   'outcome.bonus': '₹50,000',
   'outcome.effective_from': '1 May 2027',
+  'plan.start_date': '2 November 2026',
+  'plan.end_date': '1 January 2027',
+  'plan.objectives': '1. Send the monthly report on time — by the 3rd working day\n2. Accurate numbers — no more than one correction a month',
+  'plan.checkin_every': 'every 2 weeks',
+  'plan.decision': 'completed',
+  'plan.checkin_due': '16 November 2026',
 }
 
 /** Fills placeholders with values, as the server does: unknown or empty ones become nothing. */

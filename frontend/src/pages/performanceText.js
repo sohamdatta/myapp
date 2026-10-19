@@ -76,5 +76,25 @@ export const OUTCOME_STATUS = {
   applied: ['good', 'Approved'],
 }
 
+/** Where an improvement plan stands: [badge tone, words]. */
+export const PLAN_STAGE = {
+  draft: ['neutral', 'Draft, waiting for HR'],
+  starting: ['neutral', 'Starts soon'],
+  running: ['warn', 'Running'],
+  checkin_due: ['warn', 'Check-in due'],
+  to_decide: ['bad', 'Ended, to decide'],
+  completed: ['good', 'Completed'],
+  not_met: ['bad', 'Not met'],
+  cancelled: ['neutral', 'Cancelled'],
+}
+
+/** How an objective is going: [badge tone, words]. */
+export const PROGRESS = {
+  on_track: ['good', 'On track'],
+  at_risk: ['warn', 'At risk'],
+  met: ['good', 'Met'],
+  not_met: ['bad', 'Not met'],
+}
+
 /** "3 months", "1 month". */
 export const months = (n) => `${n} ${Number(n) === 1 ? 'month' : 'months'}`
