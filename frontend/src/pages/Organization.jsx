@@ -11,6 +11,7 @@ import Exits from './Exits.jsx'
 import MyExit from './MyExit.jsx'
 import MyTasks from './MyTasks.jsx'
 import OrgChart from './OrgChart.jsx'
+import OrgSettings from './OrgSettings.jsx'
 import MyPay from './MyPay.jsx'
 import MyPerformance from './MyPerformance.jsx'
 import Performance from './Performance.jsx'
@@ -490,7 +491,7 @@ function UserManagement({ me }) {
   )
 }
 
-export default function Organization({ me, page, onNavigate }) {
+export default function Organization({ me, page, onNavigate, onRefresh }) {
   if (!page) {
     return (
       <section className="panel">
@@ -520,6 +521,7 @@ export default function Organization({ me, page, onNavigate }) {
       {page === 'exits' && <Exits me={me} onNavigate={onNavigate} />}
       {page === 'users' && <UserManagement me={me} />}
       {page === 'audit' && <AuditTab />}
+      {page === 'org-settings' && <OrgSettings me={me} onRefresh={onRefresh} />}
     </>
   )
 }

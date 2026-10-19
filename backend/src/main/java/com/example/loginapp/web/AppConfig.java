@@ -16,6 +16,7 @@ import com.example.loginapp.core.AttendanceImportService;
 import com.example.loginapp.core.AttendanceService;
 import com.example.loginapp.core.AttendanceSettingsService;
 import com.example.loginapp.core.AuthService;
+import com.example.loginapp.core.Branding;
 import com.example.loginapp.core.Calibration;
 import com.example.loginapp.core.ChecklistService;
 import com.example.loginapp.core.Crypto;
@@ -213,6 +214,11 @@ public class AppConfig {
     @Bean
     public Outcomes outcomes(Db db, Crypto crypto) {
         return new Outcomes(db, crypto);
+    }
+
+    @Bean
+    public Branding branding(Db db) {
+        return new Branding(db);
     }
 
     @Bean

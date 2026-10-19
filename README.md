@@ -596,6 +596,23 @@ everyone. The design, as built, is `docs/performance/design.md`; the schema is
 Nobody acts on their own review, probation, plan or outcome, even an Org Admin.
 Review answers, calibration reasons, private notes and plans are encrypted.
 
+## Branding
+
+The app carries the Nexvance brand (the wordmark from nexvance.in and the
+tagline "Advancing What's Next") on the sign-in page, in the browser tab and in
+the sidebar. To change the artwork, replace `frontend/src/brand/NexvanceLogo.jsx`
+and `frontend/public/favicon.svg`; the names are in `frontend/src/brand/brand.js`.
+
+An Org Admin can set the Organization's own logo under Organization settings
+(PNG or JPEG, at most 2 MB). It is drawn again as a PNG within 1200 by 400
+pixels, keeping transparency, and then replaces the Nexvance logo in the
+sidebar for everyone in that Organization, with "Powered by Nexvance" at the
+foot. Removing it brings the Nexvance logo back. The sign-in page always shows
+Nexvance, because people sign in before choosing an Organization. The logo is
+served without sign-in from `/api/branding/{organization id}/logo`, as logos
+are public; changes are in the audit log. The schema is
+`V22__organization_branding.sql`.
+
 ## Roles
 
 | Role | Can |

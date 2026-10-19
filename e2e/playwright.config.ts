@@ -52,5 +52,6 @@ export default defineConfig({
     // Performance, last: it adds a joiner on probation to the Organization the story has built.
     { name: 'performance', testMatch: /19-performance\.spec\.ts/, use: desktop, dependencies: ['role-tour'] },
     { name: 'modes', testMatch: /18-attendance-modes\.spec\.ts/, use: desktop, dependencies: ['role-tour'] },
+    { name: 'branding', testMatch: /20-branding\.spec\.ts/, use: desktop, dependencies: ['role-tour'] },
   ],
 });

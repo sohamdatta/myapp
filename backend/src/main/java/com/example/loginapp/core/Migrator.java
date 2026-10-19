@@ -30,7 +30,7 @@ public final class Migrator {
             "V13__payroll.sql", "V14__suspended_access.sql", "V15__attendance_modes.sql",
             "V16__performance_probation.sql", "V17__performance_goals.sql", "V18__performance_reviews.sql",
             "V19__performance_calibration.sql", "V20__performance_plans.sql",
-            "V21__performance_peers.sql");
+            "V21__performance_peers.sql", "V22__organization_branding.sql");
 
     /**
      * Lets app_definer see every row of every table under row-level security, for databases where it

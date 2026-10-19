@@ -147,7 +147,8 @@ public final class AuthService {
         Map<String, Object> me = new LinkedHashMap<>();
         me.put("email", ctx.email());
         me.put("kind", ctx.kind());
-        me.put("organization", ctx.inOrganization() ? Map.of("id", ctx.tenantId().toString(), "name", ctx.tenantName()) : null);
+        me.put("organization", ctx.inOrganization() ? Map.of("id", ctx.tenantId().toString(), "name", ctx.tenantName(),
+                "logoVersion", db.inTenant(ctx.tenantId(), Branding::version)) : null);
         me.put("membershipId", ctx.membershipId() == null ? null : ctx.membershipId().toString());
         me.put("platformRole", ctx.platformRole());
         List<String> codes = ctx.permissions().stream().map(Perm::code).distinct().sorted().toList();

@@ -62,6 +62,7 @@ export function navFor(me) {
         (me.permissions.includes('payroll.read') || me.permissions.includes('payroll.prepare')) && { id: 'payroll', label: 'Payroll' },
         me.permissions.includes('user.read') && { id: 'users', label: 'User management' },
         me.permissions.includes('audit.read') && { id: 'audit', label: 'Audit log' },
+        me.permissions.includes('tenant.manage') && me.kind === 'tenant' && { id: 'org-settings', label: 'Organization settings' },
       ].filter(Boolean),
     },
   ].filter((section) => section.items.length > 0)

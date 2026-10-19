@@ -661,3 +661,11 @@ const payrollCalls = {
 export const payroll = Object.fromEntries(
   Object.entries(payrollCalls).map(([name, call]) => [name, (...args) => Promise.resolve(call(...args)).then((r) => r ?? true)]),
 )
+
+// ── the Organization's own brand ────────────────────────────────────
+
+export const branding = {
+  get: () => get('/org/setup/branding'),
+  uploadLogo: (file) => uploadFile('/org/setup/branding/logo', file),
+  removeLogo: () => del('/org/setup/branding/logo'),
+}

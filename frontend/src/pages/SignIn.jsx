@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { acceptInvitation, enterConsole, enterOrganization, login, previewInvitation } from '../api.js'
 import { useAction } from '../hooks.js'
 import { ErrorNote } from '../ui.jsx'
+import NexvanceLogo from '../brand/NexvanceLogo.jsx'
 
 export function LoginForm({ onSignedIn }) {
   const [email, setEmail] = useState('')
@@ -17,11 +18,8 @@ export function LoginForm({ onSignedIn }) {
 
   return (
     <>
-    <div className="brand">
-      <div className="brand-mark" aria-hidden="true">
-        H
-      </div>
-      <div className="brand-name">HRMS</div>
+    <div className="brand brand-sign-in">
+      <NexvanceLogo size={40} tagline />
     </div>
     <form className="card" onSubmit={handleSubmit} noValidate>
       <h1>Sign in</h1>
