@@ -561,6 +561,41 @@ Not yet: importing salaries and year-to-date history, a parallel run, PF and
 ESI return files, Form 130, loans, tax declarations, and arrears for a month
 already approved.
 
+## Performance
+
+Under Performance for managers (their team) and HR, and My performance for
+everyone. The design, as built, is `docs/performance/design.md`; the schema is
+`V16` to `V21` (`V16__performance_probation.sql` onwards).
+
+- **Probation.** Each new joiner on probation gets check-ins from their
+  manager at 30, 60 and 90 days (Setup), which they read and can answer; a
+  recommendation 21 days before the end; and HR's decision. Confirming and
+  extending issue their letters; not confirming starts a termination in Exits.
+- **Goals, one-to-ones and feedback.** Weighted goals for the goal year,
+  agreed by the manager, versioned when changed after agreement, with progress
+  and department goals to link to. One-to-ones keep shared notes, action items
+  and private notes. Feedback is praise or private to the manager; it can be
+  changed for a day, then only withdrawn. Anyone can ask up to five colleagues
+  for feedback.
+- **Review cycles.** HR sets up who is in a cycle, the form, the weight of
+  goals and competencies, and the dates, then starts it. Self review, the
+  manager's review with the overall rating worked out (and shown step by
+  step), optional peer reviews (up to five, anonymous by default) and optional
+  sign-off by the manager's manager.
+- **Calibration and outcomes.** HR calibrates in sessions against a guide
+  distribution, changing ratings with a reason the manager is told; an open
+  session holds the release. After release, outcomes come from the merit table
+  (Setup), with promotions and bonuses; someone other than the sender approves
+  them, which records the pay revision and the job change and issues the
+  increment and promotion letters.
+- **Improvement plans.** A manager drafts objectives, support, length and
+  check-ins; HR starts the plan and issues its letter; the employee
+  acknowledges and may respond; the manager checks in on every objective; HR
+  decides completed, extended once, or not met, which starts a termination.
+
+Nobody acts on their own review, probation, plan or outcome, even an Org Admin.
+Review answers, calibration reasons, private notes and plans are encrypted.
+
 ## Roles
 
 | Role | Can |
