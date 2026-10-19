@@ -54,6 +54,13 @@ public final class Templates {
         p.put("probation.new_end_date", "The new end of an extended probation");
         p.put("probation.extension_months", "How many months the probation is extended by, as 3 months");
         p.put("employment.tenure", "Length of service, as 3 years 2 months");
+        p.put("review.cycle", "The review cycle, as Annual review 2026-27");
+        p.put("review.rating", "The final rating, in words");
+        p.put("outcome.increment_pct", "The increment, as 8%");
+        p.put("outcome.new_annual", "The new yearly pay, as ₹12,96,000");
+        p.put("outcome.new_designation", "The designation of a promotion");
+        p.put("outcome.bonus", "The bonus, as ₹50,000, or nothing");
+        p.put("outcome.effective_from", "The day the outcome takes effect");
         PERFORMANCE_LETTER = java.util.Collections.unmodifiableMap(p);
 
         java.util.Map<String, String> x = new java.util.TreeMap<>(LETTER);

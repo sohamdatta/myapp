@@ -74,6 +74,13 @@ export const PERFORMANCE_LETTER_PLACEHOLDERS = {
   'probation.new_end_date': 'The new end of an extended probation',
   'probation.extension_months': 'How many months the probation is extended by, as 3 months',
   'employment.tenure': 'Length of service, as 3 years 2 months',
+  'review.cycle': 'The review cycle, as Annual review 2026-27',
+  'review.rating': 'The final rating, in words',
+  'outcome.increment_pct': 'The increment, as 8%',
+  'outcome.new_annual': 'The new yearly pay, as ₹12,96,000',
+  'outcome.new_designation': 'The designation of a promotion',
+  'outcome.bonus': 'The bonus, as ₹50,000, or nothing',
+  'outcome.effective_from': 'The day the outcome takes effect',
 }
 
 /** Placeholders a message can use: a letter's, and the event's own details. */
@@ -84,6 +91,7 @@ export const MESSAGE_PLACEHOLDERS = {
   'probation.checkin_due': 'When the check-in is due',
   'probation.recommendation': "The manager's recommendation, in words",
   'probation.decision': "HR's decision, in words",
+  'review.due': 'When the review is due',
   link: 'The link the message is about',
   note: "HR's note",
   'section.title': "The section's title",
@@ -146,6 +154,14 @@ export const SAMPLE_VALUES = {
   'goals.period': 'FY 2026-27',
   'goal.title': 'Close 40 accounts',
   'giver.name': 'Ravi Sen',
+  'review.cycle': 'Annual review 2026-27',
+  'review.rating': 'Exceeds expectations',
+  'review.due': '30 April 2027',
+  'outcome.increment_pct': '8%',
+  'outcome.new_annual': '₹12,96,000',
+  'outcome.new_designation': 'Senior Analyst',
+  'outcome.bonus': '₹50,000',
+  'outcome.effective_from': '1 May 2027',
 }
 
 /** Fills placeholders with values, as the server does: unknown or empty ones become nothing. */

@@ -21,7 +21,7 @@ export default function MyPerformance() {
   // A review waiting for the employee, or one released for them to read, comes first.
   const pressing = (m.reviews || []).find((r) => ['self_review', 'released'].includes(r.status))
   const tabs = [
-    m.reviews?.length > 0 && { id: 'reviews', label: 'Reviews' },
+    (m.reviews?.length > 0 || m.outcomeLetters?.length > 0) && { id: 'reviews', label: 'Reviews' },
     m.probation && { id: 'probation', label: 'Probation' },
     m.goals && { id: 'goals', label: 'Goals' },
     m.oneToOnes?.length > 0 && { id: 'one-to-ones', label: 'One-to-ones' },
@@ -31,7 +31,7 @@ export default function MyPerformance() {
   return (
     <div className="my-performance">
       <Tabs tabs={tabs} current={current} onChange={setTab} />
-      {current === 'reviews' && <MyReviews reviews={m.reviews} onChanged={mine.reload} />}
+      {current === 'reviews' && <MyReviews reviews={m.reviews} letters={m.outcomeLetters || []} onChanged={mine.reload} />}
       {current === 'probation' && m.probation && <MyProbation probation={m.probation} onChanged={mine.reload} />}
       {current === 'goals' && m.goals && <GoalsPanel employmentId={m.goals.employee.id} />}
       {current === 'one-to-ones' && <MyOneToOnes people={m.oneToOnes} />}
@@ -40,11 +40,30 @@ export default function MyPerformance() {
   )
 }
 
-function MyReviews({ reviews, onChanged }) {
+function MyReviews({ reviews, letters, onChanged }) {
   const [open, setOpen] = useState(() => reviews.find((r) => ['self_review', 'released'].includes(r.status))?.id || null)
+  const { error, run } = useAction()
   if (open) return <ReviewPage key={open} id={open} onBack={() => (setOpen(null), onChanged())} backLabel="← All my reviews" />
   return (
     <section className="panel">
+      {letters.length > 0 && (
+        <>
+          <h3>Your letters</h3>
+          <ul className="letter-list" data-testid="outcome-letters">
+            {letters.map((l) => (
+              <li key={l.id} data-letter={l.title}>
+                <button type="button" className="text-link" onClick={() => run(() => download(l.documentId, `${l.title}.pdf`))}>
+                  {l.title}
+                </button>{' '}
+                <span className="hint">
+                  {l.cycle}, issued {formatDate(l.issuedAt)}
+                </span>
+              </li>
+            ))}
+          </ul>
+          <ErrorNote>{error}</ErrorNote>
+        </>
+      )}
       <h3>Your reviews</h3>
       <ul className="plain-list">
         {reviews.map((r) => {

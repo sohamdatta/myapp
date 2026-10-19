@@ -176,7 +176,15 @@ public final class PayrollPay {
 
     public Map<String, Object> revise(SessionCtx ctx, UUID employmentId, ReviseInput in) {
         canWrite(ctx);
-        return db.inTenant(ctx.tenantId(), c -> {
+        LocalDate today = today();
+        return db.inTenant(ctx.tenantId(), c -> reviseIn(c, ctx, employmentId, in, today));
+    }
+
+    /**
+     * A revision inside the caller's transaction, with every check {@link #revise} makes except the
+     * permission, which the caller has settled (a performance outcome is approved, not entered).
+     */
+    static Map<String, Object> reviseIn(Connection c, SessionCtx ctx, UUID employmentId, ReviseInput in, LocalDate today) throws SQLException {
             PayrollDefaults.ensure(c, ctx.tenantId());
             // Your own pay is not found before anything about the request is checked.
             notOwn(c, ctx, employmentId);
@@ -200,7 +208,7 @@ public final class PayrollPay {
                 throw ApiException.badRequest("Choose a structure");
             }
             refuseIntoApproved(c, employmentId, from);
-            Map<String, Object> check = breakup(c, employmentId, from.withDayOfMonth(1), today(), in);
+            Map<String, Object> check = breakup(c, employmentId, from.withDayOfMonth(1), today, in);
             if (!PayrollEngine.list(check, "problems").isEmpty()) {
                 throw new ApiException(409, "payroll.formula", String.valueOf(PayrollEngine.list(check, "problems").get(0).get("message")));
             }
@@ -221,7 +229,6 @@ public final class PayrollPay {
             UserService.audit(c, ctx, "payroll.pay_revised", "employment", employmentId,
                     Map.of("from", from.toString(), "annual", in.annualAmount().toPlainString(), "reason", in.reason().trim()));
             return row;
-        });
     }
 
     private static void validate(ReviseInput in) {

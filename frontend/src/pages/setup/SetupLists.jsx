@@ -528,10 +528,12 @@ function ChecklistEditor({ item, isNew, lookups, onDone, onCancel }) {
 
 const RESPONSES = { none: 'Only reads it', accept: 'Accepts it', accept_or_decline: 'Accepts or declines it' }
 const JOINING_KINDS = ['offer', 'appointment', 'other']
-/** Letters that performance decisions issue: a probation confirmed or extended. */
+/** Letters that performance decisions issue: a probation confirmed or extended, an increment, a promotion. */
 const PERFORMANCE_KINDS = {
   confirmation: 'Confirmation',
   probation_extension: 'Probation extension',
+  increment: 'Increment',
+  promotion: 'Promotion',
 }
 const isPerformance = (kind) => kind in PERFORMANCE_KINDS
 const EXIT_KINDS = {

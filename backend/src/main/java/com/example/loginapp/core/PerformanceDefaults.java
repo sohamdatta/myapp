@@ -94,6 +94,46 @@ final class PerformanceDefaults {
                     "Hello {{person.first_name}}, your review for {{review.cycle}} is ready to read in My performance."},
     };
 
+    private static final String[][] OUTCOME_MESSAGES = {
+            {"review_calibrated", "A rating changed in calibration",
+                    "The {{review.cycle}} rating of {{employee.name}} was changed in calibration to {{review.rating}}."},
+            {"outcomes_submitted", "Outcomes to approve", "Outcomes for {{review.cycle}} are waiting for your approval: {{note}}"},
+            {"outcomes_returned", "Outcomes returned", "Outcomes for {{review.cycle}} were returned: {{note}}"},
+    };
+
+    static final String INCREMENT = """
+            {{organization.name}}
+
+            Revision of salary
+
+            {{today}}
+
+            Dear {{person.legal_name}},
+
+            Following your performance review for {{review.cycle}}, in which you were rated {{review.rating}}, we are pleased \
+            to revise your salary by {{outcome.increment_pct}}, to {{outcome.new_annual}} a year, with effect from \
+            {{outcome.effective_from}}.
+
+            All other terms of your employment remain the same. Thank you for your contribution.
+
+            For {{organization.name}}""";
+
+    static final String PROMOTION = """
+            {{organization.name}}
+
+            Promotion
+
+            {{today}}
+
+            Dear {{person.legal_name}},
+
+            We are pleased to promote you to {{outcome.new_designation}}{{job.department_with_in}} with effect from \
+            {{outcome.effective_from}}, following your performance review for {{review.cycle}}.
+
+            Your manager will go through what the new role asks of you. Congratulations.
+
+            For {{organization.name}}""";
+
     /** The questions of the default review form. */
     static final String QUESTIONS = """
             [
@@ -108,14 +148,17 @@ final class PerformanceDefaults {
 
     /** Writes the defaults unless the Organization has them, and adds what later stages need to an Organization that had the earlier ones. */
     static void ensure(Connection c, UUID tenantId) throws SQLException {
-        Map<String, Object> s = Sql.one(c, "select rating_scale_id, (select count(*) from app.review_form) as forms from app.perf_settings "
-                + "where tenant_id = ?", tenantId);
+        Map<String, Object> s = Sql.one(c, "select rating_scale_id, defaults_stage, (select count(*) from app.review_form) as forms "
+                + "from app.perf_settings where tenant_id = ?", tenantId);
         if (s != null) {
             if (s.get("ratingScaleId") == null) {
                 stageTwo(c, tenantId);
             }
             if (((Number) s.get("forms")).intValue() == 0) {
                 stageThree(c, tenantId);
+            }
+            if (((Number) s.get("defaultsStage")).intValue() < 4) {
+                stageFour(c, tenantId);
             }
             return;
         }
@@ -125,6 +168,7 @@ final class PerformanceDefaults {
         }
         stageTwo(c, tenantId);
         stageThree(c, tenantId);
+        stageFour(c, tenantId);
         for (String[] m : MESSAGES) {
             Sql.update(c, "insert into app.message_template (tenant_id, event, subject, body) values (?, ?, ?, ?) "
                     + "on conflict (tenant_id, event, channel) do nothing", tenantId, m[0], m[1], m[2]);
@@ -136,6 +180,22 @@ final class PerformanceDefaults {
         }
         Sql.update(c, "insert into app.letter_template (tenant_id, kind, name, body, response) values (?, 'probation_extension', "
                 + "'Probation extension letter', ?, 'none')", tenantId, EXTENSION);
+    }
+
+    /** The increment and promotion letters and the calibration and outcome messages. defaults_stage is the marker. */
+    private static void stageFour(Connection c, UUID tenantId) throws SQLException {
+        if (Sql.one(c, "select 1 from app.perf_settings where tenant_id = ? and defaults_stage < 4 for update", tenantId) == null) {
+            return;   // another request did it a moment ago
+        }
+        Sql.update(c, "insert into app.letter_template (tenant_id, kind, name, body, response) values (?, 'increment', "
+                + "'Increment letter', ?, 'none')", tenantId, INCREMENT);
+        Sql.update(c, "insert into app.letter_template (tenant_id, kind, name, body, response) values (?, 'promotion', "
+                + "'Promotion letter', ?, 'none')", tenantId, PROMOTION);
+        for (String[] m : OUTCOME_MESSAGES) {
+            Sql.update(c, "insert into app.message_template (tenant_id, event, subject, body) values (?, ?, ?, ?) "
+                    + "on conflict (tenant_id, event, channel) do nothing", tenantId, m[0], m[1], m[2]);
+        }
+        Sql.update(c, "update app.perf_settings set defaults_stage = 4 where tenant_id = ?", tenantId);
     }
 
     /** The default review form and the review messages. A review form is the marker. */

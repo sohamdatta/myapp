@@ -273,7 +273,7 @@ test.describe.serial('performance', () => {
     await expect(review).toContainText('Worked out: 3.60, rounded to 4');
   });
 
-  test('HR releases the cycle and the employee reads and acknowledges her review', async () => {
+  test('HR calibrates: the panel moves a rating, with a reason the manager is told', async () => {
     // Everyone else's review is taken out of this cycle, so it can be released in the test.
     const cycles = (await api(hr, 'GET', '/org/performance/cycles')).body;
     const cycle = (await api(hr, 'GET', `/org/performance/cycles/${cycles.find((c: any) => c.name === 'Annual review').id}`)).body;
@@ -286,18 +286,122 @@ test.describe.serial('performance', () => {
     await tab(hr, 'Reviews');
     await hr.getByTestId('cycles').getByRole('button', { name: 'Annual review' }).click();
     await hr.getByRole('button', { name: 'Start calibration' }).click();
+    await tab(hr, 'Calibration');
+    const calibration = hr.getByTestId('calibration');
+    await expect(calibration.getByTestId('distribution').locator('tr[data-level="4"]')).toContainText('1');
+    await hr.fill('#session-name', 'Analytics calibration');
+    await calibration.getByRole('button', { name: 'Open a session' }).click();
+    const session = hr.getByTestId('calibration-session');
+    const row = session.locator('tr[data-calibrate="Ishita Menon"]');
+    await expect(row).toContainText('4 · Exceeds expectations');
+    await row.getByRole('button', { name: 'Change rating' }).click();
+    await row.getByLabel('New rating').selectOption('5');
+    await row.getByLabel(/Why/).fill('Short reason');
+    await row.getByRole('button', { name: 'Change', exact: true }).click();
+    await expect(row.getByRole('alert')).toContainText('at least 20 characters');
+    await row.getByLabel(/Why/).fill('The dashboard replaced three reports across sales; the panel agreed it is beyond the role.');
+    await row.getByRole('button', { name: 'Change', exact: true }).click();
+    await expect(row.getByTestId('level-now')).toContainText('5 · Outstanding');
+    await expect(row).toContainText('4 → 5');
+    await shot(hr, 'perf-17-calibration-session', true);
     await hr.getByRole('button', { name: 'Release to everyone' }).click();
+    await expect(hr.getByRole('alert')).toContainText('still open');
+    await session.getByRole('button', { name: 'Close the session' }).click();
+    await session.getByRole('button', { name: 'Close it' }).click();
+    await expect(session).toContainText('Closed');
+
+    // Priya, the manager, is told.
+    const told = (await api(priya, 'GET', '/org/notifications')).body.items.map((x: any) => x.event);
+    expect(told).toContain('review_calibrated');
+  });
+
+  test('HR releases the cycle and the employee reads and acknowledges her review', async () => {
+    await hr.getByRole('button', { name: 'Release to everyone' }).click();
+    // The cycle's own Reviews tab, under the page's tabs.
+    await hr.getByRole('tab', { name: 'Reviews', exact: true }).last().click();
     await expect(hr.locator('tr[data-review="Ishita Menon"]')).toContainText('Released');
-    await shot(hr, 'perf-17-cycle-released', true);
+    await shot(hr, 'perf-18-cycle-released', true);
 
     await ishita.reload();
     await nav(ishita, 'My performance');
     const review = ishita.getByTestId('review');
-    await expect(review.getByTestId('final-rating')).toContainText('4 · Exceeds expectations');
+    await expect(review.getByTestId('final-rating')).toContainText('5 · Outstanding');
     await expect(review).toContainText('Owns the dashboard end to end');
     await ishita.fill('#ack-comment', 'Thank you. I will take the monthly review from next month.');
     await review.getByRole('button', { name: 'Acknowledge' }).click();
     await expect(review).toContainText('Acknowledged');
-    await shot(ishita, 'perf-18-review-released-phone', true);
+    await shot(ishita, 'perf-19-review-released-phone', true);
+  });
+
+  // ── outcomes ─────────────────────────────────────────────────────────
+
+  test('HR prepares the outcome from the merit table, adds a promotion and sends it', async () => {
+    // Ishita works from the Bengaluru office and gets her joining salary on the structure Priya is
+    // paid on, so there is pay to raise.
+    const ishitaId = await employmentId(hr, 'Ishita Menon');
+    const users = (await api(owner, 'GET', '/org/users')).body;
+    const membership = (users.users || users).find((u: any) => u.email === ISHITA).id;
+    const office = (await api(owner, 'GET', '/org/attendance/locations')).body.find((l: any) => l.name === 'Bengaluru office');
+    const shift = (await api(owner, 'GET', '/org/attendance/shifts')).body[0];
+    const assigned = await api(owner, 'POST', '/org/attendance/assignments', {
+      membershipIds: [membership], workLocationId: office.id, shiftId: shift.id, weeklyOffs: [0], remoteDays: [], effectiveFrom: isoDay(-80),
+    });
+    expect(assigned.status, JSON.stringify(assigned.body)).toBeLessThan(300);
+    const priyaPay = (await api(owner, 'GET', `/org/people/employees/${await employmentId(owner, 'Priya Shah')}/pay`)).body;
+    const set = await api(owner, 'POST', `/org/people/employees/${ishitaId}/pay`, {
+      validFrom: `${isoDay(0).slice(0, 7)}-01`, structureId: priyaPay.history[0].structureId, annualAmount: 600000, reason: 'Joining salary',
+    });
+    expect(set.status, JSON.stringify(set.body)).toBe(200);
+
+    await hr.reload();
+    await nav(hr, 'Performance');
+    await tab(hr, 'Reviews');
+    await hr.getByTestId('cycles').getByRole('button', { name: 'Annual review' }).click();
+    await tab(hr, 'Outcomes');
+    const outcomes = hr.getByTestId('outcomes');
+    await outcomes.getByRole('button', { name: 'Prepare 1 outcome' }).click();
+    const row = outcomes.locator('tr[data-outcome="Ishita Menon"]');
+    await expect(row.getByTestId('increment')).toHaveText('12%');
+    await expect(row).toContainText('₹6,00,000 → ₹6,72,000');
+    await row.getByRole('button', { name: 'Change' }).click();
+    await hr.getByLabel('Increment (%)').fill('15');
+    await hr.getByLabel('Promote').check();
+    await hr.getByLabel('New designation').fill('Senior Analyst');
+    await hr.getByLabel('Bonus (₹)').fill('40000');
+    await outcomes.getByRole('button', { name: 'Save' }).click();
+    await expect(outcomes.getByRole('alert')).toContainText('write a note');
+    await hr.getByLabel(/^Note/).fill('Promotion to Senior Analyst; brought in line with the band');
+    await outcomes.getByRole('button', { name: 'Save' }).click();
+    await expect(row).toContainText('₹6,00,000 → ₹6,90,000');
+    await expect(row).toContainText('Senior Analyst');
+    await shot(hr, 'perf-20-outcomes', true);
+    await outcomes.getByRole('button', { name: 'Send drafts for approval' }).click();
+    await expect(row).toContainText('Waiting for approval');
+    // HR sent it, so HR does not approve it.
+    await expect(outcomes.getByRole('button', { name: /^Approve/ })).toHaveCount(0);
+  });
+
+  test('the owner approves: pay and designation change, and the letters reach the employee', async () => {
+    await owner.reload();
+    await nav(owner, 'Performance');
+    await tab(owner, 'Reviews');
+    await owner.getByTestId('cycles').getByRole('button', { name: 'Annual review' }).click();
+    await tab(owner, 'Outcomes');
+    const outcomes = owner.getByTestId('outcomes');
+    await outcomes.getByRole('button', { name: 'Approve 1' }).click();
+    await expect(outcomes.locator('tr[data-outcome="Ishita Menon"]')).toContainText('Approved');
+
+    const ishitaId = await employmentId(owner, 'Ishita Menon');
+    const pay = (await api(owner, 'GET', `/org/people/employees/${ishitaId}/pay`)).body;
+    expect(Number(pay.history[0].annualAmount)).toBe(690000);
+
+    await ishita.reload();
+    await nav(ishita, 'My performance');
+    await tab(ishita, 'Reviews');
+    const letters = ishita.getByTestId('outcome-letters');
+    await expect(letters).toContainText('Increment letter');
+    await expect(letters).toContainText('Promotion letter');
+    await expectNoSidewaysScroll(ishita);
+    await shot(ishita, 'perf-21-outcome-letters-phone', true);
   });
 });

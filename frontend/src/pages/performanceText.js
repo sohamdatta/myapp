@@ -69,5 +69,12 @@ export const CYCLE_STATUS = {
   closed: ['neutral', 'Closed'],
 }
 
+/** Where an outcome stands: [badge tone, words]. */
+export const OUTCOME_STATUS = {
+  draft: ['neutral', 'Draft'],
+  submitted: ['warn', 'Waiting for approval'],
+  applied: ['good', 'Approved'],
+}
+
 /** "3 months", "1 month". */
 export const months = (n) => `${n} ${Number(n) === 1 ? 'month' : 'months'}`

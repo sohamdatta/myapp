@@ -5,7 +5,7 @@ import { Badge, ErrorNote } from '../ui.jsx'
 import { RuleEditor } from './setup/SetupShared.jsx'
 import { describeRules, useSetupLookups } from './setup/setupText.js'
 
-/** Performance setup, for HR: the goal year and one-to-ones, the rating scale, competencies, and probation. */
+/** Performance setup, for HR: the goal year and one-to-ones, the rating scale, competencies, review forms, the merit table, and probation. */
 export default function PerformanceSetup() {
   const setup = useLoad(performance.setup)
   const lookups = useSetupLookups()
@@ -19,6 +19,7 @@ export default function PerformanceSetup() {
       <Scale scale={s.scale} onSaved={setView} />
       <Competencies s={s} lookups={lookups} onSaved={setView} />
       <ReviewForms />
+      <MeritSettings />
       <ProbationSettings />
     </div>
   )
@@ -408,6 +409,88 @@ function FormEditor({ form, onDone }) {
         </button>
         <button type="button" className="quiet" onClick={() => onDone(false)}>
           Cancel
+        </button>
+      </div>
+    </form>
+  )
+}
+
+function MeritSettings() {
+  const settings = useLoad(performance.merit)
+  if (settings.loading) return <p className="muted">Loading…</p>
+  if (settings.error) return <ErrorNote>{settings.error}</ErrorNote>
+  return <MeritForm key={JSON.stringify(settings.data)} settings={settings.data} onSaved={settings.reload} />
+}
+
+/** The guide distribution and the merit table, one row per rating. */
+function MeritForm({ settings, onSaved }) {
+  const start = (table) => Object.fromEntries(settings.scale.map((l) => [l.value, String(table[l.value] ?? 0)]))
+  const [guide, setGuide] = useState(() => start(settings.distributionGuide))
+  const [merit, setMerit] = useState(() => start(settings.meritTable))
+  const [saved, setSaved] = useState(false)
+  const { busy, error, run } = useAction()
+  const total = Object.values(guide).reduce((n, v) => n + (Number(v) || 0), 0)
+  return (
+    <form
+      className="panel"
+      noValidate
+      onSubmit={async (e) => {
+        e.preventDefault()
+        setSaved(false)
+        if (await run(() => performance.saveMerit({ distributionGuide: guide, meritTable: merit }))) {
+          setSaved(true)
+          onSaved()
+        }
+      }}
+    >
+      <h3>Calibration guide and merit table</h3>
+      <p className="hint">
+        The guide is the share of people you expect at each rating, shown beside the actual spread in calibration; it is never enforced.
+        The merit table is the increment each final rating suggests when outcomes are prepared.
+      </p>
+      <div className="table-wrap">
+        <table data-testid="merit-table">
+          <thead>
+            <tr>
+              <th>Rating</th>
+              <th>Guide (% of people)</th>
+              <th>Increment (%)</th>
+            </tr>
+          </thead>
+          <tbody>
+            {settings.scale.map((l) => (
+              <tr key={l.value}>
+                <td>
+                  {l.value} · {l.label}
+                </td>
+                <td>
+                  <input
+                    aria-label={`Guide for ${l.label}`}
+                    inputMode="decimal"
+                    value={guide[l.value]}
+                    onChange={(e) => setGuide({ ...guide, [l.value]: e.target.value })}
+                  />
+                </td>
+                <td>
+                  <input
+                    aria-label={`Increment for ${l.label}`}
+                    inputMode="decimal"
+                    value={merit[l.value]}
+                    onChange={(e) => setMerit({ ...merit, [l.value]: e.target.value })}
+                  />
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p className={total === 100 ? 'hint' : 'hint warn'}>The guide adds up to {total}%{total === 100 ? '' : '; it needs to be 100%'}.</p>
+      <p className="hint">The increment and promotion letters are under People → Setup → Letters.</p>
+      <ErrorNote>{error}</ErrorNote>
+      {saved && <p className="notice">Saved.</p>}
+      <div className="form-actions">
+        <button type="submit" className="primary" disabled={busy} data-testid="save-merit">
+          Save
         </button>
       </div>
     </form>

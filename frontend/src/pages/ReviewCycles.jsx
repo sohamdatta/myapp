@@ -1,7 +1,9 @@
 import { useState } from 'react'
 import { people, performance } from '../api.js'
 import { formatDay, useAction, useLoad } from '../hooks.js'
-import { Badge, Empty, ErrorNote } from '../ui.jsx'
+import { Badge, Empty, ErrorNote, Tabs } from '../ui.jsx'
+import CalibrationPanel from './Calibration.jsx'
+import OutcomesPanel from './Outcomes.jsx'
 import { CYCLE_STATUS, REVIEW_STATUS } from './performanceText.js'
 import ReviewPage from './ReviewPage.jsx'
 import { RuleEditor } from './setup/SetupShared.jsx'
@@ -214,6 +216,7 @@ function CyclePage({ id, onBack, onReview }) {
   const [view, setView] = useState(null)
   const [editing, setEditing] = useState(false)
   const [adding, setAdding] = useState(false)
+  const [section, setSection] = useState(null)
   const { busy, error, run } = useAction()
   const y = view || cycle.data
   if (cycle.loading && !y) return <p className="muted">Loading…</p>
@@ -224,6 +227,12 @@ function CyclePage({ id, onBack, onReview }) {
     if (next) setView(next)
   }
   const [tone, words] = CYCLE_STATUS[y.status] || ['neutral', y.status]
+  const sections = [
+    { id: 'reviews', label: 'Reviews' },
+    ['calibrating', 'released', 'closed'].includes(y.status) && { id: 'calibration', label: 'Calibration' },
+    ['released', 'closed'].includes(y.status) && { id: 'outcomes', label: 'Outcomes' },
+  ].filter(Boolean)
+  const current = sections.find((t) => t.id === section) ? section : 'reviews'
   return (
     <>
       <p>
@@ -270,12 +279,15 @@ function CyclePage({ id, onBack, onReview }) {
         </div>
       </div>
       <ErrorNote>{error}</ErrorNote>
-      {y.status === 'draft' && (
+      {sections.length > 1 && <Tabs tabs={sections} current={current} onChange={setSection} />}
+      {current === 'calibration' && <CalibrationPanel key={y.status} cycle={y} />}
+      {current === 'outcomes' && <OutcomesPanel cycle={y} />}
+      {current === 'reviews' && y.status === 'draft' && (
         <p className="notice" data-testid="eligible">
           Starting creates a review for {y.eligibleCount} {y.eligibleCount === 1 ? 'person' : 'people'}, each with their manager today, and tells them.
         </p>
       )}
-      {y.status !== 'draft' && (
+      {current === 'reviews' && y.status !== 'draft' && (
         <div className="stat-row" data-testid="cycle-progress">
           {Object.entries(y.counts).map(([status, n]) => (
             <span key={status} className="stat">
@@ -284,7 +296,7 @@ function CyclePage({ id, onBack, onReview }) {
           ))}
         </div>
       )}
-      {y.status === 'active' && (
+      {current === 'reviews' && y.status === 'active' && (
         <p>
           {adding ? (
             <AddPeople cycle={y} onDone={(next) => (setAdding(false), next && setView(next))} />
@@ -295,7 +307,7 @@ function CyclePage({ id, onBack, onReview }) {
           )}
         </p>
       )}
-      {y.reviews.length > 0 && (
+      {current === 'reviews' && y.reviews.length > 0 && (
         <div className="table-wrap">
           <table className="stack">
             <thead>

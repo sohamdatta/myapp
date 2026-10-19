@@ -2936,3 +2936,44 @@ textarea.code {
     grid-template-columns: 1fr;
   }
 }
+
+/* ── calibration and outcomes ────────────────────────────────────────── */
+.distribution .bar-cell {
+  position: relative;
+  min-width: 120px;
+  width: 30%;
+}
+.distribution .bar {
+  display: block;
+  height: 0.6rem;
+  border-radius: 3px;
+  background: var(--accent);
+  max-width: 100%;
+}
+.distribution .bar-over {
+  background: var(--warn);
+}
+.distribution .bar-guide {
+  position: absolute;
+  top: 0.35rem;
+  bottom: 0.35rem;
+  width: 2px;
+  background: var(--muted);
+}
+.outcome-form {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 0.75rem;
+  align-items: start;
+}
+.outcome-form .wide,
+.outcome-form .form-actions,
+.outcome-form .error {
+  grid-column: 1 / -1;
+}
+.hint.warn {
+  color: var(--warn);
+}
+[data-testid='merit-table'] input {
+  max-width: 7rem;
+}

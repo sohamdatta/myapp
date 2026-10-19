@@ -531,6 +531,17 @@ export const performance = {
   saveCompetency: (id, body) => (id ? put(`/org/performance/setup/competencies/${id}`, body) : post('/org/performance/setup/competencies', body)),
   saveCompetencySet: (id, body) =>
     id ? put(`/org/performance/setup/competency-sets/${id}`, body) : post('/org/performance/setup/competency-sets', body),
+
+  calibration: (cycleId) => get(`/org/performance/cycles/${cycleId}/calibration`),
+  openSession: (cycleId, body) => post(`/org/performance/cycles/${cycleId}/calibration/sessions`, body),
+  session: (id) => get(`/org/performance/calibration/${id}`),
+  sessionAction: (id, action, body) => post(`/org/performance/calibration/${id}/${action}`, body || {}),
+  calibrate: (sessionId, reviewId, level, reason) => post(`/org/performance/calibration/${sessionId}/reviews/${reviewId}`, { level, reason }),
+  merit: () => get('/org/performance/merit'),
+  saveMerit: (body) => put('/org/performance/merit', body),
+  outcomes: (cycleId) => get(`/org/performance/cycles/${cycleId}/outcomes`),
+  outcomesAction: (cycleId, action, body) => post(`/org/performance/cycles/${cycleId}/outcomes/${action}`, body || {}),
+  saveOutcome: (id, body) => put(`/org/performance/outcomes/${id}`, body),
 }
 
 export const notifications = {

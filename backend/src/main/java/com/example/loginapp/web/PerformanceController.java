@@ -16,9 +16,11 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.example.loginapp.core.AuthService;
+import com.example.loginapp.core.Calibration;
 import com.example.loginapp.core.Feedback;
 import com.example.loginapp.core.Goals;
 import com.example.loginapp.core.OneToOnes;
+import com.example.loginapp.core.Outcomes;
 import com.example.loginapp.core.PerformanceSetup;
 import com.example.loginapp.core.PerformanceTeam;
 import com.example.loginapp.core.Probation;
@@ -38,10 +40,14 @@ public class PerformanceController {
     private final PerformanceSetup setup;
     private final PerformanceTeam team;
     private final Reviews reviews;
+    private final Calibration calibration;
+    private final Outcomes outcomes;
 
     public PerformanceController(AuthService auth, Probation probation, Goals goals, OneToOnes oneToOnes, Feedback feedback,
-                                 PerformanceSetup setup, PerformanceTeam team, Reviews reviews) {
+                                 PerformanceSetup setup, PerformanceTeam team, Reviews reviews, Calibration calibration, Outcomes outcomes) {
         this.reviews = reviews;
+        this.calibration = calibration;
+        this.outcomes = outcomes;
         this.auth = auth;
         this.probation = probation;
         this.goals = goals;
@@ -66,6 +72,7 @@ public class PerformanceController {
         out.put("feedback", feedback.received(ctx));
         out.put("oneToOnes", oneToOnes.people(ctx));
         out.put("reviews", reviews.mine(ctx));
+        out.put("outcomeLetters", outcomes.myLetters(ctx));
         return out;
     }
 
@@ -281,6 +288,82 @@ public class PerformanceController {
             case "close" -> reviews.closeCycle(ctx, Requests.id(id));
             default -> throw com.example.loginapp.core.ApiException.notFound("That action");
         };
+    }
+
+    // ── calibration ─────────────────────────────────────────────────────
+
+    @GetMapping("/performance/cycles/{id}/calibration")
+    public Map<String, Object> calibration(@RequestHeader(value = "Authorization", required = false) String authorization, @PathVariable String id) {
+        return calibration.overview(session(authorization), Requests.id(id));
+    }
+
+    @PostMapping("/performance/cycles/{id}/calibration/sessions")
+    public Map<String, Object> openSession(@RequestHeader(value = "Authorization", required = false) String authorization, @PathVariable String id,
+                                           @RequestBody Calibration.SessionInput request) {
+        return calibration.createSession(session(authorization), Requests.id(id), request);
+    }
+
+    @GetMapping("/performance/calibration/{id}")
+    public Map<String, Object> calibrationSession(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                                  @PathVariable String id) {
+        return calibration.session(session(authorization), Requests.id(id));
+    }
+
+    @PostMapping("/performance/calibration/{id}/{action}")
+    public Map<String, Object> sessionAction(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                             @PathVariable String id, @PathVariable String action,
+                                             @RequestBody(required = false) Calibration.NotesInput request) {
+        SessionCtx ctx = session(authorization);
+        return switch (action) {
+            case "refresh" -> calibration.refresh(ctx, Requests.id(id));
+            case "notes" -> calibration.saveNotes(ctx, Requests.id(id), request);
+            case "close" -> calibration.close(ctx, Requests.id(id));
+            default -> throw com.example.loginapp.core.ApiException.notFound("That action");
+        };
+    }
+
+    @PostMapping("/performance/calibration/{id}/reviews/{reviewId}")
+    public Map<String, Object> calibrate(@RequestHeader(value = "Authorization", required = false) String authorization, @PathVariable String id,
+                                         @PathVariable String reviewId, @RequestBody Calibration.ChangeInput request) {
+        return calibration.change(session(authorization), Requests.id(id), Requests.id(reviewId), request);
+    }
+
+    @GetMapping("/performance/merit")
+    public Map<String, Object> merit(@RequestHeader(value = "Authorization", required = false) String authorization) {
+        return calibration.settings(session(authorization));
+    }
+
+    @PutMapping("/performance/merit")
+    public Map<String, Object> saveMerit(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                         @RequestBody Calibration.SettingsInput request) {
+        return calibration.saveSettings(session(authorization), request);
+    }
+
+    // ── outcomes ────────────────────────────────────────────────────────
+
+    @GetMapping("/performance/cycles/{id}/outcomes")
+    public Map<String, Object> outcomes(@RequestHeader(value = "Authorization", required = false) String authorization, @PathVariable String id) {
+        return outcomes.list(session(authorization), Requests.id(id));
+    }
+
+    @PostMapping("/performance/cycles/{id}/outcomes/{action}")
+    public Map<String, Object> outcomesAction(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                              @PathVariable String id, @PathVariable String action,
+                                              @RequestBody(required = false) Outcomes.BatchInput request) {
+        SessionCtx ctx = session(authorization);
+        return switch (action) {
+            case "prepare" -> outcomes.prepare(ctx, Requests.id(id));
+            case "submit" -> outcomes.submit(ctx, Requests.id(id), request);
+            case "return" -> outcomes.sendBack(ctx, Requests.id(id), request);
+            case "approve" -> outcomes.approve(ctx, Requests.id(id), request);
+            default -> throw com.example.loginapp.core.ApiException.notFound("That action");
+        };
+    }
+
+    @PutMapping("/performance/outcomes/{id}")
+    public Map<String, Object> updateOutcome(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                             @PathVariable String id, @RequestBody Outcomes.OutcomeInput request) {
+        return outcomes.update(session(authorization), Requests.id(id), request);
     }
 
     @GetMapping("/performance/reviews/to-write")

@@ -257,9 +257,9 @@ public final class Reviews {
         });
     }
 
-    /** A hook for calibration (stage 4): what still stops the release, or null. */
+    /** What still stops the release, or null: an open calibration session. */
     static String releaseBlocker(Connection c, UUID cycleId) throws SQLException {
-        return null;
+        return Calibration.releaseBlocker(c, cycleId);
     }
 
     public Map<String, Object> closeCycle(SessionCtx ctx, UUID id) {
