@@ -5,7 +5,8 @@ import { Badge, Empty, ErrorNote, Tabs } from '../ui.jsx'
 import { FeedbackList, GiveFeedback } from './FeedbackPanel.jsx'
 import GoalsPanel from './GoalsPanel.jsx'
 import OneToOnePanel from './OneToOnePanel.jsx'
-import { DECIDED, RATINGS } from './performanceText.js'
+import { DECIDED, RATINGS, REVIEW_STATUS } from './performanceText.js'
+import ReviewPage from './ReviewPage.jsx'
 
 /**
  * My performance: the employee's goals, their probation (check-ins to read and answer, and its
@@ -17,21 +18,51 @@ export default function MyPerformance() {
   if (mine.loading) return <p className="muted">Loading…</p>
   if (mine.error) return <ErrorNote>{mine.error}</ErrorNote>
   const m = mine.data
+  // A review waiting for the employee, or one released for them to read, comes first.
+  const pressing = (m.reviews || []).find((r) => ['self_review', 'released'].includes(r.status))
   const tabs = [
-    m.probation && { id: 'probation', label: m.probation.onProbation ? 'Probation' : 'Probation' },
+    m.reviews?.length > 0 && { id: 'reviews', label: 'Reviews' },
+    m.probation && { id: 'probation', label: 'Probation' },
     m.goals && { id: 'goals', label: 'Goals' },
     m.oneToOnes?.length > 0 && { id: 'one-to-ones', label: 'One-to-ones' },
     { id: 'feedback', label: 'Feedback' },
   ].filter(Boolean)
-  const current = tab || (m.probation?.onProbation ? 'probation' : m.goals ? 'goals' : tabs[0].id)
+  const current = tab || (pressing ? 'reviews' : m.probation?.onProbation ? 'probation' : m.goals ? 'goals' : tabs[0].id)
   return (
     <div className="my-performance">
       <Tabs tabs={tabs} current={current} onChange={setTab} />
+      {current === 'reviews' && <MyReviews reviews={m.reviews} onChanged={mine.reload} />}
       {current === 'probation' && m.probation && <MyProbation probation={m.probation} onChanged={mine.reload} />}
       {current === 'goals' && m.goals && <GoalsPanel employmentId={m.goals.employee.id} />}
       {current === 'one-to-ones' && <MyOneToOnes people={m.oneToOnes} />}
       {current === 'feedback' && <MyFeedback received={m.feedback} onChanged={mine.reload} />}
     </div>
+  )
+}
+
+function MyReviews({ reviews, onChanged }) {
+  const [open, setOpen] = useState(() => reviews.find((r) => ['self_review', 'released'].includes(r.status))?.id || null)
+  if (open) return <ReviewPage key={open} id={open} onBack={() => (setOpen(null), onChanged())} backLabel="← All my reviews" />
+  return (
+    <section className="panel">
+      <h3>Your reviews</h3>
+      <ul className="plain-list">
+        {reviews.map((r) => {
+          const [tone, , words] = REVIEW_STATUS[r.status] || ['neutral', r.status, r.status]
+          return (
+            <li key={r.id} data-my-review={r.cycle}>
+              <button type="button" className="text-link" onClick={() => setOpen(r.id)}>
+                {r.cycle}
+              </button>{' '}
+              <Badge tone={tone}>{words}</Badge>{' '}
+              <span className="hint">
+                {formatDay(r.periodStart)} to {formatDay(r.periodEnd)}
+              </span>
+            </li>
+          )
+        })}
+      </ul>
+    </section>
   )
 }
 

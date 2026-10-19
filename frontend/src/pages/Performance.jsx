@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Tabs } from '../ui.jsx'
 import ProbationReviews from './Probation.jsx'
+import ReviewCycles from './ReviewCycles.jsx'
 import PerformanceSetup from './PerformanceSetup.jsx'
 import PerformanceTeam, { DepartmentGoals } from './PerformanceTeam.jsx'
 
@@ -13,6 +14,7 @@ export default function Performance({ me }) {
   const canManage = scopes['performance.manage'] === 'tenant' && me.kind === 'tenant'
   const tabs = [
     { id: 'team', label: 'Team' },
+    { id: 'reviews', label: 'Reviews' },
     { id: 'probation', label: 'Probation' },
     { id: 'department-goals', label: 'Department goals' },
     canManage && { id: 'setup', label: 'Setup' },
@@ -22,6 +24,7 @@ export default function Performance({ me }) {
     <>
       <Tabs tabs={tabs} current={tab} onChange={setTab} />
       {tab === 'team' && <PerformanceTeam />}
+      {tab === 'reviews' && <ReviewCycles canManage={canManage} />}
       {tab === 'probation' && <ProbationReviews />}
       {tab === 'department-goals' && <DepartmentGoals canManage={canManage} />}
       {tab === 'setup' && <PerformanceSetup />}

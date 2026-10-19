@@ -28,7 +28,7 @@ public final class Migrator {
             "V11__employee_exit.sql",
             "V12__org_chart.sql",
             "V13__payroll.sql", "V14__suspended_access.sql", "V15__attendance_modes.sql",
-            "V16__performance_probation.sql", "V17__performance_goals.sql");
+            "V16__performance_probation.sql", "V17__performance_goals.sql", "V18__performance_reviews.sql");
 
     /**
      * Lets app_definer see every row of every table under row-level security, for databases where it

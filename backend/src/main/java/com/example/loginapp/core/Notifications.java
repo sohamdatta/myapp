@@ -84,6 +84,7 @@ public final class Notifications {
             ExitProposals.run(c, ctx.tenantId(), today);
             Probation.remind(c, ctx.tenantId(), ctx.membershipId(), today);
             OneToOnes.remind(c, ctx.tenantId(), ctx.membershipId(), today);
+            Reviews.remind(c, ctx.tenantId(), ctx.membershipId(), today);
             Map<String, Object> out = new LinkedHashMap<>();
             out.put("unread", ((Number) Sql.one(c, "select count(*) as n from app.notification where membership_id = ? and read_at is null",
                     ctx.membershipId()).get("n")).intValue());

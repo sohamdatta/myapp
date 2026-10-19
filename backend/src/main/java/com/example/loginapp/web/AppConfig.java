@@ -48,6 +48,7 @@ import com.example.loginapp.core.OneToOnes;
 import com.example.loginapp.core.Feedback;
 import com.example.loginapp.core.PerformanceSetup;
 import com.example.loginapp.core.PerformanceTeam;
+import com.example.loginapp.core.Reviews;
 import com.example.loginapp.core.UserService;
 import com.zaxxer.hikari.HikariDataSource;
 
@@ -194,6 +195,11 @@ public class AppConfig {
     @Bean
     public PerformanceTeam performanceTeam(Db db) {
         return new PerformanceTeam(db);
+    }
+
+    @Bean
+    public Reviews reviews(Db db, Crypto crypto) {
+        return new Reviews(db, crypto);
     }
 
     @Bean

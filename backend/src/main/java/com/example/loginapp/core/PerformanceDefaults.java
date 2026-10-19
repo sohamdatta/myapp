@@ -82,12 +82,40 @@ final class PerformanceDefaults {
             {"feedback_received", "New feedback", "Hello {{person.first_name}}, {{giver.name}} gave you feedback. It is in My performance."},
     };
 
+    private static final String[][] REVIEW_MESSAGES = {
+            {"review_self_open", "Your self review is open",
+                    "Hello {{person.first_name}}, your self review for {{review.cycle}} is open until {{review.due}}. It is in My performance."},
+            {"review_manager_open", "A review to write",
+                    "{{employee.name}}'s review for {{review.cycle}} is ready for you to write, by {{review.due}}."},
+            {"review_due", "Review due soon", "The {{review.cycle}} review of {{employee.name}} is due on {{review.due}}."},
+            {"review_self_returned", "Your self review was returned",
+                    "Hello {{person.first_name}}, your manager returned your self review for {{review.cycle}}: {{note}}"},
+            {"review_released", "Your review is ready",
+                    "Hello {{person.first_name}}, your review for {{review.cycle}} is ready to read in My performance."},
+    };
+
+    /** The questions of the default review form. */
+    static final String QUESTIONS = """
+            [
+              {"id":"went_well","for":"self","type":"text","text":"What went well for you this period?","required":true},
+              {"id":"differently","for":"self","type":"text","text":"What would you do differently?","required":false},
+              {"id":"support","for":"self","type":"text","text":"What support would help you next period?","required":false},
+              {"id":"strengths","for":"manager","type":"text","text":"Their strengths, with examples","required":true},
+              {"id":"develop","for":"manager","type":"text","text":"What they should work on next","required":true},
+              {"id":"peer_strengths","for":"peer","type":"text","text":"What do they do well?","required":true},
+              {"id":"peer_improve","for":"peer","type":"text","text":"What could they do better?","required":false}
+            ]""";
+
     /** Writes the defaults unless the Organization has them, and adds what later stages need to an Organization that had the earlier ones. */
     static void ensure(Connection c, UUID tenantId) throws SQLException {
-        Map<String, Object> s = Sql.one(c, "select rating_scale_id from app.perf_settings where tenant_id = ?", tenantId);
+        Map<String, Object> s = Sql.one(c, "select rating_scale_id, (select count(*) from app.review_form) as forms from app.perf_settings "
+                + "where tenant_id = ?", tenantId);
         if (s != null) {
             if (s.get("ratingScaleId") == null) {
                 stageTwo(c, tenantId);
+            }
+            if (((Number) s.get("forms")).intValue() == 0) {
+                stageThree(c, tenantId);
             }
             return;
         }
@@ -96,6 +124,7 @@ final class PerformanceDefaults {
             return;
         }
         stageTwo(c, tenantId);
+        stageThree(c, tenantId);
         for (String[] m : MESSAGES) {
             Sql.update(c, "insert into app.message_template (tenant_id, event, subject, body) values (?, ?, ?, ?) "
                     + "on conflict (tenant_id, event, channel) do nothing", tenantId, m[0], m[1], m[2]);
@@ -107,6 +136,22 @@ final class PerformanceDefaults {
         }
         Sql.update(c, "insert into app.letter_template (tenant_id, kind, name, body, response) values (?, 'probation_extension', "
                 + "'Probation extension letter', ?, 'none')", tenantId, EXTENSION);
+    }
+
+    /** The default review form and the review messages. A review form is the marker. */
+    private static void stageThree(Connection c, UUID tenantId) throws SQLException {
+        Sql.one(c, "select 1 from app.perf_settings where tenant_id = ? for update", tenantId);
+        if (Sql.one(c, "select 1 from app.review_form limit 1") != null) {
+            return;   // another request did it a moment ago
+        }
+        UUID form = AuthService.uuid(Sql.one(c, "insert into app.review_form (tenant_id, name) values (?, 'Standard review') returning id",
+                tenantId).get("id"));
+        Sql.update(c, "insert into app.review_form_version (tenant_id, form_id, version, questions) values (?, ?, 1, ?::jsonb)",
+                tenantId, form, QUESTIONS);
+        for (String[] m : REVIEW_MESSAGES) {
+            Sql.update(c, "insert into app.message_template (tenant_id, event, subject, body) values (?, ?, ?, ?) "
+                    + "on conflict (tenant_id, event, channel) do nothing", tenantId, m[0], m[1], m[2]);
+        }
     }
 
     /** The rating scale and the goal, one-to-one and feedback messages. The scale is the marker. */

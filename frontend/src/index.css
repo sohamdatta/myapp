@@ -2868,3 +2868,71 @@ textarea.code {
 .goal:first-of-type {
   border-top: 0;
 }
+
+.review-item {
+  padding: 10px 0;
+  border-top: 1px solid var(--border);
+}
+
+.rating-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 6px 0;
+}
+
+.rating {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+
+.rating input {
+  width: auto;
+  margin: 0;
+}
+
+.rating-current {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.rating-label {
+  color: var(--muted);
+}
+
+.overall,
+.their-answers {
+  margin-top: 16px;
+}
+
+.stat-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin: 12px 0;
+}
+
+.stat strong {
+  font-size: 1.2rem;
+  margin-right: 4px;
+}
+
+.question-row {
+  display: grid;
+  grid-template-columns: 2fr 1fr 1fr auto auto;
+  gap: 10px;
+  align-items: end;
+  margin-bottom: 8px;
+}
+
+@media (max-width: 720px) {
+  .question-row {
+    grid-template-columns: 1fr;
+  }
+}

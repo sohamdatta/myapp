@@ -88,6 +88,8 @@ public final class Templates {
         m.put("goals.period", "The goal period, as FY 2026-27");
         m.put("goal.title", "The goal's title");
         m.put("giver.name", "Who gave the feedback");
+        m.put("review.cycle", "The review cycle, as Annual review FY 2026-27");
+        m.put("review.due", "When the review is due");
         MESSAGE = java.util.Collections.unmodifiableMap(m);
     }
 

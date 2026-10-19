@@ -22,6 +22,7 @@ import com.example.loginapp.core.OneToOnes;
 import com.example.loginapp.core.PerformanceSetup;
 import com.example.loginapp.core.PerformanceTeam;
 import com.example.loginapp.core.Probation;
+import com.example.loginapp.core.Reviews;
 import com.example.loginapp.core.SessionCtx;
 
 /** Performance: the employee's own (My performance), and their team's or everyone's for managers and HR. */
@@ -36,9 +37,11 @@ public class PerformanceController {
     private final Feedback feedback;
     private final PerformanceSetup setup;
     private final PerformanceTeam team;
+    private final Reviews reviews;
 
     public PerformanceController(AuthService auth, Probation probation, Goals goals, OneToOnes oneToOnes, Feedback feedback,
-                                 PerformanceSetup setup, PerformanceTeam team) {
+                                 PerformanceSetup setup, PerformanceTeam team, Reviews reviews) {
+        this.reviews = reviews;
         this.auth = auth;
         this.probation = probation;
         this.goals = goals;
@@ -62,6 +65,7 @@ public class PerformanceController {
         out.put("goals", goals.mine(ctx));
         out.put("feedback", feedback.received(ctx));
         out.put("oneToOnes", oneToOnes.people(ctx));
+        out.put("reviews", reviews.mine(ctx));
         return out;
     }
 
@@ -238,6 +242,107 @@ public class PerformanceController {
     @GetMapping("/performance/colleagues")
     public List<Map<String, Object>> colleagues(@RequestHeader(value = "Authorization", required = false) String authorization) {
         return feedback.colleagues(session(authorization));
+    }
+
+    // ── review cycles and reviews ───────────────────────────────────────
+
+    @GetMapping("/performance/cycles")
+    public List<Map<String, Object>> cycles(@RequestHeader(value = "Authorization", required = false) String authorization) {
+        return reviews.cycles(session(authorization));
+    }
+
+    @GetMapping("/performance/cycles/{id}")
+    public Map<String, Object> cycle(@RequestHeader(value = "Authorization", required = false) String authorization, @PathVariable String id) {
+        return reviews.cycle(session(authorization), Requests.id(id));
+    }
+
+    @PostMapping("/performance/cycles")
+    public Map<String, Object> addCycle(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                        @RequestBody Reviews.CycleInput request) {
+        return reviews.createCycle(session(authorization), request);
+    }
+
+    @PutMapping("/performance/cycles/{id}")
+    public Map<String, Object> changeCycle(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                           @PathVariable String id, @RequestBody Reviews.CycleInput request) {
+        return reviews.updateCycle(session(authorization), Requests.id(id), request);
+    }
+
+    @PostMapping("/performance/cycles/{id}/{action}")
+    public Map<String, Object> cycleAction(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                           @PathVariable String id, @PathVariable String action,
+                                           @RequestBody(required = false) Reviews.PeopleInput request) {
+        SessionCtx ctx = session(authorization);
+        return switch (action) {
+            case "start" -> reviews.startCycle(ctx, Requests.id(id));
+            case "people" -> reviews.addPeople(ctx, Requests.id(id), request);
+            case "calibrate" -> reviews.startCalibration(ctx, Requests.id(id));
+            case "release" -> reviews.release(ctx, Requests.id(id));
+            case "close" -> reviews.closeCycle(ctx, Requests.id(id));
+            default -> throw com.example.loginapp.core.ApiException.notFound("That action");
+        };
+    }
+
+    @GetMapping("/performance/reviews/to-write")
+    public List<Map<String, Object>> reviewsToWrite(@RequestHeader(value = "Authorization", required = false) String authorization) {
+        return reviews.toWrite(session(authorization));
+    }
+
+    @GetMapping("/me/performance/reviews")
+    public List<Map<String, Object>> myReviews(@RequestHeader(value = "Authorization", required = false) String authorization) {
+        return reviews.mine(session(authorization));
+    }
+
+    @GetMapping("/performance/reviews/{id}")
+    public Map<String, Object> review(@RequestHeader(value = "Authorization", required = false) String authorization, @PathVariable String id) {
+        return reviews.review(session(authorization), Requests.id(id));
+    }
+
+    @PutMapping("/performance/reviews/{id}/entries/{role}")
+    public Map<String, Object> saveEntry(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                         @PathVariable String id, @PathVariable String role, @RequestBody Reviews.EntryInput request) {
+        return reviews.saveEntry(session(authorization), Requests.id(id), role, request);
+    }
+
+    @PostMapping("/performance/reviews/{id}/return-self")
+    public Map<String, Object> returnSelf(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                          @PathVariable String id, @RequestBody Reviews.ReasonInput request) {
+        return reviews.returnSelf(session(authorization), Requests.id(id), request);
+    }
+
+    @PostMapping("/performance/reviews/{id}/acknowledge")
+    public Map<String, Object> acknowledge(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                           @PathVariable String id, @RequestBody(required = false) Reviews.AckInput request) {
+        return reviews.acknowledge(session(authorization), Requests.id(id), request);
+    }
+
+    @PostMapping("/performance/reviews/{id}/withdraw")
+    public Map<String, Object> withdrawReview(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                              @PathVariable String id, @RequestBody Reviews.ReasonInput request) {
+        return reviews.withdraw(session(authorization), Requests.id(id), request);
+    }
+
+    @PostMapping("/performance/reviews/{id}/move-on")
+    public Map<String, Object> moveOn(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                      @PathVariable String id, @RequestBody Reviews.ReasonInput request) {
+        return reviews.moveOn(session(authorization), Requests.id(id), request);
+    }
+
+    @GetMapping("/performance/setup/forms")
+    public List<Map<String, Object>> forms(@RequestHeader(value = "Authorization", required = false) String authorization) {
+        return reviews.forms(session(authorization));
+    }
+
+    @PostMapping("/performance/setup/forms")
+    public List<Map<String, Object>> addForm(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                             @RequestBody Reviews.FormInput request) {
+        return reviews.saveForm(session(authorization), null, request);
+    }
+
+    @PutMapping("/performance/setup/forms/{id}")
+    public List<Map<String, Object>> changeForm(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                                @PathVariable String id, @RequestBody Reviews.FormInput request) {
+        return reviews.saveForm(session(authorization), Requests.id(id), request);
     }
 
     // ── setup ───────────────────────────────────────────────────────────

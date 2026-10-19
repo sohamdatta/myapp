@@ -18,6 +18,7 @@ export default function PerformanceSetup() {
       <General s={s} onSaved={setView} />
       <Scale scale={s.scale} onSaved={setView} />
       <Competencies s={s} lookups={lookups} onSaved={setView} />
+      <ReviewForms />
       <ProbationSettings />
     </div>
   )
@@ -300,6 +301,112 @@ function SetForm({ set, competencies, lookups, onDone }) {
           Save
         </button>
         <button type="button" className="quiet" onClick={() => onDone(null)}>
+          Cancel
+        </button>
+      </div>
+    </form>
+  )
+}
+
+const ANSWERED_BY = { self: 'The employee', manager: 'The manager', peer: 'Peers' }
+
+function ReviewForms() {
+  const forms = useLoad(performance.forms)
+  const [editing, setEditing] = useState(null)
+  if (forms.loading) return <p className="muted">Loading…</p>
+  if (forms.error) return <ErrorNote>{forms.error}</ErrorNote>
+  return (
+    <section className="panel" data-testid="review-forms">
+      <div className="section-head">
+        <h3>Review forms</h3>
+        {!editing && (
+          <button type="button" className="outline" onClick={() => setEditing({ name: '', questions: [{ for: 'self', type: 'text', text: '', required: true }] })}>
+            Add a form
+          </button>
+        )}
+      </div>
+      <p className="hint">Saving makes a new version. A cycle keeps the version it started with.</p>
+      {editing ? (
+        <FormEditor
+          form={editing}
+          onDone={(saved) => {
+            setEditing(null)
+            if (saved) forms.reload()
+          }}
+        />
+      ) : (
+        <ul className="plain-list">
+          {forms.data.map((f) => (
+            <li key={f.id} data-form={f.name}>
+              <button type="button" className="text-link" onClick={() => setEditing(f)}>
+                {f.name}
+              </button>{' '}
+              <span className="hint">
+                version {f.version} · {f.questions.length} questions
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  )
+}
+
+function FormEditor({ form, onDone }) {
+  const [name, setName] = useState(form.name)
+  const [questions, setQuestions] = useState(form.questions.map((q) => ({ ...q })))
+  const { busy, error, run } = useAction()
+  const change = (i, patch) => setQuestions(questions.map((q, j) => (j === i ? { ...q, ...patch } : q)))
+  return (
+    <form
+      className="goal-form"
+      onSubmit={async (e) => {
+        e.preventDefault()
+        if (await run(() => performance.saveForm(form.id, { name, questions }))) onDone(true)
+      }}
+    >
+      <label htmlFor="form-name">Name</label>
+      <input id="form-name" value={name} onChange={(e) => setName(e.target.value)} />
+      {questions.map((q, i) => (
+        <div className="question-row" key={q.id || `new-${i}`}>
+          <div>
+            <label htmlFor={`q-text-${i}`}>Question {i + 1}</label>
+            <input id={`q-text-${i}`} value={q.text} onChange={(e) => change(i, { text: e.target.value })} />
+          </div>
+          <div>
+            <label htmlFor={`q-for-${i}`}>Answered by</label>
+            <select id={`q-for-${i}`} value={q.for} onChange={(e) => change(i, { for: e.target.value })}>
+              {Object.entries(ANSWERED_BY).map(([k, v]) => (
+                <option key={k} value={k}>
+                  {v}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label htmlFor={`q-type-${i}`}>Answer</label>
+            <select id={`q-type-${i}`} value={q.type} onChange={(e) => change(i, { type: e.target.value })}>
+              <option value="text">In words</option>
+              <option value="rating">A rating</option>
+            </select>
+          </div>
+          <label className="check">
+            <input type="checkbox" checked={Boolean(q.required)} onChange={(e) => change(i, { required: e.target.checked })} /> Required
+          </label>
+          <button type="button" className="quiet plain danger" onClick={() => setQuestions(questions.filter((_, j) => j !== i))}>
+            Remove
+          </button>
+        </div>
+      ))}
+      <button type="button" className="outline" onClick={() => setQuestions([...questions, { for: 'self', type: 'text', text: '', required: false }])}>
+        Add a question
+      </button>
+      <ErrorNote>{error}</ErrorNote>
+      <div className="form-actions">
+        <button type="submit" className="primary" disabled={busy}>
+          Save as a new version
+        </button>
+        <button type="button" className="quiet" onClick={() => onDone(false)}>
           Cancel
         </button>
       </div>

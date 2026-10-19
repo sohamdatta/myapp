@@ -226,4 +226,78 @@ test.describe.serial('performance', () => {
     await expect(competencies.locator('[data-competency="Ownership"]')).toBeVisible();
     await shot(hr, 'perf-13-setup', true);
   });
+
+  // ── review cycles ────────────────────────────────────────────────────
+
+  test('HR sets up the annual review and starts it', async () => {
+    await nav(hr, 'Performance');
+    await tab(hr, 'Reviews');
+    await hr.getByTestId('cycles').getByRole('button', { name: 'New cycle' }).click();
+    await hr.fill('#cy-name', 'Annual review');
+    await hr.getByRole('button', { name: 'Save' }).click();
+    await expect(hr.getByTestId('eligible')).toContainText('Starting creates a review for');
+    await shot(hr, 'perf-14-cycle-draft', true);
+    await hr.getByRole('button', { name: 'Start the cycle' }).click();
+    await expect(hr.locator('tr[data-review="Ishita Menon"]')).toContainText('Self review');
+  });
+
+  test('the employee writes her self review on her phone', async () => {
+    await ishita.reload();
+    await nav(ishita, 'My performance');
+    const review = ishita.getByTestId('review');
+    await expect(review).toContainText('Your self review');
+    for (const goal of ['Publish the weekly sales dashboard every Monday', 'Automate 12 manual reports']) {
+      await review.locator(`[data-review-goal="${goal}"]`).getByText('Exceeds expectations').click();
+    }
+    await ishita.fill('#self-q-went_well', 'The Monday dashboard is now used by the whole sales team.');
+    await expectNoSidewaysScroll(ishita);
+    await shot(ishita, 'perf-15-self-review-phone', true);
+    await review.getByRole('button', { name: 'Send to my manager' }).click();
+    await expect(review).toContainText('With your manager');
+  });
+
+  test('the manager rates the goals, sees the worked-out rating, and sends the review', async () => {
+    await nav(priya, 'Performance');
+    await tab(priya, 'Reviews');
+    await priya.getByTestId('reviews-to-write').getByRole('button', { name: 'Ishita Menon' }).click();
+    const review = priya.getByTestId('review');
+    await expect(review.locator('[data-review-goal="Automate 12 manual reports"]')).toContainText('Their rating: 4');
+    await review.locator('[data-review-goal="Publish the weekly sales dashboard every Monday"]').getByText('Exceeds expectations').click();
+    await review.locator('[data-review-goal="Automate 12 manual reports"]').getByText('Meets expectations', { exact: true }).click();
+    await expect(review.getByTestId('worked-out')).toContainText('3.60, rounded to 4');
+    await priya.fill('#manager-q-strengths', 'Owns the dashboard end to end; the sales team relies on it.');
+    await priya.fill('#manager-q-develop', 'Present the numbers in the monthly review herself.');
+    await shot(priya, 'perf-16-manager-review', true);
+    await review.getByRole('button', { name: 'Send the review' }).click();
+    await expect(review).toContainText('Calibration');
+    await expect(review).toContainText('Worked out: 3.60, rounded to 4');
+  });
+
+  test('HR releases the cycle and the employee reads and acknowledges her review', async () => {
+    // Everyone else's review is taken out of this cycle, so it can be released in the test.
+    const cycles = (await api(hr, 'GET', '/org/performance/cycles')).body;
+    const cycle = (await api(hr, 'GET', `/org/performance/cycles/${cycles.find((c: any) => c.name === 'Annual review').id}`)).body;
+    for (const r of cycle.reviews.filter((x: any) => x.name !== 'Ishita Menon' && x.status !== 'withdrawn')) {
+      const w = await api(hr, 'POST', `/org/performance/reviews/${r.id}/withdraw`, { reason: 'Not part of this test' });
+      expect(w.status, JSON.stringify(w.body)).toBe(200);
+    }
+    await hr.reload();
+    await nav(hr, 'Performance');
+    await tab(hr, 'Reviews');
+    await hr.getByTestId('cycles').getByRole('button', { name: 'Annual review' }).click();
+    await hr.getByRole('button', { name: 'Start calibration' }).click();
+    await hr.getByRole('button', { name: 'Release to everyone' }).click();
+    await expect(hr.locator('tr[data-review="Ishita Menon"]')).toContainText('Released');
+    await shot(hr, 'perf-17-cycle-released', true);
+
+    await ishita.reload();
+    await nav(ishita, 'My performance');
+    const review = ishita.getByTestId('review');
+    await expect(review.getByTestId('final-rating')).toContainText('4 · Exceeds expectations');
+    await expect(review).toContainText('Owns the dashboard end to end');
+    await ishita.fill('#ack-comment', 'Thank you. I will take the monthly review from next month.');
+    await review.getByRole('button', { name: 'Acknowledge' }).click();
+    await expect(review).toContainText('Acknowledged');
+    await shot(ishita, 'perf-18-review-released-phone', true);
+  });
 });
