@@ -78,6 +78,8 @@ public class PerformanceController {
         out.put("reviews", reviews.mine(ctx));
         out.put("outcomeLetters", outcomes.myLetters(ctx));
         out.put("plan", plans.mine(ctx));
+        out.put("peerRequests", reviews.peerRequests(ctx));
+        out.put("feedbackAskedOfMe", feedback.askedOfMe(ctx));
         return out;
     }
 
@@ -457,6 +459,52 @@ public class PerformanceController {
     public Map<String, Object> acknowledge(@RequestHeader(value = "Authorization", required = false) String authorization,
                                            @PathVariable String id, @RequestBody(required = false) Reviews.AckInput request) {
         return reviews.acknowledge(session(authorization), Requests.id(id), request);
+    }
+
+    @PostMapping("/performance/reviews/{id}/peers")
+    public Map<String, Object> requestPeers(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                            @PathVariable String id, @RequestBody Reviews.PeopleInput request) {
+        return reviews.requestPeers(session(authorization), Requests.id(id), request);
+    }
+
+    @PostMapping("/performance/reviews/{id}/sign-off")
+    public Map<String, Object> signOff(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                       @PathVariable String id, @RequestBody Reviews.SignOffInput request) {
+        return reviews.signOff(session(authorization), Requests.id(id), request);
+    }
+
+    @GetMapping("/me/performance/peer-reviews/{id}")
+    public Map<String, Object> peerReview(@RequestHeader(value = "Authorization", required = false) String authorization, @PathVariable String id) {
+        return reviews.peerReview(session(authorization), Requests.id(id));
+    }
+
+    @PutMapping("/me/performance/peer-reviews/{id}")
+    public Map<String, Object> savePeerReview(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                              @PathVariable String id, @RequestBody Reviews.PeerInput request) {
+        return reviews.savePeer(session(authorization), Requests.id(id), request);
+    }
+
+    @PostMapping("/me/performance/peer-reviews/{id}/decline")
+    public Map<String, Object> declinePeerReview(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                                 @PathVariable String id, @RequestBody Reviews.ReasonInput request) {
+        return reviews.declinePeer(session(authorization), Requests.id(id), request);
+    }
+
+    @GetMapping("/me/performance/feedback/requests")
+    public List<Map<String, Object>> feedbackAsked(@RequestHeader(value = "Authorization", required = false) String authorization) {
+        return feedback.asked(session(authorization));
+    }
+
+    @PostMapping("/me/performance/feedback/requests")
+    public List<Map<String, Object>> askForFeedback(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                                    @RequestBody Feedback.RequestInput request) {
+        return feedback.request(session(authorization), request);
+    }
+
+    @PostMapping("/me/performance/feedback/requests/{id}/decline")
+    public List<Map<String, Object>> declineFeedback(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                                     @PathVariable String id, @RequestBody Feedback.TextInput request) {
+        return feedback.decline(session(authorization), Requests.id(id), request);
     }
 
     @PostMapping("/performance/reviews/{id}/withdraw")

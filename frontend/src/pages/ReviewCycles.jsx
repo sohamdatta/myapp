@@ -122,6 +122,9 @@ function CycleForm({ cycle, onDone }) {
     managerDue: cycle?.managerDue || '',
     calibrationDue: cycle?.calibrationDue || '',
     releaseDue: cycle?.releaseDue || '',
+    peerReviews: String(cycle?.peerReviews ?? 0),
+    peersAnonymous: cycle?.peersAnonymous ?? true,
+    skipLevel: cycle?.skipLevelSignoff ?? false,
   }))
   const { busy, error, run } = useAction()
   const set = (patch) => setV({ ...v, ...patch })
@@ -137,6 +140,7 @@ function CycleForm({ cycle, onDone }) {
             ...v,
             goalWeight: v.goalWeight === '' ? null : Number(v.goalWeight),
             formId: v.formId || null,
+            peerReviews: Number(v.peerReviews),
           }),
         )
         if (saved) onDone(saved.id)
@@ -179,8 +183,29 @@ function CycleForm({ cycle, onDone }) {
             ))}
           </select>
         </div>
+        <div>
+          <label htmlFor="cy-peers">Peer reviews a person</label>
+          <select id="cy-peers" value={v.peerReviews} onChange={(e) => set({ peerReviews: e.target.value })}>
+            <option value="0">None</option>
+            {[1, 2, 3, 4, 5].map((n) => (
+              <option key={n} value={n}>
+                Up to {n}, chosen by the manager
+              </option>
+            ))}
+          </select>
+        </div>
         <label className="check">
           <input type="checkbox" checked={v.selfReview} onChange={(e) => set({ selfReview: e.target.checked })} /> Self review first
+        </label>
+        {v.peerReviews !== '0' && (
+          <label className="check">
+            <input type="checkbox" checked={v.peersAnonymous} onChange={(e) => set({ peersAnonymous: e.target.checked })} /> The person reads peer
+            reviews without names (shown only when two or more are written)
+          </label>
+        )}
+        <label className="check">
+          <input type="checkbox" checked={v.skipLevel} onChange={(e) => set({ skipLevel: e.target.checked })} /> The manager's manager signs
+          each review off before calibration
         </label>
       </fieldset>
       {!started && <RuleEditor idPrefix="cy" value={v.appliesTo} onChange={(appliesTo) => set({ appliesTo })} lookups={lookups} />}

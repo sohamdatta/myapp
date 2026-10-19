@@ -103,6 +103,7 @@ public final class Templates {
         m.put("review.due", "When the review is due");
         m.put("plan.decision", "HR's decision on an improvement plan, in words");
         m.put("plan.checkin_due", "When a plan check-in is due");
+        m.put("requester.name", "Who asked for the feedback");
         MESSAGE = java.util.Collections.unmodifiableMap(m);
     }
 

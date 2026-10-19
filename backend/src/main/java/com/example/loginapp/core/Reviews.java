@@ -29,7 +29,19 @@ public final class Reviews {
 
     public record CycleInput(String name, String periodStart, String periodEnd, Map<String, Object> appliesTo, String joinedBy, String formId,
                              Integer goalWeight, Boolean selfReview, String selfDue, String managerDue, String calibrationDue,
-                             String releaseDue) {}
+                             String releaseDue, Integer peerReviews, Boolean peersAnonymous, Boolean skipLevel) {
+
+        /** A cycle with no peer reviews and no skip-level sign-off. */
+        public CycleInput(String name, String periodStart, String periodEnd, Map<String, Object> appliesTo, String joinedBy, String formId,
+                          Integer goalWeight, Boolean selfReview, String selfDue, String managerDue, String calibrationDue, String releaseDue) {
+            this(name, periodStart, periodEnd, appliesTo, joinedBy, formId, goalWeight, selfReview, selfDue, managerDue, calibrationDue, releaseDue,
+                    null, null, null);
+        }
+    }
+
+    public record PeerInput(Map<String, Object> answers, Boolean submit) {}
+
+    public record SignOffInput(String action, String note) {}
 
     public record Rating(String id, Integer rating, String comment) {}
 
@@ -91,10 +103,10 @@ public final class Reviews {
             PerformanceDefaults.ensure(c, ctx.tenantId());
             Checked k = check(c, in, today);
             UUID id = AuthService.uuid(Sql.one(c, "insert into app.review_cycle (tenant_id, name, period_start, period_end, applies_to, joined_by, "
-                    + "form_version_id, goal_weight, self_review, self_due, manager_due, calibration_due, release_due, created_by) "
-                    + "values (?, ?, ?, ?, ?::jsonb, ?, ?, ?, ?, ?, ?, ?, ?, ?) returning id", ctx.tenantId(), k.name, k.start, k.end, k.rules.toJson(),
-                    k.joinedBy, k.formVersion, k.goalWeight.shortValue(), k.self, k.selfDue, k.managerDue, k.calibrationDue, k.releaseDue,
-                    ctx.membershipId()).get("id"));
+                    + "form_version_id, goal_weight, self_review, self_due, manager_due, calibration_due, release_due, peer_reviews, peers_anonymous, "
+                    + "skip_level_signoff, created_by) values (?, ?, ?, ?, ?::jsonb, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) returning id", ctx.tenantId(),
+                    k.name, k.start, k.end, k.rules.toJson(), k.joinedBy, k.formVersion, k.goalWeight.shortValue(), k.self, k.selfDue, k.managerDue,
+                    k.calibrationDue, k.releaseDue, (short) k.peers, k.anonymous, k.skipLevel, ctx.membershipId()).get("id"));
             UserService.audit(c, ctx, "performance.cycle_created", "review_cycle", id, Map.of("name", k.name));
             return cycleView(c, ctx, id, today);
         });
@@ -113,8 +125,9 @@ public final class Reviews {
             } else {
                 Sql.update(c, "update app.review_cycle set name = ?, period_start = ?, period_end = ?, applies_to = ?::jsonb, joined_by = ?, "
                         + "form_version_id = ?, goal_weight = ?, self_review = ?, self_due = ?, manager_due = ?, calibration_due = ?, "
-                        + "release_due = ? where id = ?", k.name, k.start, k.end, k.rules.toJson(), k.joinedBy, k.formVersion,
-                        k.goalWeight.shortValue(), k.self, k.selfDue, k.managerDue, k.calibrationDue, k.releaseDue, id);
+                        + "release_due = ?, peer_reviews = ?, peers_anonymous = ?, skip_level_signoff = ? where id = ?", k.name, k.start, k.end,
+                        k.rules.toJson(), k.joinedBy, k.formVersion, k.goalWeight.shortValue(), k.self, k.selfDue, k.managerDue, k.calibrationDue,
+                        k.releaseDue, (short) k.peers, k.anonymous, k.skipLevel, id);
             }
             UserService.audit(c, ctx, "performance.cycle_changed", "review_cycle", id, Map.of("name", k.name));
             return cycleView(c, ctx, id, today);
@@ -286,8 +299,9 @@ public final class Reviews {
             if (me == null) {
                 return List.<Map<String, Object>>of();
             }
-            return Sql.query(c, LIST + "where r.manager_id = ?::uuid and y.status <> 'closed' and r.status <> 'withdrawn' "
-                    + "order by y.period_start desc, (r.status = 'manager_review') desc, " + Perf.NAME, me.get("id"));
+            return Sql.query(c, LIST + "where (r.manager_id = ?::uuid or (r.skip_level_id = ?::uuid and r.status = 'skip_level')) "
+                    + "and y.status <> 'closed' and r.status <> 'withdrawn' "
+                    + "order by y.period_start desc, (r.status in ('manager_review','skip_level')) desc, " + Perf.NAME, me.get("id"), me.get("id"));
         });
     }
 
@@ -390,8 +404,15 @@ public final class Reviews {
                     Sql.update(c, "update app.review set status = 'manager_review' where id = ?", reviewId);
                     notifyManager(c, ctx, r);
                 } else {
-                    Sql.update(c, "update app.review set status = ?, manager_level = ? where id = ?", afterManager(c, r), overall.shortValue(),
-                            reviewId);
+                    String next = afterManager(c, r);
+                    Sql.update(c, "update app.review set status = ?, manager_level = ?, skip_level_note = null where id = ?", next,
+                            overall.shortValue(), reviewId);
+                    // Peers who have not written by now are not waited for.
+                    Sql.update(c, "update app.peer_request set status = 'expired' where review_id = ? and status = 'open'", reviewId);
+                    if (next.equals("skip_level")) {
+                        Notifications.send(c, ctx.tenantId(), membership(c, AuthService.uuid(r.get("skipLevelId"))), "skip_level_open", values(c, r, y),
+                                "performance");
+                    }
                 }
                 UserService.audit(c, ctx, "performance.review_" + role + "_submitted", "review", reviewId,
                         self ? Map.of() : Map.of("overall", overall, "proposed", proposed == null ? "" : proposed.toString()));
@@ -400,9 +421,252 @@ public final class Reviews {
         });
     }
 
-    /** Where a review goes once the manager has written it: the skip-level manager (stage 6), or calibration. */
+    /** Where a review goes once the manager has written it: to the manager's manager to sign off, when the cycle asks, or to calibration. */
     static String afterManager(Connection c, Map<String, Object> r) throws SQLException {
-        return "calibration";
+        Map<String, Object> y = Sql.one(c, "select skip_level_signoff from app.review_cycle where id = ?::uuid", r.get("cycleId"));
+        boolean signOff = Boolean.TRUE.equals(y.get("skipLevelSignoff")) && r.get("skipLevelId") != null
+                && Sql.one(c, "select 1 from app.employment where id = ?::uuid and status = 'active' and membership_id is not null",
+                        r.get("skipLevelId")) != null;
+        return signOff ? "skip_level" : "calibration";
+    }
+
+    /**
+     * The manager's manager signs the review off, which sends it to calibration, or sends it back to
+     * the manager with a note. HR can do either in their place.
+     */
+    public Map<String, Object> signOff(SessionCtx ctx, UUID reviewId, SignOffInput in) {
+        Perf.requireMember(ctx);
+        String action = Perf.oneOf(in == null ? null : in.action(), List.of("agree", "return"), "Sign it off, or send it back to the manager");
+        String note = Perf.text(in.note(), action.equals("return") ? "what should change" : "a comment", action.equals("return") ? 10 : 0, 1000);
+        LocalDate today = today();
+        return db.inTenant(ctx.tenantId(), c -> {
+            Map<String, Object> r = lockReview(c, reviewId);
+            Who w = who(c, ctx, r);
+            if (!(w.skip || w.hr) || w.own || w.manager) {
+                throw ApiException.notFound("The review");
+            }
+            if (!"skip_level".equals(r.get("status"))) {
+                throw new ApiException(409, "review.state", "This review is not waiting for sign-off");
+            }
+            Map<String, Object> y = Sql.one(c, "select * from app.review_cycle where id = ?::uuid", r.get("cycleId"));
+            if (action.equals("agree")) {
+                Map<String, Object> e = Sql.one(c, "select id from app.review_entry where review_id = ? and role = 'skip_level' and reviewer_id = ?",
+                        reviewId, ctx.membershipId());
+                byte[] sealed = Perf.seal(crypto, ctx, Json.write(note == null ? Map.of() : Map.of("comment", note)));
+                if (e == null) {
+                    Sql.update(c, "insert into app.review_entry (tenant_id, review_id, role, reviewer_id, answers_enc, submitted_at) "
+                            + "values (?, ?, 'skip_level', ?, ?, now())", ctx.tenantId(), reviewId, ctx.membershipId(), sealed);
+                } else {
+                    Sql.update(c, "update app.review_entry set answers_enc = ?, submitted_at = now(), updated_at = now() where id = ?::uuid",
+                            sealed, e.get("id"));
+                }
+                Sql.update(c, "update app.review set status = 'calibration' where id = ?", reviewId);
+            } else {
+                // The manager's part opens again for them to change and send.
+                Sql.update(c, "update app.review_entry set submitted_at = null where review_id = ? and role = 'manager'", reviewId);
+                Sql.update(c, "update app.review set status = 'manager_review', skip_level_note = ? where id = ?", note, reviewId);
+                if (r.get("managerId") != null) {
+                    Map<String, String> v = values(c, r, y);
+                    v.put("note", note);
+                    Notifications.send(c, ctx.tenantId(), membership(c, AuthService.uuid(r.get("managerId"))), "skip_level_returned", v, "performance");
+                }
+            }
+            UserService.audit(c, ctx, "performance.review_signed_off", "review", reviewId, Map.of("action", action));
+            return view(c, ctx, lockless(c, reviewId), today);
+        });
+    }
+
+    // ── peer reviews ────────────────────────────────────────────────────
+
+    /** The manager (or HR) asks colleagues for peer reviews, up to the cycle's number. Each peer is told. */
+    public Map<String, Object> requestPeers(SessionCtx ctx, UUID reviewId, PeopleInput in) {
+        Perf.requireMember(ctx);
+        List<UUID> peers = new ArrayList<>();
+        for (String id : in == null || in.employmentIds() == null ? List.<String>of() : in.employmentIds()) {
+            UUID p = Perf.id(id, "colleague");
+            if (!peers.contains(p)) {
+                peers.add(p);
+            }
+        }
+        if (peers.isEmpty()) {
+            throw ApiException.badRequest("Choose at least one colleague");
+        }
+        LocalDate today = today();
+        return db.inTenant(ctx.tenantId(), c -> {
+            Map<String, Object> r = lockReview(c, reviewId);
+            Who w = who(c, ctx, r);
+            if (!(w.manager || w.hr) || w.own) {
+                throw ApiException.notFound("The review");
+            }
+            Map<String, Object> y = Sql.one(c, "select * from app.review_cycle where id = ?::uuid", r.get("cycleId"));
+            int limit = ((Number) y.get("peerReviews")).intValue();
+            if (limit == 0) {
+                throw new ApiException(409, "review.no_peers", "This cycle does not ask for peer reviews");
+            }
+            if (!Set.of("self_review", "manager_review").contains((String) r.get("status")) || !"active".equals(y.get("status"))) {
+                throw new ApiException(409, "review.state", "Peers are asked while the review is being written");
+            }
+            int asked = ((Number) Sql.one(c, "select count(*) as n from app.peer_request where review_id = ? and status in ('open','submitted')",
+                    reviewId).get("n")).intValue();
+            if (asked + peers.size() > limit) {
+                throw ApiException.badRequest("This cycle asks for up to " + limit + " peer reviews a person; " + asked + " already asked");
+            }
+            for (UUID p : peers) {
+                if (p.toString().equals(r.get("employmentId")) || p.toString().equals(r.get("managerId"))) {
+                    throw ApiException.badRequest("A peer is someone other than the person and their manager");
+                }
+                if (Sql.one(c, "select 1 from app.employment where id = ? and status = 'active' and membership_id is not null", p) == null) {
+                    throw ApiException.badRequest("Choose colleagues who work here and can sign in");
+                }
+                if (Sql.one(c, "select 1 from app.peer_request where review_id = ? and peer_id = ?", reviewId, p) != null) {
+                    throw new ApiException(409, "request.refused", "That colleague has already been asked");
+                }
+                Sql.update(c, "insert into app.peer_request (tenant_id, review_id, peer_id, requested_by) values (?, ?, ?, ?)", ctx.tenantId(), reviewId,
+                        p, ctx.membershipId());
+                Notifications.send(c, ctx.tenantId(), membership(c, p), "peer_review_requested", values(c, r, y), "my-performance");
+            }
+            UserService.audit(c, ctx, "performance.peers_requested", "review", reviewId, Map.of("count", peers.size()));
+            return view(c, ctx, lockless(c, reviewId), today);
+        });
+    }
+
+    /** Peer reviews the caller is asked for, still open. */
+    public List<Map<String, Object>> peerRequests(SessionCtx ctx) {
+        Perf.requireMember(ctx);
+        return db.inTenant(ctx.tenantId(), c -> {
+            Map<String, Object> me = Perf.ownEmployment(c, ctx);
+            if (me == null) {
+                return List.<Map<String, Object>>of();
+            }
+            return Sql.query(c, "select q.id, q.status, q.created_at, y.name as cycle, y.manager_due, " + Perf.NAME + " as name, j.designation, "
+                    + "d.name as department from app.peer_request q join app.review r on r.id = q.review_id join app.review_cycle y on y.id = r.cycle_id "
+                    + "join app.employment e on e.id = r.employment_id join app.person p on p.id = e.person_id " + Perf.CURRENT_JOB
+                    + "where q.peer_id = ?::uuid and q.status = 'open' order by q.created_at", me.get("id"));
+        });
+    }
+
+    /** One peer review to write: who it is about, the peer questions, and the caller's draft. */
+    public Map<String, Object> peerReview(SessionCtx ctx, UUID requestId) {
+        Perf.requireMember(ctx);
+        return db.inTenant(ctx.tenantId(), c -> peerView(c, ctx, ownRequest(c, ctx, requestId, false)));
+    }
+
+    /** The peer saves their answers, or sends them. */
+    public Map<String, Object> savePeer(SessionCtx ctx, UUID requestId, PeerInput in) {
+        Perf.requireMember(ctx);
+        return db.inTenant(ctx.tenantId(), c -> {
+            Map<String, Object> q = ownRequest(c, ctx, requestId, true);
+            if (!"open".equals(q.get("status"))) {
+                throw new ApiException(409, "review.state", "This peer review is " + q.get("status"));
+            }
+            Map<String, Object> r = lockless(c, AuthService.uuid(q.get("reviewId")));
+            Map<String, Object> y = Sql.one(c, "select * from app.review_cycle where id = ?::uuid", r.get("cycleId"));
+            Context k = context(c, r, y);
+            Map<String, Object> answers = answers(in == null ? null : in.answers(), k.questions, "peer");
+            boolean submit = in != null && Boolean.TRUE.equals(in.submit());
+            if (submit) {
+                for (Map<String, Object> qq : k.questions) {
+                    if ("peer".equals(qq.get("for")) && Boolean.TRUE.equals(qq.get("required"))
+                            && (answers.get((String) qq.get("id")) == null || answers.get((String) qq.get("id")).toString().isBlank())) {
+                        throw new ApiException(400, "review.incomplete", "Answer \"" + qq.get("text") + "\" before sending");
+                    }
+                }
+            }
+            byte[] sealed = Perf.seal(crypto, ctx, Json.write(answers));
+            Map<String, Object> e = Sql.one(c, "select id from app.review_entry where review_id = ?::uuid and role = 'peer' and reviewer_id = ?",
+                    q.get("reviewId"), ctx.membershipId());
+            if (e == null) {
+                Sql.update(c, "insert into app.review_entry (tenant_id, review_id, role, reviewer_id, answers_enc, submitted_at) values (?, ?::uuid, "
+                        + "'peer', ?, ?, " + (submit ? "now()" : "null") + ")", ctx.tenantId(), q.get("reviewId"), ctx.membershipId(), sealed);
+            } else {
+                Sql.update(c, "update app.review_entry set answers_enc = ?, updated_at = now(), submitted_at = " + (submit ? "now()" : "null")
+                        + " where id = ?::uuid", sealed, e.get("id"));
+            }
+            if (submit) {
+                Sql.update(c, "update app.peer_request set status = 'submitted', answered_at = now() where id = ?", requestId);
+                UserService.audit(c, ctx, "performance.peer_review_submitted", "review", AuthService.uuid(q.get("reviewId")), Map.of());
+            }
+            return peerView(c, ctx, Sql.one(c, "select * from app.peer_request where id = ?", requestId));
+        });
+    }
+
+    /** The peer declines, with a reason the manager reads. */
+    public Map<String, Object> declinePeer(SessionCtx ctx, UUID requestId, ReasonInput in) {
+        Perf.requireMember(ctx);
+        String reason = Perf.text(in == null ? null : in.reason(), "why you are declining", 3, 300);
+        return db.inTenant(ctx.tenantId(), c -> {
+            Map<String, Object> q = ownRequest(c, ctx, requestId, true);
+            if (!"open".equals(q.get("status"))) {
+                throw new ApiException(409, "review.state", "This peer review is " + q.get("status"));
+            }
+            Sql.update(c, "update app.peer_request set status = 'declined', declined_reason = ?, answered_at = now() where id = ?", reason, requestId);
+            UserService.audit(c, ctx, "performance.peer_review_declined", "review", AuthService.uuid(q.get("reviewId")), Map.of());
+            return peerView(c, ctx, Sql.one(c, "select * from app.peer_request where id = ?", requestId));
+        });
+    }
+
+    private static Map<String, Object> ownRequest(Connection c, SessionCtx ctx, UUID id, boolean lock) throws SQLException {
+        Map<String, Object> q = Sql.one(c, "select q.* from app.peer_request q join app.employment e on e.id = q.peer_id where q.id = ? "
+                + "and e.membership_id = ?" + (lock ? " for update of q" : ""), id, ctx.membershipId());
+        if (q == null) {
+            throw ApiException.notFound("The peer review");
+        }
+        return q;
+    }
+
+    private Map<String, Object> peerView(Connection c, SessionCtx ctx, Map<String, Object> q) throws SQLException {
+        Map<String, Object> r = lockless(c, AuthService.uuid(q.get("reviewId")));
+        Map<String, Object> y = Sql.one(c, "select * from app.review_cycle where id = ?::uuid", r.get("cycleId"));
+        Context k = context(c, r, y);
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("id", q.get("id"));
+        out.put("status", q.get("status"));
+        out.put("cycle", y.get("name"));
+        out.put("anonymous", y.get("peersAnonymous"));
+        out.put("employee", Sql.one(c, "select " + Perf.NAME + " as name, j.designation, d.name as department from app.employment e "
+                + "join app.person p on p.id = e.person_id " + Perf.CURRENT_JOB + "where e.id = ?::uuid", r.get("employmentId")));
+        out.put("questions", k.questions.stream().filter(x -> "peer".equals(x.get("for"))).toList());
+        Map<String, Object> e = Sql.one(c, "select id, submitted_at from app.review_entry where review_id = ?::uuid and role = 'peer' and reviewer_id = ?",
+                q.get("reviewId"), ctx.membershipId());
+        String answers = e == null ? null : Perf.open(c, crypto, ctx.tenantId(), "review_entry", "answers_enc", e.get("id"));
+        out.put("answers", answers == null ? Map.of() : Json.parse(answers));
+        out.put("submittedAt", e == null ? null : e.get("submittedAt"));
+        out.put("canWrite", "open".equals(q.get("status")));
+        return out;
+    }
+
+    /** The peer reviews of one review, as the caller may read them; the employee's without names when the cycle says so. */
+    private List<Map<String, Object>> peers(Connection c, SessionCtx ctx, Map<String, Object> r, Map<String, Object> y, Who w, boolean released)
+            throws SQLException {
+        List<Map<String, Object>> out = new ArrayList<>();
+        boolean asEmployee = w.own;
+        if (asEmployee && !released) {
+            return out;
+        }
+        List<Map<String, Object>> rows = Sql.query(c, "select q.id, q.status, q.declined_reason, q.created_at, q.answered_at, x.id as entry_id, "
+                + Perf.NAME + " as name from app.peer_request q join app.employment e on e.id = q.peer_id join app.person p on p.id = e.person_id "
+                + "left join app.review_entry x on x.review_id = q.review_id and x.role = 'peer' and x.reviewer_id = e.membership_id "
+                + "where q.review_id = ?::uuid order by q.created_at", r.get("id"));
+        long submitted = rows.stream().filter(x -> "submitted".equals(x.get("status"))).count();
+        boolean anonymous = Boolean.TRUE.equals(y.get("peersAnonymous"));
+        for (Map<String, Object> q : rows) {
+            boolean done = "submitted".equals(q.get("status"));
+            if (asEmployee && (!done || (anonymous && submitted < 2))) {
+                continue;   // fewer than two would give the writer away
+            }
+            Map<String, Object> o = new LinkedHashMap<>();
+            o.put("id", q.get("id"));
+            o.put("name", asEmployee && anonymous ? null : q.get("name"));
+            o.put("status", q.get("status"));
+            o.put("declinedReason", asEmployee ? null : q.get("declinedReason"));
+            String answers = done && !ctx.isSupport() ? Perf.open(c, crypto, ctx.tenantId(), "review_entry", "answers_enc", q.get("entryId")) : null;
+            o.put("answers", answers == null ? Map.of() : Json.parse(answers));
+            out.add(o);
+        }
+        if (asEmployee && anonymous) {
+            java.util.Collections.shuffle(out);   // the order would give the writers away too
+        }
+        return out;
     }
 
     /** The manager sends a self review back to the employee, once, with a note. */
@@ -517,7 +781,7 @@ public final class Reviews {
 
     // ── the view of one review ──────────────────────────────────────────
 
-    private record Who(boolean own, boolean manager, boolean hr, boolean reader) {}
+    private record Who(boolean own, boolean manager, boolean hr, boolean reader, boolean skip) {}
 
     private static Who who(Connection c, SessionCtx ctx, Map<String, Object> r) throws SQLException {
         boolean own = Perf.own(c, ctx, AuthService.uuid(r.get("employmentId")));
@@ -525,7 +789,8 @@ public final class Reviews {
         boolean manager = me != null && me.get("id").equals(r.get("managerId"));
         boolean hr = Perf.canManage(ctx);
         boolean reader = ctx.reachesEveryone("performance.read");
-        return new Who(own, manager, hr, reader);
+        boolean skip = me != null && me.get("id").equals(r.get("skipLevelId"));
+        return new Who(own, manager, hr, reader, skip);
     }
 
     private record Context(List<Map<String, Object>> goals, List<Map<String, Object>> competencies, List<Map<String, Object>> levels0,
@@ -550,7 +815,7 @@ public final class Reviews {
 
     private Map<String, Object> view(Connection c, SessionCtx ctx, Map<String, Object> r, LocalDate today) throws SQLException {
         Who w = who(c, ctx, r);
-        if (!w.own && !w.manager && !w.reader) {
+        if (!w.own && !w.manager && !w.reader && !w.skip) {
             throw ApiException.notFound("The review");
         }
         UUID id = AuthService.uuid(r.get("id"));
@@ -560,7 +825,7 @@ public final class Reviews {
         boolean released = Set.of("released", "acknowledged").contains(status);
         // The employee sees the manager's part only once released; a reader who is not HR sees ratings, not words.
         boolean seesManager = !w.own || released;
-        boolean seesWords = (w.own || w.manager || w.hr) && !ctx.isSupport();
+        boolean seesWords = (w.own || w.manager || w.hr || w.skip) && !ctx.isSupport();
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("id", r.get("id"));
         out.put("status", status);
@@ -575,7 +840,8 @@ public final class Reviews {
         out.put("competencies", k.competencies);
         out.put("scale", k.levels0);
         out.put("questions", k.questions.stream().filter(q -> !"peer".equals(q.get("for"))).toList());
-        out.put("youAre", w.own ? "employee" : w.manager ? "manager" : "hr");
+        out.put("peerQuestions", k.questions.stream().filter(q -> "peer".equals(q.get("for"))).toList());
+        out.put("youAre", w.own ? "employee" : w.manager ? "manager" : w.skip ? "skip_level" : "hr");
         Map<String, Object> self = entry(c, ctx, id, "self", w.own || seesWords, w.own);
         out.put("self", self != null && (w.own || self.get("submittedAt") != null) ? self : null);
         Map<String, Object> manager = seesManager ? entry(c, ctx, id, "manager", seesWords, w.manager || w.hr) : null;
@@ -598,6 +864,26 @@ public final class Reviews {
         out.put("canReturnSelf", (w.manager || w.hr) && !w.own && "manager_review".equals(status) && r.get("selfReturnedAt") == null
                 && self != null && self.get("submittedAt") != null);
         out.put("canAcknowledge", w.own && "released".equals(status));
+        out.put("peerLimit", y.get("peerReviews"));
+        out.put("peersAnonymous", y.get("peersAnonymous"));
+        out.put("peers", peers(c, ctx, r, y, w, released));
+        out.put("canRequestPeers", (w.manager || w.hr) && !w.own && ((Number) y.get("peerReviews")).intValue() > 0 && "active".equals(y.get("status"))
+                && Set.of("self_review", "manager_review").contains(status));
+        out.put("skipLevelSignOff", y.get("skipLevelSignoff"));
+        out.put("skipLevelManager", r.get("skipLevelId") == null ? null : Sql.one(c, "select " + Perf.NAME + " as name from app.employment e "
+                + "join app.person p on p.id = e.person_id where e.id = ?::uuid", r.get("skipLevelId")).get("name"));
+        out.put("skipLevelNote", w.own ? null : r.get("skipLevelNote"));
+        if (!w.own) {
+            Map<String, Object> s = Sql.one(c, "select id, submitted_at, " + Perf.who("reviewer_id") + " as reviewer from app.review_entry "
+                    + "where review_id = ?::uuid and role = 'skip_level' and submitted_at is not null order by submitted_at desc limit 1", r.get("id"));
+            if (s != null) {
+                String a = seesWords ? Perf.open(c, crypto, ctx.tenantId(), "review_entry", "answers_enc", s.get("id")) : null;
+                s.put("comment", a == null ? null : ((Map<?, ?>) Json.parse(a)).get("comment"));
+                s.remove("id");
+            }
+            out.put("skipLevelEntry", s);
+        }
+        out.put("canSignOff", (w.skip || w.hr) && !w.own && !w.manager && "skip_level".equals(status));
         out.put("feedbackCount", w.manager || w.hr ? ((Number) Sql.one(c, "select count(*) as n from app.feedback where receiver_id = ?::uuid "
                 + "and withdrawn_at is null and created_at::date between ?::date and ?::date", r.get("employmentId"), y.get("periodStart"),
                 y.get("periodEnd")).get("n")).intValue() : 0);
@@ -811,7 +1097,8 @@ public final class Reviews {
     }
 
     private record Checked(String name, LocalDate start, LocalDate end, AppliesTo rules, LocalDate joinedBy, UUID formVersion, Integer goalWeight,
-                           boolean self, LocalDate selfDue, LocalDate managerDue, LocalDate calibrationDue, LocalDate releaseDue) {}
+                           boolean self, LocalDate selfDue, LocalDate managerDue, LocalDate calibrationDue, LocalDate releaseDue, int peers,
+                           boolean anonymous, boolean skipLevel) {}
 
     private static Checked check(Connection c, CycleInput in, LocalDate today) throws SQLException {
         if (in == null) {
@@ -858,8 +1145,12 @@ public final class Reviews {
                 throw ApiException.badRequest("The phases go in order: self review, manager review, calibration, release");
             }
         }
+        int peers = in.peerReviews() == null ? 0 : in.peerReviews();
+        if (peers < 0 || peers > 5) {
+            throw ApiException.badRequest("Ask for up to five peer reviews a person");
+        }
         return new Checked(name, start, end, rules, joinedBy, form, goalWeight, in.selfReview() == null || in.selfReview(), selfDue, managerDue,
-                calibrationDue, releaseDue);
+                calibrationDue, releaseDue, peers, in.peersAnonymous() == null || in.peersAnonymous(), Boolean.TRUE.equals(in.skipLevel()));
     }
 
     private static LocalDate optional(String value, String what) {

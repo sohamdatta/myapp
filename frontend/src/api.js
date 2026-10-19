@@ -532,6 +532,14 @@ export const performance = {
   saveCompetencySet: (id, body) =>
     id ? put(`/org/performance/setup/competency-sets/${id}`, body) : post('/org/performance/setup/competency-sets', body),
 
+  requestPeers: (id, employmentIds) => post(`/org/performance/reviews/${id}/peers`, { employmentIds }),
+  signOff: (id, action, note) => post(`/org/performance/reviews/${id}/sign-off`, { action, note }),
+  peerReview: (id) => get(`/org/me/performance/peer-reviews/${id}`),
+  savePeerReview: (id, answers, submit) => put(`/org/me/performance/peer-reviews/${id}`, { answers, submit }),
+  declinePeerReview: (id, reason) => post(`/org/me/performance/peer-reviews/${id}/decline`, { reason }),
+  feedbackAsked: () => get('/org/me/performance/feedback/requests'),
+  askForFeedback: (body) => post('/org/me/performance/feedback/requests', body),
+  declineFeedbackRequest: (id, text) => post(`/org/me/performance/feedback/requests/${id}/decline`, { text }),
   plans: (status) => get(`/org/performance/plans${status ? `?status=${status}` : ''}`),
   plan: (id) => get(`/org/performance/plans/${id}`),
   savePlan: (id, body) => (id ? put(`/org/performance/plans/${id}`, body) : post('/org/performance/plans', body)),

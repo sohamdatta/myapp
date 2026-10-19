@@ -2,7 +2,8 @@ import { useState } from 'react'
 import { downloadDocument as download, performance } from '../api.js'
 import { formatDate, formatDay, useAction, useLoad } from '../hooks.js'
 import { Badge, Empty, ErrorNote, Tabs } from '../ui.jsx'
-import { FeedbackList, GiveFeedback } from './FeedbackPanel.jsx'
+import { AskForFeedback, FeedbackAskedOfMe, FeedbackList, FeedbackYouAsked, GiveFeedback } from './FeedbackPanel.jsx'
+import PeerReview from './PeerReview.jsx'
 import GoalsPanel from './GoalsPanel.jsx'
 import OneToOnePanel from './OneToOnePanel.jsx'
 import { PlanView } from './Plans.jsx'
@@ -22,7 +23,7 @@ export default function MyPerformance() {
   // A review waiting for the employee, or one released for them to read, comes first.
   const pressing = (m.reviews || []).find((r) => ['self_review', 'released'].includes(r.status))
   const tabs = [
-    (m.reviews?.length > 0 || m.outcomeLetters?.length > 0) && { id: 'reviews', label: 'Reviews' },
+    (m.reviews?.length > 0 || m.outcomeLetters?.length > 0 || m.peerRequests?.length > 0) && { id: 'reviews', label: 'Reviews' },
     m.plan && { id: 'plan', label: 'Improvement plan' },
     m.probation && { id: 'probation', label: 'Probation' },
     m.goals && { id: 'goals', label: 'Goals' },
@@ -35,22 +36,51 @@ export default function MyPerformance() {
   return (
     <div className="my-performance">
       <Tabs tabs={tabs} current={current} onChange={setTab} />
-      {current === 'reviews' && <MyReviews reviews={m.reviews} letters={m.outcomeLetters || []} onChanged={mine.reload} />}
+      {current === 'reviews' && (
+        <MyReviews
+          reviews={m.reviews}
+          letters={m.outcomeLetters || []}
+          peerRequests={m.peerRequests || []}
+          onChanged={() => (setTab('reviews'), mine.reload())}
+        />
+      )}
       {current === 'plan' && m.plan && <PlanView plan={m.plan} onChanged={() => (setTab('plan'), mine.reload())} />}
       {current === 'probation' && m.probation && <MyProbation probation={m.probation} onChanged={mine.reload} />}
       {current === 'goals' && m.goals && <GoalsPanel employmentId={m.goals.employee.id} />}
       {current === 'one-to-ones' && <MyOneToOnes people={m.oneToOnes} />}
-      {current === 'feedback' && <MyFeedback received={m.feedback} onChanged={mine.reload} />}
+      {current === 'feedback' && (
+        <MyFeedback received={m.feedback} askedOfMe={m.feedbackAskedOfMe || []} onChanged={() => (setTab('feedback'), mine.reload())} />
+      )}
     </div>
   )
 }
 
-function MyReviews({ reviews, letters, onChanged }) {
+function MyReviews({ reviews, letters, peerRequests, onChanged }) {
   const [open, setOpen] = useState(() => reviews.find((r) => ['self_review', 'released'].includes(r.status))?.id || null)
+  const [peer, setPeer] = useState(null)
   const { error, run } = useAction()
+  if (peer) return <PeerReview key={peer} id={peer} onBack={() => (setPeer(null), onChanged())} />
   if (open) return <ReviewPage key={open} id={open} onBack={() => (setOpen(null), onChanged())} backLabel="← All my reviews" />
   return (
     <section className="panel">
+      {peerRequests.length > 0 && (
+        <>
+          <h3>Peer reviews asked of you</h3>
+          <ul className="plain-list" data-testid="peer-requests">
+            {peerRequests.map((q) => (
+              <li key={q.id} data-peer-request={q.name}>
+                <button type="button" className="text-link" onClick={() => setPeer(q.id)}>
+                  {q.name}
+                </button>{' '}
+                <span className="hint">
+                  {q.cycle}
+                  {q.managerDue && `, by ${formatDay(q.managerDue)}`}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
       {letters.length > 0 && (
         <>
           <h3>Your letters</h3>
@@ -69,7 +99,7 @@ function MyReviews({ reviews, letters, onChanged }) {
           <ErrorNote>{error}</ErrorNote>
         </>
       )}
-      <h3>Your reviews</h3>
+      {reviews.length > 0 && <h3>Your reviews</h3>}
       <ul className="plain-list">
         {reviews.map((r) => {
           const [tone, , words] = REVIEW_STATUS[r.status] || ['neutral', r.status, r.status]
@@ -109,15 +139,27 @@ function MyOneToOnes({ people }) {
   )
 }
 
-function MyFeedback({ received, onChanged }) {
+function MyFeedback({ received, askedOfMe, onChanged }) {
   const given = useLoad(performance.givenFeedback)
+  const asked = useLoad(performance.feedbackAsked)
   return (
     <div className="panels">
-      <section className="panel" data-testid="feedback-received">
-        <h3>Feedback for you</h3>
-        <FeedbackList items={received} empty="Nobody has given you feedback yet." />
-      </section>
       <div>
+        <section className="panel" data-testid="feedback-received">
+          <h3>Feedback for you</h3>
+          <FeedbackList items={received} empty="Nobody has given you feedback yet." />
+        </section>
+        <AskForFeedback onAsked={asked.reload} />
+        {asked.data && <FeedbackYouAsked asked={asked.data} />}
+      </div>
+      <div>
+        <FeedbackAskedOfMe
+          requests={askedOfMe}
+          onChanged={() => {
+            given.reload()
+            onChanged()
+          }}
+        />
         <GiveFeedback
           onGiven={() => {
             given.reload()

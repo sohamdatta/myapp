@@ -494,4 +494,88 @@ test.describe.serial('performance', () => {
     await expect(hr.getByTestId('plan')).toContainText('Completed');
     await shot(hr, 'perf-24-plan-completed', true);
   });
+
+  // ── peers, skip-level sign-off, requested feedback ───────────────────
+
+  test('a half-year review: Priya asks Ishita for a peer review, and Harish signs it off', async () => {
+    // A cycle with one peer review a person, named, and skip-level sign-off; only Rahul is reviewed.
+    const created = await api(hr, 'POST', '/org/performance/cycles', {
+      name: 'Half-year check', selfReview: false, peerReviews: 1, peersAnonymous: false, skipLevel: true,
+    });
+    expect(created.status, JSON.stringify(created.body)).toBe(200);
+    const started = (await api(hr, 'POST', `/org/performance/cycles/${created.body.id}/start`, {})).body;
+    for (const r of started.reviews.filter((x: any) => x.name !== 'Rahul Bose')) {
+      await api(hr, 'POST', `/org/performance/reviews/${r.id}/withdraw`, { reason: 'Not part of this test' });
+    }
+    const reviewId = started.reviews.find((x: any) => x.name === 'Rahul Bose').id;
+
+    await priya.reload();
+    await nav(priya, 'Performance');
+    await tab(priya, 'Reviews');
+    await priya.getByTestId('reviews-to-write').locator('li, tr').filter({ hasText: 'Half-year check' }).getByRole('button', { name: 'Rahul Bose' }).click();
+    const peers = priya.getByTestId('peers');
+    await peers.getByLabel('Ask a colleague').selectOption(await employmentId(owner, 'Ishita Menon'));
+    await peers.getByRole('button', { name: 'Ask' }).click();
+    await expect(peers.locator('[data-peer="Ishita Menon"]')).toContainText('Asked');
+
+    await ishita.reload();
+    await nav(ishita, 'My performance');
+    await tab(ishita, 'Reviews');
+    await ishita.getByTestId('peer-requests').getByRole('button', { name: 'Rahul Bose' }).click();
+    const peer = ishita.getByTestId('peer-review');
+    await expect(peer).toContainText('with your name');
+    await ishita.fill('#peer-q-peer_strengths', 'Rahul always knows where the stock numbers come from.');
+    await expectNoSidewaysScroll(ishita);
+    await shot(ishita, 'perf-25-peer-review-phone', true);
+    await peer.getByRole('button', { name: 'Send' }).click();
+    await expect(peer).toContainText('Sent');
+
+    // Priya writes her part (through the API: the review form itself is covered above) and it goes to Harish.
+    const review = (await api(priya, 'GET', `/org/performance/reviews/${reviewId}`)).body;
+    expect(review.peers[0].answers.peer_strengths).toContain('stock numbers');
+    const rate = (list: any[]) => list.map((x: any) => ({ id: x.id, rating: 3 }));
+    const sent = await api(priya, 'PUT', `/org/performance/reviews/${reviewId}/entries/manager`, {
+      goalRatings: rate(review.goals), competencyRatings: rate(review.competencies), overall: 3, submit: true,
+      answers: { strengths: 'Knows the stock system inside out.', develop: 'Send the Monday report without reminders.' },
+    });
+    expect(sent.status, JSON.stringify(sent.body)).toBe(200);
+    expect(sent.body.status).toBe('skip_level');
+
+    await hr.reload();
+    await nav(hr, 'Performance');
+    await tab(hr, 'Reviews');
+    await hr.getByTestId('reviews-to-write').locator('li, tr').filter({ hasText: 'Half-year check' }).getByRole('button', { name: 'Rahul Bose' }).click();
+    const signOff = hr.getByTestId('sign-off');
+    await hr.fill('#sign-off-note', 'Agreed; the plan this autumn was completed well.');
+    await shot(hr, 'perf-26-skip-level-sign-off', true);
+    await signOff.getByRole('button', { name: 'Sign it off' }).click();
+    await expect(hr.getByTestId('review')).toContainText('Signed off by Harish Rao');
+  });
+
+  test('Ishita asks Priya for feedback, and Priya answers the request', async () => {
+    await ishita.reload();
+    await nav(ishita, 'My performance');
+    await tab(ishita, 'Feedback');
+    const ask = ishita.getByTestId('ask-feedback');
+    await ask.getByLabel('Colleagues').selectOption(await employmentId(owner, 'Priya Shah'));
+    await ask.getByLabel(/What about/).fill('My first month as Senior Analyst');
+    await ask.getByRole('button', { name: 'Ask' }).click();
+    await expect(ishita.getByTestId('feedback-you-asked')).toContainText('Waiting');
+
+    await priya.reload();
+    await nav(priya, 'My performance');
+    await tab(priya, 'Feedback');
+    const request = priya.getByTestId('feedback-asked-of-me').locator('[data-feedback-request="Ishita Menon"]');
+    await expect(request).toContainText('My first month as Senior Analyst');
+    await request.getByRole('button', { name: 'Give feedback' }).click();
+    await request.getByLabel('Feedback').fill('You took over the weekly review quickly and the team noticed.');
+    await request.getByRole('button', { name: 'Send' }).click();
+    await expect(priya.getByTestId('feedback-asked-of-me')).toHaveCount(0);
+
+    await ishita.reload();
+    await nav(ishita, 'My performance');
+    await tab(ishita, 'Feedback');
+    await expect(ishita.getByTestId('feedback-you-asked')).toContainText('Given');
+    await expect(ishita.getByTestId('feedback-received')).toContainText('the team noticed');
+  });
 });

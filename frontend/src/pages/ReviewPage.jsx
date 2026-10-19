@@ -45,9 +45,24 @@ export default function ReviewPage({ id, onBack, backLabel = '← Back' }) {
         </p>
       )}
       {r.selfReturnNote && r.status === 'self_review' && employee && <p className="notice">Returned by your manager: {r.selfReturnNote}</p>}
+      {r.skipLevelNote && r.status === 'manager_review' && !employee && (
+        <p className="notice" data-testid="skip-level-note">
+          Sent back by {r.skipLevelManager}: {r.skipLevelNote}
+        </p>
+      )}
+      {r.status === 'skip_level' && !employee && !r.canSignOff && <p className="notice">Waiting for {r.skipLevelManager} to sign it off.</p>}
+      {r.canSignOff && <SignOff r={r} onSaved={setView} />}
       {r.canWriteSelf && <EntryForm r={r} role="self" onSaved={setView} />}
       {r.canWriteManager && <EntryForm r={r} role="manager" onSaved={setView} />}
       {!r.canWriteSelf && !r.canWriteManager && <ReadOnly r={r} levelName={levelName} />}
+      {r.skipLevelEntry && (
+        <section className="panel">
+          <h3>Signed off by {r.skipLevelEntry.reviewer}</h3>
+          {r.skipLevelEntry.comment && <p className="pre">{r.skipLevelEntry.comment}</p>}
+          <p className="hint">{formatDate(r.skipLevelEntry.submittedAt)}</p>
+        </section>
+      )}
+      {(r.peerLimit > 0 || r.peers?.length > 0) && <Peers r={r} onSaved={setView} />}
       {r.canReturnSelf && <ReturnSelf r={r} onSaved={setView} />}
       {r.canAcknowledge && <Acknowledge r={r} onSaved={setView} />}
       {r.acknowledgedAt && (
@@ -297,6 +312,12 @@ function ReadOnly({ r, levelName }) {
             )}
           </div>
         ))}
+        {r.goals.length === 0 && <p className="hint">No goals in this period.</p>}
+        {r.managerLevel && (
+          <p>
+            Manager's overall rating: <strong>{r.managerLevel} · {levelName(r.managerLevel)}</strong>
+          </p>
+        )}
         {r.competencies.length > 0 && manager && (
           <>
             <h4>Competencies</h4>
@@ -424,5 +445,111 @@ function Acknowledge({ r, onSaved }) {
       </div>
       <p className="hint">Acknowledging says you have read it, not that you agree.</p>
     </form>
+  )
+}
+
+const PEER_STATUS = { open: ['neutral', 'Asked'], submitted: ['good', 'Written'], declined: ['neutral', 'Declined'], expired: ['neutral', 'Not written'] }
+
+/** Peer reviews: for the manager and HR, who was asked and what they wrote, and asking more; for the employee, once released, what was written. */
+function Peers({ r, onSaved }) {
+  const employee = r.youAre === 'employee'
+  const colleagues = useLoad(() => (r.canRequestPeers ? performance.colleagues() : Promise.resolve([])))
+  const [who, setWho] = useState('')
+  const { busy, error, run } = useAction()
+  const peerQuestions = r.peerQuestions || []
+  const asked = new Set((r.peers || []).map((p) => p.name))
+  if (employee && r.peers.length === 0) return null
+  return (
+    <section className="panel" data-testid="peers">
+      <h3>{employee ? 'What colleagues said' : 'Peer reviews'}</h3>
+      {employee && r.peersAnonymous && <p className="hint">Shown without names, in no particular order.</p>}
+      {!employee && r.peers.length === 0 && <p className="hint">No colleague has been asked yet.</p>}
+      {r.peers.map((p, i) => {
+        const [tone, words] = PEER_STATUS[p.status] || ['neutral', p.status]
+        return (
+          <div key={p.id} className="review-item" data-peer={p.name || `peer-${i + 1}`}>
+            {!employee && (
+              <div className="goal-head">
+                <strong>{p.name}</strong> <Badge tone={tone}>{words}</Badge>
+              </div>
+            )}
+            {p.declinedReason && <p className="hint">Declined: {p.declinedReason}</p>}
+            {Object.entries(p.answers || {}).map(([q, text]) => (
+              <div key={q}>
+                <h4>{peerQuestions.find((x) => x.id === q)?.text || q}</h4>
+                <p className="pre">{text || '—'}</p>
+              </div>
+            ))}
+          </div>
+        )
+      })}
+      {r.canRequestPeers && (
+        <div className="inline-form">
+          <div>
+            <label htmlFor="peer-who">Ask a colleague</label>
+            <select id="peer-who" value={who} onChange={(e) => setWho(e.target.value)}>
+              <option value="">Choose…</option>
+              {(colleagues.data || [])
+                .filter((c) => c.id !== r.employee.id && c.name !== r.manager && !asked.has(c.name))
+                .map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                    {c.designation ? ` · ${c.designation}` : ''}
+                  </option>
+                ))}
+            </select>
+          </div>
+          <div className="form-actions">
+            <button
+              type="button"
+              className="secondary"
+              disabled={busy || !who}
+              onClick={async () => {
+                const next = await run(() => performance.requestPeers(r.id, [who]))
+                if (next) {
+                  setWho('')
+                  onSaved(next)
+                }
+              }}
+            >
+              Ask
+            </button>
+          </div>
+          <p className="hint">
+            Up to {r.peerLimit} a person. {r.peersAnonymous ? 'The person reads them without names.' : 'The person reads them with names.'}
+          </p>
+        </div>
+      )}
+      <ErrorNote>{error}</ErrorNote>
+    </section>
+  )
+}
+
+/** The manager's manager signs the review off, or sends it back to the manager with a note. */
+function SignOff({ r, onSaved }) {
+  const [note, setNote] = useState('')
+  const { busy, error, run } = useAction()
+  const act = async (action) => {
+    const next = await run(() => performance.signOff(r.id, action, note))
+    if (next) onSaved(next)
+  }
+  return (
+    <section className="panel" data-testid="sign-off">
+      <h3>Sign off</h3>
+      <p className="hint">
+        {r.manager} has written this review. Signing it off sends it to calibration; sending it back reopens it for {r.manager} with your note.
+      </p>
+      <label htmlFor="sign-off-note">Comment, or what should change</label>
+      <textarea id="sign-off-note" rows={2} value={note} onChange={(e) => setNote(e.target.value)} />
+      <ErrorNote>{error}</ErrorNote>
+      <div className="form-actions">
+        <button type="button" className="primary" disabled={busy} onClick={() => act('agree')}>
+          Sign it off
+        </button>
+        <button type="button" className="secondary" disabled={busy} onClick={() => act('return')}>
+          Send back
+        </button>
+      </div>
+    </section>
   )
 }

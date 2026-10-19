@@ -200,6 +200,9 @@ final class PerformanceDefaults {
             if (((Number) s.get("defaultsStage")).intValue() < 5) {
                 stageFive(c, tenantId);
             }
+            if (((Number) s.get("defaultsStage")).intValue() < 6) {
+                stageSix(c, tenantId);
+            }
             return;
         }
         // Read by another request at the same moment: the second insert finds the row and stops here.
@@ -210,6 +213,7 @@ final class PerformanceDefaults {
         stageThree(c, tenantId);
         stageFour(c, tenantId);
         stageFive(c, tenantId);
+        stageSix(c, tenantId);
         for (String[] m : MESSAGES) {
             Sql.update(c, "insert into app.message_template (tenant_id, event, subject, body) values (?, ?, ?, ?) "
                     + "on conflict (tenant_id, event, channel) do nothing", tenantId, m[0], m[1], m[2]);
@@ -238,6 +242,29 @@ final class PerformanceDefaults {
         }
         Sql.update(c, "update app.perf_settings set defaults_stage = 4 where tenant_id = ?", tenantId);
     }
+
+    /** The peer review, skip-level and requested feedback messages. defaults_stage is the marker. */
+    private static void stageSix(Connection c, UUID tenantId) throws SQLException {
+        if (Sql.one(c, "select 1 from app.perf_settings where tenant_id = ? and defaults_stage < 6 for update", tenantId) == null) {
+            return;   // another request did it a moment ago
+        }
+        for (String[] m : PEER_MESSAGES) {
+            Sql.update(c, "insert into app.message_template (tenant_id, event, subject, body) values (?, ?, ?, ?) "
+                    + "on conflict (tenant_id, event, channel) do nothing", tenantId, m[0], m[1], m[2]);
+        }
+        Sql.update(c, "update app.perf_settings set defaults_stage = 6 where tenant_id = ?", tenantId);
+    }
+
+    private static final String[][] PEER_MESSAGES = {
+            {"peer_review_requested", "A peer review to write",
+                    "Hello, you are asked for a peer review of {{employee.name}} for {{review.cycle}}. It is in My performance."},
+            {"skip_level_open", "A review to sign off",
+                    "{{employee.name}}'s review for {{review.cycle}} is written and waiting for your sign-off."},
+            {"skip_level_returned", "A review sent back",
+                    "{{employee.name}}'s review for {{review.cycle}} was sent back to you: {{note}}"},
+            {"feedback_requested", "Feedback asked for",
+                    "{{requester.name}} asked you for feedback about {{employee.name}}. It is in My performance."},
+    };
 
     /** The improvement plan letter and messages. defaults_stage is the marker. */
     private static void stageFive(Connection c, UUID tenantId) throws SQLException {

@@ -20,7 +20,16 @@ public final class Feedback {
 
     private static final ZoneId IST = ZoneId.of("Asia/Kolkata");
 
-    public record GiveInput(String employmentId, String kind, String text, Boolean shareWithManager, String goalId, String competencyId) {}
+    public record GiveInput(String employmentId, String kind, String text, Boolean shareWithManager, String goalId, String competencyId,
+                            String requestId) {
+
+        /** Feedback nobody asked for. */
+        public GiveInput(String employmentId, String kind, String text, Boolean shareWithManager, String goalId, String competencyId) {
+            this(employmentId, kind, text, shareWithManager, goalId, competencyId, null);
+        }
+    }
+
+    public record RequestInput(String aboutId, List<String> giverIds, String note) {}
 
     public record TextInput(String text) {}
 
@@ -52,7 +61,18 @@ public final class Feedback {
         String text = Perf.text(in.text(), "the feedback", 3, 1000);
         UUID goal = in.goalId() == null || in.goalId().isBlank() ? null : Perf.id(in.goalId(), "goal");
         UUID competency = in.competencyId() == null || in.competencyId().isBlank() ? null : Perf.id(in.competencyId(), "competency");
+        UUID request = in.requestId() == null || in.requestId().isBlank() ? null : Perf.id(in.requestId(), "request");
         return db.inTenant(ctx.tenantId(), c -> {
+            if (request != null) {
+                Map<String, Object> q = Sql.one(c, "select q.* from app.feedback_request q join app.employment e on e.id = q.giver_id "
+                        + "where q.id = ? and e.membership_id = ? for update of q", request, ctx.membershipId());
+                if (q == null || !receiver.toString().equals(q.get("aboutId"))) {
+                    throw ApiException.notFound("The request");
+                }
+                if (!"open".equals(q.get("status"))) {
+                    throw new ApiException(409, "request.refused", "That request has already been answered");
+                }
+            }
             PerformanceDefaults.ensure(c, ctx.tenantId());
             if (Sql.one(c, "select 1 from app.employment where id = ? and status = 'active'", receiver) == null) {
                 throw ApiException.notFound("The person");
@@ -70,6 +90,9 @@ public final class Feedback {
                     + "goal_id, competency_id) values (?, ?, ?, ?, ?, ?, ?, ?) returning id", ctx.tenantId(), ctx.membershipId(), receiver, kind,
                     "praise".equals(kind) && Boolean.TRUE.equals(in.shareWithManager()), Perf.seal(crypto, ctx, text), goal, competency).get("id"));
             UserService.audit(c, ctx, "performance.feedback_given", "feedback", id, Map.of("kind", kind));
+            if (request != null) {
+                Sql.update(c, "update app.feedback_request set status = 'given', feedback_id = ?, answered_at = now() where id = ?", id, request);
+            }
             if (kind.equals("praise")) {
                 Map<String, String> v = ExitValues.forEmployment(c, receiver, null);
                 v.put("giver.name", (String) Sql.one(c, "select " + Perf.who("x.m") + " as who from (select ?::uuid as m) x", ctx.membershipId())
@@ -168,6 +191,106 @@ public final class Feedback {
         return db.inTenant(ctx.tenantId(), c -> Sql.query(c, "select e.id, " + Perf.NAME + " as name, j.designation, d.name as department "
                 + "from app.employment e join app.person p on p.id = e.person_id " + Perf.CURRENT_JOB
                 + "where e.status = 'active' and e.membership_id is distinct from ? order by " + Perf.NAME, ctx.membershipId()));
+    }
+
+    // ── asking for feedback ─────────────────────────────────────────────
+
+    /**
+     * Asks up to five colleagues for feedback: about the caller, or (as their manager, or HR) about
+     * someone in their team. Each colleague is told.
+     */
+    public List<Map<String, Object>> request(SessionCtx ctx, RequestInput in) {
+        Perf.requireMember(ctx);
+        if (ctx.scopeOf("performance.read") == null) {
+            throw ApiException.denied("performance.read");
+        }
+        String note = Perf.text(in == null ? null : in.note(), "a note", 0, 300);
+        List<UUID> givers = new ArrayList<>();
+        for (String g : in.giverIds() == null ? List.<String>of() : in.giverIds()) {
+            UUID id = Perf.id(g, "colleague");
+            if (!givers.contains(id)) {
+                givers.add(id);
+            }
+        }
+        if (givers.isEmpty() || givers.size() > 5) {
+            throw ApiException.badRequest("Ask one to five colleagues");
+        }
+        LocalDate today = today();
+        return db.inTenant(ctx.tenantId(), c -> {
+            PerformanceDefaults.ensure(c, ctx.tenantId());
+            Map<String, Object> me = Perf.ownEmployment(c, ctx);
+            UUID about = in.aboutId() == null || in.aboutId().isBlank() ? (me == null ? null : AuthService.uuid(me.get("id")))
+                    : Perf.id(in.aboutId(), "person");
+            if (about == null) {
+                throw ApiException.badRequest("Choose whom the feedback is about");
+            }
+            if (!Perf.own(c, ctx, about) && (!Perf.reaches(c, ctx, "performance.write", about, today) || ctx.scopeOf("performance.write") == null)) {
+                throw ApiException.notFound("The person");
+            }
+            Map<String, String> v = ExitValues.forEmployment(c, about, null);
+            v.put("requester.name", (String) Sql.one(c, "select " + Perf.who("x.m") + " as who from (select ?::uuid as m) x", ctx.membershipId())
+                    .get("who"));
+            for (UUID g : givers) {
+                if (g.equals(about)) {
+                    throw ApiException.badRequest("Ask someone other than the person the feedback is about");
+                }
+                if (Sql.one(c, "select 1 from app.employment where id = ? and status = 'active' and membership_id is not null", g) == null) {
+                    throw ApiException.badRequest("Ask colleagues who work here and can sign in");
+                }
+                if (Sql.one(c, "select 1 from app.feedback_request where requested_by = ? and about_id = ? and giver_id = ? and status = 'open'",
+                        ctx.membershipId(), about, g) != null) {
+                    continue;   // already asked and waiting
+                }
+                Sql.update(c, "insert into app.feedback_request (tenant_id, requested_by, about_id, giver_id, note) values (?, ?, ?, ?, ?)",
+                        ctx.tenantId(), ctx.membershipId(), about, g, note);
+                Notifications.send(c, ctx.tenantId(), membership(c, g), "feedback_requested", v, "my-performance");
+            }
+            UserService.audit(c, ctx, "performance.feedback_requested", "employment", about, Map.of("count", givers.size()));
+            return asked(c, ctx);
+        });
+    }
+
+    /** What the caller has asked for, newest first, with whether each was given. */
+    public List<Map<String, Object>> asked(SessionCtx ctx) {
+        Perf.requireMember(ctx);
+        return db.inTenant(ctx.tenantId(), c -> asked(c, ctx));
+    }
+
+    private static List<Map<String, Object>> asked(Connection c, SessionCtx ctx) throws SQLException {
+        return Sql.query(c, "select q.id, q.status, q.note, q.declined_reason, q.created_at, q.answered_at, "
+                + "coalesce(ap.preferred_name, ap.legal_name) as about, coalesce(gp.preferred_name, gp.legal_name) as giver "
+                + "from app.feedback_request q join app.employment ae on ae.id = q.about_id join app.person ap on ap.id = ae.person_id "
+                + "join app.employment ge on ge.id = q.giver_id join app.person gp on gp.id = ge.person_id "
+                + "where q.requested_by = ? order by q.created_at desc limit 50", ctx.membershipId());
+    }
+
+    /** Requests for feedback waiting for the caller. */
+    public List<Map<String, Object>> askedOfMe(SessionCtx ctx) {
+        Perf.requireMember(ctx);
+        return db.inTenant(ctx.tenantId(), c -> Sql.query(c, "select q.id, q.note, q.created_at, q.about_id, "
+                + "coalesce(ap.preferred_name, ap.legal_name) as about, " + Perf.who("q.requested_by") + " as requested_by_name, "
+                + "(ae.membership_id = q.requested_by) as about_themselves from app.feedback_request q "
+                + "join app.employment ae on ae.id = q.about_id join app.person ap on ap.id = ae.person_id "
+                + "join app.employment ge on ge.id = q.giver_id where ge.membership_id = ? and q.status = 'open' and ae.status = 'active' "
+                + "order by q.created_at", ctx.membershipId()));
+    }
+
+    /** The colleague declines a request, with a reason the person who asked reads. */
+    public List<Map<String, Object>> decline(SessionCtx ctx, UUID id, TextInput in) {
+        Perf.requireMember(ctx);
+        String reason = Perf.text(in == null ? null : in.text(), "why you are declining", 3, 300);
+        return db.inTenant(ctx.tenantId(), c -> {
+            Map<String, Object> q = Sql.one(c, "select q.* from app.feedback_request q join app.employment e on e.id = q.giver_id "
+                    + "where q.id = ? and e.membership_id = ? for update of q", id, ctx.membershipId());
+            if (q == null) {
+                throw ApiException.notFound("The request");
+            }
+            if (!"open".equals(q.get("status"))) {
+                throw new ApiException(409, "request.refused", "That request has already been answered");
+            }
+            Sql.update(c, "update app.feedback_request set status = 'declined', declined_reason = ?, answered_at = now() where id = ?", reason, id);
+            return List.<Map<String, Object>>of();
+        });
     }
 
     // ── internals ───────────────────────────────────────────────────────
