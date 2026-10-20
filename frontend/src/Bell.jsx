@@ -5,7 +5,7 @@ import { formatDate } from './hooks.js'
 /**
  * The bell: how many messages are unread, and the latest ones. Opening one
  * marks it read and goes to the page it is about. Checked on load and every
- * minute; reminders that have fallen due are made when it is checked.
+ * minute while the tab is visible; reminders that have fallen due are made when it is checked.
  */
 export default function Bell({ pages, onNavigate }) {
   const [data, setData] = useState({ unread: 0, items: [] })
@@ -19,11 +19,29 @@ export default function Bell({ pages, onNavigate }) {
         .list()
         .then((d) => !cancelled && setData(d))
         .catch(() => {})
+    // Checked every minute while the tab is in view; a hidden tab does not poll, and catches up on return.
+    let timer = null
+    const start = () => {
+      if (timer === null) timer = setInterval(load, 60000)
+    }
+    const stop = () => {
+      clearInterval(timer)
+      timer = null
+    }
+    const onVisibility = () => {
+      if (document.hidden) stop()
+      else {
+        load()
+        start()
+      }
+    }
     load()
-    const timer = setInterval(load, 60000)
+    if (!document.hidden) start()
+    document.addEventListener('visibilitychange', onVisibility)
     return () => {
       cancelled = true
-      clearInterval(timer)
+      stop()
+      document.removeEventListener('visibilitychange', onVisibility)
     }
   }, [])
 

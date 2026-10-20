@@ -3,21 +3,50 @@ import { attendance, leave } from '../api.js'
 import { formatDay, formatDays, formatMonth, formatRange, leaveBody, localMonth, localToday, newLeave, useAction, useLoad, whoName, numeric, wholeNumber } from '../hooks.js'
 import { Badge, Empty, ErrorNote, StatusBadge, Tabs, Who } from '../ui.jsx'
 import { LeaveFields, Ledger } from './MyLeave.jsx'
+import { useConfirm, useToast } from '../feedbackContext.js'
 
 const number = (value, what) => numeric(value, what)
 
 // ── requests ────────────────────────────────────────────────────────
 
+const LEAVE_DONE = { approve: 'approved', reject: 'rejected', cancel: 'cancelled' }
+
 function RequestRow({ request, canDecide, canManage, onChanged }) {
   const [note, setNote] = useState('')
   const { busy, error, run } = useAction()
+  const confirm = useConfirm()
+  const toast = useToast()
 
   async function act(action) {
+    const name = whoName(request)
+    const what = `${request.leaveType}, ${formatRange(request.fromDate, request.toDate, request.half)} (${formatDays(request.days)}).`
+    if (action === 'reject') {
+      const sure = await confirm({
+        title: `Reject ${name}'s leave?`,
+        body: `${what} ${note ? 'Your note goes with it. ' : ''}A rejection cannot be undone.`,
+        confirmLabel: 'Reject leave',
+        danger: true,
+      })
+      if (!sure) return
+    }
+    if (action === 'cancel') {
+      const sure = await confirm({
+        title: `Cancel ${name}'s approved leave?`,
+        body: `${what} This cannot be undone.`,
+        confirmLabel: 'Cancel leave',
+        cancelLabel: 'Keep the leave',
+        danger: true,
+      })
+      if (!sure) return
+    }
     const done = await run(async () => {
       await leave.decide(request.id, action, note)
       return true
     })
-    if (done) onChanged()
+    if (done) {
+      toast(`Leave ${LEAVE_DONE[action]} for ${name}`)
+      onChanged()
+    }
   }
 
   const short = request.paid && Number(request.balance) < Number(request.days) - Number(request.unpaidDays)

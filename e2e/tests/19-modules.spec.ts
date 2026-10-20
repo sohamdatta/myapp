@@ -9,8 +9,8 @@ const OWNER = 'owner@hooli.test';
 const ORG = 'Hooli Ltd';
 
 async function menu(page: Page): Promise<string[]> {
-  await expect(page.locator('button.nav-item').first()).toBeVisible();
-  return page.locator('button.nav-item').allInnerTexts();
+  await expect(page.locator('a.nav-item').first()).toBeVisible();
+  return page.locator('a.nav-item').allInnerTexts();
 }
 
 async function modulesOf(admin: Page): Promise<Page> {

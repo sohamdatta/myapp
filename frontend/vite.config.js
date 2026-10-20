@@ -4,6 +4,17 @@ import { defineConfig } from 'vite'
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react()],
+  build: {
+    rolldownOptions: {
+      output: {
+        // React changes far less often than the app, so it gets its own file: after an app update,
+        // browsers keep the cached copy of React and download only what changed.
+        codeSplitting: {
+          groups: [{ name: 'react', test: /[\\/]node_modules[\\/](react|react-dom|scheduler)[\\/]/ }],
+        },
+      },
+    },
+  },
   server: {
     host: true,
     port: 5173,

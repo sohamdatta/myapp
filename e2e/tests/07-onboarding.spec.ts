@@ -68,7 +68,7 @@ test.describe.serial('onboarding', () => {
     await shot(joiner, '41-joiner-accept');
     await joiner.click('button.primary');
     await expect(joiner.getByRole('heading', { name: `Welcome to ${ORG}, Meera` })).toBeVisible();
-    await expect(joiner.locator('button.nav-item')).toHaveCount(1);
+    await expect(joiner.locator('a.nav-item')).toHaveCount(1);
     await expect(joiner.locator('.welcome')).toContainText('reporting to Ananya Sen');
 
     // The notice comes first.
@@ -309,8 +309,10 @@ test.describe.serial('onboarding', () => {
     await expect(hr.locator('tbody tr', { hasText: 'Meera Iyer' })).toContainText('E050');
 
     await joiner.reload();
-    await expect(joiner.locator('button.nav-item', { hasText: 'My attendance' })).toBeVisible();
-    await expect(joiner.locator('button.nav-item', { hasText: 'My onboarding' })).toHaveCount(0);
+    await expect(joiner.locator('.page-title')).toHaveText('My attendance'); // the onboarding address falls back to their first page
+    await joiner.locator('.menu-button').click(); // a phone: the menu opens over the page
+    await expect(joiner.locator('a.nav-item', { hasText: 'My attendance' })).toBeVisible();
+    await expect(joiner.locator('a.nav-item', { hasText: 'My onboarding' })).toHaveCount(0);
     await shot(joiner, '56-joiner-now-employee');
 
     await hr.getByRole('button', { name: 'Meera Iyer' }).click();

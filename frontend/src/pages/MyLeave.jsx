@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { leave } from '../api.js'
 import { formatDay, formatDays, formatRange, leaveBody, newLeave, useAction, useLoad } from '../hooks.js'
 import { Badge, Empty, ErrorNote, StatusBadge } from '../ui.jsx'
+import { useToast } from '../feedbackContext.js'
 
 const ENTRY_KINDS = {
   accrual: 'Credited',
@@ -95,6 +96,7 @@ function ApplyForm({ types, onApplied, onCancel }) {
   const [value, setValue] = useState(newLeave)
   const [preview, setPreview] = useState(null)
   const { busy, error, run } = useAction()
+  const toast = useToast()
 
   // The server counts the days, so the form shows exactly what will be deducted.
   const { leaveTypeId, fromDate, toDate, half } = value
@@ -116,7 +118,10 @@ function ApplyForm({ types, onApplied, onCancel }) {
   async function submit(event) {
     event.preventDefault()
     const created = await run(() => leave.apply(leaveBody(value)))
-    if (created) onApplied()
+    if (created) {
+      toast(created.status === 'approved' ? 'Leave applied and approved' : 'Leave request sent for approval')
+      onApplied()
+    }
   }
 
   const shown = leaveTypeId && fromDate ? preview : null
@@ -152,13 +157,17 @@ function ApplyForm({ types, onApplied, onCancel }) {
 
 function MyRequests({ requests, onChanged }) {
   const { busy, error, run } = useAction()
+  const toast = useToast()
 
   async function cancel(id) {
     const done = await run(async () => {
       await leave.cancel(id)
       return true
     })
-    if (done) onChanged()
+    if (done) {
+      toast('Leave request cancelled')
+      onChanged()
+    }
   }
 
   if (requests.length === 0) return <Empty>You have not applied for any leave.</Empty>

@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { payroll } from '../api.js'
 import { formatDate, formatDay, localToday, useAction, useLoad, numeric } from '../hooks.js'
 import { Badge, Empty, ErrorNote, Tabs } from '../ui.jsx'
+import { useConfirm, useToast } from '../feedbackContext.js'
 import PayrollSetup from './PayrollSetup.jsx'
 import PayslipView from './PayslipView.jsx'
 import { RUN_STATES, RUN_STEPS, rupees } from './payrollText.js'
@@ -163,6 +164,8 @@ function RunPage({ id, me, onBack }) {
   const [person, setPerson] = useState(null)
   const [form, setForm] = useState(null)
   const { busy, error, run } = useAction()
+  const confirm = useConfirm()
+  const toast = useToast()
   if (r.loading) return <p className="muted">Loading…</p>
   if (r.error) return <ErrorNote>{r.error}</ErrorNote>
   const x = r.data
@@ -170,7 +173,9 @@ function RunPage({ id, me, onBack }) {
     if (await run(fn)) {
       setForm(null)
       r.reload()
+      return true
     }
+    return false
   }
   const month = x.period.slice(0, 7)
   if (person) {
@@ -212,7 +217,16 @@ function RunPage({ id, me, onBack }) {
             </button>
           )}
           {x.state === 'calculated' && x.canApprove && (
-            <button type="button" className="primary" disabled={busy} onClick={() => act(() => payroll.approve(id))}>
+            <button type="button" className="primary" disabled={busy} onClick={async () => {
+                const sure = await confirm({
+                  title: `Approve payroll for ${x.label}?`,
+                  body: `${x.people.length} ${x.people.length === 1 ? 'person' : 'people'}, net ${rupees(x.totals.net)}. Once approved, this month's inputs are locked.`,
+                  confirmLabel: 'Approve payroll',
+                  cancelLabel: 'Not yet',
+                })
+                if (!sure) return
+                if (await act(() => payroll.approve(id))) toast(`Payroll for ${x.label} approved`)
+              }}>
               Approve
             </button>
           )}

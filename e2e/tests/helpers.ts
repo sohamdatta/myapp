@@ -20,6 +20,11 @@ export function watch(page: Page) {
   page.on('pageerror', (e) => consoleErrors.push(String(e)));
 }
 
+/** Forgets console errors a test caused on purpose (a download it blocked itself), so only surprises fail. */
+export function forgetConsoleErrors(pattern: RegExp) {
+  for (let i = consoleErrors.length - 1; i >= 0; i--) if (pattern.test(consoleErrors[i])) consoleErrors.splice(i, 1);
+}
+
 export function expectNoConsoleErrors() {
   expect(consoleErrors, 'errors in the browser console').toEqual([]);
 }
@@ -43,13 +48,17 @@ export async function signIn(browser: Browser, email: string, password = PASSWOR
   await page.fill('#email', email);
   await page.fill('#password', password);
   await page.click('button.primary');
-  await expect(page.locator('.sidebar')).toBeVisible();
+  await expect(page.locator('.topbar')).toBeVisible();
   return page;
 }
 
-/** Clicks a sidebar entry by its exact label. */
+/** Clicks a sidebar entry by its exact label, opening the menu first on a phone. */
 export async function nav(page: Page, name: string) {
-  await page.locator('button.nav-item').filter({ hasText: new RegExp(`^${name}$`) }).click();
+  await page.locator('.topbar').waitFor(); // after a reload, the app may not have drawn yet
+  const menu = page.locator('.menu-button');
+  if ((await menu.isVisible()) && (await menu.getAttribute('aria-expanded')) !== 'true') await menu.click();
+  await page.locator('a.nav-item').filter({ hasText: new RegExp(`^${name}$`) }).click();
+  await expect(page.locator('.page-title')).toHaveText(name);
 }
 
 export async function tab(page: Page, name: string) {
@@ -154,6 +163,6 @@ export async function acceptInvite(browser: Browser, link: string, password = PA
   await page.fill('#new-password', password);
   await page.fill('#confirm-password', password);
   await page.click('button.primary');
-  await expect(page.locator('.sidebar')).toBeVisible();
+  await expect(page.locator('.topbar')).toBeVisible();
   return page;
 }

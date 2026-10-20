@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { attendance } from '../api.js'
 import { formatDay, formatMonth, formatMinutes, formatTime, localMonth, localToday, useAction, useLoad, useNow, formatLate } from '../hooks.js'
 import { Badge, DayStatus, Empty, ErrorNote, StatusBadge, Trail } from '../ui.jsx'
+import { useToast } from '../feedbackContext.js'
 
 const KINDS = {
   regularization: 'Correct my punches',
@@ -45,16 +46,21 @@ function currentPosition() {
 
 function PunchPanel({ today, onPunched }) {
   const { busy, error, run } = useAction()
+  const toast = useToast()
   const now = useNow()
   const data = today.data
 
   async function punch() {
+    const direction = data.nextDirection
     const result = await run(async () => {
       // The server decides whether the office network is enough; the position is sent only when it may be needed.
       const position = data.wantsPosition ? await currentPosition() : null
       return attendance.punch(position)
     })
-    if (result) onPunched()
+    if (result) {
+      toast(`Punched ${direction} at ${formatTime(new Date().toISOString(), data.timezone)}`)
+      onPunched()
+    }
   }
 
   if (!data.assigned) {
@@ -310,13 +316,17 @@ function RequestForm({ home, onCreated, onCancel }) {
 
 function MyRequests({ requests, timeZone, onChanged }) {
   const { busy, error, run } = useAction()
+  const toast = useToast()
 
   async function cancel(id) {
     const done = await run(async () => {
       await attendance.cancelRequest(id)
       return true
     })
-    if (done) onChanged()
+    if (done) {
+      toast('Request cancelled')
+      onChanged()
+    }
   }
 
   if (requests.length === 0) return <Empty>You have not raised any requests.</Empty>

@@ -594,6 +594,29 @@ Employee role.
 | `.devcontainer/` | Codespaces configuration, including PostgreSQL |
 | `docs/` | Design documents, schemas and plans for each module; start at `docs/README.md` |
 
+### How the frontend is put together
+
+- **Every page has its own address**, its id from `src/nav.js`: `/my-leave`, `/payroll`, `/people`.
+  Back and Forward, reloading, bookmarks and links sent to a colleague all work. An address the
+  person may not open (another role's page, a page their roles lost) shows their first page instead.
+  Moving to another Organization, or into or out of a support session, starts on that place's first
+  page. The routing is `src/router.js`; the server sends `index.html` for any address that is not a file.
+- **Each page is downloaded the first time it is needed** (`src/pageRegistry.js`). Signing in fetches
+  only the shell and the page they land on (remembered from the last visit, or named by the address);
+  the other pages are fetched quietly a few seconds later, or as soon as they point at one in the sidebar.
+  People on a slow or data-saver connection get a page only when they ask for it. React is in a file of its own, so an app update does not make
+  browsers fetch React again.
+- **Caching** (`deploy/Caddyfile`): files under `/assets/` have a content hash in their names and are
+  kept by browsers for a year; `index.html` is checked on every visit, so a new version is picked up
+  at once. The font is served from the app itself, not from Google.
+- **On phones** (760 px wide or less) the sidebar is a menu that opens from the button beside the page
+  title, and form fields use 16 px text so iPhones do not zoom in on them.
+- **Confirmations and notes.** Actions that cannot be taken back (rejecting a request, cancelling
+  approved leave, ending a membership, revoking an invitation or support access, approving payroll or
+  a settlement, closing an Organization) ask first, saying what will happen, with the safe choice
+  focused. Everyday successes (a punch, a leave request sent, a decision) show a short note at the
+  bottom of the screen that screen readers announce. `src/feedback.jsx` has both.
+
 ## API
 
 Every call except sign-in and the invitation page needs

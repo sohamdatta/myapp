@@ -2,19 +2,7 @@ import { useState } from 'react'
 import { invitationLink, org } from '../api.js'
 import { formatDate, formatDay, useAction, useLoad } from '../hooks.js'
 import { Badge, CopyLink, Empty, ErrorNote, StatusBadge, Tabs } from '../ui.jsx'
-import Attendance from './Attendance.jsx'
-import Leave from './Leave.jsx'
-import MyAttendance from './MyAttendance.jsx'
-import MyLeave from './MyLeave.jsx'
-import MyOnboarding from './MyOnboarding.jsx'
-import Exits from './Exits.jsx'
-import MyExit from './MyExit.jsx'
-import MyTasks from './MyTasks.jsx'
-import OrgChart from './OrgChart.jsx'
-import MyPay from './MyPay.jsx'
-import Payroll from './Payroll.jsx'
-import People, { MyProfile } from './People.jsx'
-import { People as WhoWorksWhere, Setup as CalendarSetup } from './AttendanceSetup.jsx'
+import { useConfirm, useToast } from '../feedbackContext.js'
 
 /** What each role is for, in plain words. The exact permissions are under User management → Roles. */
 const ROLE_SUMMARIES = {
@@ -79,14 +67,17 @@ function UserRow({ user, me, roles, onChanged }) {
   const isSelf = user.id === me.membershipId
   const canAssign = me.permissions.includes('role.assign') && !isSelf && user.status !== 'ended'
   const canManage = me.permissions.includes('user.manage') && !isSelf
+  const confirm = useConfirm()
+  const toast = useToast()
 
-  async function act(action, confirmText) {
-    if (confirmText && !window.confirm(confirmText)) return
+  async function act(action, done_, ask) {
+    if (ask && !(await confirm(ask))) return
     const done = await run(async () => {
       await action()
       return true
     })
     if (done) {
+      if (done_) toast(done_)
       setEditing(false)
       onChanged()
     }
@@ -130,12 +121,12 @@ function UserRow({ user, me, roles, onChanged }) {
               <summary aria-label={`More actions for ${user.email}`}>⋯</summary>
               <div className="menu-items">
                 {user.status === 'active' && (
-                  <button type="button" className="quiet" disabled={busy} onClick={() => act(() => org.changeStatus(user.id, 'suspend'))}>
+                  <button type="button" className="quiet" disabled={busy} onClick={() => act(() => org.changeStatus(user.id, 'suspend'), `${user.email} suspended`)}>
                     Suspend
                   </button>
                 )}
                 {user.status === 'suspended' && (
-                  <button type="button" className="quiet" disabled={busy} onClick={() => act(() => org.changeStatus(user.id, 'reactivate'))}>
+                  <button type="button" className="quiet" disabled={busy} onClick={() => act(() => org.changeStatus(user.id, 'reactivate'), `${user.email} reactivated`)}>
                     Reactivate
                   </button>
                 )}
@@ -144,10 +135,12 @@ function UserRow({ user, me, roles, onChanged }) {
                   className="quiet danger"
                   disabled={busy}
                   onClick={() =>
-                    act(
-                      () => org.changeStatus(user.id, 'end'),
-                      `End ${user.email}'s membership? Their roles are removed and they can no longer enter this Organization.`,
-                    )
+                    act(() => org.changeStatus(user.id, 'end'), `${user.email}'s membership ended`, {
+                      title: `End ${user.email}'s membership?`,
+                      body: 'Their roles are removed and they can no longer enter this Organization. This cannot be undone.',
+                      confirmLabel: 'End membership',
+                      danger: true,
+                    })
                   }
                 >
                   End membership
@@ -247,6 +240,8 @@ function InvitationsTab({ me }) {
   const [selected, setSelected] = useState(['employee'])
   const [issued, setIssued] = useState(null)
   const { busy, error, run } = useAction()
+  const confirm = useConfirm()
+  const toast = useToast()
   const canInvite = me.permissions.includes('user.invite') && me.kind === 'tenant'
 
   async function invite(event) {
@@ -269,12 +264,23 @@ function InvitationsTab({ me }) {
     }
   }
 
-  async function revoke(id) {
+  async function revoke(invitation) {
+    const sure = await confirm({
+      title: `Revoke the invitation for ${invitation.email}?`,
+      body: 'The link stops working at once. You can invite them again later.',
+      confirmLabel: 'Revoke invitation',
+      cancelLabel: 'Keep it',
+      danger: true,
+    })
+    if (!sure) return
     const done = await run(async () => {
-      await org.revokeInvitation(id)
+      await org.revokeInvitation(invitation.id)
       return true
     })
-    if (done) invitations.reload()
+    if (done) {
+      toast(`Invitation for ${invitation.email} revoked`)
+      invitations.reload()
+    }
   }
 
   if (invitations.loading || roles.loading) return <p className="muted">Loading…</p>
@@ -324,7 +330,7 @@ function InvitationsTab({ me }) {
                         <button type="button" className="quiet" disabled={busy} onClick={() => resend(i.id)}>
                           New link
                         </button>
-                        <button type="button" className="quiet danger" disabled={busy} onClick={() => revoke(i.id)}>
+                        <button type="button" className="quiet danger" disabled={busy} onClick={() => revoke(i)}>
                           Revoke
                         </button>
                       </>
@@ -415,7 +421,7 @@ function actionWords(action) {
   return `${AREAS[area] || area.charAt(0).toUpperCase() + area.slice(1).replaceAll('_', ' ')}${what ? `: ${what}` : ''}`
 }
 
-function AuditTab() {
+export function AuditTab() {
   const audit = useLoad(org.audit)
   const [filter, setFilter] = useState('')
   if (audit.loading) return <p className="muted">Loading…</p>
@@ -523,7 +529,7 @@ function SubscriptionTab({ me }) {
 }
 
 /** Users, invitations and roles: one page with a tab for each, and what the Organization has bought. */
-function UserManagement({ me }) {
+export function UserManagement({ me }) {
   const [tab, setTab] = useState('users')
   const tabs = [
     { id: 'users', label: 'Users' },
@@ -538,65 +544,6 @@ function UserManagement({ me }) {
       {tab === 'invitations' && <InvitationsTab me={me} />}
       {tab === 'roles' && <RolesTab />}
       {tab === 'subscription' && <SubscriptionTab me={me} />}
-    </>
-  )
-}
-
-/**
- * Without the Attendance module: where people work, on which shift and weekly offs. Payroll takes the
- * state for professional tax from the location, and working days from the shift and holidays.
- */
-function WorkCalendar({ me }) {
-  const [tab, setTab] = useState('people')
-  const canManage = (me.scopes || {})['attendance.manage'] === 'tenant' && me.kind === 'tenant'
-  return (
-    <>
-      <Tabs
-        tabs={[
-          { id: 'people', label: 'People' },
-          { id: 'setup', label: 'Locations and shifts' },
-        ]}
-        current={tab}
-        onChange={setTab}
-      />
-      <p className="hint">
-        Payroll takes each person's state from their work location, and working days from their shift, weekly offs and holidays.
-      </p>
-      {tab === 'people' && <WhoWorksWhere canManage={canManage} attendanceOn={false} />}
-      {tab === 'setup' && <CalendarSetup canManage={canManage} attendanceOn={false} />}
-    </>
-  )
-}
-
-export default function Organization({ me, page, onNavigate }) {
-  if (!page) {
-    return (
-      <section className="panel">
-        <h2>You are signed in</h2>
-        <p>
-          {me.email} is a member of {me.organization.name}. There is nothing to show for your roles yet.
-        </p>
-      </section>
-    )
-  }
-  return (
-    <>
-      {page === 'my-attendance' && <MyAttendance />}
-      {page === 'my-leave' && <MyLeave me={me} />}
-      {page === 'attendance' && <Attendance me={me} />}
-      {page === 'work-calendar' && <WorkCalendar me={me} />}
-      {page === 'leave' && <Leave me={me} />}
-      {page === 'org-chart' && <OrgChart onNavigate={onNavigate} />}
-      {page === 'payroll' && <Payroll me={me} />}
-      {page === 'my-pay' && <MyPay />}
-      {page === 'people' && <People me={me} onNavigate={onNavigate} />}
-      {page === 'my-profile' && <MyProfile id={me.employment?.id} />}
-      {page === 'my-onboarding' && <MyOnboarding me={me} />}
-      {page === 'my-tasks' && <MyTasks />}
-      {page === 'my-exit' && <MyExit me={me} />}
-      {page === 'exits' && <Exits me={me} onNavigate={onNavigate} />}
-      {page === 'users' && <UserManagement me={me} />}
-      {page === 'audit' && <AuditTab />}
     </>
   )
 }

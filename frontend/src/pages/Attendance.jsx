@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { attendance } from '../api.js'
 import { formatDay, formatMinutes, formatMonth, formatTime, liveStatus, localToday, shiftDay, useAction, useLoad, whoName, formatLate } from '../hooks.js'
 import { Badge, DayStatus, Empty, ErrorNote, StatusBadge, Tabs, Trail, Who } from '../ui.jsx'
+import { useConfirm, useToast } from '../feedbackContext.js'
 import { DeviceImport, People, Setup } from './AttendanceSetup.jsx'
 
 const KINDS = { regularization: 'Punch correction', on_duty: 'On duty', work_from_home: 'Work from home' }
@@ -279,13 +280,28 @@ function Daily({ canManage, canMark, meId, canExport }) {
 function RequestRow({ request, canDecide, onDecided }) {
   const [note, setNote] = useState('')
   const { busy, error, run } = useAction()
+  const confirm = useConfirm()
+  const toast = useToast()
 
   async function decide(action) {
+    const name = whoName(request)
+    if (action === 'reject') {
+      const sure = await confirm({
+        title: `Reject ${name}'s request?`,
+        body: `${KINDS[request.kind]}, ${formatDay(request.workDate)}. ${note ? 'Your note goes with it. ' : ''}A rejection cannot be undone.`,
+        confirmLabel: 'Reject request',
+        danger: true,
+      })
+      if (!sure) return
+    }
     const done = await run(async () => {
       await attendance.decideRequest(request.id, action, note)
       return true
     })
-    if (done) onDecided()
+    if (done) {
+      toast(`Request ${action === 'approve' ? 'approved' : 'rejected'} for ${name}`)
+      onDecided()
+    }
   }
 
   return (
