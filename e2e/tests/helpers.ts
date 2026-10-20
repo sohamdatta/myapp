@@ -20,6 +20,11 @@ export function watch(page: Page) {
   page.on('pageerror', (e) => consoleErrors.push(String(e)));
 }
 
+/** Forgets console errors a test caused on purpose (a download it blocked itself), so only surprises fail. */
+export function forgetConsoleErrors(pattern: RegExp) {
+  for (let i = consoleErrors.length - 1; i >= 0; i--) if (pattern.test(consoleErrors[i])) consoleErrors.splice(i, 1);
+}
+
 export function expectNoConsoleErrors() {
   expect(consoleErrors, 'errors in the browser console').toEqual([]);
 }

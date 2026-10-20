@@ -51,5 +51,7 @@ export default defineConfig({
     { name: 'role-tour', testMatch: /17-role-tour\.spec\.ts/, use: desktop, dependencies: ['neg-payroll'] },
     { name: 'modes', testMatch: /18-attendance-modes\.spec\.ts/, use: desktop, dependencies: ['role-tour'] },
     { name: 'modules', testMatch: /19-modules\.spec\.ts/, use: desktop, dependencies: ['modes'] },
+    // Page addresses, the phone menu, confirmations and notes.
+    { name: 'navigation', testMatch: /20-navigation-and-feedback\.spec\.ts/, use: desktop, dependencies: ['modules'] },
   ],
 });

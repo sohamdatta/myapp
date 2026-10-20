@@ -47,6 +47,9 @@ export function preloadPage(me, id) {
 
 /** Fetches the person's other pages once the first one is up, so moving around later is instant. */
 export function preloadAll(me, ids) {
+  // Not for someone who has asked to save data, or is on a slow connection: they get a page when they ask for it.
+  const link = navigator.connection
+  if (link && (link.saveData || /2g|3g/.test(link.effectiveType || ''))) return
   const idle = window.requestIdleCallback || ((fn) => setTimeout(fn, 1500))
   idle(() => ids.forEach((id) => preloadPage(me, id)))
 }
