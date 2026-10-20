@@ -49,8 +49,9 @@ export async function signIn(browser: Browser, email: string, password = PASSWOR
 
 /** Clicks a sidebar entry by its exact label, opening the menu first on a phone. */
 export async function nav(page: Page, name: string) {
+  await page.locator('.topbar').waitFor(); // after a reload, the app may not have drawn yet
   const menu = page.locator('.menu-button');
-  if (await menu.isVisible()) await menu.click();
+  if ((await menu.isVisible()) && (await menu.getAttribute('aria-expanded')) !== 'true') await menu.click();
   await page.locator('a.nav-item').filter({ hasText: new RegExp(`^${name}$`) }).click();
   await expect(page.locator('.page-title')).toHaveText(name);
 }
