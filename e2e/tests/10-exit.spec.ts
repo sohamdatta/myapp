@@ -170,6 +170,7 @@ test.describe.serial('exit', () => {
     await nav(owner, 'Exits');
     await owner.getByRole('button', { name: 'Meera Iyer' }).click();
     await owner.getByTestId('settlement').getByRole('button', { name: 'Approve and send the statement' }).click();
+    await owner.getByRole('dialog').getByRole('button', { name: 'Approve and send' }).click();
     await expect(owner.getByTestId('settlement')).toContainText('Approved, being paid');
 
     await hr.reload();

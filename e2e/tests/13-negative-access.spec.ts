@@ -75,6 +75,7 @@ test.describe.serial('negative: signing in, invitations, access', () => {
     // Revoked: the link stops working at once.
     const revoked = await invite(owner, 'revoked.user@globex.test');
     await owner.locator('tr', { hasText: 'revoked.user@globex.test' }).getByRole('button', { name: 'Revoke' }).click();
+    await owner.getByRole('dialog').getByRole('button', { name: 'Revoke invitation' }).click();
     await expect(owner.locator('tr', { hasText: 'revoked.user@globex.test' })).toHaveCount(0);
     await page.goto(revoked);
     await expect(page.getByRole('heading', { name: 'Invitation not available' })).toBeVisible();
@@ -126,6 +127,7 @@ test.describe.serial('negative: signing in, invitations, access', () => {
     await shot(other, 'neg-05-existing-login-wrong-password');
     await other.context().close();
     await owner.locator('tr', { hasText: SUPER_ADMIN.email }).getByRole('button', { name: 'Revoke' }).click();
+    await owner.getByRole('dialog').getByRole('button', { name: 'Revoke invitation' }).click();
   });
 
   test('inviting refuses a bad email, no roles, both payroll roles and an existing user', async () => {
@@ -238,7 +240,7 @@ test.describe.serial('negative: signing in, invitations, access', () => {
     const harishSlip = (await api(owner, 'GET', `/org/payroll/runs/${october}`)).body.people.find((p: any) => p.name === 'Harish Rao').id;
 
     const meera = await signIn(browser, MEERA);
-    const items = await meera.locator('button.nav-item').allInnerTexts();
+    const items = await meera.locator('a.nav-item').allInnerTexts();
     for (const hidden of ['People', 'Payroll', 'User management', 'Audit log', 'Attendance', 'Leave']) {
       expect(items, `menu shows ${hidden}`).not.toContain(hidden);
     }

@@ -12,7 +12,7 @@ const AUDITOR = 'auditor@globex.test';
 const IT = 'it@globex.test';
 
 async function menu(page: Page): Promise<string[]> {
-  return page.locator('button.nav-item').allInnerTexts();
+  return page.locator('a.nav-item').allInnerTexts();
 }
 
 async function invite(owner: Page, email: string, role: string): Promise<string> {

@@ -409,7 +409,7 @@ test.describe.serial('negative: attendance, leave and work from home', () => {
     await expectNoSidewaysScroll(page);
     await page.fill('#password', PASSWORD);
     await page.click('button.primary');
-    await expect(page.locator('.sidebar')).toBeVisible();
+    await expect(page.locator('.topbar')).toBeVisible();
     await nav(page, 'My leave');
     await page.click('text=Apply for leave');
     await page.selectOption('#apply-type', { index: 1 });

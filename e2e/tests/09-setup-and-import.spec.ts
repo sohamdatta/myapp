@@ -176,7 +176,8 @@ test.describe.serial('setup and import', () => {
     await priya.fill('#new-password', PASSWORD);
     await priya.fill('#confirm-password', PASSWORD);
     await priya.click('button.primary');
-    await expect(priya.locator('button.nav-item', { hasText: 'My leave' })).toBeVisible();
+    await priya.locator('.menu-button').click(); // a phone: the menu opens over the page
+    await expect(priya.locator('a.nav-item', { hasText: 'My leave' })).toBeVisible();
     await expectNoSidewaysScroll(priya);
     await priya.context().close();
 

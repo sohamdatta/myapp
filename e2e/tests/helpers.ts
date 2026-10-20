@@ -43,13 +43,16 @@ export async function signIn(browser: Browser, email: string, password = PASSWOR
   await page.fill('#email', email);
   await page.fill('#password', password);
   await page.click('button.primary');
-  await expect(page.locator('.sidebar')).toBeVisible();
+  await expect(page.locator('.topbar')).toBeVisible();
   return page;
 }
 
-/** Clicks a sidebar entry by its exact label. */
+/** Clicks a sidebar entry by its exact label, opening the menu first on a phone. */
 export async function nav(page: Page, name: string) {
-  await page.locator('button.nav-item').filter({ hasText: new RegExp(`^${name}$`) }).click();
+  const menu = page.locator('.menu-button');
+  if (await menu.isVisible()) await menu.click();
+  await page.locator('a.nav-item').filter({ hasText: new RegExp(`^${name}$`) }).click();
+  await expect(page.locator('.page-title')).toHaveText(name);
 }
 
 export async function tab(page: Page, name: string) {
@@ -154,6 +157,6 @@ export async function acceptInvite(browser: Browser, link: string, password = PA
   await page.fill('#new-password', password);
   await page.fill('#confirm-password', password);
   await page.click('button.primary');
-  await expect(page.locator('.sidebar')).toBeVisible();
+  await expect(page.locator('.topbar')).toBeVisible();
   return page;
 }

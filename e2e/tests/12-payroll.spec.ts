@@ -307,6 +307,7 @@ test.describe.serial('payroll', () => {
     });
     await shot(owner, 'payroll-15-exceptions-accepted', true);
     await owner.getByRole('button', { name: 'Approve' }).click();
+    await owner.getByRole('dialog').getByRole('button', { name: 'Approve payroll' }).click();
     await expect(owner.getByText(/Approved, to pay/).first()).toBeVisible();
 
     const register = await download(owner, 'Salary register', 'payroll-register.csv');
@@ -344,6 +345,7 @@ test.describe.serial('payroll', () => {
     await expect(owner.locator('tr[data-employee="Nina Paul"]')).toHaveCount(0); // her last day was in October
     await acceptAll(owner, {});
     await owner.getByRole('button', { name: 'Approve' }).click();
+    await owner.getByRole('dialog').getByRole('button', { name: 'Approve payroll' }).click();
     await owner.getByRole('button', { name: 'Mark paid…' }).click();
     await owner.fill('#paid-ref', 'HDFC-BULK-000802');
     await owner.getByRole('button', { name: 'Mark paid', exact: true }).click();
