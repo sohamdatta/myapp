@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { downloadDocument as download, exits } from '../api.js'
 import { formatDay, localToday, useAction, numeric } from '../hooks.js'
 import { Badge, ErrorNote } from '../ui.jsx'
+import { useConfirm } from '../feedbackContext.js'
 
 const rupees = (n) =>
   n === null || n === undefined || n === ''
@@ -29,6 +30,7 @@ export function Settlement({ exit: x, onChanged }) {
   const [adding, setAdding] = useState(false)
   const [paying, setPaying] = useState(null)
   const { busy, error, run } = useAction()
+  const confirm = useConfirm()
   if (!s) return null
   const [tone, words] = STATES[s.state] || ['neutral', s.state]
   const act = async (work) => {
@@ -128,7 +130,15 @@ export function Settlement({ exit: x, onChanged }) {
       {s.state === 'draft' && (
         <div className="form-actions">
           {s.canApprove ? (
-            <button type="button" className="primary" disabled={busy} onClick={() => act(() => exits.approveSettlement(x.id))}>
+            <button type="button" className="primary" disabled={busy} onClick={async () => {
+                const sure = await confirm({
+                  title: 'Approve the settlement?',
+                  body: 'The employee is sent the statement as it stands now.',
+                  confirmLabel: 'Approve and send',
+                  cancelLabel: 'Not yet',
+                })
+                if (sure) await act(() => exits.approveSettlement(x.id))
+              }}>
               Approve and send the statement
             </button>
           ) : (

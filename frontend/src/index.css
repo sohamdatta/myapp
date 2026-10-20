@@ -463,8 +463,11 @@ td .hint {
 }
 
 .nav-item {
+  display: flex;
+  align-items: center;
   min-height: 40px;
   padding: 9px 10px;
+  text-decoration: none;
   font: inherit;
   font-weight: 500;
   text-align: left;
@@ -507,6 +510,39 @@ td .hint {
 .page-title {
   margin: 0;
   font-size: 1.4rem;
+}
+
+/* The title takes the focus after moving to a page (so screen readers announce it); no ring for that. */
+.page-title:focus {
+  outline: none;
+}
+
+.topbar-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+/* Only phones have a menu button: elsewhere the sidebar is always there. */
+.menu-button {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  margin-left: -8px;
+  padding: 0;
+  font-size: 1.35rem;
+  color: var(--text);
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.menu-button:hover {
+  border-color: var(--border-strong);
 }
 
 .topbar-actions {
@@ -1063,27 +1099,65 @@ td input.cell-input {
 /* ── phones ────────────────────────────────────────────────────────── */
 
 @media (max-width: 760px) {
+  /* The sidebar becomes a drawer behind the menu button, so a page starts with its own content. */
   .sidebar {
-    flex-direction: row;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 8px 12px;
-    padding: 12px 16px;
-    border-right: none;
-    border-bottom: 1px solid var(--border);
+    position: fixed;
+    inset: 0 auto 0 0;
+    z-index: 40;
+    width: min(300px, 86vw);
+    max-width: none;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    box-shadow: 0 0 40px rgb(0 0 0 / 0.25);
+    transform: translateX(-105%);
+    visibility: hidden;
+    transition:
+      transform 0.2s ease,
+      visibility 0s linear 0.2s;
   }
 
-  .sidebar .brand {
-    flex: 1 0 100%;
-    padding: 0;
+  .sidebar-open {
+    transform: none;
+    visibility: visible;
+    transition: transform 0.2s ease;
   }
 
-  .nav-section {
-    display: contents;
+  .drawer-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 39;
+    background: rgb(0 0 0 / 0.35);
   }
 
-  .nav-label {
+  .menu-button {
+    display: inline-flex;
+  }
+
+  .nav-item {
+    min-height: 44px;
+  }
+
+  .topbar {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    padding-top: 8px;
+    padding-bottom: 8px;
+  }
+
+  .page-title {
+    font-size: 1.2rem;
+  }
+
+  .who {
     display: none;
+  }
+
+  /* iPhones zoom the whole page into any field whose text is under 16 px. */
+  input,
+  select,
+  textarea {
+    font-size: 16px;
   }
 
   .topbar,
@@ -2761,5 +2835,156 @@ textarea.code {
 @media (max-width: 720px) {
   .module-row {
     grid-template-columns: 1fr;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sidebar,
+  .sidebar-open,
+  .toast,
+  .skeleton-bar {
+    transition: none;
+    animation: none;
+  }
+}
+
+/* ── loading ───────────────────────────────────────────────────────── */
+
+.skeleton {
+  display: grid;
+  gap: 14px;
+  padding: 8px 0;
+}
+
+.skeleton-bar {
+  height: 18px;
+  width: 70%;
+  border-radius: 6px;
+  background: linear-gradient(90deg, var(--neutral-bg) 25%, var(--row) 50%, var(--neutral-bg) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.3s ease-in-out infinite;
+}
+
+.skeleton-wide {
+  height: 96px;
+  width: 100%;
+  border-radius: 12px;
+}
+
+.skeleton-short {
+  width: 40%;
+}
+
+@keyframes shimmer {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: -100% 0;
+  }
+}
+
+/* ── toasts ────────────────────────────────────────────────────────── */
+
+.toasts {
+  position: fixed;
+  left: 50%;
+  bottom: max(20px, env(safe-area-inset-bottom));
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  width: min(440px, calc(100vw - 32px));
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+.toast {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 10px 8px 10px 16px;
+  color: var(--card);
+  background: var(--text);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.2);
+  pointer-events: auto;
+  animation: toast-in 0.18s ease-out;
+}
+
+.toast span {
+  flex: 1;
+}
+
+.toast-close {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  font-size: 1.2rem;
+  line-height: 1;
+  color: inherit;
+  background: none;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  opacity: 0.8;
+}
+
+.toast-close:hover {
+  opacity: 1;
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+
+/* ── confirmations ─────────────────────────────────────────────────── */
+
+.confirm-dialog {
+  width: min(460px, calc(100vw - 32px));
+  padding: 22px 24px 20px;
+  color: var(--text);
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: 0 20px 50px rgb(0 0 0 / 0.25);
+}
+
+.confirm-dialog::backdrop {
+  background: rgb(0 0 0 / 0.4);
+}
+
+.confirm-dialog h2 {
+  margin: 0 0 8px;
+}
+
+.confirm-dialog p {
+  margin: 0 0 20px;
+  color: var(--muted);
+}
+
+.confirm-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.danger-fill,
+.danger-fill:hover:not(:disabled) {
+  color: #fff;
+  background: var(--error);
+  border-color: var(--error);
+}
+
+@media (prefers-color-scheme: dark) {
+  .danger-fill,
+  .danger-fill:hover:not(:disabled) {
+    color: #2b0906;
   }
 }

@@ -2,6 +2,7 @@ import { Fragment, useState } from 'react'
 import { invitationLink, platform, startSupportSession } from '../api.js'
 import { formatDate, formatDay, useAction, useLoad } from '../hooks.js'
 import { Badge, CopyLink, Empty, ErrorNote, StatusBadge } from '../ui.jsx'
+import { useConfirm } from '../feedbackContext.js'
 
 const PLAN_NAMES = { essential: 'Essential', growth: 'Growth', professional: 'Professional', enterprise: 'Enterprise' }
 
@@ -79,6 +80,7 @@ function OrganizationsTab({ me }) {
   const [slugEdited, setSlugEdited] = useState(false)
   const [issued, setIssued] = useState(null)
   const { busy, error, run } = useAction()
+  const confirm = useConfirm()
   const isSuperAdmin = me.platformRole === 'super_admin'
   const canChangeModules = isSuperAdmin || me.platformRole === 'billing'
 
@@ -98,7 +100,16 @@ function OrganizationsTab({ me }) {
   }
 
   async function change(o, action) {
-    if (action === 'close' && !window.confirm(`Close ${o.name}? This is final: nobody will be able to enter it again.`)) return
+    if (
+      action === 'close' &&
+      !(await confirm({
+        title: `Close ${o.name}?`,
+        body: 'This is final: nobody will be able to enter it again.',
+        confirmLabel: 'Close Organization',
+        danger: true,
+      }))
+    )
+      return
     const done = await run(async () => {
       await platform.changeOrganization(o.id, action)
       return true
@@ -415,6 +426,7 @@ function SupportTab({ me, onEnteredSupport }) {
   const orgs = useLoad(platform.organizations)
   const [form, setForm] = useState({ organizationId: '', mode: 'read_only', reason: '' })
   const { busy, error, run } = useAction()
+  const confirm = useConfirm()
   const isSuperAdmin = me.platformRole === 'super_admin'
 
   async function request(event) {
@@ -427,6 +439,15 @@ function SupportTab({ me, onEnteredSupport }) {
   }
 
   async function decide(g, action) {
+    if (action === 'revoke') {
+      const sure = await confirm({
+        title: 'Revoke this support access?',
+        body: 'Any session using it ends at once.',
+        confirmLabel: 'Revoke access',
+        danger: true,
+      })
+      if (!sure) return
+    }
     const done = await run(async () => {
       await platform.decideGrant(g.id, action)
       return true

@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { currentUser, endSupportSession, logout } from './api.js'
-import Console from './pages/Console.jsx'
-import Organization from './pages/Organization.jsx'
+import PageView from './PageView.jsx'
+import { preloadAll, preloadPage } from './pageRegistry.js'
+import { isPlainClick, pathFor, resetLocation, usePage } from './router.js'
 import { AcceptInvitation, Chooser, LoginForm } from './pages/SignIn.jsx'
 import { formatDate } from './hooks.js'
 import Bell from './Bell.jsx'
@@ -17,7 +18,46 @@ function clearInviteFromUrl() {
 
 function Shell({ me, nav, page, onNavigate, onSwitch, onSignOut, onEndSupport, children }) {
   const where = me.kind === 'platform' ? 'Platform console' : me.organization.name
-  const title = nav.flatMap((section) => section.items).find((item) => item.id === page)?.label || where
+  const items = nav.flatMap((section) => section.items)
+  const title = items.find((item) => item.id === page)?.label || where
+  const [menuOpen, setMenuOpen] = useState(false)
+  const heading = useRef(null)
+  const firstRender = useRef(true)
+
+  useEffect(() => {
+    document.title = title === where ? `${where} · HRMS` : `${title} · ${where}`
+  }, [title, where])
+
+  // After moving to another page, start at its top with the focus on its title, as a page load would.
+  useEffect(() => {
+    if (firstRender.current) {
+      firstRender.current = false
+      return
+    }
+    window.scrollTo(0, 0)
+    heading.current?.focus({ preventScroll: true })
+  }, [page])
+
+  // The menu on phones closes with Escape, like any overlay.
+  useEffect(() => {
+    if (!menuOpen) return
+    const onKey = (e) => e.key === 'Escape' && setMenuOpen(false)
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [menuOpen])
+
+  // Once the first page is up, fetch the person's other pages quietly so every later click is instant.
+  useEffect(() => {
+    preloadAll(me, items.map((item) => item.id))
+    // Once per Workspace: the items do not change while it is mounted.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  function go(id) {
+    setMenuOpen(false)
+    onNavigate(id)
+  }
+
   return (
     <div className="shell">
       {me.kind === 'support' && (
@@ -32,7 +72,8 @@ function Shell({ me, nav, page, onNavigate, onSwitch, onSignOut, onEndSupport, c
         </div>
       )}
       <div className="shell-body">
-        <nav className="sidebar" aria-label="Main">
+        {menuOpen && <div className="drawer-backdrop" aria-hidden="true" onClick={() => setMenuOpen(false)} />}
+        <nav id="main-nav" className={menuOpen ? 'sidebar sidebar-open' : 'sidebar'} aria-label="Main">
           <div className="brand">
             <div className="brand-mark" aria-hidden="true">
               {where[0].toUpperCase()}
@@ -46,26 +87,44 @@ function Shell({ me, nav, page, onNavigate, onSwitch, onSignOut, onEndSupport, c
             <div key={section.label} className="nav-section">
               <div className="nav-label">{section.label}</div>
               {section.items.map((item) => (
-                <button
+                <a
                   key={item.id}
-                  type="button"
+                  href={pathFor(item.id)}
                   className={item.id === page ? 'nav-item nav-current' : 'nav-item'}
                   aria-current={item.id === page ? 'page' : undefined}
-                  onClick={() => onNavigate(item.id)}
+                  onPointerEnter={() => preloadPage(me, item.id)}
+                  onFocus={() => preloadPage(me, item.id)}
+                  onClick={(e) => {
+                    if (!isPlainClick(e)) return
+                    e.preventDefault()
+                    go(item.id)
+                  }}
                 >
                   {item.label}
-                </button>
+                </a>
               ))}
             </div>
           ))}
         </nav>
         <main className="main">
           <header className="topbar">
-            <h1 className="page-title">{title}</h1>
+            <div className="topbar-title">
+              <button
+                type="button"
+                className="menu-button"
+                aria-label="Menu"
+                aria-expanded={menuOpen}
+                aria-controls="main-nav"
+                onClick={() => setMenuOpen((open) => !open)}
+              >
+                <span aria-hidden="true">☰</span>
+              </button>
+              <h1 className="page-title" ref={heading} tabIndex={-1}>
+                {title}
+              </h1>
+            </div>
             <div className="topbar-actions">
-              {me.kind === 'tenant' && me.membershipId && (
-                <Bell pages={nav.flatMap((section) => section.items.map((item) => item.id))} onNavigate={onNavigate} />
-              )}
+              {me.kind === 'tenant' && me.membershipId && <Bell pages={items.map((item) => item.id)} onNavigate={go} />}
               <span className="who">{me.email}</span>
               {me.kind !== 'support' && me.organizations.length + (me.console ? 1 : 0) > 1 && (
                 <button type="button" className="quiet plain" onClick={onSwitch}>
@@ -86,17 +145,14 @@ function Shell({ me, nav, page, onNavigate, onSwitch, onSignOut, onEndSupport, c
   )
 }
 
-/** The signed-in app: the sidebar decides which page shows. Remounted when the person moves to another place. */
+/** The signed-in app: the address decides which page shows. Remounted when the person moves to another place. */
 function Workspace({ me, onSwitch, onSignOut, onEndSupport, onEnteredSupport }) {
   const nav = navFor(me)
-  const [page, setPage] = useState(() => firstPage(nav))
+  const allowed = nav.flatMap((section) => section.items.map((item) => item.id))
+  const [page, navigate] = usePage(allowed, firstPage(nav))
   return (
-    <Shell me={me} nav={nav} page={page} onNavigate={setPage} onSwitch={onSwitch} onSignOut={onSignOut} onEndSupport={onEndSupport}>
-      {me.kind === 'platform' ? (
-        <Console me={me} page={page} onEnteredSupport={onEnteredSupport} />
-      ) : (
-        <Organization me={me} page={page} onNavigate={setPage} />
-      )}
+    <Shell me={me} nav={nav} page={page} onNavigate={navigate} onSwitch={onSwitch} onSignOut={onSignOut} onEndSupport={onEndSupport}>
+      <PageView me={me} page={page} onNavigate={navigate} onEnteredSupport={onEnteredSupport} />
     </Shell>
   )
 }
@@ -124,19 +180,24 @@ export default function App() {
     }
   }, [])
 
+  // Moving from one place to another (another Organization, into or out of a support session)
+  // starts on the new place's first page; only a fresh visit or sign-in keeps the page in the address.
   function entered(next) {
+    if (me && me.kind !== 'identity') resetLocation()
     setChoosing(false)
     setMe(next)
   }
 
   async function handleSignOut() {
     await logout()
+    resetLocation()
     setChoosing(false)
     setMe(null)
   }
 
   async function handleEndSupport() {
     await endSupportSession()
+    resetLocation()
     await refresh()
   }
 
@@ -147,7 +208,7 @@ export default function App() {
 
   if (loading) {
     return (
-      <main className="centered">
+      <main className="centered" aria-busy="true">
         <p className="muted">Loading…</p>
       </main>
     )
