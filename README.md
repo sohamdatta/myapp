@@ -602,8 +602,9 @@ Employee role.
   Moving to another Organization, or into or out of a support session, starts on that place's first
   page. The routing is `src/router.js`; the server sends `index.html` for any address that is not a file.
 - **Each page is downloaded the first time it is needed** (`src/pageRegistry.js`). Signing in fetches
-  only the shell; the person's other pages are fetched quietly once the first one is up, or as soon as
-  they point at one in the sidebar. React is in a file of its own, so an app update does not make
+  only the shell and the page they land on (remembered from the last visit, or named by the address);
+  the other pages are fetched quietly a few seconds later, or as soon as they point at one in the sidebar.
+  People on a slow or data-saver connection get a page only when they ask for it. React is in a file of its own, so an app update does not make
   browsers fetch React again.
 - **Caching** (`deploy/Caddyfile`): files under `/assets/` have a content hash in their names and are
   kept by browsers for a year; `index.html` is checked on every visit, so a new version is picked up

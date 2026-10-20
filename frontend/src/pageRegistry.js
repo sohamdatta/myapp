@@ -1,4 +1,5 @@
 import { lazy } from 'react'
+import { pageFromLocation } from './router.js'
 
 /**
  * Every page is its own download, fetched the first time it is opened (or when the person points
@@ -39,6 +40,38 @@ const consolePage = page(() => import('./pages/Console.jsx'), (ctx) => ({ me: ct
 const CONSOLE = { organizations: consolePage, users: consolePage, support: consolePage }
 
 export const registry = (me) => (me.kind === 'platform' ? CONSOLE : ORGANIZATION)
+
+const LANDING_KEY = 'hrms-landing'
+
+/** Remembers which page this person lands on, so the next visit can start fetching it straight away. */
+export function rememberLanding(me, id) {
+  try {
+    localStorage.setItem(LANDING_KEY, `${me.kind === 'platform' ? 'platform' : 'org'}:${id}`)
+  } catch {
+    // Without storage, the page simply starts downloading once the app knows who has signed in.
+  }
+}
+
+/**
+ * Called as the app starts, before it has asked who is signed in: fetches the page the address names,
+ * or else the page this person landed on last time, in step with the sign-in check instead of after it.
+ */
+export function preloadLikely() {
+  let id = pageFromLocation()
+  let kind = null
+  try {
+    const [k, landing] = (localStorage.getItem(LANDING_KEY) || '').split(':')
+    if (k) {
+      kind = k
+      id = id || landing
+    }
+  } catch {
+    // No storage: only an address can say which page.
+  }
+  if (!id) return
+  const sets = kind ? [kind === 'platform' ? CONSOLE : ORGANIZATION] : [ORGANIZATION, CONSOLE]
+  sets.forEach((set) => set[id]?.load().catch(() => {}))
+}
 
 /** Starts fetching a page before it is opened: on hover or focus in the sidebar, and when the browser is idle. */
 export function preloadPage(me, id) {

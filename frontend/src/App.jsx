@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { currentUser, endSupportSession, logout } from './api.js'
 import PageView from './PageView.jsx'
-import { preloadAll, preloadPage } from './pageRegistry.js'
+import { preloadAll, preloadPage, rememberLanding } from './pageRegistry.js'
 import { isPlainClick, pathFor, resetLocation, usePage } from './router.js'
 import { AcceptInvitation, Chooser, LoginForm } from './pages/SignIn.jsx'
 import { formatDate } from './hooks.js'
@@ -46,9 +46,11 @@ function Shell({ me, nav, page, onNavigate, onSwitch, onSignOut, onEndSupport, c
     return () => window.removeEventListener('keydown', onKey)
   }, [menuOpen])
 
-  // Once the first page is up, fetch the person's other pages quietly so every later click is instant.
+  // A few seconds in, once the first page has had its data, fetch the person's other pages quietly so
+  // later clicks are instant. Earlier, the downloads would compete with the first page's own requests.
   useEffect(() => {
-    preloadAll(me, items.map((item) => item.id))
+    const timer = setTimeout(() => preloadAll(me, items.map((item) => item.id)), 3000)
+    return () => clearTimeout(timer)
     // Once per Workspace: the items do not change while it is mounted.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -149,7 +151,11 @@ function Shell({ me, nav, page, onNavigate, onSwitch, onSignOut, onEndSupport, c
 function Workspace({ me, onSwitch, onSignOut, onEndSupport, onEnteredSupport }) {
   const nav = navFor(me)
   const allowed = nav.flatMap((section) => section.items.map((item) => item.id))
-  const [page, navigate] = usePage(allowed, firstPage(nav))
+  const landing = firstPage(nav)
+  const [page, navigate] = usePage(allowed, landing)
+  useEffect(() => {
+    if (landing) rememberLanding(me, landing)
+  }, [me, landing])
   return (
     <Shell me={me} nav={nav} page={page} onNavigate={navigate} onSwitch={onSwitch} onSignOut={onSignOut} onEndSupport={onEndSupport}>
       <PageView me={me} page={page} onNavigate={navigate} onEnteredSupport={onEnteredSupport} />
