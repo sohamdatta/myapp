@@ -82,10 +82,18 @@ jobs:
       - run: npm run build
 
   browser:
-    name: Browser tests
+    # Twice: in UTC, and with the database and the server in India time, as many customers run them.
+    # Dates and times that are right in one zone and wrong in the other fail here, not in production.
+    name: Browser tests (${{ matrix.zone.name }})
     needs: [backend, frontend]
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        zone:
+          - { name: UTC, tz: UTC, slug: utc }
+          - { name: India time, tz: Asia/Kolkata, slug: ist }
     services:
       postgres:
         image: postgres:16
@@ -93,6 +101,8 @@ jobs:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
           POSTGRES_DB: hrms
+          TZ: ${{ matrix.zone.tz }}
+          PGTZ: ${{ matrix.zone.tz }}
         ports: ['5432:5432']
         options: >-
           --health-cmd "pg_isready -U postgres"
@@ -117,7 +127,7 @@ jobs:
 
       - name: Start the backend
         run: |
-          nohup java -jar dist-backend/login-app-*.jar > backend.log 2>&1 &
+          TZ=${{ matrix.zone.tz }} nohup java -jar dist-backend/login-app-*.jar > backend.log 2>&1 &
           for i in $(seq 1 60); do
             code=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8080/api/auth/me || true)
             if [ "$code" = "401" ]; then echo "backend is up"; exit 0; fi
@@ -150,7 +160,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: playwright-report
+          name: playwright-report-${{ matrix.zone.slug }}
           path: |
             e2e/playwright-report/
             e2e/test-results/

@@ -342,7 +342,11 @@ test.describe.serial('payroll', () => {
     await runs(owner);
     await owner.getByRole('button', { name: `Open ${monthLabel(1)}` }).click();
     await expect(owner.locator('tr[data-employee="Meera Iyer"]')).toBeVisible();
-    await expect(owner.locator('tr[data-employee="Nina Paul"]')).toHaveCount(0); // her last day was in October
+    // Nina's last day is ten days after the exit was started (10-exit): before next month, she is not in it; late in a
+    // month it falls in next month, and she is rightly paid for those days.
+    const nina = owner.locator('tr[data-employee="Nina Paul"]');
+    if (isoDay(10) < firstOfMonth(1)) await expect(nina).toHaveCount(0);
+    else await expect(nina).toBeVisible();
     await acceptAll(owner, {});
     await owner.getByRole('button', { name: 'Approve' }).click();
     await owner.getByRole('dialog').getByRole('button', { name: 'Approve payroll' }).click();

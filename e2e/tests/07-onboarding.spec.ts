@@ -251,7 +251,9 @@ test.describe.serial('onboarding', () => {
     await laptop.getByRole('button', { name: 'Reassign' }).click();
     await laptop.locator('select').selectOption({ label: OWNER });
     await laptop.getByRole('button', { name: 'Reassign' }).click();
-    await expect(laptop).toContainText(OWNER);
+    // The row names the person once the reassign panel closes; their email is only in the dropdown.
+    await expect(laptop.locator('select')).toHaveCount(0);
+    await expect(laptop).toContainText('Ananya Sen');
 
     const owner = await signIn(browser, OWNER);
     await nav(owner, 'My tasks');

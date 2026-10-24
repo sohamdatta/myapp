@@ -30,6 +30,11 @@ public final class Migrator {
             "V13__payroll.sql", "V14__suspended_access.sql", "V15__attendance_modes.sql", "V16__modules.sql",
             "V17__tax_declarations.sql");
 
+    /** The migrations, in the order they run. A test checks that every file in db/migration is here. */
+    public static List<String> files() {
+        return FILES;
+    }
+
     /**
      * Lets app_definer see every row of every table under row-level security, for databases where it
      * could not be created with BYPASSRLS (see V1). Run after each migration, so a table added later
