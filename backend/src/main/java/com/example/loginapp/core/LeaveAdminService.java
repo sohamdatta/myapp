@@ -218,6 +218,33 @@ public final class LeaveAdminService {
         });
     }
 
+    // ── the leave year ──────────────────────────────────────────────────
+
+    /**
+     * When the leave year starts: January or April. Changes only the leave year, so an Organization
+     * with Leave but not Attendance can set it, and no work-from-home setting is touched.
+     */
+    public Map<String, Object> saveLeaveYear(SessionCtx ctx, Integer startMonth) {
+        ctx.require("leave.manage");
+        if (startMonth == null || (startMonth != 1 && startMonth != 4)) {
+            throw ApiException.badRequest("The leave year starts in January or April");
+        }
+        return db.inTenant(ctx.tenantId(), c -> {
+            int old = AttendanceDays.settings(c).leaveYearStartMonth();
+            if (startMonth != old) {
+                if (Sql.one(c, "select 1 from app.leave_year_end_run limit 1") != null) {
+                    throw new ApiException(409, "leave.year_closed", "The leave year cannot be changed once a year has been closed");
+                }
+                Sql.update(c, "insert into app.attendance_settings (tenant_id, leave_year_start_month) values (?, ?) "
+                        + "on conflict (tenant_id) do update set leave_year_start_month = excluded.leave_year_start_month, updated_at = now()",
+                        ctx.tenantId(), startMonth);
+                UserService.audit(c, ctx, "leave.year_changed", "tenant", ctx.tenantId(),
+                        Map.of("leaveYearStartsIn", startMonth == 1 ? "January" : "April"));
+            }
+            return Map.of("leaveYearStartMonth", startMonth);
+        });
+    }
+
     // ── year end ────────────────────────────────────────────────────────
 
     /** What closing a leave year would write: for every user and type, the excess over the carry-forward cap. */

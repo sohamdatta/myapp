@@ -314,6 +314,7 @@ export const leave = {
   saveType: (id, body) => (id ? put(`/org/leave/types/${id}`, body) : post('/org/leave/types', body)),
   yearEndPreview: (year) => get(`/org/leave/year-end/preview${query({ year })}`),
   yearEndRun: (year) => post('/org/leave/year-end', { year }),
+  saveYear: (startMonth) => put('/org/leave/year', { startMonth }),
 }
 
 // ── people: employee records and departments ────────────────────────

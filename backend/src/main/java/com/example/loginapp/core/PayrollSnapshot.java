@@ -198,14 +198,16 @@ final class PayrollSnapshot {
     }
 
     /**
-     * Days in the month, days paid and loss of pay. Unpaid leave counts as loss of pay; absence
-     * without leave too when the Organization says so. Days not yet come count as worked. Loss-of-pay
-     * days HR entered for the month are added; without the Attendance module they are the only source.
+     * Days in the month, days paid and loss of pay. Unpaid leave counts as loss of pay when the
+     * Organization has Leave; absence without leave too when it has Attendance and says so. Days not
+     * yet come count as worked. Loss-of-pay days HR entered for the month are added; without either
+     * module they are the only source.
      */
     static Map<String, Object> days(Connection c, Map<String, Object> config, UUID membership, AttendanceDays.Assigned a, LocalDate joined,
                                     LocalDate leaving, LocalDate period, LocalDate today, boolean preview, BigDecimal enteredLop)
             throws SQLException {
         boolean attendanceOn = Modules.on(c, Modules.ATTENDANCE);
+        boolean leaveOn = Modules.on(c, Modules.LEAVE);
         Map<String, Object> settings = PayrollEngine.map(config, "settings");
         String method = String.valueOf(settings.getOrDefault("proration", "calendar"));
         boolean absentIsLop = Boolean.TRUE.equals(settings.get("absenceIsLop"));
@@ -213,9 +215,10 @@ final class PayrollSnapshot {
         LocalDate from = joined.isAfter(period) ? joined : period;
         LocalDate to = leaving != null && leaving.isBefore(end) ? leaving : end;
         BigDecimal lop = BigDecimal.ZERO;
-        if (attendanceOn && membership != null && !to.isBefore(from)) {
+        if ((attendanceOn || leaveOn) && membership != null && !to.isBefore(from)) {
             Map<String, Map<String, Object>> rows = new HashMap<>();
-            if (!preview && !from.isAfter(today)) {
+            // The attendance days already worked out; without Attendance, leave alone is read below.
+            if (attendanceOn && !preview && !from.isAfter(today)) {
                 for (Map<String, Object> d : AttendanceDays.monthOf(c, (UUID) app(c), membership, java.time.YearMonth.from(period), today)) {
                     rows.put((String) d.get("workDate"), d);
                 }
@@ -223,14 +226,14 @@ final class PayrollSnapshot {
             for (LocalDate d = from; !d.isAfter(to); d = d.plusDays(1)) {
                 Map<String, Object> row = rows.get(d.toString());
                 if (row != null) {
-                    if (Boolean.TRUE.equals(row.get("leaveUnpaid"))) {
+                    if (leaveOn && Boolean.TRUE.equals(row.get("leaveUnpaid"))) {
                         lop = lop.add(PayrollEngine.dec(row, "leaveDays"));
                     } else if (absentIsLop && "absent".equals(row.get("status"))) {
                         lop = lop.add(BigDecimal.ONE);
                     } else if (absentIsLop && "half_day".equals(row.get("status")) && PayrollEngine.dec(row, "leaveDays").signum() == 0) {
                         lop = lop.add(new BigDecimal("0.5"));
                     }
-                } else {
+                } else if (leaveOn) {
                     AttendanceDays.Assigned at = AttendanceDays.assigned(c, membership, d);
                     boolean off = at != null && AttendanceDays.dayOff(c, at, d) != null;
                     DayCalculator.Leave leave = LeaveService.leaveOn(c, membership, d, off);

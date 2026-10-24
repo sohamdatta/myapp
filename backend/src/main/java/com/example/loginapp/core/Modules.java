@@ -7,12 +7,15 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * What an Organization can be sold. Core HR is always included; these two are switched on
- * per Organization by the platform (V16). Switching one off hides it and deletes nothing.
+ * What an Organization can be sold. Core HR is always included; these are switched on per
+ * Organization by the platform (V16; Leave split from Attendance in V19). Switching one off hides
+ * it and deletes nothing.
  */
 public final class Modules {
 
     public static final String ATTENDANCE = "attendance";
+    /** Balances, leave requests, who is away, leave types and the year end. Not work from home. */
+    public static final String LEAVE = "leave";
     public static final String PAYROLL = "payroll";
 
     /** In the order the console shows them, with the words people see. */
@@ -20,6 +23,7 @@ public final class Modules {
 
     static {
         NAMES.put(ATTENDANCE, "Attendance");
+        NAMES.put(LEAVE, "Leave");
         NAMES.put(PAYROLL, "Payroll");
     }
 

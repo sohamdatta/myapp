@@ -8,7 +8,8 @@ const PLAN_NAMES = { essential: 'Essential', growth: 'Growth', professional: 'Pr
 
 /** The add-ons an Organization can buy. Core HR is always included. */
 const MODULES = [
-  { id: 'attendance', label: 'Attendance', about: 'punching, devices, leave and work from home' },
+  { id: 'attendance', label: 'Attendance', about: 'punching, devices, the daily board and work from home' },
+  { id: 'leave', label: 'Leave', about: 'balances, leave requests, who is away and the leave year' },
   { id: 'payroll', label: 'Payroll', about: 'salaries, monthly runs, statutory deductions and payslips' },
 ]
 const ALL_MODULES = MODULES.map((m) => m.id)

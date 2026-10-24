@@ -505,18 +505,20 @@ class PayrollTest {
         LocalDate period = TODAY.withDayOfMonth(1).plusMonths(1);
         int days = period.lengthOfMonth();
 
-        // Two days of unpaid leave were recorded while the Organization still had Attendance.
+        // Two days of unpaid leave were recorded while the Organization still had Attendance and Leave.
         UUID unpaid = UUID.fromString((String) leaveAdmin.saveType(org.admin, null,
                 new TypeInput("Leave without pay", "regular", false, "none", BigDecimal.ZERO, true, null, "lapse", "unpaid", false, null, true)).get("id"));
         LocalDate tue = period.with(TemporalAdjusters.firstInMonth(DayOfWeek.TUESDAY));
         leave.decide(org.admin, UUID.fromString((String) leave.apply(asha, unpaid, tue.toString(), tue.plusDays(1).toString(), null,
                 "Family wedding").get("id")), true, null);
         platform.setModule(superAdmin, org.id, "attendance", false, null);
+        platform.setModule(superAdmin, org.id, "leave", false, null);
 
         String group = (String) ((Map<?, ?>) ((List<?>) runs.list(operator).get("groups")).get(0)).get("id");
         UUID run = UUID.fromString((String) runs.open(operator, UUID.fromString(group), period.toString()).get("id"));
         Map<String, Object> opened = runs.get(operator, run);
         assertEquals(false, opened.get("attendanceOn"));
+        assertEquals(false, opened.get("leaveOn"));
         assertTrue(((List<?>) opened.get("inputComponents")).stream().anyMatch(i -> "LOP_DAYS".equals(((Map<?, ?>) i).get("code"))));
 
         // Whole or half days, and never more than the month has.
@@ -529,14 +531,26 @@ class PayrollTest {
                 BigDecimal.valueOf(days), null)));
         assertEquals("Loss of pay (days)", ((Map<?, ?>) ((List<?>) runs.get(operator, run).get("inputs")).get(0)).get("componentName"));
 
-        // Without Attendance the leave is not read: the days entered are the loss of pay.
+        // Without Attendance or Leave the leave is not read: the days entered are the loss of pay.
         runs.freeze(operator, run);
         runs.calculate(operator, run);
         Map<String, Object> slip = runs.employee(operator, run, ashaId);
         assertEquals(0, new BigDecimal(days).subtract(new BigDecimal("1.5")).compareTo((BigDecimal) slip.get("daysPaid")));
         assertEquals(0, new BigDecimal("1.5").compareTo((BigDecimal) slip.get("lopDays")));
 
-        // With Attendance back, and the run reopened (freezing fixed the month's inputs), the unpaid leave counts as well.
+        // With Leave back but not Attendance, and the run reopened (freezing fixed the month's inputs),
+        // the unpaid leave counts as well: Leave is enough, as for an Organization on the free plan.
+        platform.setModule(superAdmin, org.id, "leave", true, null);
+        runs.reopen(operator, run, "Leave switched back on");
+        assertEquals(true, runs.get(operator, run).get("leaveOn"));
+        assertEquals(false, runs.get(operator, run).get("attendanceOn"));
+        runs.freeze(operator, run);
+        runs.calculate(operator, run);
+        Map<String, Object> leaveOnly = runs.employee(operator, run, ashaId);
+        assertEquals(0, new BigDecimal(days).subtract(new BigDecimal("3.5")).compareTo((BigDecimal) leaveOnly.get("daysPaid")));
+        assertEquals(0, new BigDecimal("3.5").compareTo((BigDecimal) leaveOnly.get("lopDays")));
+
+        // With Attendance back too, the same: the leave is counted once, not twice.
         platform.setModule(superAdmin, org.id, "attendance", true, null);
         runs.reopen(operator, run, "Attendance switched back on");
         runs.freeze(operator, run);

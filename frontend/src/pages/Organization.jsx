@@ -482,7 +482,8 @@ export function AuditTab() {
 }
 
 const MODULE_ABOUT = {
-  attendance: 'Punching, devices, the daily board, requests, leave and work from home',
+  attendance: 'Punching, devices, the daily board, attendance requests and work from home',
+  leave: 'Balances, leave requests and approvals, who is away, leave types and the year end',
   payroll: 'Salary setup, monthly runs, statutory deductions, payslips and the bank file',
 }
 

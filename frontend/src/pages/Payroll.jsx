@@ -392,9 +392,13 @@ function Inputs({ run: x, onChanged }) {
         This month’s inputs <span className="hint">{x.people.length} people in the group</span>
       </h3>
       <p className="hint">
-        {x.attendanceOn
+        {x.attendanceOn && x.leaveOn
           ? 'Days paid and loss of pay come from attendance and leave when the run is frozen. '
-          : 'Without the Attendance module, enter loss of pay here as days, under Loss of pay (days). '}
+          : x.leaveOn
+            ? 'Unpaid leave counts as loss of pay when the run is frozen. Without the Attendance module, enter any other loss of pay here as days, under Loss of pay (days). '
+            : x.attendanceOn
+              ? 'Absence counts as loss of pay when the run is frozen, if payroll settings say so. Without the Leave module, enter unpaid leave here as days, under Loss of pay (days). '
+              : 'Without the Attendance and Leave modules, enter loss of pay here as days, under Loss of pay (days). '}
         Add one-time amounts here: a bonus, an incentive, a recovery.
       </p>
       {x.inputs.length > 0 && (

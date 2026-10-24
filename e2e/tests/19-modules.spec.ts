@@ -1,9 +1,9 @@
 import { test, expect, type Page } from '@playwright/test';
 import { SUPER_ADMIN, newPage, nav, tab, acceptInvite, api, expectRefused, expectNoConsoleErrors, isoDay, shot } from './helpers';
 
-// What a customer pays for. Core HR is always included; Attendance (with leave) and Payroll are
-// switched on per Organization by the platform, optionally for a trial. Hooli Ltd starts with Payroll
-// only, tries Attendance, and has Payroll switched off and on again.
+// What a customer pays for. Core HR is always included; Attendance, Leave and Payroll are switched
+// on per Organization by the platform, optionally for a trial. Hooli Ltd starts with Payroll only,
+// tries Attendance, is given Leave on its own, and has Payroll switched off and on again.
 
 const OWNER = 'owner@hooli.test';
 const ORG = 'Hooli Ltd';
@@ -42,8 +42,10 @@ test.describe.serial('modules', () => {
     await admin.fill('#org-name', ORG);
     await admin.fill('#org-admin', OWNER);
     await expect(admin.locator('#org-mod-attendance')).toBeChecked();
+    await expect(admin.locator('#org-mod-leave')).toBeChecked();
     await expect(admin.locator('#org-mod-payroll')).toBeChecked();
     await admin.uncheck('#org-mod-attendance');
+    await admin.uncheck('#org-mod-leave');
     await shot(admin, 'mods-01-create-payroll-only', true);
     await admin.click('text=Create and invite');
     await expect(admin.getByText(`Invitation for ${OWNER}.`)).toBeVisible();
@@ -52,7 +54,8 @@ test.describe.serial('modules', () => {
     const row = admin.locator('tr', { hasText: ORG });
     await expect(row).toContainText('Core HR');
     await expect(row).toContainText('Payroll');
-    await expect(row).not.toContainText('Attendance');
+    await expect(row.locator('.module-badges')).not.toContainText('Attendance');
+    await expect(row.locator('.module-badges')).not.toContainText('Leave');
     await shot(admin, 'mods-02-console-list', true);
 
     owner = await acceptInvite(browser, link);
@@ -69,6 +72,9 @@ test.describe.serial('modules', () => {
     await expectRefused(owner, 'GET', '/org/attendance/me/today', [403], undefined, 'module.off');
     await expectRefused(owner, 'GET', '/org/attendance/days', [403], undefined, 'module.off');
     await expectRefused(owner, 'GET', '/org/leave/me/balances', [403], undefined, 'module.off');
+    await expectRefused(owner, 'PUT', '/org/leave/year', [403], { startMonth: 4 }, 'module.off');
+    const noLeave = await api(owner, 'GET', '/org/leave/requests');
+    expect(noLeave.body.message).toContain(`Leave is not part of ${ORG}`);
     await expectRefused(owner, 'GET', '/org/attendance/devices', [403], undefined, 'module.off');
     const refused = await api(owner, 'POST', '/org/attendance/me/punch', {});
     expect(refused.body.message).toContain(`Attendance is not part of ${ORG}`);
@@ -92,6 +98,7 @@ test.describe.serial('modules', () => {
     await nav(owner, 'User management');
     await tab(owner, 'Subscription');
     await expect(owner.locator('tr', { hasText: 'Attendance' })).toContainText('not included');
+    await expect(owner.locator('tr', { hasText: 'Balances, leave requests' })).toContainText('not included');
     await expect(owner.locator('tr', { hasText: 'Payroll' })).toContainText('on');
     await shot(owner, 'mods-05-subscription', true);
   });
@@ -117,10 +124,51 @@ test.describe.serial('modules', () => {
     expect(items).toContain('Attendance');
     expect(items).toContain('My attendance');
     expect(items).not.toContain('Work locations');
+    // Attendance does not bring Leave with it: the two are sold apart.
+    expect(items).not.toContain('Leave');
+    expect(items).not.toContain('My leave');
+    await expectRefused(owner, 'GET', '/org/leave/me/balances', [403], undefined, 'module.off');
     await nav(owner, 'User management');
     await tab(owner, 'Subscription');
     await expect(owner.locator('tr', { hasText: 'Attendance' })).toContainText('Trial until');
     await shot(owner, 'mods-07-trial-on', true);
+  });
+
+  test('Leave switched on by itself: leave screens and requests, and the leave year, without Attendance', async () => {
+    // Attendance's trial ends early, so the Organization has Leave without Attendance, as on the free plan.
+    await modulesOf(admin);
+    await admin.locator('.module-row', { hasText: 'Attendance' }).getByRole('button', { name: 'Switch off' }).click();
+    await expect(admin.locator('tr', { hasText: ORG }).first().locator('.module-badges')).not.toContainText('Attendance');
+    await admin.locator('.module-row', { hasText: 'Balances, leave requests' }).getByRole('button', { name: 'Switch on Leave' }).click();
+    await expect(admin.locator('tr', { hasText: ORG }).first().locator('.module-badges')).toContainText('Leave');
+    await shot(admin, 'mods-08-leave-on', true);
+
+    await owner.reload();
+    const items = await menu(owner);
+    expect(items).toContain('Leave');
+    expect(items).toContain('My leave');
+    expect(items).toContain('Work locations');
+    expect(items).not.toContain('Attendance');
+    expect(items).not.toContain('My attendance');
+    expect((await api(owner, 'GET', '/org/leave/me/balances')).status).toBe(200);
+    expect((await api(owner, 'GET', '/org/leave/requests')).status).toBe(200);
+    await expectRefused(owner, 'GET', '/org/attendance/me/today', [403], undefined, 'module.off');
+
+    // The leave year is set under Leave, so it works without Attendance; an odd month is refused.
+    await nav(owner, 'Leave');
+    await tab(owner, 'Setup');
+    await owner.selectOption('#leave-year-start', '4');
+    await expect(owner.locator('#leave-year-start')).toHaveValue('4');
+    expect((await api(owner, 'GET', '/org/attendance/settings')).body.leaveYearStartMonth).toBe(4);
+    await expectRefused(owner, 'PUT', '/org/leave/year', [400], { startMonth: 7 });
+    await owner.selectOption('#leave-year-start', '1');
+    await expect(owner.locator('#leave-year-start')).toHaveValue('1');
+    await shot(owner, 'mods-09-leave-year', true);
+
+    await nav(owner, 'User management');
+    await tab(owner, 'Subscription');
+    await expect(owner.locator('tr', { hasText: 'Balances, leave requests' })).not.toContainText('not included');
+    await expect(owner.locator('tr', { hasText: 'Attendance' })).toContainText('not included');
   });
 
   test('Payroll switched off: its screens, roles and requests go; switched on, they come back', async () => {
@@ -128,7 +176,7 @@ test.describe.serial('modules', () => {
     const payroll = admin.locator('.module-row', { hasText: 'Payroll' });
     await payroll.getByRole('button', { name: 'Switch off' }).click();
     await expect(admin.locator('tr', { hasText: ORG }).first().locator('.module-badges')).not.toContainText('Payroll');
-    await shot(admin, 'mods-08-payroll-off', true);
+    await shot(admin, 'mods-10-payroll-off', true);
 
     await owner.reload();
     expect(await menu(owner)).not.toContain('Payroll');
@@ -139,7 +187,7 @@ test.describe.serial('modules', () => {
     await tab(owner, 'Invitations');
     await expect(owner.locator('.role-picker')).toContainText('HR Admin');
     await expect(owner.locator('.role-picker')).not.toContainText('Payroll Operator');
-    await shot(owner, 'mods-09-roles-without-payroll', true);
+    await shot(owner, 'mods-11-roles-without-payroll', true);
 
     await modulesOf(admin);
     await admin.locator('.module-row', { hasText: 'Payroll' }).getByRole('button', { name: 'Switch on Payroll' }).click();

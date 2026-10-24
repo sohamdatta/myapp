@@ -427,7 +427,7 @@ class UserModuleTest {
         java.time.LocalDate today = java.time.LocalDate.now(java.time.ZoneId.of("Asia/Kolkata"));
         // Created without saying: everything, as Organizations made before modules existed.
         Org all = newOrg();
-        assertEquals(java.util.Set.of("attendance", "payroll"), all.admin().modules());
+        assertEquals(java.util.Set.of("attendance", "leave", "payroll"), all.admin().modules());
 
         String slug = "mod-" + SEQUENCE.incrementAndGet();
         Map<String, Object> created = platform.createOrganization(superAdmin, "Payroll only " + slug, slug, "growth",
@@ -443,8 +443,10 @@ class UserModuleTest {
         Map<String, Object> row = platform.organizations(superAdmin).stream()
                 .filter(o -> o.get("id").equals(id.toString())).findFirst().orElseThrow();
         List<?> modules = (List<?>) row.get("modules");
+        assertEquals(List.of("attendance", "leave", "payroll"), modules.stream().map(m -> ((Map<?, ?>) m).get("module")).toList());
         assertEquals("off", ((Map<?, ?>) modules.get(0)).get("status"));
-        assertEquals("on", ((Map<?, ?>) modules.get(1)).get("status"));
+        assertEquals("off", ((Map<?, ?>) modules.get(1)).get("status"));
+        assertEquals("on", ((Map<?, ?>) modules.get(2)).get("status"));
 
         // A trial of Attendance: on until the day it ends, then off without anyone touching it.
         platform.setModule(superAdmin, id, "attendance", true, today.plusDays(14).toString());
@@ -472,6 +474,45 @@ class UserModuleTest {
         List<String> actions = db.inOwner(c -> Sql.query(c, "select action from platform.platform_audit where target_id = ?", id))
                 .stream().map(r -> (String) r.get("action")).toList();
         assertTrue(actions.containsAll(List.of("tenant.created", "tenant.module_on", "tenant.module_off")), actions.toString());
+    }
+
+    @Test
+    void leaveIsAModuleOfItsOwnApartFromAttendance() {
+        // The free plan: Core HR with Leave, and neither Attendance nor Payroll.
+        String slug = "leave-" + SEQUENCE.incrementAndGet();
+        Map<String, Object> created = platform.createOrganization(superAdmin, "Leave only " + slug, slug, "essential",
+                "admin@" + slug + ".test", List.of("leave"));
+        UUID id = UUID.fromString((String) created.get("id"));
+        String token = invitations.accept((String) created.get("invitationToken"), PASSWORD, null);
+        SessionCtx admin = auth.resolve(token);
+        assertTrue(admin.hasModule("leave"));
+        assertFalse(admin.hasModule("attendance"));
+        assertFalse(admin.hasModule("payroll"));
+        assertEquals(List.of("leave"), auth.me(admin).get("modules"));
+        List<?> subscription = (List<?>) auth.me(admin).get("subscription");
+        assertEquals(List.of("Attendance", "Leave", "Payroll"), subscription.stream().map(m -> ((Map<?, ?>) m).get("name")).toList());
+        assertEquals(true, ((Map<?, ?>) subscription.get(1)).get("active"));
+
+        // Switched on and off independently: Attendance does not bring Leave with it, nor take it away.
+        platform.setModule(superAdmin, id, "attendance", true, null);
+        assertTrue(auth.resolve(token).hasModule("attendance"));
+        platform.setModule(superAdmin, id, "leave", false, null);
+        SessionCtx now = auth.resolve(token);
+        assertTrue(now.hasModule("attendance"));
+        assertFalse(now.hasModule("leave"));
+        List<String> actions = db.inOwner(c -> Sql.query(c, "select action, detail::text as detail from platform.platform_audit "
+                + "where target_id = ? and action = 'tenant.module_off'", id)).stream().map(r -> (String) r.get("detail")).toList();
+        assertTrue(actions.stream().anyMatch(d -> d.contains("leave")), actions.toString());
+    }
+
+    @Test
+    void organizationsThatHadAttendanceBeforeTheSplitHaveLeaveForAsLong() {
+        // V19 gave every Organization Leave on the terms of its Attendance; the database says so for any that existed.
+        List<Map<String, Object>> mismatched = db.inOwner(c -> Sql.query(c,
+                "select a.tenant_id from platform.tenant_module a "
+                        + "left join platform.tenant_module l on l.tenant_id = a.tenant_id and l.module = 'leave' "
+                        + "where a.module = 'attendance' and l.tenant_id is null"));
+        assertEquals(List.of(), mismatched, "every Organization with an Attendance row has a Leave row");
     }
 
     private record Org(UUID id, String slug, String adminEmail, String adminToken, SessionCtx admin) {}
