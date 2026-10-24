@@ -20,6 +20,10 @@ The versions here are Markdown exports. The live, editable versions are the clau
 
 [Settings framework, as built (V18)](configuration/design.md): one registry of settings, values by Organization, location or pay group and from a date, platform ranges and locks, password or second-person approval for weakening changes, history and undo. Live design: [claude.ai](https://claude.ai/artifact/3wSpJUPbWwxVxE4KtNi3Ug).
 
+## Tests
+
+[Tests and coverage](testing.md): what each suite covers, coverage figures, the weakest areas and how to measure them.
+
 ## Roadmap
 
 [Design for the next five releases](roadmap/next-releases.md): green CI, sign-in security (email, password reset, MFA), income tax filings (Forms 122, 138, 130), PF ECR and ESI returns, and the installable app. Live version: [claude.ai](https://claude.ai/artifact/RkLD2g8gjmfVprQ5pxRwUq).

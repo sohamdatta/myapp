@@ -57,5 +57,7 @@ export default defineConfig({
     { name: 'tax', testMatch: /21-tax-declarations\.spec\.ts/, use: desktop },
     // Settings, likewise in an Organization of their own: --project=settings.
     { name: 'settings', testMatch: /22-settings\.spec\.ts/, use: desktop },
+    // Negative cases for tax declarations, settings and devices, in an Organization of their own.
+    { name: 'neg-tax-settings', testMatch: /23-negative-tax-settings\.spec\.ts/, use: desktop },
   ],
 });

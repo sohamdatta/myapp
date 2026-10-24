@@ -1,4 +1,6 @@
 import { expect, type Browser, type Page } from '@playwright/test';
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { randomUUID } from 'node:crypto';
 
 export const SUPER_ADMIN = {
   email: process.env.E2E_SUPERADMIN_EMAIL || 'admin@example.com',
@@ -39,7 +41,28 @@ export async function newPage(browser: Browser, width = 1280): Promise<Page> {
   });
   const page = await context.newPage();
   watch(page);
+  await recordCoverage(page);
   return page;
+}
+
+/**
+ * With E2E_COVERAGE naming a folder, records which frontend code each page ran (Chromium's V8 coverage)
+ * and writes it there when the page's session closes; `npm run coverage -- <folder>` turns it into a report.
+ */
+async function recordCoverage(page: Page) {
+  const dir = process.env.E2E_COVERAGE;
+  if (!dir) return;
+  await page.coverage.startJSCoverage({ resetOnNavigation: false });
+  const context = page.context();
+  const close = context.close.bind(context);
+  context.close = async (...args) => {
+    if (!page.isClosed()) {
+      const entries = (await page.coverage.stopJSCoverage()).filter((e) => e.url.includes('/src/'));
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(`${dir}/${randomUUID()}.json`, JSON.stringify(entries));
+    }
+    return close(...args);
+  };
 }
 
 export async function signIn(browser: Browser, email: string, password = PASSWORD, width = 1280): Promise<Page> {
