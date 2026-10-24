@@ -56,6 +56,23 @@ jobs:
         with:
           name: backend-test-reports
           path: backend/target/surefire-reports/
+      - name: Summarise coverage
+        working-directory: backend
+        run: |
+          python3 - <<'EOF' >> "$GITHUB_STEP_SUMMARY"
+          import csv
+          rows = list(csv.DictReader(open('target/site/jacoco/jacoco.csv')))
+          g = lambda k: sum(int(r[k]) for r in rows)
+          line = 100 * g('LINE_COVERED') / (g('LINE_COVERED') + g('LINE_MISSED'))
+          branch = 100 * g('BRANCH_COVERED') / (g('BRANCH_COVERED') + g('BRANCH_MISSED'))
+          print(f"### Backend test coverage\n\nLines {line:.1f}% · branches {branch:.1f}% (backend tests only; the browser tests cover the web layer)")
+          EOF
+      - name: Keep the coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-coverage
+          path: backend/target/site/jacoco/
+          retention-days: 14
       - name: Keep the application jar for the browser tests
         uses: actions/upload-artifact@v4
         with:

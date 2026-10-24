@@ -295,7 +295,159 @@ class TaxDeclarationsTest {
         assertError(404, "not_found", () -> tax.updateItem(ravi, ppf, ppf("1")));
     }
 
+    @Test
+    void employeesKeepToTheirOwnClaimsAndTheRules() throws Exception {
+        assumeTrue(reachable, "PostgreSQL is not reachable");
+        Org org = newOrg();
+        SessionCtx operator = join(org, "payroll", List.of("payroll_operator"));
+        SessionCtx hr = join(org, "hr", List.of("hr_admin", "employee"));
+        SessionCtx asha = join(org, "asha", List.of("employee"));
+        SessionCtx ravi = join(org, "ravi", List.of("employee"));
+        SessionCtx manager = join(org, "manager", List.of("manager", "employee"));
+        SessionCtx unemployed = join(org, "guest", List.of("employee"));
+        String loc = (String) settings.saveLocation(org.admin, null,
+                new LocationInput("Pune office", "Asia/Kolkata", "MH", null, null, null, null, "none", true)).get("id");
+        String shift = (String) settings.saveShift(org.admin, null, new ShiftInput("General", "09:30", "18:30", 10, 480, 240, true)).get("id");
+        settings.assign(org.admin, List.of(asha.membershipId().toString()), UUID.fromString(loc), UUID.fromString(shift), List.of(0),
+                TODAY.minusDays(400).toString());
+        UUID ashaId = UUID.fromString((String) employees.add(org.admin, person("Asha Rao", "ABCPR1234F", asha)).get("id"));
+        employees.add(org.admin, person("Ravi Nair", "ABCPN1234F", ravi));
+        Map<String, Object> setup = config.setup(operator);
+        String staff = (String) ((Map<?, ?>) ((List<?>) setup.get("structures")).get(0)).get("id");
+        pay.revise(org.admin, ashaId, new PayrollPay.ReviseInput(TODAY.minusYears(1).toString(), staff, new BigDecimal("1800000"), "Joining salary"));
+        pay.saveProfile(org.admin, ashaId, new PayrollPay.ProfileInput(true, false, true, false, "old", false, false));
+        String year = (String) tax.mine(asha, null).get("taxYear");
+        LocalDate start = LocalDate.of(Integer.parseInt(year.substring(0, 4)), 4, 1);
+        LocalDate end = start.plusYears(1).minusDays(1);
+        LocalDate from = TODAY.minusDays(1).isBefore(start) ? start : TODAY.minusDays(1);
+        LocalDate until = TODAY.plusDays(10).isAfter(end) ? end : TODAY.plusDays(10);
+
+        // Who may use declarations at all: employees only; HR's screens need salary access, not just a team.
+        assertError(409, "tax.not_employed", () -> tax.mine(unemployed, null));
+        assertError(400, "request.invalid", () -> tax.mine(asha, "2026"));
+        assertError(403, "permission.denied", () -> tax.overview(manager, year));
+        assertError(403, "permission.denied", () -> tax.employee(manager, ashaId, year));
+        assertError(404, "not_found", () -> tax.employee(hr, UUID.randomUUID(), year));
+
+        // The window itself is checked.
+        assertError(400, "request.invalid", () -> tax.saveWindow(hr, new WindowInput(year, until.toString(), from.toString(), null, null, null)));
+        assertError(400, "request.invalid", () -> tax.saveWindow(hr, new WindowInput(year, from.toString(), until.toString(), from.toString(), null, null)));
+        assertError(400, "request.invalid", () -> tax.saveWindow(hr, new WindowInput(year, from.toString(), until.toString(), until.toString(), from.toString(), null)));
+        assertError(400, "request.invalid", () -> tax.saveWindow(hr, new WindowInput(year, from.toString(), end.plusDays(1).toString(), null, null, null)));
+        assertError(400, "request.invalid", () -> tax.saveWindow(hr, new WindowInput(year, from.toString(), until.toString(), null, null, "2020-01")));
+        assertError(400, "request.invalid", () -> tax.saveWindow(hr, new WindowInput(year, from.toString(), until.toString(), null, null, "Feb")));
+        assertError(400, "request.invalid", () -> tax.saveWindow(hr, new WindowInput("2026", from.toString(), until.toString(), null, null, null)));
+        tax.saveWindow(hr, new WindowInput(year, from.toString(), until.toString(), null, null, null));
+
+        // Claims are checked: the heads, amounts, months, PANs and lengths.
+        String firstMonth = start.toString().substring(0, 7);
+        String lastMonth = end.toString().substring(0, 7);
+        assertError(400, "request.invalid", () -> tax.addItem(asha, new ItemInput("lottery", null, new BigDecimal("1000"), Map.of())));
+        assertError(400, "request.invalid", () -> tax.addItem(asha, new ItemInput("nps", null, new BigDecimal("-5"), Map.of())));
+        assertError(400, "request.invalid", () -> tax.addItem(asha, new ItemInput("nps", null, new BigDecimal("10.555"), Map.of())));
+        assertError(400, "request.invalid", () -> tax.addItem(asha, new ItemInput("nps", null, new BigDecimal("100000000"), Map.of())));
+        assertError(400, "request.invalid", () -> tax.addItem(asha, new ItemInput("sec80c", "crypto", new BigDecimal("1000"), Map.of())));
+        assertError(400, "request.invalid", () -> tax.addItem(asha, rent("April", lastMonth, null)));
+        assertError(400, "request.invalid", () -> tax.addItem(asha, rent(firstMonth, "2020-13", null)));
+        assertError(400, "request.invalid", () -> tax.addItem(asha, rent(lastMonth, firstMonth, null)));
+        assertError(400, "request.invalid", () -> tax.addItem(asha, rent(start.minusMonths(1).toString().substring(0, 7), lastMonth, null)));
+        assertError(400, "request.invalid", () -> tax.addItem(asha, rent(firstMonth, lastMonth, "NOTAPAN")));
+        assertError(400, "request.invalid", () -> tax.addItem(asha, new ItemInput("home_loan", null, new BigDecimal("150000"), Map.of())));
+        assertError(400, "request.invalid", () -> tax.addItem(asha, new ItemInput("home_loan", null, new BigDecimal("150000"),
+                Map.of("lenderName", "HDFC Ltd", "lenderPan", "12345"))));
+        assertError(400, "request.invalid", () -> tax.addItem(asha, new ItemInput("nps", null, new BigDecimal("1000"), Map.of("note", "x".repeat(201)))));
+        // Scripts and SQL are stored as text and come back as text, never run.
+        Map<String, Object> odd = tax.addItem(asha, new ItemInput("nps", null, new BigDecimal("1000"),
+                Map.of("note", "<script>alert(1)</script>'; drop table app.tax_proof; --")));
+        Map<?, ?> oddRow = (Map<?, ?>) ((List<?>) odd.get("items")).get(0);
+        assertEquals("<script>alert(1)</script>'; drop table app.tax_proof; --", ((Map<?, ?>) oddRow.get("details")).get("note"));
+        UUID oddId = UUID.fromString((String) oddRow.get("id"));
+
+        // Every head the old regime takes, with its details.
+        tax.addItem(asha, rent(firstMonth, lastMonth, "ABCPK1234F"));
+        tax.addItem(asha, new ItemInput("home_loan", null, new BigDecimal("150000"),
+                Map.of("lenderName", "HDFC Ltd", "lenderPan", "aaacH1234k", "lenderAddress", "Mumbai")));
+        tax.addItem(asha, new ItemInput("health_self", null, new BigDecimal("20000"), Map.of("insurer", "Star Health")));
+        tax.addItem(asha, new ItemInput("health_parents", null, new BigDecimal("40000"), Map.of("senior", true)));
+        tax.addItem(asha, new ItemInput("edu_loan", null, new BigDecimal("30000"), Map.of("lenderName", "SBI")));
+        Map<String, Object> all = tax.addItem(asha, ppf("100000"));
+        assertEquals(7, ((List<?>) all.get("items")).size());
+        UUID ppf = UUID.fromString((String) ((Map<?, ?>) ((List<?>) all.get("items")).get(6)).get("id"));
+
+        // A claim keeps its kind; only its owner can change or remove it.
+        assertError(400, "request.invalid", () -> tax.updateItem(asha, ppf, new ItemInput("nps", null, new BigDecimal("1000"), Map.of())));
+        assertError(404, "not_found", () -> tax.removeItem(ravi, ppf));
+        assertError(404, "not_found", () -> tax.removeItem(asha, UUID.randomUUID()));
+        Map<String, Object> removed = tax.removeItem(asha, oddId);
+        assertEquals(6, ((List<?>) removed.get("items")).size());
+
+        // Payroll counts every head once the declaration is certified, including the senior parents' limit.
+        tax.submit(asha);
+        UUID run = openRun(operator);
+        Map<?, ?> claims = (Map<?, ?>) taxOf(operator, run, ashaId).get("claims");
+        // 20,000 for herself and all 40,000 for senior parents (their limit is 50,000, not 25,000).
+        assertEquals(0, new BigDecimal("60000").compareTo((BigDecimal) claims.get("health")), String.valueOf(claims));
+        assertEquals(0, new BigDecimal("150000").compareTo((BigDecimal) claims.get("homeLoan")), String.valueOf(claims));
+
+        // Proofs: only after submitting, only files that really are PDF, JPEG or PNG, and only on your own claims.
+        tax.saveWindow(hr, new WindowInput(year, from.toString(), until.toString(), from.toString(), until.toString(), null));
+        assertError(409, "tax.not_submitted", () -> tax.addProof(ravi, ppf, "ppf.pdf", PDF));
+        assertError(415, "document.type", () -> tax.addProof(asha, ppf, "ppf.pdf", "<html><script>alert(1)</script></html>".getBytes(StandardCharsets.UTF_8)));
+        assertError(415, "document.type", () -> tax.addProof(asha, ppf, "ppf.exe", new byte[] { 0x4d, 0x5a, 0x00, 0x01 }));
+        assertError(400, "document.empty", () -> tax.addProof(asha, ppf, "ppf.pdf", new byte[0]));
+        assertError(404, "not_found", () -> tax.addProof(asha, UUID.randomUUID(), "ppf.pdf", PDF));
+        Map<String, Object> proved = tax.addProof(asha, ppf, "PPF passbook.pdf", PDF);
+        Map<?, ?> ppfRow = (Map<?, ?>) ((List<?>) proved.get("items")).get(5);
+        UUID file = UUID.fromString((String) ((Map<?, ?>) ((List<?>) ppfRow.get("proofs")).get(0)).get("id"));
+        for (int i = 1; i < 10; i++) {
+            tax.addProof(asha, ppf, "page " + i + ".pdf", PDF);
+        }
+        assertError(409, "tax.too_many", () -> tax.addProof(asha, ppf, "page 11.pdf", PDF));
+
+        // Removing a proof: not someone else's, not a file that is not there; the last one gone, the claim waits for none.
+        assertError(404, "not_found", () -> tax.removeProof(ravi, ppf, file));
+        assertError(404, "not_found", () -> tax.removeProof(asha, ppf, UUID.randomUUID()));
+        Map<String, Object> fewer = tax.removeProof(asha, ppf, file);
+        assertEquals(9, ((List<?>) ((Map<?, ?>) ((List<?>) fewer.get("items")).get(5)).get("proofs")).size());
+        assertError(404, "not_found", () -> tax.proof(asha, file));
+
+        // HR checks: never their own, never without a note when returning, never more than declared.
+        assertError(400, "request.invalid", () -> tax.returnProof(hr, ppf, " "));
+        assertError(400, "request.invalid", () -> tax.accept(hr, ppf, null));
+        assertError(404, "not_found", () -> tax.accept(hr, UUID.randomUUID(), new BigDecimal("1")));
+        tax.accept(hr, ppf, new BigDecimal("100000"));
+        assertError(409, "tax.accepted", () -> tax.removeItem(asha, ppf));
+        UUID anyProof = UUID.fromString((String) ((Map<?, ?>) ((List<?>) ((Map<?, ?>) ((List<?>) tax.mine(asha, null).get("items")).get(5))
+                .get("proofs")).get(0)).get("id"));
+        assertError(409, "tax.accepted", () -> tax.removeProof(asha, ppf, anyProof));
+
+        // HR's own declaration is checked by someone else.
+        UUID hrId = UUID.fromString((String) employees.add(org.admin, person("Hema Iyer", "ABCPI1234F", hr)).get("id"));
+        pay.saveProfile(org.admin, hrId, new PayrollPay.ProfileInput(true, false, true, false, "old", false, false));
+        UUID hrPpf = UUID.fromString((String) ((Map<?, ?>) ((List<?>) tax.addItem(hr, ppf("50000")).get("items")).get(0)).get("id"));
+        tax.submit(hr);
+        tax.addProof(hr, hrPpf, "ppf.pdf", PDF);
+        assertError(409, "tax.own", () -> tax.accept(hr, hrPpf, new BigDecimal("50000")));
+        tax.accept(org.admin, hrPpf, new BigDecimal("50000"));
+
+        // Once declarations close, nothing more is added or removed.
+        tax.saveWindow(hr, new WindowInput(year, start.toString(), start.toString(), from.toString(), until.toString(), null));
+        if (TODAY.isAfter(start)) {
+            assertError(409, "tax.declarations_closed", () -> tax.addItem(asha, ppf("1000")));
+            assertError(409, "tax.declarations_closed", () -> tax.removeItem(asha, ppf));
+        }
+    }
+
     // ── helpers ─────────────────────────────────────────────────────────
+
+    private static ItemInput rent(String from, String to, String pan) {
+        Map<String, Object> d = new LinkedHashMap<>(Map.of("from", from, "to", to, "city", "Pune",
+                "landlordName", "S. Kulkarni", "landlordAddress", "12 Law College Road, Pune"));
+        if (pan != null) {
+            d.put("landlordPan", pan);
+        }
+        return new ItemInput("rent", null, new BigDecimal("20000"), d);
+    }
 
     private static ItemInput ppf(String amount) {
         return new ItemInput("sec80c", "ppf", new BigDecimal(amount), Map.of());

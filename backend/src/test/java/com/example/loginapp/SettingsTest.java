@@ -306,6 +306,78 @@ class SettingsTest {
         assertError(403, "permission.denied", () -> settings.setPlatformValue(org.admin(), "auth.lockout.minutes", new PlatformInput(5, null, null)));
     }
 
+    @Test
+    void badRequestsAreRefusedAndNothingChanges() throws Exception {
+        assumeTrue(reachable, "PostgreSQL is not reachable");
+        Org org = newOrg();
+        String key = "auth.invitation.valid_days";
+
+        // Scopes, ids, dates and reasons are checked before anything is stored.
+        assertError(400, "request.invalid", () -> settings.change(org.admin(), key, new ChangeInput("location", UUID.randomUUID().toString(), null, 5, null, null, null)));
+        assertError(400, "request.invalid", () -> settings.change(org.admin(), key, new ChangeInput("organization", UUID.randomUUID().toString(), null, 5, null, null, null)));
+        assertError(400, "request.invalid", () -> settings.change(org.admin(), DATED.key(), new ChangeInput("location", null, TODAY.toString(), 5, null, null, null)));
+        assertError(400, "request.invalid", () -> settings.change(org.admin(), key, new ChangeInput(null, null, TODAY.toString(), 5, null, null, null)));
+        assertError(400, "request.invalid", () -> settings.change(org.admin(), key, new ChangeInput("galaxy", null, null, 5, null, null, null)));
+        assertError(400, "request.invalid", () -> settings.change(org.admin(), DATED.key(), new ChangeInput("location", "not-a-uuid", TODAY.toString(), 5, null, null, null)));
+        assertError(400, "request.invalid", () -> settings.change(org.admin(), DATED.key(), new ChangeInput(null, null, "next week", 5, null, null, null)));
+        assertError(400, "request.invalid", () -> settings.change(org.admin(), key, new ChangeInput(null, null, null, 5, null, "x".repeat(401), null)));
+        assertError(400, "setting.out_of_range", () -> settings.change(org.admin(), key, new ChangeInput(null, null, null, null, null, null, null)));
+        assertError(400, "setting.out_of_range", () -> settings.change(org.admin(), key, input("seven", null)));
+        assertError(400, "setting.out_of_range", () -> settings.change(org.admin(), key, input(5.5, null)));
+        // Text that looks like code is refused as a value, and the error does not echo it back as markup.
+        ApiException script = assertThrows(ApiException.class, () -> settings.change(org.admin(), key, input("<script>alert(1)</script>", null)));
+        assertEquals("setting.out_of_range", script.code());
+        assertFalse(script.getMessage().contains("<script>"), script.getMessage());
+        assertEquals("default", setting(org.admin(), "security", key).get("source"));
+        assertTrue(settings.changes(org.admin(), key).isEmpty());
+
+        // A platform setting cannot be changed from an Organization; unknown changes are not found.
+        assertThrows(ApiException.class, () -> settings.change(org.admin(), "auth.lockout.minutes", input(30, null)));
+        assertError(404, "not_found", () -> settings.approve(org.admin(), UUID.randomUUID(), null));
+        assertError(404, "not_found", () -> settings.undo(org.admin(), UUID.randomUUID(), null));
+
+        // A support session may look but never change anything.
+        Map<String, Object> grant = platform.requestGrant(superAdmin, org.id(), "write", "Ticket 12: check the invitation length");
+        SessionCtx support = auth.resolve(platform.startSupportSession(superAdmin, UUID.fromString((String) grant.get("id"))));
+        assertEquals(false, setting(support, "security", key).get("mayChange"));
+        assertError(403, "permission.denied", () -> settings.change(support, key, input(3, null)));
+
+        // Without the Attendance module, its settings are hidden and cannot be changed.
+        platform.setModule(superAdmin, org.id(), "attendance", false, null);
+        try {
+            // A fresh sign-in sees the Organization's modules as they are now.
+            SessionCtx admin = auth.resolve(auth.enterOrganization(auth.resolve(auth.login("admin@" + org.slug() + ".test", PASSWORD)), org.id()));
+            assertFalse(((List<?>) settings.list(admin, null).get("groups")).stream().anyMatch(g -> "attendance".equals(((Map<?, ?>) g).get("key"))));
+            assertThrows(ApiException.class, () -> settings.change(admin, "leave.apply.back_days", input(10, null)));
+        } finally {
+            platform.setModule(superAdmin, org.id(), "attendance", true, null);
+        }
+
+        // Undo refuses once the value has moved on; a rejected change leaves the value alone.
+        UUID first = UUID.fromString((String) ((Map<?, ?>) settings.change(org.admin(), key, input(5, null)).get("change")).get("id"));
+        settings.change(org.admin(), key, input(4, null));
+        assertError(409, "setting.stale", () -> settings.undo(org.admin(), first, null));
+        SessionCtx other = join(org, "admin2", List.of("owner"));
+        UUID asked = UUID.fromString((String) ((Map<?, ?>) settings.change(org.admin(), SECOND.key(), input(12, null)).get("change")).get("id"));
+        Map<String, Object> rejected = settings.reject(other, asked, new DecisionInput("Not this month", null));
+        assertEquals(5, rejected.get("value"));
+        assertEquals("rejected", settings.changes(org.admin(), SECOND.key()).get(0).get("status"));
+
+        // The platform console: only the Super Admin; values and bounds checked.
+        List<Map<String, Object>> all = settings.platformList(superAdmin);
+        assertTrue(all.stream().anyMatch(s -> "auth.lockout.minutes".equals(s.get("key"))));
+        assertThrows(ApiException.class, () -> settings.platformList(org.admin()));
+        assertError(400, "setting.out_of_range", () -> settings.setPlatformValue(superAdmin, "auth.lockout.minutes", new PlatformInput(null, null, null)));
+        assertError(400, "setting.out_of_range", () -> settings.setPlatformValue(superAdmin, "auth.lockout.minutes", new PlatformInput(500, null, null)));
+        assertError(400, "request.invalid", () -> settings.setBound(superAdmin, "auth.lockout.minutes", new BoundInput(5, 10, null, false, null, null)));
+        assertError(400, "request.invalid", () -> settings.setBound(superAdmin, key, new BoundInput(0, 50, null, false, null, null)));
+        assertError(400, "request.invalid", () -> settings.setBound(superAdmin, key, new BoundInput(null, null, null, true, null, null)));
+        settings.setBound(superAdmin, key, new BoundInput(2, 20, null, false, null, "Tighter range"));
+        Map<?, ?> bound = (Map<?, ?>) settings.platformList(superAdmin).stream().filter(s -> key.equals(s.get("key"))).findFirst().orElseThrow().get("bound");
+        assertEquals(20, bound.get("max"));
+        settings.setBound(superAdmin, key, new BoundInput(null, null, null, false, null, "Back to normal"));
+    }
+
     // ── helpers ─────────────────────────────────────────────────────────
 
     private static ChangeInput input(Object value, String password) {

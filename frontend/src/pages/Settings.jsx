@@ -15,7 +15,7 @@ const STATUS = {
 }
 
 /** A value as people read it: "On", "7 days", "Reset to default". */
-export function shown(setting, value) {
+function shown(setting, value) {
   if (value === null || value === undefined) return 'Default'
   if (setting.type === 'boolean') return value ? 'On' : 'Off'
   return setting.unit ? `${value} ${setting.unit}` : String(value)
@@ -199,7 +199,10 @@ function ChangeForm({ setting: s, start, onCancel, onSaved }) {
         password: askPassword ? f.password : null,
       }
       const out = await orgSettings.change(s.key, body)
-      toast(out.change.status === 'pending' ? 'Sent for approval; nothing changes until someone else approves' : `${s.label}: ${shown(s, out.value)}`)
+      const place = start.exception ? s.scopeChoices.find((c) => c.id === body.scopeId)?.name : null
+      // For an exception, say what that place now has, not the Organization's value the response carries.
+      const now = place ? `${place}: ${reset ? 'same as the Organization' : shown(s, body.value)}` : `${s.label}: ${shown(s, out.value)}`
+      toast(out.change.status === 'pending' ? 'Sent for approval; nothing changes until someone else approves' : now)
       onSaved()
     } catch (err) {
       if (err.code === 'setting.password_required') {

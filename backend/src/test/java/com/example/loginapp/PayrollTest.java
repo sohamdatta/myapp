@@ -250,6 +250,131 @@ class PayrollTest {
     // ── a whole month against the database ──────────────────────────────
 
     @Test
+    void setupAndRunCorrectionsAreCheckedAndRecorded() throws Exception {
+        assumeTrue(reachable, "PostgreSQL is not reachable");
+        Org org = newOrg();
+        SessionCtx operator = join(org, "payroll", List.of("payroll_operator"));
+        SessionCtx hr = join(org, "hr", List.of("hr_admin", "employee"));
+        SessionCtx asha = join(org, "asha", List.of("employee"));
+        SessionCtx ravi = join(org, "ravi", List.of("employee"));
+        String loc = (String) settings.saveLocation(org.admin, null,
+                new LocationInput("Bengaluru office", "Asia/Kolkata", "KA", null, null, null, null, "none", true)).get("id");
+        String shift = (String) settings.saveShift(org.admin, null, new ShiftInput("General", "09:30", "18:30", 10, 480, 240, true)).get("id");
+        settings.assign(org.admin, List.of(asha.membershipId().toString(), hr.membershipId().toString()), UUID.fromString(loc),
+                UUID.fromString(shift), List.of(0), TODAY.minusDays(120).toString());
+        UUID ashaId = UUID.fromString((String) employees.add(org.admin, person("Asha Rao", "ABCPR1234F", asha)).get("id"));
+        UUID hrId = UUID.fromString((String) employees.add(org.admin, person("Harish Rao", "ABCPH1234F", hr)).get("id"));
+        Map<String, Object> setup = config.setup(operator);
+        String staff = (String) ((Map<?, ?>) ((List<?>) setup.get("structures")).get(0)).get("id");
+
+        // Registrations: checked, one per statute and state, removable; employees cannot touch them.
+        assertError(400, "request.invalid", () -> config.addRegistration(operator, new PayrollConfig.RegistrationInput("gst", null, "29ABCDE1234F1Z5")));
+        assertError(400, "request.invalid", () -> config.addRegistration(operator, new PayrollConfig.RegistrationInput("pt", "XX", "PT-1")));
+        assertError(400, "request.invalid", () -> config.addRegistration(operator, new PayrollConfig.RegistrationInput("pf", null, "1")));
+        assertError(403, "permission.denied", () -> config.addRegistration(asha, new PayrollConfig.RegistrationInput("pf", null, "KABLR0012345000")));
+        UUID pf = UUID.fromString((String) config.addRegistration(operator, new PayrollConfig.RegistrationInput("pf", null, "KABLR0012345000")).get("id"));
+        assertError(409, "request.refused", () -> config.addRegistration(operator, new PayrollConfig.RegistrationInput("pf", null, "KABLR0099999000")));
+        assertError(403, "permission.denied", () -> config.removeRegistration(asha, pf));
+        config.removeRegistration(operator, pf);
+        assertError(404, "not_found", () -> config.removeRegistration(operator, pf));
+        config.addRegistration(operator, new PayrollConfig.RegistrationInput("pf", null, "KABLR0099999000"));
+
+        // Value tables: names, keys and numbers are checked; saving again replaces the rows.
+        List<Map<String, Object>> rows = List.of(Map.of("key", "Bengaluru", "value", "2200"), Map.of("key", "Pune", "value", "1800"));
+        assertError(400, "request.invalid", () -> config.saveTable(operator, null, new PayrollConfig.TableInput("Meal Card!", "City", rows)));
+        assertError(400, "request.invalid", () -> config.saveTable(operator, null, new PayrollConfig.TableInput("meal_card", "City",
+                List.of(Map.of("key", "Pune", "value", "1"), Map.of("key", "pune", "value", "2")))));
+        assertError(400, "request.invalid", () -> config.saveTable(operator, null, new PayrollConfig.TableInput("meal_card", "City",
+                List.of(Map.of("key", "Pune", "value", "lots")))));
+        assertError(400, "request.invalid", () -> config.saveTable(operator, null, new PayrollConfig.TableInput("meal_card", "City",
+                List.of(Map.of("key", " ", "value", "1")))));
+        UUID table = UUID.fromString((String) config.saveTable(operator, null, new PayrollConfig.TableInput("meal_card", "City", rows)).get("id"));
+        assertError(409, "request.refused", () -> config.saveTable(operator, null, new PayrollConfig.TableInput("meal_card", "City", rows)));
+        config.saveTable(operator, table, new PayrollConfig.TableInput("meal_card", null, List.of(Map.of("key", "Chennai", "value", "2000"))));
+        List<?> tables = (List<?>) config.setup(operator).get("tables");
+        Map<?, ?> meal = (Map<?, ?>) tables.stream().filter(t -> "meal_card".equals(((Map<?, ?>) t).get("name"))).findFirst().orElseThrow();
+        assertEquals("City", meal.get("keyLabel"));
+        assertTrue(String.valueOf(meal).contains("Chennai") && !String.valueOf(meal).contains("Pune"), String.valueOf(meal));
+
+        // Pay groups: named, valid days, renamed; members listed with whoever is in no group.
+        assertError(400, "request.invalid", () -> config.saveGroup(operator, null, new PayrollConfig.GroupInput(" ", 25, 30, null)));
+        assertError(400, "request.invalid", () -> config.saveGroup(operator, null, new PayrollConfig.GroupInput("Weekly", 29, 30, null)));
+        assertError(400, "request.invalid", () -> config.saveGroup(operator, null, new PayrollConfig.GroupInput("Weekly", 25, 32, null)));
+        assertError(403, "permission.denied", () -> config.saveGroup(hr, null, new PayrollConfig.GroupInput("Mine", 25, 30, null)));
+        UUID interns = UUID.fromString((String) config.saveGroup(operator, null, new PayrollConfig.GroupInput("Intern", 20, 28, staff)).get("id"));
+        config.saveGroup(operator, interns, new PayrollConfig.GroupInput("Interns", 20, 28, staff));
+        assertError(404, "not_found", () -> config.saveGroup(operator, UUID.randomUUID(), new PayrollConfig.GroupInput("Ghost", 20, 28, null)));
+        Map<String, Object> before = config.members(operator, interns);
+        assertTrue(((List<?>) before.get("members")).isEmpty());
+        assertError(404, "not_found", () -> config.addMembers(operator, UUID.randomUUID(), List.of(ashaId.toString()), null));
+        assertError(404, "not_found", () -> config.addMembers(operator, interns, List.of(UUID.randomUUID().toString()), null));
+        config.addMembers(operator, interns, List.of(ashaId.toString()), TODAY.minusYears(5).toString());
+        List<?> members = (List<?>) config.members(operator, interns).get("members");
+        assertEquals(1, members.size());
+        assertEquals("Asha Rao", ((Map<?, ?>) members.get(0)).get("name"));
+        assertError(403, "permission.denied", () -> config.members(asha, interns));
+
+        // A component's history lists each version, newest first.
+        Map<?, ?> bonus = (Map<?, ?>) ((List<?>) setup.get("components")).stream()
+                .filter(x -> "BONUS".equals(((Map<?, ?>) x).get("code"))).findFirst().orElseThrow();
+        List<Map<String, Object>> history = config.componentHistory(operator, UUID.fromString((String) bonus.get("id")));
+        assertFalse(history.isEmpty());
+        assertError(403, "permission.denied", () -> config.componentHistory(asha, UUID.fromString((String) bonus.get("id"))));
+
+        // Overrides: a reason, a real component, never statutory, never your own; removed once only.
+        pay.revise(org.admin, ashaId, new PayrollPay.ReviseInput(TODAY.withDayOfMonth(1).toString(), staff, new BigDecimal("900000"), "Joining salary"));
+        pay.revise(org.admin, hrId, new PayrollPay.ReviseInput(TODAY.withDayOfMonth(1).toString(), staff, new BigDecimal("1200000"), "Joining salary"));
+        Map<?, ?> flexible = (Map<?, ?>) ((List<?>) setup.get("components")).stream()
+                .filter(x -> !Boolean.TRUE.equals(((Map<?, ?>) x).get("statutory")) && "earning".equals(((Map<?, ?>) x).get("kind"))
+                        && !"BASIC".equals(((Map<?, ?>) x).get("code")))
+                .findFirst().orElseThrow();
+        String code = (String) flexible.get("code");
+        String month = TODAY.withDayOfMonth(1).plusMonths(1).toString();
+        assertError(400, "request.invalid", () -> pay.addOverride(hr, ashaId, new PayrollPay.OverrideInput(code, new BigDecimal("1000"), month, null, "")));
+        assertError(400, "request.invalid", () -> pay.addOverride(hr, ashaId, new PayrollPay.OverrideInput(code, new BigDecimal("-1"), month, null, "Fix")));
+        assertError(400, "request.invalid", () -> pay.addOverride(hr, ashaId, new PayrollPay.OverrideInput("PF_EE", new BigDecimal("0"), month, null, "No PF")));
+        assertError(400, "request.invalid", () -> pay.addOverride(hr, ashaId, new PayrollPay.OverrideInput(code, new BigDecimal("1000"), month,
+                TODAY.withDayOfMonth(1).toString(), "Backwards")));
+        assertError(404, "not_found", () -> pay.addOverride(hr, hrId, new PayrollPay.OverrideInput(code, new BigDecimal("1000"), month, null, "My own")));
+        UUID override = UUID.fromString((String) pay.addOverride(hr, ashaId, new PayrollPay.OverrideInput(code, new BigDecimal("1000"), month, null,
+                "Agreed in offer")).get("id"));
+        assertError(404, "not_found", () -> pay.removeOverride(hr, hrId, override));
+        pay.removeOverride(hr, ashaId, override);
+        assertError(404, "not_found", () -> pay.removeOverride(hr, ashaId, override));
+
+        // Run inputs: only for members, only input components, only while the run is a draft; removed once only.
+        String group = (String) ((Map<?, ?>) ((List<?>) runs.list(operator).get("groups")).stream()
+                .filter(g -> !"Interns".equals(((Map<?, ?>) g).get("name"))).findFirst().orElseThrow()).get("id");
+        UUID run = UUID.fromString((String) runs.open(operator, UUID.fromString(group), TODAY.withDayOfMonth(1).toString()).get("id"));
+        assertError(400, "request.invalid", () -> runs.addInput(operator, run, new PayrollRuns.InputInput(hrId.toString(), "BONUS", BigDecimal.ZERO, null)));
+        assertError(400, "request.invalid", () -> runs.addInput(operator, run, new PayrollRuns.InputInput(hrId.toString(), "BASIC", BigDecimal.TEN, null)));
+        assertError(400, "request.invalid", () -> runs.addInput(operator, run, new PayrollRuns.InputInput(ashaId.toString(), "BONUS", BigDecimal.TEN, null)));
+        assertError(400, "request.invalid", () -> runs.addInput(operator, run, new PayrollRuns.InputInput(hrId.toString(), "LOP_DAYS", new BigDecimal("1.3"), null)));
+        assertError(400, "request.invalid", () -> runs.addInput(operator, run, new PayrollRuns.InputInput(hrId.toString(), "LOP_DAYS", new BigDecimal("40"), null)));
+        UUID input = UUID.fromString((String) runs.addInput(operator, run, new PayrollRuns.InputInput(hrId.toString(), "BONUS", new BigDecimal("5000"),
+                "Spot award")).get("id"));
+        assertError(403, "permission.denied", () -> runs.removeInput(asha, run, input));
+        runs.removeInput(operator, run, input);
+        assertError(404, "not_found", () -> runs.removeInput(operator, run, input));
+
+        // Holding pay needs a reason; releasing the hold clears it on the payslip.
+        assertError(400, "request.invalid", () -> runs.hold(operator, run, hrId, " ", true));
+        runs.hold(operator, run, hrId, "Bank details being checked", true);
+        runs.freeze(operator, run);
+        runs.calculate(operator, run);
+        assertError(409, "payroll.not_draft", () -> runs.addInput(operator, run, new PayrollRuns.InputInput(hrId.toString(), "BONUS", BigDecimal.TEN, null)));
+        assertError(409, "payroll.not_draft", () -> runs.removeInput(operator, run, UUID.randomUUID()));
+        assertEquals(true, runs.employee(operator, run, hrId).get("held"));
+        runs.hold(operator, run, hrId, null, false);
+        assertEquals(false, runs.employee(operator, run, hrId).get("held"));
+
+        // One payslip as a PDF: for payroll, never for an employee or for someone not in the run.
+        assertEquals("%PDF", new String(runs.payslipPdf(operator, run, hrId).bytes(), 0, 4, StandardCharsets.ISO_8859_1));
+        assertError(403, "permission.denied", () -> runs.payslipPdf(ravi, run, hrId));
+        assertError(404, "not_found", () -> runs.payslipPdf(operator, run, UUID.randomUUID()));
+    }
+
+    @Test
     void aMonthIsRunApprovedByASecondPersonPaidAndReleased() throws Exception {
         assumeTrue(reachable, "PostgreSQL is not reachable");
         Org org = newOrg();

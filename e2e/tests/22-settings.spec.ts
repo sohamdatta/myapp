@@ -6,9 +6,9 @@ import { SUPER_ADMIN, PASSWORD, newPage, signIn, nav, tab, acceptInvite, api, ex
 // undoes the second; an employee has no Settings at all. The resolver, second-person approval, dated
 // values and the platform's bounds are covered by SettingsTest against the database.
 
-const ORG = 'Soylent Foods';
-const OWNER = 'owner@soylent-foods.test';
-const PETER = 'peter@soylent-foods.test';
+const ORG = 'Soylent Works';
+const OWNER = 'owner@soylent-works.test';
+const PETER = 'peter@soylent-works.test';
 const KEY = 'auth.invitation.valid_days';
 
 function row(page: Page) {
@@ -65,7 +65,7 @@ test.describe.serial('settings', () => {
     await owner.getByRole('button', { name: 'Save', exact: true }).click();
     await expect(owner.getByTestId(`value-${KEY}`)).toHaveText('3 days');
     await expect(owner.getByTestId(`source-${KEY}`)).toHaveText('Set for the Organization');
-    const invited = await api(owner, 'POST', '/org/invitations', { email: 'guest@soylent-foods.test', roles: ['employee'] });
+    const invited = await api(owner, 'POST', '/org/invitations', { email: 'guest@soylent-works.test', roles: ['employee'] });
     const days = (Date.parse(invited.body.expiresAt) - Date.now()) / 86_400_000;
     expect(days).toBeGreaterThan(2.9);
     expect(days).toBeLessThan(3.1);
@@ -101,11 +101,52 @@ test.describe.serial('settings', () => {
     await expect(owner.getByTestId(`value-${KEY}`)).toHaveText('3 days');
   });
 
+  test('undoing the safer change asks for the password, because going back is weaker', async () => {
+    await tab(owner, 'History');
+    const history = owner.getByTestId('settings-history');
+    await history.locator('tbody tr').last().getByRole('button', { name: 'Undo' }).click();
+    await owner.getByRole('button', { name: 'Undo', exact: true }).last().click();
+    await expect(owner.locator('#undo-password')).toBeVisible();
+    await owner.fill('#undo-password', PASSWORD);
+    await owner.getByRole('button', { name: 'Confirm and undo' }).click();
+    await expect(history.locator('tbody tr')).toHaveCount(4);
+    await tab(owner, 'Security');
+    await expect(owner.getByTestId(`value-${KEY}`)).toHaveText('7 days');
+    await expect(owner.getByTestId(`source-${KEY}`)).toHaveText('Default');
+  });
+
+  test('one location can have its own window for attendance requests, and lose it again', async () => {
+    const pune = await api(owner, 'POST', '/org/attendance/locations', { name: 'Pune office', timezone: 'Asia/Kolkata', stateCode: 'MH', punchCheck: 'none', active: true });
+    expect(pune.status, JSON.stringify(pune.body)).toBe(200);
+    await owner.reload();
+    await nav(owner, 'Settings');
+    await tab(owner, 'Attendance and leave');
+    const back = owner.locator('[data-setting="attendance.request.back_days"]');
+    await expect(back).toContainText('31 days');
+    await back.getByRole('button', { name: 'Add an exception…' }).click();
+    await owner.selectOption('#set-attendance-request-back_days-scope', { label: 'Pune office' });
+    await owner.fill('#set-attendance-request-back_days-value', '7');
+    await owner.fill('#set-attendance-request-back_days-reason', 'Pune closes attendance weekly');
+    await owner.getByRole('button', { name: 'Save', exact: true }).click();
+    await expect(owner.getByText('Pune office: 7 days')).toBeVisible();
+    const exception = back.locator('tr[data-exception="Pune office"]');
+    await expect(exception).toContainText('7 days');
+    await expect(owner.getByTestId('value-attendance.request.back_days')).toHaveText('31 days');
+    await shot(owner, 'settings-05-location', true);
+    const explained = await api(owner, 'GET', `/org/settings/attendance.request.back_days?scope=location&scopeId=${pune.body.id}`);
+    expect(explained.body.value).toBe(7);
+
+    await exception.getByRole('button', { name: 'Change' }).click();
+    await owner.getByRole('button', { name: 'Remove exception' }).click();
+    await expect(back.locator('tr[data-exception="Pune office"]')).toHaveCount(0);
+    expect((await api(owner, 'GET', `/org/settings/attendance.request.back_days?scope=location&scopeId=${pune.body.id}`)).body.value).toBe(31);
+  });
+
   test('on a phone the settings fit the screen', async ({ browser }) => {
     const phone = await signIn(browser, OWNER, PASSWORD, 390);
     await nav(phone, 'Settings');
     await tab(phone, 'Security');
-    await expect(phone.getByTestId(`value-${KEY}`)).toHaveText('3 days');
+    await expect(phone.getByTestId(`value-${KEY}`)).toHaveText('7 days');
     await expectNoSidewaysScroll(phone);
     await shot(phone, 'settings-04-phone', true);
     await phone.context().close();
