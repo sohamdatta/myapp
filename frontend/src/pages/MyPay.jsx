@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { payroll } from '../api.js'
 import { formatDay, useAction, useLoad } from '../hooks.js'
-import { Empty, ErrorNote } from '../ui.jsx'
+import { Empty, ErrorNote, Tabs } from '../ui.jsx'
+import MyTax from './MyTax.jsx'
 import PayslipView from './PayslipView.jsx'
 import { rupees } from './payrollText.js'
 
@@ -41,8 +42,26 @@ function Slip({ id, onBack }) {
   )
 }
 
-/** My pay: the payslips released to me, newest first, each with why it changed from the month before. */
+/** My pay: payslips, and the income tax declaration with its proofs. */
 export default function MyPay() {
+  const [tab, setTab] = useState('payslips')
+  return (
+    <>
+      <Tabs
+        tabs={[
+          { id: 'payslips', label: 'Payslips' },
+          { id: 'tax', label: 'Tax declaration' },
+        ]}
+        current={tab}
+        onChange={setTab}
+      />
+      {tab === 'payslips' ? <Payslips /> : <MyTax />}
+    </>
+  )
+}
+
+/** The payslips released to me, newest first, each with why it changed from the month before. */
+function Payslips() {
   const mine = useLoad(payroll.myPay)
   const [open, setOpen] = useState(null)
   if (open) return <Slip id={open} onBack={() => setOpen(null)} />
@@ -54,7 +73,7 @@ export default function MyPay() {
       <div className="section-head">
         <div>
           <h2>My pay</h2>
-          {m.profile && <p className="muted">Income tax under the {m.profile.taxRegime === 'old' ? 'old' : 'new'} regime. To change it, ask HR.</p>}
+          {m.profile && <p className="muted">Income tax under the {m.profile.taxRegime === 'old' ? 'old' : 'new'} regime. To change it, ask HR. Declare your claims under Tax declaration.</p>}
         </div>
       </div>
       {m.payslips.length === 0 ? (

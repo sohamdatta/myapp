@@ -32,6 +32,7 @@ const ORGANIZATION = {
   leave: page(() => import('./pages/Leave.jsx'), ({ me }) => ({ me })),
   exits: page(() => import('./pages/Exits.jsx'), ({ me, onNavigate }) => ({ me, onNavigate })),
   payroll: page(() => import('./pages/Payroll.jsx'), ({ me }) => ({ me })),
+  'tax-declarations': page(() => import('./pages/TaxReview.jsx'), ({ me }) => ({ me })),
   users: page(named(() => import('./pages/Organization.jsx'), 'UserManagement'), ({ me }) => ({ me })),
   audit: page(named(() => import('./pages/Organization.jsx'), 'AuditTab')),
 }

@@ -62,6 +62,11 @@ export function navFor(me) {
         seesOthersLeave && { id: 'leave', label: 'Leave' },
         Boolean(scopes['exit.read']) && scopes['exit.read'] !== 'self' && { id: 'exits', label: 'Exits' },
         hasPayroll && (me.permissions.includes('payroll.read') || me.permissions.includes('payroll.prepare')) && { id: 'payroll', label: 'Payroll' },
+        // Declarations are checked by whoever handles salaries for everyone: HR Admins and the payroll roles.
+        hasPayroll && me.kind === 'tenant' && [scopes['compensation.read'], scopes['payroll.read']].some((s) => s === 'tenant' || s === 'assigned') && {
+          id: 'tax-declarations',
+          label: 'Tax declarations',
+        },
         me.permissions.includes('user.read') && { id: 'users', label: 'User management' },
         me.permissions.includes('audit.read') && { id: 'audit', label: 'Audit log' },
       ].filter(Boolean),

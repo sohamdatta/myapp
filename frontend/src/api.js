@@ -566,6 +566,23 @@ const payrollCalls = {
   myPayslipPdf: (id, name) => downloadFile(`/org/me/pay/${id}/pdf`, name),
 }
 
+/** Income tax declarations (Form 124) and their proofs: the employee's own, and HR's checks. */
+export const tax = {
+  mine: (year) => get(`/org/me/tax${query({ year })}`),
+  addItem: (body) => post('/org/me/tax/items', body),
+  updateItem: (id, body) => put(`/org/me/tax/items/${id}`, body),
+  removeItem: (id) => del(`/org/me/tax/items/${id}`),
+  submit: () => post('/org/me/tax/submit'),
+  addProof: (id, file, onProgress) => uploadFile(`/org/me/tax/items/${id}/proofs${query({ name: file.name })}`, file, onProgress),
+  removeProof: (id, documentId) => del(`/org/me/tax/items/${id}/proofs/${documentId}`),
+  proof: (documentId) => fetchFile(`/org/tax/proofs/${documentId}`),
+  overview: (year) => get(`/org/payroll/tax${query({ year })}`),
+  saveWindow: (body) => put('/org/payroll/tax/window', body),
+  employee: (id, year) => get(`/org/payroll/tax/employees/${id}${query({ year })}`),
+  accept: (id, amount) => post(`/org/payroll/tax/items/${id}/accept`, { amount }),
+  returnProof: (id, note) => post(`/org/payroll/tax/items/${id}/return`, { note }),
+}
+
 /** The payroll calls; one that answers with no content resolves to true, so callers can test for success. */
 export const payroll = Object.fromEntries(
   Object.entries(payrollCalls).map(([name, call]) => [name, (...args) => Promise.resolve(call(...args)).then((r) => r ?? true)]),

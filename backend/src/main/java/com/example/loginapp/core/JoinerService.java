@@ -1091,6 +1091,10 @@ public final class JoinerService {
                     "delete from app.issued_letter where person_id = ?",
                     "delete from app.policy_acknowledgement where person_id = ?",
                     "update app.person set photo_document_id = null where id = ?",
+                    "delete from app.tax_proof where document_id in (select id from app.document where person_id = ?)",
+                    "delete from app.tax_declaration_item where declaration_id in (select d.id from app.tax_declaration d "
+                            + "join app.employment e on e.id = d.employment_id where e.person_id = ?)",
+                    "delete from app.tax_declaration where employment_id in (select id from app.employment where person_id = ?)",
                     "delete from app.document_content where document_id in (select id from app.document where person_id = ?)",
                     "delete from app.document where person_id = ?",
                     "delete from app.onboarding where person_id = ?",

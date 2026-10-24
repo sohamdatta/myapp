@@ -2988,3 +2988,47 @@ textarea.code {
     color: #2b0906;
   }
 }
+
+/* ── income tax declarations ───────────────────────────────────────── */
+
+.claim-proof {
+  margin: 8px 0 4px;
+}
+
+.claim-form .grid > div {
+  margin-bottom: 12px;
+}
+
+@media (min-width: 640px) {
+  .claim-form .span-2 {
+    grid-column: span 2;
+  }
+}
+
+.check-field {
+  display: flex;
+  align-items: flex-end;
+}
+
+.check-field label {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  font-weight: 400;
+}
+
+.claim-amount {
+  flex-shrink: 0;
+  text-align: right;
+}
+
+/* A section's Add stays beside its title and hint, however long the hint. */
+.panel[data-head] > .section-head {
+  flex-wrap: nowrap;
+  align-items: flex-start;
+}
+
+.panel[data-head] > .section-head > div {
+  flex: 1;
+  min-width: 0;
+}

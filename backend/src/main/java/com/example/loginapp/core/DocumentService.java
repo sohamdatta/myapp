@@ -198,7 +198,8 @@ public final class DocumentService {
         out.put("types", types);
         out.put("others", Sql.query(c, DOC_SELECT + " where d.person_id = ? and d.document_type_id is null "
                 + "and not exists (select 1 from app.onboarding_task k where k.attachment_id = d.id) "
-                + "and not exists (select 1 from app.issued_letter il where il.document_id = d.id) order by d.created_at desc", l.personId()));
+                + "and not exists (select 1 from app.issued_letter il where il.document_id = d.id) "
+                + "and not exists (select 1 from app.tax_proof tp where tp.document_id = d.id) order by d.created_at desc", l.personId()));
         Map<String, Object> s = l.sections().get("documents");
         out.put("status", s == null ? null : s.get("status"));
         out.put("joiningDate", l.joiningDate().toString());
@@ -321,6 +322,11 @@ public final class DocumentService {
         Sql.update(c, "insert into app.document_content (document_id, tenant_id, content_enc) values (?, ?, ?)", id, tenantId,
                 crypto.encrypt(tenantId, file.bytes()));
         return id;
+    }
+
+    /** Reads a document's bytes, recording the view; for services that have checked the caller may see it. */
+    Content readFile(Connection c, SessionCtx ctx, UUID documentId) throws SQLException {
+        return read(c, ctx, documentId);
     }
 
     private Content read(Connection c, SessionCtx ctx, UUID documentId) throws SQLException {

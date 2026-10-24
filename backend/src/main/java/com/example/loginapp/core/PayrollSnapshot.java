@@ -192,6 +192,8 @@ final class PayrollSnapshot {
         Map<String, Object> previous = Sql.one(c, "select ps.net from app.payslip ps join app.payroll_run r on r.id = ps.run_id "
                 + "where ps.employment_id = ? and r.state in ('approved','paid','released') and r.period < ? order by r.period desc limit 1", employmentId, period);
         out.put("previous", previous == null ? Map.of() : previous);
+        // Income tax claims the employee declared for this tax year (Form 124): declared or verified amounts.
+        out.put("declarations", TaxDeclarations.forPayroll(c, employmentId, period));
         return out;
     }
 

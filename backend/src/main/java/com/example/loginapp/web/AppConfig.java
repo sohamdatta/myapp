@@ -42,6 +42,7 @@ import com.example.loginapp.core.PayrollPay;
 import com.example.loginapp.core.PayrollRuns;
 import com.example.loginapp.core.PlatformService;
 import com.example.loginapp.core.PolicyService;
+import com.example.loginapp.core.TaxDeclarations;
 import com.example.loginapp.core.UserService;
 import com.zaxxer.hikari.HikariDataSource;
 
@@ -188,6 +189,11 @@ public class AppConfig {
     @Bean
     public PayrollRuns payrollRuns(Db db, Crypto crypto) {
         return new PayrollRuns(db, crypto);
+    }
+
+    @Bean
+    public TaxDeclarations taxDeclarations(Db db, DocumentService documents) {
+        return new TaxDeclarations(db, documents);
     }
 
     @Bean

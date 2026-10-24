@@ -14,7 +14,7 @@ The versions here are Markdown exports. The live, editable versions are the clau
 | Leave and work from home | Built (commit `ebbeff0`) | [Features summary](notes/leave-and-wfh-features.md) · [Implementation design](leave-and-wfh/design.md) · [Schema (V4)](leave-and-wfh/schema.md) | [Design](https://claude.ai/code/artifact/669d7b0f-b526-4966-8bed-cf1e6d6b28b2) |
 | Employee onboarding | Designed, not built | [Implementation design](onboarding/design.md) · [Schema](onboarding/schema.md) · [Implementation plan](onboarding/implementation-plan.md) · [Tested SQL](onboarding/V5__employee_onboarding.sql) | [Design](https://claude.ai/code/artifact/a9cccecf-9740-4693-ba98-db3990c8f14c) · [Plan](https://claude.ai/code/artifact/ae6f7b7c-452b-48f9-9196-c73995da3613) |
 | Employee exit | Built (stages E1 to E6) | [Design, as built](exit/design.md) | [Design](https://claude.ai/code/artifact/7afa54a6-7167-4814-b837-4e05cd6dc72a) |
-| Payroll | Release 1 built: setup, pay, monthly runs, PF, ESI, PT and LWF for Goa, Karnataka and Maharashtra, income tax | [Design, as built](payroll/design.md) · [Feature checklist](notes/payroll-feature-checklist.md) · [Implementation plan](notes/payroll-module-implementation-plan.md) | [Design](https://claude.ai/code/artifact/0af98c52-4583-4973-ac9d-be1a41213738) |
+| Payroll | Release 1 built: setup, pay, monthly runs, PF, ESI, PT and LWF for Goa, Karnataka and Maharashtra, income tax | [Design, as built](payroll/design.md) · [Tax declarations and proofs (V17)](payroll/tax-declarations.md) · [Feature checklist](notes/payroll-feature-checklist.md) · [Implementation plan](notes/payroll-module-implementation-plan.md) | [Design](https://claude.ai/code/artifact/0af98c52-4583-4973-ac9d-be1a41213738) |
 
 ## Notes on reading them
 

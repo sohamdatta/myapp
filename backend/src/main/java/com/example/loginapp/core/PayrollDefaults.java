@@ -39,6 +39,10 @@ final class PayrollDefaults {
                     "Hello {{person.first_name}}, your payslip for {{period}} is ready in My pay."},
             {"payroll_sent_back", "Payroll sent back", "{{period}} for {{group}} was sent back: {{note}}"},
             {"payroll_ready", "Payroll ready to approve", "{{period}} for {{group}} is calculated and waits for approval."},
+            {"tax_proof_returned", "A tax proof needs another look",
+                    "Hello {{person.first_name}}, HR returned your proof for {{claim}}: {{note}}. Open My pay → Tax declaration to send another."},
+            {"tax_window_open", "Tax declarations for {{tax_year}} are open",
+                    "Hello {{person.first_name}}, declare what you expect to claim for {{tax_year}} by {{until}}, under My pay → Tax declaration."},
     };
 
     /** The date the starting configuration is valid from: early enough for any month payroll is run for. */

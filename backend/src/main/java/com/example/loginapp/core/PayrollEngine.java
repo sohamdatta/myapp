@@ -692,12 +692,33 @@ public final class PayrollEngine {
         BigDecimal annualIncome = dec(ytd, "taxable").add(taxableNow).add(recurring.multiply(later));
         BigDecimal deductions = dec(r, "standardDeduction");
         List<String> deductionWords = new ArrayList<>(List.of("standard deduction " + rupees(dec(r, "standardDeduction"))));
+        Map<String, Object> declared = map(emp, "declarations");
+        Map<String, Object> claims = null;
         if (regime.equals("old")) {
             BigDecimal pt = dec(ytd, "pt").add(out.amount("PT").multiply(BigDecimal.valueOf(left)));
-            BigDecimal pfEe = dec(ytd, "pfEe").add(out.amount("PF_EE").multiply(BigDecimal.valueOf(left))).min(dec(r, "section80cMax"));
-            deductions = deductions.add(pt).add(pfEe);
+            deductions = deductions.add(pt);
             deductionWords.add("professional tax " + rupees(pt));
-            deductionWords.add("PF under 80C " + rupees(pfEe));
+            BigDecimal pfEe = dec(ytd, "pfEe").add(out.amount("PF_EE").multiply(BigDecimal.valueOf(left)));
+            if (declared.isEmpty()) {
+                BigDecimal counted = pfEe.min(dec(r, "section80cMax"));
+                deductions = deductions.add(counted);
+                deductionWords.add("PF under 80C " + rupees(counted));
+            } else {
+                Map<String, BigDecimal> salary = new LinkedHashMap<>();
+                for (String code : List.of("BASIC", "HRA")) {
+                    salary.put(code, dec(map(ytd, "components"), code).add(out.amount(code))
+                            .add(full.getOrDefault(code, ZERO).multiply(later)));
+                }
+                Claims counted = declarationClaims(r, declared, pfEe, salary.get("BASIC"), salary.get("HRA"),
+                        payMonths(period, (String) emp.get("joinedOn"), left));
+                if (counted.missingLimits()) {
+                    out.exception("declaration_limits_missing", "warning", false, "The income tax rules in use carry no limits for "
+                            + "declared claims, so declared claims count as nothing. Ask for the rules to be updated.", null);
+                }
+                deductions = deductions.add(counted.total());
+                deductionWords.addAll(counted.words());
+                claims = counted.detail();
+            }
         }
         BigDecimal taxableIncome = annualIncome.subtract(deductions).max(ZERO);
         BigDecimal annualTax = incomeTax(r, dec(tax, "cess"), taxableIncome);
@@ -709,6 +730,14 @@ public final class PayrollEngine {
         projection.put("income", scale(annualIncome));
         projection.put("deductions", scale(deductions));
         projection.put("taxableIncome", scale(taxableIncome));
+        if (claims != null) {
+            projection.put("declarationBasis", declared.get("basis"));
+            projection.put("claims", claims);
+        } else if (!declared.isEmpty()) {
+            // Declared under the new regime: shown, but they change nothing.
+            projection.put("declarationBasis", declared.get("basis"));
+            projection.put("claimsIgnored", true);
+        }
         projection.put("annualTax", scale(annualTax));
         projection.put("paidSoFar", scale(paidSoFar));
         projection.put("monthsLeft", left);
@@ -720,6 +749,92 @@ public final class PayrollEngine {
                 + "; tax for the year " + rupees(annualTax) + ", deducted so far " + rupees(paidSoFar) + ", spread over " + left
                 + (left == 1 ? " month" : " months"));
         addLineRounded(out, map(components, "TDS"), now, "nearest", (String) map(rules, "ruleIds").get("income_tax:IN"), t, position);
+    }
+
+    /** What declared claims take off the year's income: the total, each part in words, and the parts for the payslip. */
+    public record Claims(BigDecimal total, List<String> words, Map<String, Object> detail, boolean missingLimits) {}
+
+    /**
+     * Declared (or verified) claims under the old regime, each within its limit from the rules:
+     * HRA exempt for each span of rent at the least of the HRA received, rent above a share of basic, and
+     * half (or 40%) of basic; the ₹1.5 lakh group with the employee's PF in it; NPS; health insurance for
+     * the family and for parents, higher for senior citizens; home-loan interest; education-loan interest.
+     * Basic and HRA are the year's projected amounts, spread evenly over the months paid.
+     */
+    public static Claims declarationClaims(Map<String, Object> regime, Map<String, Object> declared, BigDecimal pfEe,
+                                           BigDecimal basicYear, BigDecimal hraYear, int payMonths) {
+        boolean missing = regime.get("npsMax") == null;
+        List<String> words = new ArrayList<>();
+        Map<String, Object> detail = new LinkedHashMap<>();
+        BigDecimal total = ZERO;
+
+        // House rent: one span at a time, never more than the HRA received in all.
+        BigDecimal months = BigDecimal.valueOf(Math.max(payMonths, 1));
+        BigDecimal basicMonth = basicYear.divide(months, MC);
+        BigDecimal hraMonth = hraYear.divide(months, MC);
+        BigDecimal hraExempt = ZERO;
+        if (!missing && hraYear.signum() > 0) {
+            for (Map<String, Object> span : list(declared, "rent")) {
+                BigDecimal n = dec(span, "months");
+                BigDecimal rent = dec(span, "monthly").multiply(n);
+                BigDecimal basic = basicMonth.multiply(n);
+                boolean metro = regime.get("hraMetros") instanceof List<?> cities && cities.contains(span.get("city"));
+                BigDecimal pct = metro ? dec(regime, "hraMetroPct") : dec(regime, "hraOtherPct");
+                BigDecimal aboveFloor = rent.subtract(basic.multiply(dec(regime, "hraRentFloorPct")).divide(HUNDRED, MC)).max(ZERO);
+                hraExempt = hraExempt.add(hraMonth.multiply(n).min(aboveFloor).min(basic.multiply(pct).divide(HUNDRED, MC)));
+            }
+            hraExempt = scale(hraExempt.min(hraYear));
+        }
+        if (hraExempt.signum() > 0) {
+            total = total.add(hraExempt);
+            words.add("HRA exempt " + rupees(hraExempt));
+        }
+        detail.put("hraExempt", hraExempt);
+
+        // The ₹1.5 lakh group: PF first, then what was declared.
+        BigDecimal group = missing ? pfEe : pfEe.add(dec(declared, "sec80c"));
+        BigDecimal groupCounted = group.min(dec(regime, "section80cMax"));
+        total = total.add(groupCounted);
+        words.add("₹1.5 lakh group " + rupees(groupCounted) + (missing || dec(declared, "sec80c").signum() == 0 ? " (PF)"
+                : " (PF " + rupees(pfEe) + " and declared " + rupees(dec(declared, "sec80c")) + ")"));
+        detail.put("group", scale(groupCounted));
+        if (missing) {
+            detail.put("total", scale(total));
+            return new Claims(total, words, detail, true);
+        }
+
+        BigDecimal nps = dec(declared, "nps").min(dec(regime, "npsMax"));
+        BigDecimal health = dec(declared, "healthSelf").min(Boolean.TRUE.equals(declared.get("healthSelfSenior"))
+                        ? dec(regime, "healthSelfSeniorMax") : dec(regime, "healthSelfMax"))
+                .add(dec(declared, "healthParents").min(Boolean.TRUE.equals(declared.get("healthParentsSenior"))
+                        ? dec(regime, "healthParentsSeniorMax") : dec(regime, "healthParentsMax")));
+        BigDecimal homeLoan = dec(declared, "homeLoan").min(dec(regime, "homeLoanInterestMax"));
+        BigDecimal eduLoan = dec(declared, "eduLoan");
+        for (Object[] part : new Object[][] {{"nps", "NPS", nps}, {"health", "health insurance", health},
+                {"homeLoan", "home-loan interest", homeLoan}, {"eduLoan", "education-loan interest", eduLoan}}) {
+            BigDecimal v = scale((BigDecimal) part[2]);
+            detail.put((String) part[0], v);
+            if (v.signum() > 0) {
+                total = total.add(v);
+                words.add(part[1] + " " + rupees(v));
+            }
+        }
+        detail.put("total", scale(total));
+        return new Claims(total, words, detail, false);
+    }
+
+    /** Months of this tax year with pay: from April, or the month of joining, through the months left. */
+    static int payMonths(LocalDate period, String joinedOn, int left) {
+        int before = taxMonth(period) - 1;
+        if (joinedOn != null) {
+            LocalDate joined = LocalDate.parse(joinedOn);
+            LocalDate yearStart = LocalDate.of(period.getMonthValue() >= 4 ? period.getYear() : period.getYear() - 1, 4, 1);
+            if (joined.isAfter(yearStart)) {
+                int notYet = (joined.getYear() - yearStart.getYear()) * 12 + joined.getMonthValue() - yearStart.getMonthValue();
+                before = Math.max(0, before - notYet);
+            }
+        }
+        return before + left;
     }
 
     /** Tax on a year's taxable income: slabs, the rebate with marginal relief, surcharge with marginal relief, then cess. */
