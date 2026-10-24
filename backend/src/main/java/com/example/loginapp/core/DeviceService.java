@@ -145,7 +145,7 @@ public final class DeviceService {
                 return "OK: 0";
             }
             Sql.query(c, "select pg_advisory_xact_lock(hashtext(?))", "attendance-device:" + f.deviceId());   // one upload at a time
-            ZoneId zone = AttendanceService.zone((String) d.get("timezone"));
+            ZoneId zone = AttendanceDays.zone((String) d.get("timezone"));
             UUID location = AuthService.uuid(d.get("workLocationId"));
             Map<String, UUID> byCode = new HashMap<>();
             for (Map<String, Object> m : Sql.query(c, "select id, lower(employee_code) as code from app.membership where employee_code is not null")) {
@@ -172,7 +172,7 @@ public final class DeviceService {
             }
             for (Map.Entry<UUID, Set<LocalDate>> t : touched.entrySet()) {
                 for (LocalDate day : t.getValue()) {
-                    AttendanceService.forget(c, t.getKey(), day, day);
+                    AttendanceDays.forget(c, t.getKey(), day, day);
                 }
             }
             if (stamp != null && !stamp.isBlank() && stamp.length() <= 40) {
@@ -185,8 +185,8 @@ public final class DeviceService {
     /** Stores one punch unless it is already there. In and out go by order within the work day. */
     private static boolean punch(Connection c, Found f, UUID member, Instant at, UUID location, String ip,
                                  Map<UUID, Set<LocalDate>> touched) throws SQLException {
-        LocalDate local = at.atZone(AttendanceService.DEFAULT_ZONE).toLocalDate();
-        AttendanceService.Assigned a = AttendanceService.assigned(c, member, local);
+        LocalDate local = at.atZone(AttendanceDays.DEFAULT_ZONE).toLocalDate();
+        AttendanceDays.Assigned a = AttendanceDays.assigned(c, member, local);
         LocalDate workDate = a == null ? local : PunchChecks.workDate(at, a.zone(), a.schedule().start(), a.schedule().end());
         String direction = "in";
         if (a != null) {

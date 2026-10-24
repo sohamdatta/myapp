@@ -125,8 +125,8 @@ public final class LeaveAdminService {
                                              String half, String reason) {
         requireOther(ctx, membershipId);
         String why = LeaveService.reason(reason);
-        LocalDate from = AttendanceService.date(fromDate);
-        LocalDate to = toDate == null || toDate.isBlank() ? from : AttendanceService.date(toDate);
+        LocalDate from = AttendanceDays.date(fromDate);
+        LocalDate to = toDate == null || toDate.isBlank() ? from : AttendanceDays.date(toDate);
         if (to.isAfter(today().plusDays(365))) {
             throw new ApiException(400, "leave.window", "Leave can be recorded up to a year ahead");
         }
@@ -147,7 +147,7 @@ public final class LeaveAdminService {
         if (days == null || days.signum() == 0 || days.abs().compareTo(BigDecimal.valueOf(366)) > 0 || days.scale() > 2) {
             throw ApiException.badRequest("Give the number of days to add, or a negative number to take away");
         }
-        LocalDate day = onDate == null || onDate.isBlank() ? today() : AttendanceService.date(onDate);
+        LocalDate day = onDate == null || onDate.isBlank() ? today() : AttendanceDays.date(onDate);
         if (day.isAfter(today())) {
             throw ApiException.badRequest("An adjustment cannot be dated in the future");
         }
@@ -192,7 +192,7 @@ public final class LeaveAdminService {
         if (days == null || (days.compareTo(BigDecimal.ONE) != 0 && days.compareTo(new BigDecimal("0.5")) != 0)) {
             throw ApiException.badRequest("Comp-off is granted as a half day or one day");
         }
-        LocalDate day = AttendanceService.date(workDate);
+        LocalDate day = AttendanceDays.date(workDate);
         if (day.isAfter(today())) {
             throw ApiException.badRequest("Comp-off is for a day that has been worked");
         }
@@ -233,7 +233,7 @@ public final class LeaveAdminService {
     }
 
     private Map<String, Object> yearEnd(Connection c, SessionCtx ctx, int year, boolean commit) throws SQLException {
-        int startMonth = AttendanceService.settings(c).leaveYearStartMonth();
+        int startMonth = AttendanceDays.settings(c).leaveYearStartMonth();
         LocalDate start = LocalDate.of(year, startMonth, 1);
         LocalDate end = start.plusYears(1).minusDays(1);
         LocalDate today = today();
@@ -312,7 +312,7 @@ public final class LeaveAdminService {
     // ── helpers ─────────────────────────────────────────────────────────
 
     private LocalDate today() {
-        return LocalDate.now(clock.withZone(AttendanceService.DEFAULT_ZONE));
+        return LocalDate.now(clock.withZone(AttendanceDays.DEFAULT_ZONE));
     }
 
     /** These actions are taken by a user of the Organization for someone else, never for themselves. */

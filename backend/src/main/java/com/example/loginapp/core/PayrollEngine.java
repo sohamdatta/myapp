@@ -27,7 +27,7 @@ import java.util.Set;
  *   <li>net pay, and the checks that become exceptions.</li>
  * </ol>
  *
- * Config and employee are the maps written into the run's snapshot (see PayrollRuns.snapshot).
+ * Config and employee are the maps written into the run's snapshot (see PayrollSnapshot.snapshot).
  */
 public final class PayrollEngine {
 

@@ -92,8 +92,8 @@ public final class LeaveService {
     /** Counts the days of a request and says whether the balance covers it. Writes no request. */
     public Map<String, Object> preview(SessionCtx ctx, UUID leaveTypeId, String fromDate, String toDate, String half) {
         requireApply(ctx);
-        LocalDate from = AttendanceService.date(fromDate);
-        LocalDate to = toDate == null || toDate.isBlank() ? from : AttendanceService.date(toDate);
+        LocalDate from = AttendanceDays.date(fromDate);
+        LocalDate to = toDate == null || toDate.isBlank() ? from : AttendanceDays.date(toDate);
         return db.inTenant(ctx.tenantId(), c -> {
             Plan plan = plan(c, ctx.tenantId(), ctx.membershipId(), leaveTypeId, from, to, half(half), today(), null);
             Map<String, Object> out = new LinkedHashMap<>();
@@ -110,8 +110,8 @@ public final class LeaveService {
     public Map<String, Object> apply(SessionCtx ctx, UUID leaveTypeId, String fromDate, String toDate, String half, String reason) {
         requireApply(ctx);
         String why = reason(reason);
-        LocalDate from = AttendanceService.date(fromDate);
-        LocalDate to = toDate == null || toDate.isBlank() ? from : AttendanceService.date(toDate);
+        LocalDate from = AttendanceDays.date(fromDate);
+        LocalDate to = toDate == null || toDate.isBlank() ? from : AttendanceDays.date(toDate);
         LocalDate today = today();
         if (from.isBefore(today.minusDays(BACK_WINDOW_DAYS)) || to.isAfter(today.plusDays(AHEAD_WINDOW_DAYS))) {
             throw new ApiException(400, "leave.window", "Leave can be for the last " + BACK_WINDOW_DAYS
@@ -244,8 +244,8 @@ public final class LeaveService {
         if (scope == null || scope.equals("self")) {
             throw ApiException.denied("leave.read");
         }
-        LocalDate from = AttendanceService.date(fromDate);
-        LocalDate to = AttendanceService.date(toDate);
+        LocalDate from = AttendanceDays.date(fromDate);
+        LocalDate to = AttendanceDays.date(toDate);
         if (to.isBefore(from) || from.plusDays(92).isBefore(to)) {
             throw ApiException.badRequest("Choose a period of up to three months");
         }
@@ -307,12 +307,12 @@ public final class LeaveService {
         }
         Map<LocalDate, Boolean> off = new HashMap<>();
         for (LocalDate d = from; !d.isAfter(to); d = d.plusDays(1)) {
-            AttendanceService.Assigned a = AttendanceService.assigned(c, membershipId, d);
+            AttendanceDays.Assigned a = AttendanceDays.assigned(c, membershipId, d);
             if (a == null) {
                 throw new ApiException(409, "attendance.not_assigned",
                         "No work location and shift are assigned for " + d + ". Ask HR to set them up");
             }
-            off.put(d, AttendanceService.dayOff(c, a, d) != null);
+            off.put(d, AttendanceDays.dayOff(c, a, d) != null);
         }
         LeaveDays.Result counted = LeaveDays.count(from, to, half, p.type.countDaysOff(), off::get);
         p.days = counted.days();
@@ -384,7 +384,7 @@ public final class LeaveService {
                     + "where membership_id = ? and work_date = ? and kind = 'work_from_home' and status in ('pending','approved')",
                     membershipId, d);
         }
-        AttendanceService.forget(c, membershipId, from, to);
+        AttendanceDays.forget(c, membershipId, from, to);
     }
 
     /** Cancels a pending or approved request; an approved one gets its days back. */
@@ -407,7 +407,7 @@ public final class LeaveService {
                     + "values (?, ?, ?, ?, ?, 'returned', ?)", ctx.tenantId(), owner, AuthService.uuid(r.get("leaveTypeId")), from,
                     ((BigDecimal) taken.get("days")).negate(), requestId);
         }
-        AttendanceService.forget(c, owner, from, to);
+        AttendanceDays.forget(c, owner, from, to);
         UserService.audit(c, ctx, "leave.cancelled", "leave_request", requestId,
                 Map.of("from", from.toString(), "to", to.toString()));
     }
@@ -486,7 +486,7 @@ public final class LeaveService {
         LocalDate until = m.get("ended") != null && LocalDate.parse((String) m.get("ended")).isBefore(upTo)
                 ? LocalDate.parse((String) m.get("ended")) : upTo;
         return LeaveAccrual.due(t.accrual(), t.yearlyQuota(), t.prorateJoiners(),
-                AttendanceService.settings(c).leaveYearStartMonth(), since, until);
+                AttendanceDays.settings(c).leaveYearStartMonth(), since, until);
     }
 
     /** Comp-off is used oldest first. An earned entry past its expiry with days still unused is closed with one entry. */
@@ -549,8 +549,8 @@ public final class LeaveService {
             // Part of the leave is unpaid: the paid days come first, so the unpaid ones are the last counted dates.
             long before = 0;
             for (LocalDate d = from; d.isBefore(day); d = d.plusDays(1)) {
-                AttendanceService.Assigned a = AttendanceService.assigned(c, membershipId, d);
-                boolean off = a != null && AttendanceService.dayOff(c, a, d) != null;
+                AttendanceDays.Assigned a = AttendanceDays.assigned(c, membershipId, d);
+                boolean off = a != null && AttendanceDays.dayOff(c, a, d) != null;
                 if (!off || (Boolean.TRUE.equals(r.get("countDaysOff")) && d.isAfter(from))) {
                     before++;
                 }
@@ -568,7 +568,7 @@ public final class LeaveService {
 
     /** Refuses a change dated in a leave year that has been closed. */
     static void requireOpenYear(Connection c, LocalDate from, LocalDate to) throws SQLException {
-        int startMonth = AttendanceService.settings(c).leaveYearStartMonth();
+        int startMonth = AttendanceDays.settings(c).leaveYearStartMonth();
         for (LocalDate d : List.of(from, to)) {
             int year = LeaveAccrual.yearLabel(d, startMonth);
             if (Sql.one(c, "select 1 from app.leave_year_end_run where leave_year = ?", year) != null) {
@@ -611,7 +611,7 @@ public final class LeaveService {
     }
 
     LocalDate today() {
-        return LocalDate.now(clock.withZone(AttendanceService.DEFAULT_ZONE));
+        return LocalDate.now(clock.withZone(AttendanceDays.DEFAULT_ZONE));
     }
 
     static String half(String value) {

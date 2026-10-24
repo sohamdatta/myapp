@@ -197,8 +197,8 @@ public final class AttendanceSettingsService {
     public Map<String, Object> saveShift(SessionCtx ctx, UUID id, ShiftInput in) {
         ctx.require("attendance.manage");
         String name = name(in.name());
-        LocalTime start = AttendanceService.time(in.startTime());
-        LocalTime end = AttendanceService.time(in.endTime());
+        LocalTime start = AttendanceDays.time(in.startTime());
+        LocalTime end = AttendanceDays.time(in.endTime());
         int grace = in.graceMinutes() == null ? 10 : in.graceMinutes();
         int full = in.fullDayMinutes() == null ? 480 : in.fullDayMinutes();
         int half = in.halfDayMinutes() == null ? 240 : in.halfDayMinutes();
@@ -238,7 +238,7 @@ public final class AttendanceSettingsService {
         if (ctx.scopeOf("attendance.read") == null) {
             throw ApiException.denied("attendance.read");
         }
-        int y = year == null ? LocalDate.now(AttendanceService.DEFAULT_ZONE).getYear() : year;
+        int y = year == null ? LocalDate.now(AttendanceDays.DEFAULT_ZONE).getYear() : year;
         return db.inTenant(ctx.tenantId(), c -> Sql.query(c,
                 "select h.id, h.on_date, h.name, h.work_location_id, l.name as location_name from app.holiday h "
                         + "left join app.work_location l on l.id = h.work_location_id "
@@ -253,7 +253,7 @@ public final class AttendanceSettingsService {
         if (date == null || date.isBlank()) {
             throw ApiException.badRequest("Choose the date of the holiday");
         }
-        LocalDate day = AttendanceService.date(date);
+        LocalDate day = AttendanceDays.date(date);
         return db.inTenant(ctx.tenantId(), c -> {
             if (locationId != null && Sql.one(c, "select 1 from app.work_location where id = ?", locationId) == null) {
                 throw ApiException.notFound("The work location");
@@ -261,7 +261,7 @@ public final class AttendanceSettingsService {
             Map<String, Object> row = Sql.one(c,
                     "insert into app.holiday (tenant_id, work_location_id, on_date, name) values (?, ?, ?, ?) returning id",
                     ctx.tenantId(), locationId, day, name);
-            AttendanceService.invalidateDate(c, day);
+            AttendanceDays.invalidateDate(c, day);
             UserService.audit(c, ctx, "attendance.holiday_added", "holiday", AuthService.uuid(row.get("id")),
                     Map.of("date", day.toString(), "name", name));
             return Map.of("id", row.get("id"));
@@ -275,7 +275,7 @@ public final class AttendanceSettingsService {
             if (row == null) {
                 throw ApiException.notFound("The holiday");
             }
-            AttendanceService.invalidateDate(c, LocalDate.parse((String) row.get("onDate")));
+            AttendanceDays.invalidateDate(c, LocalDate.parse((String) row.get("onDate")));
             UserService.audit(c, ctx, "attendance.holiday_removed", "holiday", id,
                     Map.of("date", row.get("onDate"), "name", row.get("name")));
             return null;
@@ -287,7 +287,7 @@ public final class AttendanceSettingsService {
     /** Every current user with their employee code and the assignment in force today. */
     public List<Map<String, Object>> people(SessionCtx ctx) {
         requireView(ctx);
-        LocalDate today = LocalDate.now(AttendanceService.DEFAULT_ZONE);   // the database's own date is UTC
+        LocalDate today = LocalDate.now(AttendanceDays.DEFAULT_ZONE);   // the database's own date is UTC
         return db.inTenant(ctx.tenantId(), c -> Sql.query(c,
                 "select m.id as membership_id, dir.email, " + Names.of("m.id") + " as name, m.status, m.employee_code, m.wfh_allowed, a.work_location_id, "
                         + "l.name as location_name, a.shift_id, s.name as shift_name, a.weekly_offs, a.remote_days, a.effective_from, "
@@ -335,7 +335,7 @@ public final class AttendanceSettingsService {
         if (effectiveFrom == null || effectiveFrom.isBlank()) {
             throw ApiException.badRequest("Choose the date the assignment starts");
         }
-        LocalDate from = AttendanceService.date(effectiveFrom);
+        LocalDate from = AttendanceDays.date(effectiveFrom);
         List<UUID> ids = new ArrayList<>();
         for (String id : membershipIds) {
             try {
@@ -362,7 +362,7 @@ public final class AttendanceSettingsService {
                 Sql.update(c, "insert into app.attendance_assignment (tenant_id, membership_id, work_location_id, shift_id, "
                                 + "weekly_offs, remote_days, effective_from, created_by) values (?, ?, ?, ?, ?::smallint[], ?::smallint[], ?, ?)",
                         ctx.tenantId(), membershipId, locationId, shiftId, offArray, remoteArray, from, ctx.membershipId());
-                AttendanceService.invalidateFrom(c, membershipId, from.minusDays(1));   // a night shift's day can start the evening before
+                AttendanceDays.invalidateFrom(c, membershipId, from.minusDays(1));   // a night shift's day can start the evening before
                 Map<String, Object> detail = new LinkedHashMap<>();
                 detail.put("location", location.get("name"));
                 detail.put("shift", shift.get("name"));
@@ -384,7 +384,7 @@ public final class AttendanceSettingsService {
             throw ApiException.denied("attendance.read");
         }
         return db.inTenant(ctx.tenantId(), c -> {
-            Map<String, Object> out = new LinkedHashMap<>(view(AttendanceService.settings(c)));
+            Map<String, Object> out = new LinkedHashMap<>(view(AttendanceDays.settings(c)));
             // the earliest date a location's attendance mode can change from
             out.put("modeFrom", PayrollConfig.openFrom(c, LocalDate.now(ZoneId.of("Asia/Kolkata"))).toString());
             return out;
@@ -394,7 +394,7 @@ public final class AttendanceSettingsService {
     public Map<String, Object> saveSettings(SessionCtx ctx, SettingsInput in) {
         ctx.require("attendance.manage");
         return db.inTenant(ctx.tenantId(), c -> {
-            AttendanceService.Settings old = AttendanceService.settings(c);
+            AttendanceDays.Settings old = AttendanceDays.settings(c);
             int startMonth = in.leaveYearStartMonth() == null ? old.leaveYearStartMonth() : in.leaveYearStartMonth();
             if (startMonth != 1 && startMonth != 4) {
                 throw ApiException.badRequest("The leave year starts in January or April");
@@ -426,7 +426,7 @@ public final class AttendanceSettingsService {
             detail.put("limitPerWeek", perWeek);
             detail.put("limitPerMonth", perMonth);
             UserService.audit(c, ctx, "attendance.settings_changed", "tenant", ctx.tenantId(), detail);
-            return view(AttendanceService.settings(c));
+            return view(AttendanceDays.settings(c));
         });
     }
 
@@ -442,7 +442,7 @@ public final class AttendanceSettingsService {
         });
     }
 
-    private static Map<String, Object> view(AttendanceService.Settings s) {
+    private static Map<String, Object> view(AttendanceDays.Settings s) {
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("leaveYearStartMonth", s.leaveYearStartMonth());
         out.put("wfhEnabled", s.wfhEnabled());

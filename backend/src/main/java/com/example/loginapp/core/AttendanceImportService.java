@@ -317,12 +317,12 @@ public final class AttendanceImportService {
                 mine.add(i);
             }
         }
-        Map<LocalDate, AttendanceService.Assigned> assignments = new HashMap<>();
+        Map<LocalDate, AttendanceDays.Assigned> assignments = new HashMap<>();
         Function<Instant, LocalDate> workDate = at -> {
             LocalDate local = at.atZone(fileZone).toLocalDate();
-            AttendanceService.Assigned a = assignments.computeIfAbsent(local, d -> {
+            AttendanceDays.Assigned a = assignments.computeIfAbsent(local, d -> {
                 try {
-                    return AttendanceService.assigned(c, membershipId, d);
+                    return AttendanceDays.assigned(c, membershipId, d);
                 } catch (SQLException e) {
                     throw new IllegalStateException(e);
                 }

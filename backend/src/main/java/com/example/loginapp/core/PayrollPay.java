@@ -122,7 +122,7 @@ public final class PayrollPay {
     static Map<String, Object> breakup(Connection c, UUID employmentId, LocalDate period, LocalDate today, ReviseInput proposed) throws SQLException {
         LocalDate end = period.plusMonths(1).minusDays(1);
         Map<String, Object> config = PayrollConfig.load(c, end);
-        Map<String, Object> emp = PayrollRuns.employee(c, config, employmentId, period, today, null, true);
+        Map<String, Object> emp = PayrollSnapshot.employee(c, config, employmentId, period, today, null, true);
         if (proposed != null) {
             emp.put("structureId", proposed.structureId());
             emp.put("annual", proposed.annualAmount());
