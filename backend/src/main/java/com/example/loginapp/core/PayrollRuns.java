@@ -190,6 +190,7 @@ public final class PayrollRuns {
             inputComponents.add(new LinkedHashMap<>(Map.of("code", LOP_DAYS, "name", "Loss of pay (days)", "kind", "days")));
             r.put("inputComponents", inputComponents);
             r.put("attendanceOn", Modules.on(c, Modules.ATTENDANCE));
+            r.put("leaveOn", Modules.on(c, Modules.LEAVE));
             long open = Sql.query(c, "select 1 from app.run_exception where run_id = ? and level = 'blocking' and accepted_at is null", runId).size();
             boolean me = ctx.membershipId() != null;
             r.put("openBlocking", open);

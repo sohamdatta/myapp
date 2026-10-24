@@ -29,7 +29,8 @@ public final class Migrator {
             "V12__org_chart.sql",
             "V13__payroll.sql", "V14__suspended_access.sql", "V15__attendance_modes.sql", "V16__modules.sql",
             "V17__tax_declarations.sql",
-            "V18__settings.sql");
+            "V18__settings.sql",
+            "V19__leave_module.sql");
 
     /** The migrations, in the order they run. A test checks that every file in db/migration is here. */
     public static List<String> files() {

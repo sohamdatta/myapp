@@ -422,9 +422,28 @@ class LeaveTest {
         assertError(409, "leave.year_closed", () -> admin.applyOnBehalf(org.admin, emp.membershipId(), sick, MONDAY.toString(), null, null,
                 "Leave in the closed year"));
         assertError(409, "leave.year_closed", () -> settings.saveSettings(org.admin, new SettingsInput(4, null, null, null, null)));
+        assertError(409, "leave.year_closed", () -> admin.saveLeaveYear(org.admin, 4));
         admin.adjust(org.admin, emp.membershipId(), sick, BigDecimal.ONE, null, "The correction, in the open year");
         assertTrue(actions(org).contains("leave.year_closed"));
         assertError(403, "permission.denied", () -> admin.yearEndPreview(emp, year));
+    }
+
+    @Test
+    void theLeaveYearIsSetUnderLeaveWithoutTouchingWorkFromHome() {
+        Org org = newOrg();
+        SessionCtx emp = join(org, "yearly", List.of("employee"));
+        settings.saveSettings(org.admin, new SettingsInput(1, true, false, 2, 6));
+
+        assertEquals(4, admin.saveLeaveYear(org.admin, 4).get("leaveYearStartMonth"));
+        Map<String, Object> now = settings.settings(org.admin);
+        assertEquals(4, ((Number) now.get("leaveYearStartMonth")).intValue());
+        assertEquals(2, ((Number) now.get("wfhLimitPerWeek")).intValue());      // work from home kept as it was
+        assertEquals(6, ((Number) now.get("wfhLimitPerMonth")).intValue());
+        assertTrue(actions(org).contains("leave.year_changed"));
+
+        assertError(400, "request.invalid", () -> admin.saveLeaveYear(org.admin, 7));
+        assertError(400, "request.invalid", () -> admin.saveLeaveYear(org.admin, null));
+        assertError(403, "permission.denied", () -> admin.saveLeaveYear(emp, 1));
     }
 
     // ── leave and work from home on the same date ───────────────────────

@@ -29,15 +29,16 @@ export function navFor(me) {
   }
 
   const scopes = me.scopes || {}
-  // What the Organization has bought: Core HR always; Attendance (with leave) and Payroll as add-ons.
+  // What the Organization has bought: Core HR always; Attendance, Leave and Payroll as add-ons.
   const hasAttendance = (me.modules || []).includes('attendance')
+  const hasLeave = (me.modules || []).includes('leave')
   const hasPayroll = (me.modules || []).includes('payroll')
   // Punching is for users of the Organization, never for a support session.
   const canPunch = hasAttendance && me.permissions.includes('attendance.punch') && me.kind === 'tenant'
   const seesOthersAttendance = Boolean(scopes['attendance.read']) && scopes['attendance.read'] !== 'self'
   // A support session has no leave of its own; a former employee can still look at theirs.
-  const hasOwnLeave = hasAttendance && Boolean(scopes['leave.read']) && me.kind === 'tenant' && (scopes['leave.read'] === 'self' || me.permissions.includes('leave.apply'))
-  const seesOthersLeave = hasAttendance && Boolean(scopes['leave.read']) && scopes['leave.read'] !== 'self'
+  const hasOwnLeave = hasLeave && Boolean(scopes['leave.read']) && me.kind === 'tenant' && (scopes['leave.read'] === 'self' || me.permissions.includes('leave.apply'))
+  const seesOthersLeave = hasLeave && Boolean(scopes['leave.read']) && scopes['leave.read'] !== 'self'
   const seesPeople = Boolean(scopes['employee.read']) && scopes['employee.read'] !== 'self'
   return [
     {

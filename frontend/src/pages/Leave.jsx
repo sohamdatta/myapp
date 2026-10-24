@@ -482,7 +482,8 @@ function Balances({ canManage, me }) {
           </tbody>
         </table>
       </div>
-      {canAct && <CompOff onGranted={people.reload} />}
+      {/* Comp-off is earned by working on a day off, which only Attendance knows about. */}
+      {canAct && (me.modules || []).includes('attendance') && <CompOff onGranted={people.reload} />}
     </>
   )
 }
@@ -741,16 +742,9 @@ function LeaveYear({ canManage, onChanged }) {
   const s = settings.data
 
   async function change(event) {
-    const leaveYearStartMonth = Number(event.target.value)
-    const saved = await run(() =>
-      attendance.saveSettings({
-        leaveYearStartMonth,
-        wfhEnabled: s.wfhEnabled,
-        wfhRequiresPunch: s.wfhRequiresPunch,
-        wfhLimitPerWeek: s.wfhLimitPerWeek,
-        wfhLimitPerMonth: s.wfhLimitPerMonth,
-      }),
-    )
+    const startMonth = Number(event.target.value)
+    // Its own endpoint, so an Organization with Leave but not Attendance can set it.
+    const saved = await run(() => leave.saveYear(startMonth))
     if (saved) {
       settings.reload()
       onChanged()
