@@ -254,7 +254,7 @@ Make the existing React app installable on Android and iPhone home screens, with
 - **Manifest** served per Organization at `/manifest.webmanifest` (name, short name, icons 192 and 512, `display: standalone`, theme colour, `start_url: /`). Before sign-in, a generic HRMS manifest.
 - **Service worker** (Workbox, built by Vite): precaches the app shell; **never caches `/api` answers**, which hold personal data and must not outlive a sign-out. On sign-out it clears every cache and the punch queue for that person.
 - **Offline punch**: the punch button writes `{direction, takenAt (device clock), position, accuracy}` to IndexedDB and shows *Saved, will send when online*. Background Sync (Android) or the next app open (iPhone) sends queued punches to `POST /api/org/attendance/me/punch` with `offline: true` and `takenAt`.
-- **Server rules for offline punches**: accepted only within 12 hours of `takenAt`; checked against the location rule with the position captured at the time; the server time of arrival is stored too; source `offline`, so the day's trail says *Punched offline at 9:02, received 9:40*. If the device clock differs from the server's by more than 10 minutes at sending, the punch is flagged for HR on the attendance board. An Organization can switch offline punch off per location.
+- **Server rules for offline punches**: accepted only within 12 hours of `takenAt`; checked against the location rule with the position captured at the time; the server time of arrival is stored too; source `offline`, so the day's trail says *Punched offline at 9:02, received 9:40*. If the device clock differs from the server's by more than 10 minutes at sending, the punch is flagged for HR on the attendance board. Offline punch is off until an Organization turns it on for a location, and the age and skew limits are its settings (see Configuration).
 - **Push**: Web Push with VAPID keys (`APP_VAPID_PUBLIC`, `APP_VAPID_PRIVATE`). Subscriptions in `app.push_subscription` (membership, endpoint, keys, user agent, last success). The email outbox becomes a general outbox with a `channel` (`email`, `push`); a 404 or 410 from the push service deletes the subscription. iPhones receive push only once the app is installed (iOS 16.4 and later), so the screen says so.
 - **Camera**: file inputs get `capture` on phones; images are redrawn on the phone to 2000 px on the long side as JPEG before upload, then the server's existing file check runs as now.
 - **Updates**: a new deploy shows *A new version is ready — Reload*; it never reloads mid-form.
@@ -290,6 +290,50 @@ Each release is one migration, one design page in `docs/`, its own JUnit test cl
 - **Modules**: releases 3 and 4 are Payroll endpoints (refused with `module.off` without Payroll); release 2 is Core; release 5 is Core, with offline punch under Attendance.
 - **Rollout**: each release ships behind its settings (no SMTP → copy links as today; no VAPID → no push), so an Organization upgrades without a configuration change. MFA policy defaults to *required for admin and payroll roles* for new Organizations and *off* for existing ones, with a banner inviting the Org Admin to turn it on.
 - **CI**: the time-zone matrix and the fixed-date weekly run from release 1; the test that every migration is listed; Lighthouse PWA checks from release 5; golden files for every generated statutory file.
+
+## Configuration
+
+The releases above fix about twenty operational values in code: lockout limits, token lifetimes, rate limits, retry schedules, offline-punch limits, reminder days. Every one of them becomes a setting with a default, a safe range and an owner, held in one of four layers; only security invariants stay fixed.
+
+| Layer | Who changes it | Holds | Where |
+| --- | --- | --- | --- |
+| Statutory rules | Platform team, after the payroll consultant signs off | Figures the law sets, the same for every Organization, versioned by date | `app.payroll_rule` (exists) |
+| Platform settings | Super Admin, in the console; secrets in the environment | What protects the whole service | `platform.setting`; env for secrets |
+| Organization settings | Org Admin (security) or payroll roles (payroll) | Each customer's policy, within the platform's bounds | `app.org_setting` |
+| Personal | Each person | Their own notifications and devices | `app.notification_preference` |
+
+### What goes where
+
+| Setting | Layer | Default | Allowed |
+| --- | --- | --- | --- |
+| TDS deposit due day, late interest, no-PAN rate | Statutory | 7th; 30 Apr for March | Rule data |
+| Form 138 due dates, ECR separator, EPS and EDLI ceilings, ESIC reason codes | Statutory | As the department publishes | Rule data |
+| Declaration limits, HRA cities and rates | Statutory | V17 values | Rule data |
+| SMTP or SES credentials, VAPID keys | Platform (env) | None: feature off | Secrets only |
+| Rate limits per IP and per email | Platform | 10 a minute per IP; 30 an hour per email | 1–100 a minute |
+| Email retries and backoff; body retention | Platform | 6 tries up to 6 hours; 30 days | 1–10 tries; 7–90 days |
+| Reset link, email-change link, undo link lifetimes | Platform | 30 min; 24 h; 7 days | 10–60 min; 1–72 h; 1–14 days |
+| Roles that must use MFA | Organization | Admin and payroll roles | Any roles; platform users always |
+| Actions needing a fresh code, and how fresh | Organization | Payroll approval, bank file, reveal PAN, role change; 15 min | Add actions; 5–60 min |
+| Failed sign-ins before lock; lock length | Organization | 5; 15 min | 3–10; 5–60 min |
+| Minimum password length | Organization | 12 | 12–64 (never below 12) |
+| Idle sign-out; keep signed in on a phone | Organization | 30 min; off | 15–240 min; off or 7–30 days, MFA required |
+| Emails per event | Organization | All on | On or off per event |
+| Offline punch: per location, maximum age, clock-skew flag | Organization | Off; 12 h; 10 min | On or off; 1–24 h; 5–30 min |
+| NCP days for a half day | Organization, with the consultant's default | Round up | Up or down |
+| A run marked paid needs its challan | Organization | Required | Required, or a warning |
+| Reminder before a filing is due | Organization | 10 days | 1–30 days |
+| Notifications by channel | Personal | In app and email on | Per event, per channel; security emails always on |
+
+### How it works
+
+- **One registry in code** lists every setting once: key, layer, type, default, minimum and maximum, the permission that may change it, and whether changing it weakens security. Screens, validation and documentation all come from it, so a new setting is one entry plus its use.
+- **Storage**: `platform.setting` and `app.org_setting` (key, value as JSON, updated by, updated at) hold only values that differ from the default; a missing row means the default. Reads go through one cached accessor (60 seconds), refreshed at once on a change.
+- **Screens**: Organization settings gets *Security* (Org Admin) and *Payroll policy* (payroll admin) pages, built from the registry; the platform console gets *Platform settings*. Each field shows its default and range, and *Reset to default*.
+- **Safety**: values outside the range are refused (400 with the range). A change that weakens security (a shorter password, fewer MFA roles, a longer lock-free run of failures) needs a fresh MFA code, is audited with the old and new value, and every Org Admin is emailed.
+- **Fixed on purpose**: password hashing, token length, the TOTP algorithm, encryption of identifiers, row-level security, and "nobody approves their own". These are invariants, not policy.
+- **Schema**: both setting tables arrive in V18 with release 2, its first user; later releases add registry entries, not tables.
+- **Tests**: every registry entry has a test that its default is used when unset, that out-of-range values are refused, and that a weakening change asks for MFA and is audited.
 
 ## Open questions
 
