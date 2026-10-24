@@ -16,6 +16,10 @@ The versions here are Markdown exports. The live, editable versions are the clau
 | Employee exit | Built (stages E1 to E6) | [Design, as built](exit/design.md) | [Design](https://claude.ai/code/artifact/7afa54a6-7167-4814-b837-4e05cd6dc72a) |
 | Payroll | Release 1 built: setup, pay, monthly runs, PF, ESI, PT and LWF for Goa, Karnataka and Maharashtra, income tax | [Design, as built](payroll/design.md) · [Tax declarations and proofs (V17)](payroll/tax-declarations.md) · [Feature checklist](notes/payroll-feature-checklist.md) · [Implementation plan](notes/payroll-module-implementation-plan.md) | [Design](https://claude.ai/code/artifact/0af98c52-4583-4973-ac9d-be1a41213738) |
 
+## Roadmap
+
+[Design for the next five releases](roadmap/next-releases.md): green CI, sign-in security (email, password reset, MFA), income tax filings (Forms 122, 138, 130), PF ECR and ESI returns, and the installable app. Live version: [claude.ai](https://claude.ai/artifact/RkLD2g8gjmfVprQ5pxRwUq).
+
 ## Notes on reading them
 
 - **Which file wins.** For a built module, the migration under `backend/src/main/resources/db/migration/` is the source of truth; the schema page records what was designed and lists where the build differed.
