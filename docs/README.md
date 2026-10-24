@@ -16,6 +16,10 @@ The versions here are Markdown exports. The live, editable versions are the clau
 | Employee exit | Built (stages E1 to E6) | [Design, as built](exit/design.md) | [Design](https://claude.ai/code/artifact/7afa54a6-7167-4814-b837-4e05cd6dc72a) |
 | Payroll | Release 1 built: setup, pay, monthly runs, PF, ESI, PT and LWF for Goa, Karnataka and Maharashtra, income tax | [Design, as built](payroll/design.md) · [Tax declarations and proofs (V17)](payroll/tax-declarations.md) · [Feature checklist](notes/payroll-feature-checklist.md) · [Implementation plan](notes/payroll-module-implementation-plan.md) | [Design](https://claude.ai/code/artifact/0af98c52-4583-4973-ac9d-be1a41213738) |
 
+## Configuration
+
+[Settings framework, as built (V18)](configuration/design.md): one registry of settings, values by Organization, location or pay group and from a date, platform ranges and locks, password or second-person approval for weakening changes, history and undo. Live design: [claude.ai](https://claude.ai/artifact/3wSpJUPbWwxVxE4KtNi3Ug).
+
 ## Roadmap
 
 [Design for the next five releases](roadmap/next-releases.md): green CI, sign-in security (email, password reset, MFA), income tax filings (Forms 122, 138, 130), PF ECR and ESI returns, and the installable app. Live version: [claude.ai](https://claude.ai/artifact/RkLD2g8gjmfVprQ5pxRwUq).

@@ -34,6 +34,7 @@ const ORGANIZATION = {
   payroll: page(() => import('./pages/Payroll.jsx'), ({ me }) => ({ me })),
   'tax-declarations': page(() => import('./pages/TaxReview.jsx'), ({ me }) => ({ me })),
   users: page(named(() => import('./pages/Organization.jsx'), 'UserManagement'), ({ me }) => ({ me })),
+  settings: page(() => import('./pages/Settings.jsx')),
   audit: page(named(() => import('./pages/Organization.jsx'), 'AuditTab')),
 }
 

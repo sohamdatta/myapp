@@ -16,7 +16,6 @@ import com.example.loginapp.core.SessionCtx.Perm;
 /** Sign-in, sessions and choosing an Organization. */
 public final class AuthService {
 
-    private static final int MAX_FAILED_LOGINS = 5;
 
     private final Db db;
 
@@ -38,24 +37,25 @@ public final class AuthService {
                 Secrets.verifyPassword(password, "pbkdf2-sha256$210000$AAAAAAAAAAAAAAAAAAAAAA==$AAAA");   // same work as a real check
                 return "invalid";
             }
+            int lockMinutes = Settings.platform(c, Settings.LOCKOUT_MINUTES).asInt();
             if (Boolean.TRUE.equals(identity.get("locked"))) {
-                return "locked";
+                return "locked:" + lockMinutes;
             }
             UUID id = UUID.fromString((String) identity.get("id"));
             boolean ok = "active".equals(identity.get("status"))
                     && Secrets.verifyPassword(password, (String) identity.get("passwordHash"));
             if (!ok) {
                 Sql.update(c, "update auth.identity set failed_login_count = failed_login_count + 1 where id = ?", id);
-                Sql.update(c, "update auth.identity set locked_until = now() + interval '15 minutes', failed_login_count = 0 "
-                        + "where id = ? and failed_login_count >= ?", id, MAX_FAILED_LOGINS);
+                Sql.update(c, "update auth.identity set locked_until = now() + make_interval(mins => ?), failed_login_count = 0 "
+                        + "where id = ? and failed_login_count >= ?", lockMinutes, id, Settings.platform(c, Settings.LOCKOUT_AFTER).asInt());
                 return "invalid";
             }
             Sql.update(c, "update auth.identity set failed_login_count = 0, locked_until = null, last_login_at = now() where id = ?", id);
             insertSession(c, token, id, "identity", null, null, null, "30 minutes");
             return "ok";
         });
-        if (outcome.equals("locked")) {
-            throw new ApiException(423, "auth.locked", "Too many failed sign-ins. Try again in 15 minutes");
+        if (outcome.startsWith("locked:")) {
+            throw new ApiException(423, "auth.locked", "Too many failed sign-ins. Try again in " + outcome.substring(7) + " minutes");
         }
         if (!outcome.equals("ok")) {
             throw new ApiException(401, "auth.invalid_credentials", "Incorrect email or password");

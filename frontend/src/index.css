@@ -3032,3 +3032,95 @@ textarea.code {
   flex: 1;
   min-width: 0;
 }
+
+/* ── settings ──────────────────────────────────────────────────────── */
+
+.settings-list {
+  display: grid;
+  gap: 12px;
+}
+
+.setting-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+}
+
+.setting-head h3 {
+  margin: 0 0 4px;
+}
+
+.setting-value {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  text-align: right;
+  flex-shrink: 0;
+}
+
+.setting-value strong {
+  font-size: 1.15rem;
+}
+
+.setting-meta {
+  margin: 8px 0;
+}
+
+.setting-form {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.setting-form .span-2 {
+  grid-column: span 2;
+}
+
+.with-unit {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.with-unit input {
+  max-width: 120px;
+}
+
+.pending-change {
+  margin: 12px 0;
+  padding: 12px;
+  border-radius: 8px;
+  background: var(--warn-bg);
+}
+
+.pending-change p {
+  margin: 0 0 8px;
+}
+
+.pending-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.pending-actions input {
+  flex: 1 1 200px;
+  margin: 0;
+}
+
+@media (max-width: 640px) {
+  .setting-head {
+    flex-direction: column;
+  }
+
+  .setting-value {
+    align-items: flex-start;
+    text-align: left;
+  }
+
+  .setting-form .span-2 {
+    grid-column: auto;
+  }
+}

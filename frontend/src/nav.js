@@ -68,6 +68,8 @@ export function navFor(me) {
           label: 'Tax declarations',
         },
         me.permissions.includes('user.read') && { id: 'users', label: 'User management' },
+        // Settings are for whoever owns one (security for the Org Admin, windows for attendance) and, read-only, for auditors.
+        me.kind === 'tenant' && ['tenant.manage', 'attendance.manage', 'audit.read'].some((p) => scopes[p] === 'tenant') && { id: 'settings', label: 'Settings' },
         me.permissions.includes('audit.read') && { id: 'audit', label: 'Audit log' },
       ].filter(Boolean),
     },

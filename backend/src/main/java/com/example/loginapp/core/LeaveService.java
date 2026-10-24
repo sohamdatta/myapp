@@ -23,8 +23,6 @@ import java.util.UUID;
  */
 public final class LeaveService {
 
-    private static final int BACK_WINDOW_DAYS = 31;
-    private static final int AHEAD_WINDOW_DAYS = 365;
     private static final BigDecimal HALF = new BigDecimal("0.5");
 
     private final Db db;
@@ -113,11 +111,13 @@ public final class LeaveService {
         LocalDate from = AttendanceDays.date(fromDate);
         LocalDate to = toDate == null || toDate.isBlank() ? from : AttendanceDays.date(toDate);
         LocalDate today = today();
-        if (from.isBefore(today.minusDays(BACK_WINDOW_DAYS)) || to.isAfter(today.plusDays(AHEAD_WINDOW_DAYS))) {
-            throw new ApiException(400, "leave.window", "Leave can be for the last " + BACK_WINDOW_DAYS
-                    + " days or the next " + AHEAD_WINDOW_DAYS + ". For older dates ask HR");
-        }
         return db.inTenant(ctx.tenantId(), c -> {
+            int back = Settings.get(c, Settings.LEAVE_BACK_DAYS).asInt();
+            int ahead = Settings.get(c, Settings.LEAVE_AHEAD_DAYS).asInt();
+            if (from.isBefore(today.minusDays(back)) || to.isAfter(today.plusDays(ahead))) {
+                throw new ApiException(400, "leave.window", "Leave can be for the last " + back
+                        + " days or the next " + ahead + ". For older dates ask HR");
+            }
             ExitService.refuseLeaveDuringNotice(c, ctx.membershipId(), leaveTypeId);
             return create(c, ctx, ctx.membershipId(), leaveTypeId, from, to, half(half), why, today, false);
         });

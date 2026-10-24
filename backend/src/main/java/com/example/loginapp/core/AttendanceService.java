@@ -47,8 +47,6 @@ import static com.example.loginapp.core.AttendanceDays.weekStart;
 @SuppressWarnings("unchecked")
 public final class AttendanceService {
 
-    private static final int REQUEST_WINDOW_DAYS = 31;
-    private static final int FUTURE_WINDOW_DAYS = 60;
 
     private final Db db;
     private final Clock clock;
@@ -367,11 +365,15 @@ public final class AttendanceService {
                 throw notAssigned();
             }
             LocalDate today = LocalDate.now(clock.withZone(first.zone()));
-            LocalDate latest = correction ? today : today.plusDays(FUTURE_WINDOW_DAYS);
-            if (from.isBefore(today.minusDays(REQUEST_WINDOW_DAYS)) || to.isAfter(latest)) {
+            // How far back and ahead: the Organization's choice, or the person's work location's.
+            com.example.loginapp.core.Settings.Context where = com.example.loginapp.core.Settings.Context.location(first.locationId());
+            int back = com.example.loginapp.core.Settings.get(c, com.example.loginapp.core.Settings.REQUEST_BACK_DAYS, where, today).asInt();
+            int ahead = com.example.loginapp.core.Settings.get(c, com.example.loginapp.core.Settings.REQUEST_AHEAD_DAYS, where, today).asInt();
+            LocalDate latest = correction ? today : today.plusDays(ahead);
+            if (from.isBefore(today.minusDays(back)) || to.isAfter(latest)) {
                 throw new ApiException(400, "attendance.request_window", correction
-                        ? "A correction can be for today or the last " + REQUEST_WINDOW_DAYS + " days"
-                        : "A request can be for the last " + REQUEST_WINDOW_DAYS + " days or the next " + FUTURE_WINDOW_DAYS);
+                        ? "A correction can be for today or the last " + back + " days"
+                        : "A request can be for the last " + back + " days or the next " + ahead);
             }
             Settings settings = settings(c);
             if (home) {

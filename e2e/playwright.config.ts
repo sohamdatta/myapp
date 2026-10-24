@@ -55,5 +55,7 @@ export default defineConfig({
     { name: 'navigation', testMatch: /20-navigation-and-feedback\.spec\.ts/, use: desktop, dependencies: ['modules'] },
     // Tax declarations bring their own Organization, so they run on their own as well: --project=tax.
     { name: 'tax', testMatch: /21-tax-declarations\.spec\.ts/, use: desktop },
+    // Settings, likewise in an Organization of their own: --project=settings.
+    { name: 'settings', testMatch: /22-settings\.spec\.ts/, use: desktop },
   ],
 });

@@ -587,3 +587,15 @@ export const tax = {
 export const payroll = Object.fromEntries(
   Object.entries(payrollCalls).map(([name, call]) => [name, (...args) => Promise.resolve(call(...args)).then((r) => r ?? true)]),
 )
+
+/** The Organization's settings: values, where each comes from, changes waiting for a second person, and the change log. */
+export const orgSettings = {
+  list: (group) => get(`/org/settings${query({ group })}`),
+  explain: (key, params) => get(`/org/settings/${key}${query(params)}`),
+  changes: (key) => get(`/org/settings/changes${query({ key })}`),
+  change: (key, body) => put(`/org/settings/${key}`, body),
+  approve: (id, body) => post(`/org/settings/changes/${id}/approve`, body || {}),
+  reject: (id, body) => post(`/org/settings/changes/${id}/reject`, body),
+  withdraw: (id) => post(`/org/settings/changes/${id}/withdraw`),
+  undo: (id, body) => post(`/org/settings/changes/${id}/undo`, body || {}),
+}

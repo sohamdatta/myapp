@@ -9,10 +9,10 @@ Build these five in order: green CI first (half a day), then sign-in security, t
 | # | Release | What it delivers | Effort (estimate) | Depends on | Migration |
 | --- | --- | --- | --- | --- | --- |
 | 1 | Green CI | The two fragile browser tests fixed; date and timezone guards so they cannot creep back | 0.5 day | — | none |
-| 2 | Sign-in security | Email sending, password reset, email change, TOTP MFA with recovery codes, lockout and rate limits | 2–3 weeks | 1 | V18 |
-| 3 | Income tax completion | Previous employer's income and TDS, challans, quarterly Form 138 return file, Form 130 Part B | 3–4 weeks | 1; uses tax declarations (V17) | V19 |
-| 4 | PF and ESI returns | Monthly PF ECR text file, ESI contribution file, with pre-checks and a filing log | 1.5–2 weeks | 1 | V20 |
-| 5 | Installable app (PWA) | Home-screen install, offline punch queue, web push, camera upload for proofs and documents | 3 weeks | 2 (push uses the outbox) | V21 |
+| 2 | Sign-in security | Email sending, password reset, email change, TOTP MFA with recovery codes, lockout and rate limits | 2–3 weeks | 1 | V19 |
+| 3 | Income tax completion | Previous employer's income and TDS, challans, quarterly Form 138 return file, Form 130 Part B | 3–4 weeks | 1; uses tax declarations (V17) | V20 |
+| 4 | PF and ESI returns | Monthly PF ECR text file, ESI contribution file, with pre-checks and a filing log | 1.5–2 weeks | 1 | V21 |
+| 5 | Installable app (PWA) | Home-screen install, offline punch queue, web push, camera upload for proofs and documents | 3 weeks | 2 (push uses the outbox) | V22 |
 
 Estimates assume one developer working with Claude and the current test discipline (JUnit against PostgreSQL plus a Playwright suite per release). Every release keeps the existing rules: maker-checker where money moves, row-level security per Organization, an audit event for every change, and statutory figures as rule data awaiting the payroll consultant's sign-off.
 
@@ -99,7 +99,7 @@ Keep the per-identity lockout and add limits per IP address and per email addres
 
 Counters live in `auth.rate_counter` (key, window start, count), pruned hourly. That suits one server today and keeps working with several. Lockout also sends the identity an email ("Several failed sign-ins, locked for 15 minutes"), throttled to one an hour.
 
-### Schema (V18)
+### Schema (V19)
 
 `platform.email_outbox`, `platform.email_suppression`, `auth.rate_counter`, `auth.email_change` (identity, new email, token hash, expires, verified_at, undo token hash, undo expires), `auth.identity.mfa_last_step` (bigint), `app.mfa_policy` (tenant, role code) with defaults inserted for existing Organizations, and email rows in `app.message_template` for the events that send mail.
 
@@ -170,7 +170,7 @@ Part A comes from TRACES as PDFs; the employer generates Part B, the salary comp
 3. Part A and Part B are joined into one PDF, stored as an encrypted document, and released to the employee in My pay, including people who left in the year (their former-employee access already covers My exit; add a *Tax certificates* link there).
 4. Release is by the payroll approver; every view is audited.
 
-### Schema (V19)
+### Schema (V20)
 
 `app.tax_other_income` (declaration, part B or C, details, amounts, proof status, as V17 items), `app.tds_challan` and `app.tds_challan_run`, `app.tds_statement` (TAN, tax year, quarter, version, status, token number, filed on), `app.tds_statement_row` (frozen per employee and challan), and `app.tax_certificate` (employment, tax year, part A document, combined document, released at). The `income_tax` rule gains the deposit due day, interest rates and the higher no-PAN rate, as draft data.
 
@@ -222,7 +222,7 @@ One spreadsheet per ESI code per month, in the columns ESIC's monthly contributi
 
 After uploading on the EPFO and ESIC portals, the operator records the TRRN or challan number, the date and the amount paid, and attaches the portal's receipt PDF. The month then shows as filed; a late filing shows the days late. Recording is maker-checker like challans.
 
-### Schema (V20)
+### Schema (V21)
 
 `app.statutory_filing` (kind `pf_ecr` or `esi`, registration, period, version, status `draft`, `downloaded`, `filed`, the file document, totals, reference number, paid on, receipt document, filed by, approved by), `app.esi_reason_map` (exit reason → ESIC code), and the PF rule gains `ecrSeparator` and the EPS and EDLI ceilings as data.
 
@@ -263,7 +263,7 @@ Make the existing React app installable on Android and iPhone home screens, with
 
 Tokens stay in session storage as today, so an installed app signs in again after it is closed; *Keep me signed in on this phone* (30 days, a separate refresh token bound to the device, revocable from Profile → Security) is offered only when the Organization allows it and the person has MFA. No personal data in caches; notification text carries no amounts or PAN ("Your payslip for October is ready").
 
-### Schema (V21)
+### Schema (V22)
 
 `app.push_subscription`; the outbox gains `channel`; `app.punch` gains `taken_at`, `received_at` and source `offline`; `app.work_location` gains `allow_offline_punch`; per-membership notification preferences (`app.notification_preference`: event, channel, on).
 
@@ -278,10 +278,10 @@ Each release is one migration, one design page in `docs/`, its own JUnit test cl
 
 | Release | Migration | New permissions | New settings |
 | --- | --- | --- | --- |
-| 2 Sign-in security | V18 | `org.security` (MFA policy, MFA reset) for Org Admin | `APP_SMTP_*`, `APP_MAIL_FROM`, `APP_PUBLIC_URL` (for links in mail) |
-| 3 Income tax | V19 | `statutory.file` (exists, on payroll operator) to prepare; `payroll.approve` to approve challans and release certificates | none |
-| 4 PF and ESI | V20 | `statutory.file` | none |
-| 5 App | V21 | none | `APP_VAPID_PUBLIC`, `APP_VAPID_PRIVATE` |
+| 2 Sign-in security | V19 | `org.security` (MFA policy, MFA reset) for Org Admin | `APP_SMTP_*`, `APP_MAIL_FROM`, `APP_PUBLIC_URL` (for links in mail) |
+| 3 Income tax | V20 | `statutory.file` (exists, on payroll operator) to prepare; `payroll.approve` to approve challans and release certificates | none |
+| 4 PF and ESI | V21 | `statutory.file` | none |
+| 5 App | V22 | none | `APP_VAPID_PUBLIC`, `APP_VAPID_PRIVATE` |
 
 - **Migrations**: added to `Migrator`'s list (the list is explicit; V17 showed a file outside it is silently skipped, so add a test that every file in the folder is listed).
 - **Rule data**: new statutory figures (deposit dates, interest, ECR separator, ceilings) go into draft rule rows with a source note, never code, and show the existing "drafts awaiting sign-off" banner.
@@ -332,7 +332,7 @@ The releases above fix about twenty operational values in code: lockout limits, 
 - **Screens**: Organization settings gets *Security* (Org Admin) and *Payroll policy* (payroll admin) pages, built from the registry; the platform console gets *Platform settings*. Each field shows its default and range, and *Reset to default*.
 - **Safety**: values outside the range are refused (400 with the range). A change that weakens security (a shorter password, fewer MFA roles, a longer lock-free run of failures) needs a fresh MFA code, is audited with the old and new value, and every Org Admin is emailed.
 - **Fixed on purpose**: password hashing, token length, the TOTP algorithm, encryption of identifiers, row-level security, and "nobody approves their own". These are invariants, not policy.
-- **Schema**: both setting tables arrive in V18 with release 2, its first user; later releases add registry entries, not tables.
+- **Schema**: the setting tables arrived first, in V18 (built), ahead of release 2; later releases add registry entries, not tables.
 - **Tests**: every registry entry has a test that its default is used when unset, that out-of-range values are refused, and that a weakening change asks for MFA and is audited.
 
 ## Open questions

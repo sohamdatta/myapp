@@ -79,8 +79,8 @@ public final class UserService {
             }
             Map<String, Object> row = Sql.one(c,
                     "insert into app.invitation (tenant_id, email, role_ids, token_hash, invited_by, expires_at) "
-                            + "values (?, ?::citext, ?, ?, ?, now() + interval '7 days') returning id, email, expires_at",
-                    ctx.tenantId(), address, roleIds, Secrets.sha256(token), ctx.membershipId());
+                            + "values (?, ?::citext, ?, ?, ?, now() + make_interval(days => ?)) returning id, email, expires_at",
+                    ctx.tenantId(), address, roleIds, Secrets.sha256(token), ctx.membershipId(), Settings.get(c, Settings.INVITATION_DAYS).asInt());
             audit(c, ctx, "user.invited", "invitation", AuthService.uuid(row.get("id")),
                     Map.of("email", address, "roles", String.join(", ", roleCodes)));
             row.put("token", token);
@@ -94,9 +94,9 @@ public final class UserService {
         String token = Secrets.newToken();
         return db.inTenant(ctx.tenantId(), c -> {
             Map<String, Object> row = Sql.one(c,
-                    "update app.invitation set token_hash = ?, expires_at = now() + interval '7 days' "
+                    "update app.invitation set token_hash = ?, expires_at = now() + make_interval(days => ?) "
                             + "where id = ? and accepted_at is null and revoked_at is null returning id, email, expires_at",
-                    Secrets.sha256(token), invitationId);
+                    Secrets.sha256(token), Settings.get(c, Settings.INVITATION_DAYS).asInt(), invitationId);
             if (row == null) {
                 throw ApiException.notFound("The pending invitation");
             }
