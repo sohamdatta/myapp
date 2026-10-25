@@ -78,7 +78,11 @@ test.describe.serial('tax declarations', () => {
     await owner.fill('#tw-declare-from', isoDay(-1));
     await owner.fill('#tw-declare-until', withinTaxYear(20));
     await shot(owner, 'tax-01-open-window', true);
-    await owner.getByRole('button', { name: 'Save', exact: true }).click();
+    // Wait for the save itself: the form's live preview already reads "Declarations open".
+    await Promise.all([
+      owner.waitForResponse((r) => r.url().includes('/org/payroll/tax/window') && r.request().method() === 'PUT' && r.ok()),
+      owner.getByRole('button', { name: 'Save', exact: true }).click(),
+    ]);
     await expect(owner.getByTestId('tax-window')).toContainText('Declarations open');
     await expect(owner.locator('tr[data-employee="Meera Iyer"]')).toContainText('Not started');
 
@@ -151,7 +155,11 @@ test.describe.serial('tax declarations', () => {
     await owner.getByRole('button', { name: 'Change' }).click();
     await owner.fill('#tw-proofs-from', isoDay(0));
     await owner.fill('#tw-proofs-until', withinTaxYear(20));
-    await owner.getByRole('button', { name: 'Save', exact: true }).click();
+    // Wait for the save itself: the form's live preview already reads "Proofs open".
+    await Promise.all([
+      owner.waitForResponse((r) => r.url().includes('/org/payroll/tax/window') && r.request().method() === 'PUT' && r.ok()),
+      owner.getByRole('button', { name: 'Save', exact: true }).click(),
+    ]);
     await expect(owner.getByTestId('tax-window')).toContainText('Proofs open');
 
     await meera.reload();
