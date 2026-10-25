@@ -46,6 +46,9 @@ test.describe.serial('leave', () => {
 
     await owner.fill('#lt-quota', '12');
     await owner.fill('#lt-cap', '0');
+    // Not prorated, so HR has the full 12 days whatever the date: prorated, a type created after
+    // 15 December gives nothing until January (the rule itself is covered by LeaveRulesTest).
+    await owner.getByLabel('Someone who joins mid-year gets a share for the months left').uncheck();
     await owner.getByRole('button', { name: 'Add leave type', exact: true }).last().click();
     await expect(owner.locator('td', { hasText: 'Casual leave' })).toBeVisible();
 

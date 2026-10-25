@@ -1,5 +1,5 @@
 import { test, expect, type Page, type APIRequestContext } from '@playwright/test';
-import { SUPER_ADMIN, newPage, nav, tab, acceptInvite, api, expectRefused, expectNoConsoleErrors, isoDay, istWeekday, shot } from './helpers';
+import { SUPER_ADMIN, newPage, nav, tab, acceptInvite, api, expectRefused, expectNoConsoleErrors, isoDay, istWeekday, nowMs, shot } from './helpers';
 
 // The two ways of recording attendance besides punching in the app, in an Organization of their own
 // (Initech Ltd), so no approved payroll month stands in the way of starting them today:
@@ -22,7 +22,7 @@ function deviceTime(ms: number): string {
 
 /** Two punches earlier today, in and out, never before midnight. */
 function todaysPunches(): [string, string] {
-  const now = Date.now();
+  const now = nowMs();
   const midnight = new Date(`${isoDay(0)}T00:00:00+05:30`).getTime();
   const inAt = Math.max(midnight + 30_000, now - 9 * 3600_000);
   const outAt = Math.max(inAt + 60_000, now - 5 * 60_000);
@@ -219,7 +219,7 @@ test.describe.serial('attendance modes', () => {
 
     // Its log: Dev in and out, a user id nobody has, a line it garbled and one from a clock running fast.
     const [inAt, outAt] = todaysPunches();
-    const future = deviceTime(Date.now() + 3 * 3600_000);
+    const future = deviceTime(nowMs() + 3 * 3600_000);
     const log = [`IN-007\t${inAt}\t0\t1\t0\t0\t0`, `999\t${inAt}\t0\t1\t0\t0\t0`, `IN-007\t${outAt}\t0\t1\t0\t0\t0`, 'garbled', `IN-007\t${future}\t0\t1\t0\t0\t0`].join('\n');
     const sent = await device(request, 'POST', `/cdata?SN=${GATE}&table=ATTLOG&Stamp=9001`, log);
     expect(sent.text).toBe('OK: 5');

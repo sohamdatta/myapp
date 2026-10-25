@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { OWNER, HR, PASSWORD, signIn, newPage, nav, tab, isoDay, api, expectRefused, errorOn, expectNoSidewaysScroll, expectNoConsoleErrors, shot } from './helpers';
+import { OWNER, HR, PASSWORD, signIn, newPage, nav, tab, isoDay, api, expectRefused, errorOn, expectNoSidewaysScroll, expectNoConsoleErrors, currentYear, shot } from './helpers';
 
 // Negative cases for attendance, leave and work from home: what each form refuses, the limits,
 // and the rules no screen offers to break (deciding your own request, punching twice, the past).
@@ -395,8 +395,8 @@ test.describe.serial('negative: attendance, leave and work from home', () => {
       await select.selectOption(current === '1' ? '4' : '1');
       await expect(errorOn(owner)).toContainText('cannot be changed once a year has been closed');
     }
-    await expectRefused(owner, 'POST', '/org/leave/year-end', [400, 409], { year: new Date().getFullYear() - 1 });
-    await expectRefused(owner, 'POST', '/org/leave/year-end', [400, 409], { year: new Date().getFullYear() + 1 });
+    await expectRefused(owner, 'POST', '/org/leave/year-end', [400, 409], { year: currentYear() - 1 });
+    await expectRefused(owner, 'POST', '/org/leave/year-end', [400, 409], { year: currentYear() + 1 });
   });
 
   test('on a phone, refusals are shown in full without sideways scrolling', async ({ browser }) => {

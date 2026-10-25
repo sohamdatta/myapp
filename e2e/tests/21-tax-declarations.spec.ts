@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { SUPER_ADMIN, newPage, nav, tab, acceptInvite, api, expectRefused, expectNoConsoleErrors, expectNoSidewaysScroll, isoDay, shot } from './helpers';
+import { SUPER_ADMIN, newPage, nav, tab, acceptInvite, api, expectRefused, expectNoConsoleErrors, expectNoSidewaysScroll, isoDay, taxYear, withinTaxYear, shot } from './helpers';
 
 // Income tax declarations (Form 124) and proofs, in an Organization of its own so the suite can run
 // by itself: Vandelay Ltd's owner opens the window, Meera declares rent and investments on the old
@@ -10,20 +10,6 @@ const ORG = 'Vandelay Ltd';
 const OWNER = 'owner@vandelay.test';
 const MEERA = 'meera@vandelay.test';
 const PDF = Buffer.from('%PDF-1.4\n1 0 obj << >> endobj\ntrailer << >>\n%%EOF\n');
-
-/** The tax year today falls in, as 2026-27, in India time. */
-function taxYear(): { label: string; start: number } {
-  const [y, m] = isoDay(0).split('-').map(Number);
-  const start = m >= 4 ? y : y - 1;
-  return { label: `${start}-${String((start + 1) % 100).padStart(2, '0')}`, start };
-}
-
-/** Days from today, never past the end of the tax year (the window must fall inside it). */
-function dayWithinYear(offset: number): string {
-  const end = `${taxYear().start + 1}-03-31`;
-  const day = isoDay(offset);
-  return day > end ? end : day;
-}
 
 async function claim(page: Page, label: string) {
   const row = page.locator(`[data-claim="${label}"]`);
@@ -90,9 +76,13 @@ test.describe.serial('tax declarations', () => {
     await expect(owner.getByRole('heading', { name: `Tax declarations ${taxYear().label}` })).toBeVisible();
     await owner.getByRole('button', { name: 'Open declarations…' }).click();
     await owner.fill('#tw-declare-from', isoDay(-1));
-    await owner.fill('#tw-declare-until', dayWithinYear(20));
+    await owner.fill('#tw-declare-until', withinTaxYear(20));
     await shot(owner, 'tax-01-open-window', true);
-    await owner.getByRole('button', { name: 'Save', exact: true }).click();
+    // Wait for the save itself: the form's live preview already reads "Declarations open".
+    await Promise.all([
+      owner.waitForResponse((r) => r.url().includes('/org/payroll/tax/window') && r.request().method() === 'PUT' && r.ok()),
+      owner.getByRole('button', { name: 'Save', exact: true }).click(),
+    ]);
     await expect(owner.getByTestId('tax-window')).toContainText('Declarations open');
     await expect(owner.locator('tr[data-employee="Meera Iyer"]')).toContainText('Not started');
 
@@ -164,8 +154,12 @@ test.describe.serial('tax declarations', () => {
     await nav(owner, 'Tax declarations');
     await owner.getByRole('button', { name: 'Change' }).click();
     await owner.fill('#tw-proofs-from', isoDay(0));
-    await owner.fill('#tw-proofs-until', dayWithinYear(20));
-    await owner.getByRole('button', { name: 'Save', exact: true }).click();
+    await owner.fill('#tw-proofs-until', withinTaxYear(20));
+    // Wait for the save itself: the form's live preview already reads "Proofs open".
+    await Promise.all([
+      owner.waitForResponse((r) => r.url().includes('/org/payroll/tax/window') && r.request().method() === 'PUT' && r.ok()),
+      owner.getByRole('button', { name: 'Save', exact: true }).click(),
+    ]);
     await expect(owner.getByTestId('tax-window')).toContainText('Proofs open');
 
     await meera.reload();

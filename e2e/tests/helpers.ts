@@ -2,6 +2,16 @@ import { expect, type Browser, type Page } from '@playwright/test';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 
+/**
+ * Seconds the fixed-date run moves the server's and the database's clock by (0 otherwise). The runner
+ * and the browser keep the real clock: "now" in the tests is nowMs(), and newPage() starts each browser
+ * context's clock at nowMs().
+ */
+const CLOCK_SHIFT_MS = Number(process.env.E2E_CLOCK_SHIFT_SECONDS || 0) * 1000;
+export function nowMs(): number {
+  return Date.now() + CLOCK_SHIFT_MS;
+}
+
 export const SUPER_ADMIN = {
   email: process.env.E2E_SUPERADMIN_EMAIL || 'admin@example.com',
   password: process.env.E2E_SUPERADMIN_PASSWORD || 'ChangeMe-12345',
@@ -39,7 +49,15 @@ export async function newPage(browser: Browser, width = 1280): Promise<Page> {
     locale: 'en-IN',
     acceptDownloads: true,
   });
+  if (CLOCK_SHIFT_MS) {
+    await context.clock.install({ time: nowMs() });
+  }
   const page = await context.newPage();
+  // Fail at once, rather than with puzzling date errors later, if the browser's clock does not follow.
+  if (CLOCK_SHIFT_MS) {
+    const drift = Math.abs((await page.evaluate(() => Date.now())) - nowMs());
+    if (drift > 60_000) throw new Error(`The browser's clock is ${Math.round(drift / 60_000)} minutes away from the tests' "now"`);
+  }
   watch(page);
   await recordCoverage(page);
   return page;
@@ -96,7 +114,7 @@ export async function expectNoSidewaysScroll(page: Page) {
 /** Dates in India time, as the app counts them. */
 const IST_OFFSET_MS = 330 * 60_000;
 function istToday(): Date {
-  const now = new Date(Date.now() + IST_OFFSET_MS);
+  const now = new Date(nowMs() + IST_OFFSET_MS);
   return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
 }
 export function isoDay(offsetDays = 0, from: Date = istToday()): string {
@@ -110,7 +128,7 @@ export function todayDmy(): string {
 }
 /** dd/mm/yyyy for a day whose 00:10 to 00:40 is already past: today, or yesterday in the first hour after midnight. */
 export function pastMidnightDmy(): string {
-  const minutes = Math.floor((Date.now() + IST_OFFSET_MS) / 60_000) % 1440;
+  const minutes = Math.floor((nowMs() + IST_OFFSET_MS) / 60_000) % 1440;
   const [y, m, d] = isoDay(minutes < 60 ? -1 : 0).split('-');
   return `${d}/${m}/${y}`;
 }
@@ -125,6 +143,30 @@ export function istWeekday(): number {
 }
 export function currentYear(): number {
   return istToday().getUTCFullYear();
+}
+
+/** The tax year today falls in (April to March, India time), as 2026-27, with the year it starts. */
+export function taxYear(): { label: string; start: number } {
+  const [y, m] = isoDay(0).split('-').map(Number);
+  const start = m >= 4 ? y : y - 1;
+  return { label: `${start}-${String((start + 1) % 100).padStart(2, '0')}`, start };
+}
+
+/** A day `offset` days from today, kept inside today's tax year (1 April to 31 March). */
+export function withinTaxYear(offset: number): string {
+  const start = `${taxYear().start}-04-01`;
+  const end = `${taxYear().start + 1}-03-31`;
+  const day = isoDay(offset);
+  return day < start ? start : day > end ? end : day;
+}
+
+/** A day `offset` days from today, kept inside today's calendar month (India time). */
+export function withinMonth(offset: number): string {
+  const today = istToday();
+  const first = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), 1)).toISOString().slice(0, 10);
+  const last = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth() + 1, 0)).toISOString().slice(0, 10);
+  const day = isoDay(offset);
+  return day < first ? first : day > last ? last : day;
 }
 
 /**

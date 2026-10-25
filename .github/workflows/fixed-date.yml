@@ -1,0 +1,138 @@
+# Runs the backend tests and the browser tests with the whole stack's clock moved to dates where
+# date logic breaks: the end of the calendar year (and of a January-December leave year), the end
+# of a short month, and the end of the tax year (and of an April-March leave year). The regular CI
+# only runs on the day of the push, so a test or a rule that fails on the 28th to the 31st, or on
+# 31 March, would otherwise go unseen until that day comes.
+#
+# How: libfaketime moves the clock of PostgreSQL and the JVM by one shared offset (so they agree and
+# time still passes). The Playwright runner and the browser stay on the real clock: the tests add the
+# same offset (E2E_CLOCK_SHIFT_SECONDS) to their "now", and each browser context's clock is started
+# there (see e2e/tests/helpers.ts). Chromium itself under libfaketime was slow and hung on input, and
+# Playwright's clock is only correct when the runner's clock is real. No application code changes.
+
+name: Fixed-date tests
+
+on:
+  schedule:
+    - cron: '30 20 * * 6'   # Sundays 02:00 India time
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - .github/workflows/fixed-date.yml
+      - e2e/playwright.config.ts
+      - e2e/tests/helpers.ts
+
+concurrency:
+  group: fixed-date-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  fixed-date:
+    name: Tests on ${{ matrix.day.name }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90   # libfaketime makes the JVM's clock calls slower; the backend tests take 3-5x as long
+    strategy:
+      fail-fast: false
+      matrix:
+        day:
+          - { name: '30 Dec (year end)', at: '2026-12-30 10:00:00 +0530', slug: dec30 }
+          - { name: '26 Feb (short month end)', at: '2027-02-26 10:00:00 +0530', slug: feb26 }
+          - { name: '28 Mar (tax year end)', at: '2027-03-28 10:00:00 +0530', slug: mar28 }
+    env:
+      APP_TEST_DB_REQUIRED: 'true'
+      FAKETIME_DONT_FAKE_MONOTONIC: '1'   # the JVM's internal timers must keep the real monotonic clock
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: |
+            frontend/package-lock.json
+            e2e/package-lock.json
+
+      - name: Work out the clock offset
+        run: |
+          offset=$(( $(date -d '${{ matrix.day.at }}' +%s) - $(date +%s) ))
+          echo "FAKE=+${offset}" >> "$GITHUB_ENV"
+          echo "E2E_CLOCK_SHIFT_SECONDS=${offset}" >> "$GITHUB_ENV"
+          echo "FAKELIB=/usr/lib/x86_64-linux-gnu/faketime/libfaketime.so.1" >> "$GITHUB_ENV"
+
+      - name: Start PostgreSQL 16 on the fixed date
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q faketime postgresql-16
+          sudo systemctl stop postgresql
+          sudo -u postgres env LD_PRELOAD="$FAKELIB" FAKETIME="$FAKE" FAKETIME_DONT_FAKE_MONOTONIC=1 \
+            /usr/lib/postgresql/16/bin/pg_ctl -D /var/lib/postgresql/16/main \
+            -o '-c config_file=/etc/postgresql/16/main/postgresql.conf' -l /tmp/postgres.log -w start
+          sudo -u postgres psql -qc "alter user postgres password 'postgres'" -c 'create database hrms'
+          sudo -u postgres psql -Atc 'select now()'
+
+      - name: Fetch Maven dependencies with the real clock
+        working-directory: backend
+        run: mvn -B -ntp -q dependency:go-offline
+
+      - name: Backend tests
+        working-directory: backend
+        run: LD_PRELOAD="$FAKELIB" FAKETIME="$FAKE" mvn -B -ntp verify
+
+      - name: Fresh database for the browser tests
+        run: sudo -u postgres psql -qc 'drop database hrms' -c 'create database hrms'
+
+      - name: Start the backend
+        run: |
+          LD_PRELOAD="$FAKELIB" FAKETIME="$FAKE" nohup java -jar backend/target/login-app-*.jar > backend.log 2>&1 &
+          for i in $(seq 1 60); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8080/api/auth/me || true)
+            if [ "$code" = "401" ]; then echo "backend is up"; exit 0; fi
+            sleep 2
+          done
+          echo "backend did not start"; cat backend.log; exit 1
+
+      - name: Start the frontend
+        working-directory: frontend
+        run: |
+          npm ci
+          nohup npx vite --port 5173 > ../frontend.log 2>&1 &
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:5173/ > /dev/null; then echo "frontend is up"; exit 0; fi
+            sleep 1
+          done
+          echo "frontend did not start"; cat ../frontend.log; exit 1
+
+      - name: Install Playwright
+        working-directory: e2e
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+
+      - name: Browser tests
+        working-directory: e2e
+        run: npx playwright test
+
+      - name: Copy the database log where the upload can read it
+        if: always()
+        run: sudo cat /tmp/postgres.log > postgres.log || true
+
+      - name: Keep the reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fixed-date-${{ matrix.day.slug }}
+          path: |
+            backend/target/surefire-reports/
+            e2e/playwright-report/
+            e2e/test-results/
+            backend.log
+            frontend.log
+            postgres.log
+          retention-days: 14

@@ -1,5 +1,5 @@
 import { test, expect, type Page, type APIRequestContext } from '@playwright/test';
-import { SUPER_ADMIN, newPage, nav, tab, acceptInvite, api, expectRefused, expectNoConsoleErrors, isoDay } from './helpers';
+import { SUPER_ADMIN, newPage, nav, tab, acceptInvite, api, expectRefused, expectNoConsoleErrors, isoDay, taxYear, withinTaxYear } from './helpers';
 
 // What the tax and settings screens never offer, tried directly against the server, in an Organization
 // of its own (Pied Piper): another employee's claims and files, bad claims and files, HR screens without
@@ -15,18 +15,6 @@ const RAVI = 'ravi@piedpiper-inc.test';
 const PDF = '%PDF-1.4\n1 0 obj << >> endobj\ntrailer << >>\n%%EOF\n';
 const XSS = '<img src=x onerror="window.__xss=1">';
 const DEVICE_URL = 'http://127.0.0.1:8080/iclock';
-
-function taxYear(): { label: string; start: number } {
-  const [y, m] = isoDay(0).split('-').map(Number);
-  const start = m >= 4 ? y : y - 1;
-  return { label: `${start}-${String((start + 1) % 100).padStart(2, '0')}`, start };
-}
-
-function dayWithinYear(offset: number): string {
-  const end = `${taxYear().start + 1}-03-31`;
-  const day = isoDay(offset);
-  return day > end ? end : day;
-}
 
 /** Uploads raw bytes as a proof, the way the screen does, with whatever name and content the test chooses. */
 async function upload(page: Page, itemId: string, name: string, content: string) {
@@ -112,7 +100,7 @@ test.describe.serial('negative: tax declarations, settings and devices', () => {
     })).status).toBe(200);
     expect((await api(owner, 'PUT', `/org/people/employees/${meeraId}/pay/profile`, { taxRegime: 'old' })).status).toBe(200);
     expect((await api(owner, 'PUT', '/org/payroll/tax/window', {
-      taxYear: taxYear().label, declareFrom: isoDay(-1), declareUntil: dayWithinYear(20),
+      taxYear: taxYear().label, declareFrom: isoDay(-1), declareUntil: withinTaxYear(20),
     })).status).toBe(200);
   });
 
@@ -176,7 +164,7 @@ test.describe.serial('negative: tax declarations, settings and devices', () => {
 
   test('proofs: only after submitting, only real PDF, JPEG or PNG files, only your own', async () => {
     expect((await api(owner, 'PUT', '/org/payroll/tax/window', {
-      taxYear: taxYear().label, declareFrom: isoDay(-1), declareUntil: dayWithinYear(20), proofsFrom: isoDay(-1), proofsUntil: dayWithinYear(20),
+      taxYear: taxYear().label, declareFrom: isoDay(-1), declareUntil: withinTaxYear(20), proofsFrom: isoDay(-1), proofsUntil: withinTaxYear(20),
     })).status).toBe(200);
     expect((await upload(meera, ppfId, 'ppf.pdf', PDF)).body.code).toBe('tax.not_submitted');
     expect((await api(meera, 'POST', '/org/me/tax/submit')).status).toBe(200);
