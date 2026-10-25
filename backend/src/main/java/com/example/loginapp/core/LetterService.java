@@ -57,6 +57,7 @@ public final class LetterService {
         return db.inTenant(ctx.tenantId(), c -> {
             OnboardingDefaults.ensure(c, ctx.tenantId());
             ExitDefaults.ensure(c, ctx.tenantId());
+            PerformanceDefaults.ensure(c, ctx.tenantId());
             List<Map<String, Object>> out = new ArrayList<>();
             for (Map<String, Object> t : Sql.query(c, "select * from app.letter_template order by kind, lower(name)")) {
                 t.put("appliesTo", AppliesTo.parse((String) t.get("appliesTo")).rules());
@@ -80,7 +81,8 @@ public final class LetterService {
             }
             String kind = in.kind() != null ? in.kind().trim() : current == null ? "other" : (String) current.get("kind");
             boolean exit = ExitLetters.KINDS.contains(kind);
-            if (!KINDS.contains(kind) && !exit) {
+            boolean performance = PerformanceLetters.KINDS.contains(kind);
+            if (!KINDS.contains(kind) && !exit && !performance) {
                 throw ApiException.badRequest("Not a kind of letter");
             }
             if (current != null && exit != ExitLetters.KINDS.contains((String) current.get("kind"))) {
@@ -94,8 +96,8 @@ public final class LetterService {
             if (body == null || body.isBlank() || body.length() > 20000) {
                 throw ApiException.badRequest("Write the letter, in at most 20,000 characters");
             }
-            Templates.check(body, exit ? Templates.EXIT_LETTER : Templates.LETTER);
-            String response = exit ? "none"
+            Templates.check(body, exit ? Templates.EXIT_LETTER : performance ? Templates.PERFORMANCE_LETTER : Templates.LETTER);
+            String response = exit || (performance && !kind.equals("confirmation")) ? "none"
                     : in.response() != null ? in.response().trim() : current == null ? "accept" : (String) current.get("response");
             if (!RESPONSES.contains(response)) {
                 throw ApiException.badRequest("The response must be none, accept or accept_or_decline");

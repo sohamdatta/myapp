@@ -9,14 +9,14 @@ Build these five in order: green CI first (half a day), then sign-in security, t
 | # | Release | What it delivers | Effort (estimate) | Depends on | Migration |
 | --- | --- | --- | --- | --- | --- |
 | 1 | Green CI | The two fragile browser tests fixed; date and timezone guards so they cannot creep back | 0.5 day | — | none |
-| 2 | Sign-in security | Email sending, password reset, email change, TOTP MFA with recovery codes, lockout and rate limits | 2–3 weeks | 1 | V19 |
-| 3 | Income tax completion | Previous employer's income and TDS, challans, quarterly Form 138 return file, Form 130 Part B | 3–4 weeks | 1; uses tax declarations (V17) | V20 |
-| 4 | PF and ESI returns | Monthly PF ECR text file, ESI contribution file, with pre-checks and a filing log | 1.5–2 weeks | 1 | V21 |
-| 5 | Installable app (PWA) | Home-screen install, offline punch queue, web push, camera upload for proofs and documents | 3 weeks | 2 (push uses the outbox) | V22 |
+| 2 | Sign-in security | Email sending, password reset, email change, TOTP MFA with recovery codes, lockout and rate limits | 2–3 weeks | 1 | V27 |
+| 3 | Income tax completion | Previous employer's income and TDS, challans, quarterly Form 138 return file, Form 130 Part B | 3–4 weeks | 1; uses tax declarations (V17) | V28 |
+| 4 | PF and ESI returns | Monthly PF ECR text file, ESI contribution file, with pre-checks and a filing log | 1.5–2 weeks | 1 | V29 |
+| 5 | Installable app (PWA) | Home-screen install, offline punch queue, web push, camera upload for proofs and documents | 3 weeks | 2 (push uses the outbox) | V30 |
 | — | Email (before go-live) | Invitations and the app's notices sent by email instead of copied links: the outbox, Amazon SES from the product's domain, an email beside each in-app notice, switches per event | 1–1.5 weeks | Domain and HTTPS; built as the first part of release 2 | With release 2's schema |
 | — | Domain and HTTPS (before go-live) | The product's own domain: addresses for production and UAT, their HTTPS certificates, and the sending domain release 2's email needs | 1 hour, plus DNS propagation and email DNS records | Buying the domain | none |
 
-Estimates assume one developer working with Claude and the current test discipline (JUnit against PostgreSQL plus a Playwright suite per release). Every release keeps the existing rules: maker-checker where money moves, row-level security per Organization, an audit event for every change, and statutory figures as rule data awaiting the payroll consultant's sign-off.
+Migration numbers below follow the schema on `main` (V19 is the Leave module; V20 to V26 are performance management and branding), so these releases start at V27. Estimates assume one developer working with Claude and the current test discipline (JUnit against PostgreSQL plus a Playwright suite per release). Every release keeps the existing rules: maker-checker where money moves, row-level security per Organization, an audit event for every change, and statutory figures as rule data awaiting the payroll consultant's sign-off.
 
 ## 1. Green CI
 
@@ -101,7 +101,7 @@ Keep the per-identity lockout and add limits per IP address and per email addres
 
 Counters live in `auth.rate_counter` (key, window start, count), pruned hourly. That suits one server today and keeps working with several. Lockout also sends the identity an email ("Several failed sign-ins, locked for 15 minutes"), throttled to one an hour.
 
-### Schema (V19)
+### Schema (V27)
 
 `platform.email_outbox`, `platform.email_suppression`, `auth.rate_counter`, `auth.email_change` (identity, new email, token hash, expires, verified_at, undo token hash, undo expires), `auth.identity.mfa_last_step` (bigint), `app.mfa_policy` (tenant, role code) with defaults inserted for existing Organizations, and email rows in `app.message_template` for the events that send mail.
 
@@ -172,7 +172,7 @@ Part A comes from TRACES as PDFs; the employer generates Part B, the salary comp
 3. Part A and Part B are joined into one PDF, stored as an encrypted document, and released to the employee in My pay, including people who left in the year (their former-employee access already covers My exit; add a *Tax certificates* link there).
 4. Release is by the payroll approver; every view is audited.
 
-### Schema (V20)
+### Schema (V28)
 
 `app.tax_other_income` (declaration, part B or C, details, amounts, proof status, as V17 items), `app.tds_challan` and `app.tds_challan_run`, `app.tds_statement` (TAN, tax year, quarter, version, status, token number, filed on), `app.tds_statement_row` (frozen per employee and challan), and `app.tax_certificate` (employment, tax year, part A document, combined document, released at). The `income_tax` rule gains the deposit due day, interest rates and the higher no-PAN rate, as draft data.
 
@@ -224,7 +224,7 @@ One spreadsheet per ESI code per month, in the columns ESIC's monthly contributi
 
 After uploading on the EPFO and ESIC portals, the operator records the TRRN or challan number, the date and the amount paid, and attaches the portal's receipt PDF. The month then shows as filed; a late filing shows the days late. Recording is maker-checker like challans.
 
-### Schema (V21)
+### Schema (V29)
 
 `app.statutory_filing` (kind `pf_ecr` or `esi`, registration, period, version, status `draft`, `downloaded`, `filed`, the file document, totals, reference number, paid on, receipt document, filed by, approved by), `app.esi_reason_map` (exit reason → ESIC code), and the PF rule gains `ecrSeparator` and the EPS and EDLI ceilings as data.
 
@@ -265,7 +265,7 @@ Make the existing React app installable on Android and iPhone home screens, with
 
 Tokens stay in session storage as today, so an installed app signs in again after it is closed; *Keep me signed in on this phone* (30 days, a separate refresh token bound to the device, revocable from Profile → Security) is offered only when the Organization allows it and the person has MFA. No personal data in caches; notification text carries no amounts or PAN ("Your payslip for October is ready").
 
-### Schema (V22)
+### Schema (V30)
 
 `app.push_subscription`; the outbox gains `channel`; `app.punch` gains `taken_at`, `received_at` and source `offline`; `app.work_location` gains `allow_offline_punch`; per-membership notification preferences (`app.notification_preference`: event, channel, on).
 
@@ -330,9 +330,13 @@ a domain of their own yet. A domain is needed before customers use the product: 
 only trust HTTPS for a name, not a bare IP address, and release 2's email (invitations,
 password reset, MFA notices) has to be sent from a domain the product owns.
 
-### Until the domain is bought
+**Production done 25 Oct 2026:** `https://peopleos.nexvance.in`, DNS on Cloudflare (DNS only),
+certificate from Let's Encrypt ([guide](../deploy/aws-lightsail.md), step 3). UAT and the email
+records below remain.
 
-Each server uses a free name that points at its IP address, from sslip.io: production is
+### Before a domain existed
+
+Each server used a free name that points at its IP address, from sslip.io: production was
 `3-6-15-236.sslip.io`. Set it as `DOMAIN` in the environment's settings file
 (`deploy/env/<environment>.env`); Caddy gets a real HTTPS certificate for it as usual.
 This is for setting up and internal testing only: it is not shared with customers, and it
@@ -343,7 +347,7 @@ data, which turns HTTPS off and sends passwords and PAN in clear text.
 
 | Address | Record | Points at |
 | --- | --- | --- |
-| `hr.<domain>` (production) | A, and AAAA for IPv6 | `3.6.15.236`, and production's IPv6 address |
+| `peopleos.nexvance.in` (production, done) | A, and AAAA for IPv6, DNS only | `3.6.15.236`, and production's IPv6 address |
 | `uat.hr.<domain>` (demo / UAT) | A | UAT's reserved IP on Oracle Cloud |
 | `<domain>` (email, release 2) | SPF, DKIM, DMARC | The mail provider's values |
 
@@ -364,10 +368,10 @@ Each release is one migration, one design page in `docs/`, its own JUnit test cl
 
 | Release | Migration | New permissions | New settings |
 | --- | --- | --- | --- |
-| 2 Sign-in security | V19 | `org.security` (MFA policy, MFA reset) for Org Admin | `APP_SMTP_*`, `APP_MAIL_FROM`, `APP_PUBLIC_URL` (for links in mail) |
-| 3 Income tax | V20 | `statutory.file` (exists, on payroll operator) to prepare; `payroll.approve` to approve challans and release certificates | none |
-| 4 PF and ESI | V21 | `statutory.file` | none |
-| 5 App | V22 | none | `APP_VAPID_PUBLIC`, `APP_VAPID_PRIVATE` |
+| 2 Sign-in security | V27 | `org.security` (MFA policy, MFA reset) for Org Admin | `APP_SMTP_*`, `APP_MAIL_FROM`, `APP_PUBLIC_URL` (for links in mail) |
+| 3 Income tax | V28 | `statutory.file` (exists, on payroll operator) to prepare; `payroll.approve` to approve challans and release certificates | none |
+| 4 PF and ESI | V29 | `statutory.file` | none |
+| 5 App | V30 | none | `APP_VAPID_PUBLIC`, `APP_VAPID_PRIVATE` |
 
 - **Migrations**: added to `Migrator`'s list (the list is explicit; V17 showed a file outside it is silently skipped, so add a test that every file in the folder is listed).
 - **Rule data**: new statutory figures (deposit dates, interest, ECR separator, ceilings) go into draft rule rows with a source note, never code, and show the existing "drafts awaiting sign-off" banner.
@@ -425,7 +429,7 @@ The releases above fix about twenty operational values in code: lockout limits, 
 
 **For the product owner**
 
-- [ ] Domain: which one, and who registers it (in whose name and account)? Production and UAT run on temporary sslip.io names until then.
+- [x] Domain: `nexvance.in` (DNS on Cloudflare); production at `peopleos.nexvance.in`. UAT's name to choose when its server exists.
 - [ ] Mail provider: Amazon SES (fits the AWS deploy) or another? Which sending domain, and who sets up its SPF, DKIM and DMARC records?
 - [ ] Email before go-live: build the outbox and invitation and notice emails ahead of the rest of release 2, so customers are not sent links by hand?
 - [ ] Should MFA be required for admin and payroll roles in existing Organizations too, after a notice period, or stay their choice?

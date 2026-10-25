@@ -3344,3 +3344,326 @@ textarea.code {
     grid-column: auto;
   }
 }
+
+/* ── performance ───────────────────────────────────────────────────── */
+
+.perf-choices legend {
+  margin-bottom: 6px;
+  font-weight: 600;
+}
+
+.perf-choices .choice {
+  align-items: center;
+}
+
+.perf-choices .choice input {
+  margin-top: 0;
+}
+
+.checkin {
+  padding: 12px 0;
+  border-top: 1px solid var(--border);
+}
+
+.checkin:first-of-type {
+  border-top: 0;
+}
+
+.checkin-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.checkin .pre,
+.reply .pre {
+  margin: 4px 0;
+}
+
+.reply {
+  margin: 8px 0 4px;
+  padding: 8px 12px;
+  background: var(--accent-soft);
+  border-radius: 8px;
+}
+
+.bullet-list {
+  margin: 0;
+  padding-left: 18px;
+}
+
+/* Text people typed, with their line breaks kept. */
+.pre {
+  white-space: pre-wrap;
+}
+
+.goal {
+  padding: 12px 0;
+  border-top: 1px solid var(--border);
+}
+
+.goal-dropped {
+  opacity: 0.6;
+}
+
+.goal-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.goal-weight {
+  margin-left: auto;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.goal-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 6px;
+}
+
+.goal-form,
+.meeting {
+  margin: 12px 0;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.goal-progress {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 6px 0;
+}
+
+.progress-track {
+  flex: 0 0 160px;
+  height: 8px;
+  background: var(--border);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.feedback-list,
+.checklist {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.feedback {
+  padding: 10px 0;
+  border-top: 1px solid var(--border);
+}
+
+.feedback:first-child,
+.goal:first-of-type {
+  border-top: 0;
+}
+
+.review-item {
+  padding: 10px 0;
+  border-top: 1px solid var(--border);
+}
+
+.rating-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 6px 0;
+}
+
+.rating-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+
+.rating-option input {
+  width: auto;
+  margin: 0;
+}
+
+.rating-current {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.rating-label {
+  color: var(--muted);
+}
+
+.overall,
+.their-answers {
+  margin-top: 16px;
+}
+
+.stat-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin: 12px 0;
+}
+
+.stat strong {
+  font-size: 1.2rem;
+  margin-right: 4px;
+}
+
+.question-row {
+  display: grid;
+  grid-template-columns: 2fr 1fr 1fr auto auto;
+  gap: 10px;
+  align-items: end;
+  margin-bottom: 8px;
+}
+
+@media (max-width: 720px) {
+  .question-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ── calibration and outcomes ────────────────────────────────────────── */
+.distribution .bar-cell {
+  position: relative;
+  min-width: 120px;
+  width: 30%;
+}
+.distribution .bar {
+  display: block;
+  height: 0.6rem;
+  border-radius: 3px;
+  background: var(--accent);
+  max-width: 100%;
+}
+.distribution .bar-over {
+  background: var(--warn);
+}
+.distribution .bar-guide {
+  position: absolute;
+  top: 0.35rem;
+  bottom: 0.35rem;
+  width: 2px;
+  background: var(--muted);
+}
+.outcome-form {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 0.75rem;
+  align-items: start;
+}
+.outcome-form .wide,
+.outcome-form .form-actions,
+.outcome-form .error {
+  grid-column: 1 / -1;
+}
+.hint.warn {
+  color: var(--warn);
+}
+[data-testid='merit-table'] input {
+  max-width: 7rem;
+}
+
+/* ── improvement plans ───────────────────────────────────────────────── */
+.plan-objectives {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.75rem;
+  margin: 0.75rem 0;
+}
+.plan-objective-list li {
+  margin-bottom: 0.5rem;
+}
+
+/* ── brand ──────────────────────────────────────────────────────────── */
+.nexvance-logo {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+.nexvance-words {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.05;
+}
+.nexvance-name {
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  font-size: 1.02rem;
+}
+.nexvance-sub {
+  font-size: 0.78rem;
+  color: var(--muted);
+  letter-spacing: 0.02em;
+}
+.brand-sign-in .nexvance-name {
+  font-size: 1.35rem;
+}
+.brand-sign-in .nexvance-sub {
+  font-size: 0.9rem;
+}
+.brand-org {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+}
+.org-logo {
+  display: block;
+  max-width: 100%;
+  max-height: 44px;
+  object-fit: contain;
+}
+.sidebar .where-under {
+  padding: 0 8px;
+  margin-top: -14px;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+.powered-by {
+  margin-top: auto;
+  padding: 0 8px;
+  font-size: 0.78rem;
+  color: var(--muted);
+  text-decoration: none;
+}
+.powered-by:hover {
+  color: var(--accent);
+}
+.logo-preview {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 16px;
+  padding: 16px;
+  margin: 12px 0;
+  border: 1px dashed var(--border-strong);
+  border-radius: 8px;
+}
+.logo-preview img {
+  max-width: 100%;
+  max-height: 64px;
+  object-fit: contain;
+}
+@media (max-width: 760px) {
+  .sidebar .where-under {
+    flex: 1 0 100%;
+    margin-top: -6px;
+    padding: 0;
+  }
+  .powered-by {
+    display: none;
+  }
+}
