@@ -13,6 +13,7 @@ Build these five in order: green CI first (half a day), then sign-in security, t
 | 3 | Income tax completion | Previous employer's income and TDS, challans, quarterly Form 138 return file, Form 130 Part B | 3–4 weeks | 1; uses tax declarations (V17) | V20 |
 | 4 | PF and ESI returns | Monthly PF ECR text file, ESI contribution file, with pre-checks and a filing log | 1.5–2 weeks | 1 | V21 |
 | 5 | Installable app (PWA) | Home-screen install, offline punch queue, web push, camera upload for proofs and documents | 3 weeks | 2 (push uses the outbox) | V22 |
+| — | Domain and HTTPS (before go-live) | The product's own domain: addresses for production and UAT, their HTTPS certificates, and the sending domain release 2's email needs | 1 hour, plus DNS propagation and email DNS records | Buying the domain | none |
 
 Estimates assume one developer working with Claude and the current test discipline (JUnit against PostgreSQL plus a Playwright suite per release). Every release keeps the existing rules: maker-checker where money moves, row-level security per Organization, an audit event for every change, and statutory figures as rule data awaiting the payroll consultant's sign-off.
 
@@ -272,6 +273,41 @@ Tokens stay in session storage as today, so an installed app signs in again afte
 - Browser on a phone viewport: the manifest is valid and installable (Lighthouse PWA checks in CI); the app opens with the network cut; a punch taken offline is queued and sent on reconnect, and shows *offline* in the trail; a punch older than 12 hours is refused with the reason; sign-out clears caches and the queue.
 - JUnit: offline punch rules (age, location, clock skew flag); push subscriptions pruned on 410; notification preferences honoured by the outbox.
 
+## Domain and HTTPS (before go-live)
+
+Production (AWS Lightsail, static IP `3.6.15.236`) and UAT (Oracle Cloud) are set up without
+a domain of their own yet. A domain is needed before customers use the product: browsers
+only trust HTTPS for a name, not a bare IP address, and release 2's email (invitations,
+password reset, MFA notices) has to be sent from a domain the product owns.
+
+### Until the domain is bought
+
+Each server uses a free name that points at its IP address, from sslip.io: production is
+`3-6-15-236.sslip.io`. Set it as `DOMAIN` in the environment's settings file
+(`deploy/env/<environment>.env`); Caddy gets a real HTTPS certificate for it as usual.
+This is for setting up and internal testing only: it is not shared with customers, and it
+depends on sslip.io's DNS staying up. Never run with `DOMAIN=http://<IP address>` for real
+data, which turns HTTPS off and sends passwords and PAN in clear text.
+
+### When the domain is bought
+
+| Address | Record | Points at |
+| --- | --- | --- |
+| `hr.<domain>` (production) | A, and AAAA for IPv6 | `3.6.15.236`, and production's IPv6 address |
+| `uat.hr.<domain>` (demo / UAT) | A | UAT's reserved IP on Oracle Cloud |
+| `<domain>` (email, release 2) | SPF, DKIM, DMARC | The mail provider's values |
+
+1. Buy the domain, with auto-renew on and the registrar account under MFA.
+2. Add the A and AAAA records above, and wait until `nslookup hr.<domain>` returns the IP.
+3. On each server, change `DOMAIN` in its settings file and restart the web server:
+   `deploy/hrms.sh production up -d` (or `uat`). Caddy gets the new certificate by itself.
+4. On GitHub, change the `UAT_URL` variable to `https://uat.hr.<domain>` so the automatic
+   UAT deploy checks the right address.
+5. With release 2: add the mail provider's SPF, DKIM and DMARC records, and send from an
+   address on the domain, such as `no-reply@<domain>`.
+
+Nothing else changes: the app has no domain written into it.
+
 ## Cross-cutting
 
 Each release is one migration, one design page in `docs/`, its own JUnit test class and its own browser suite, and lands on `main` only with CI green in both time zones.
@@ -339,6 +375,7 @@ The releases above fix about twenty operational values in code: lockout limits, 
 
 **For the product owner**
 
+- [ ] Domain: which one, and who registers it (in whose name and account)? Production and UAT run on temporary sslip.io names until then.
 - [ ] Mail provider: Amazon SES (fits the AWS deploy) or another? Which sending domain, and who sets up its SPF, DKIM and DMARC records?
 - [ ] Should MFA be required for admin and payroll roles in existing Organizations too, after a notice period, or stay their choice?
 - [ ] Offline punch: allowed by default, or off until an Organization turns it on?
