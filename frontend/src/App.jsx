@@ -8,6 +8,8 @@ import { formatDate } from './hooks.js'
 import Bell from './Bell.jsx'
 import { PRODUCT, logoUrl } from './brand/brand.js'
 import NexvanceLogo from './brand/NexvanceLogo.jsx'
+import { NavIcon } from './icons.jsx'
+import { initials } from './initials.js'
 import { firstPage, navFor } from './nav.js'
 
 function inviteTokenFromUrl() {
@@ -107,7 +109,8 @@ function Shell({ me, nav, page, onNavigate, onSwitch, onSignOut, onEndSupport, c
                     go(item.id)
                   }}
                 >
-                  {item.label}
+                  <NavIcon id={item.id} />
+                  <span>{item.label}</span>
                 </a>
               ))}
             </div>
@@ -135,7 +138,12 @@ function Shell({ me, nav, page, onNavigate, onSwitch, onSignOut, onEndSupport, c
             </div>
             <div className="topbar-actions">
               {me.kind === 'tenant' && me.membershipId && <Bell pages={items.map((item) => item.id)} onNavigate={go} />}
-              <span className="who">{me.email}</span>
+              <span className="who">
+                <span className="who-avatar" aria-hidden="true">
+                  {initials(null, me.email)}
+                </span>
+                <span className="who-email">{me.email}</span>
+              </span>
               {me.kind !== 'support' && me.organizations.length + (me.console ? 1 : 0) > 1 && (
                 <button type="button" className="quiet plain" onClick={onSwitch}>
                   Switch
