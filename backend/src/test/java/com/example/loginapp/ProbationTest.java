@@ -13,6 +13,7 @@ import java.time.Clock;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -209,7 +210,11 @@ class ProbationTest {
         List<Map<String, Object>> open = probation.list(s.boss, null);
         assertEquals(1, open.size());
         assertEquals(next.toString(), open.get(0).get("probationEnd"));
-        assertEquals(3L, ((Number) open.get(0).get("checkinsTotal")).longValue(), "a check-in every 30 days of the extension");
+        // A check-in every 30 days of the extension, on days before the new end only. Three months is
+        // 89 to 92 days, so the 90-day check-in exists only when the extension is longer than 90 days.
+        long extensionDays = ChronoUnit.DAYS.between(probationEnd(s), next);
+        assertEquals((extensionDays - 1) / 30, ((Number) open.get(0).get("checkinsTotal")).longValue(),
+                "a check-in every 30 days of the extension, before its end");
         Map<String, Object> again = probation.get(s.boss, UUID.fromString((String) open.get(0).get("id")));
         assertEquals(1, ((List<?>) again.get("history")).size(), "the earlier decision shows as history");
         assertEquals(1L, count(s, "select count(*) from app.issued_letter where kind = 'probation_extension'"));
