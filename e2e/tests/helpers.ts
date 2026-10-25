@@ -44,6 +44,10 @@ export async function newPage(browser: Browser, width = 1280): Promise<Page> {
     await context.clock.install({ time: new Date() });
   }
   const page = await context.newPage();
+  if (process.env.E2E_FAKE_CLOCK) {
+    const drift = Math.abs((await page.evaluate(() => Date.now())) - Date.now());
+    if (drift > 60_000) throw new Error(`The browser's clock is ${Math.round(drift / 60_000)} minutes away from the test runner's`);
+  }
   watch(page);
   await recordCoverage(page);
   return page;

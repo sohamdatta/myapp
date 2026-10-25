@@ -475,7 +475,9 @@ function ShiftForm({ shift, onSaved, onCancel }) {
 }
 
 function Holidays({ locations, canManage }) {
-  const [year] = useState(() => new Date().getFullYear())
+  // Next year's holidays are usually set in December, so the list can show last, this or next year.
+  const [thisYear] = useState(() => new Date().getFullYear())
+  const [year, setYear] = useState(thisYear)
   const holidays = useLoad(() => attendance.holidays(year))
   const [date, setDate] = useState('')
   const [name, setName] = useState('')
@@ -486,11 +488,21 @@ function Holidays({ locations, canManage }) {
     event.preventDefault()
     const added = await run(() => attendance.addHoliday({ date, name, workLocationId: locationId || null }))
     if (added) {
+      // Show the year the holiday was added to, so it never seems to vanish.
+      const addedYear = Number(date.slice(0, 4))
+      if (addedYear && addedYear !== year) setYear(addedYear)
       setDate('')
       setName('')
       holidays.reload()
     }
   }
+
+  function showYear(next) {
+    setYear(next)
+    holidays.reload()
+  }
+
+  const years = [...new Set([thisYear - 1, thisYear, thisYear + 1, year])].sort((a, b) => a - b)
 
   async function remove(id) {
     const done = await run(async () => {
@@ -506,6 +518,18 @@ function Holidays({ locations, canManage }) {
   return (
     <>
       <h2>Holidays in {year}</h2>
+      <div className="toolbar">
+        <div>
+          <label htmlFor="hol-year">Year</label>
+          <select id="hol-year" value={year} onChange={(e) => showYear(Number(e.target.value))}>
+            {years.map((y) => (
+              <option key={y} value={y}>
+                {y}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
       {canManage && (
         <form className="toolbar" onSubmit={add} noValidate>
           <div>

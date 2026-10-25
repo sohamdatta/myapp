@@ -118,6 +118,10 @@ jobs:
           E2E_FAKE_CLOCK: '1'
         run: LD_PRELOAD="$FAKELIB" FAKETIME="$FAKE" npx playwright test
 
+      - name: Copy the database log where the upload can read it
+        if: always()
+        run: sudo cat /tmp/postgres.log > postgres.log || true
+
       - name: Keep the reports
         if: always()
         uses: actions/upload-artifact@v4
@@ -129,5 +133,5 @@ jobs:
             e2e/test-results/
             backend.log
             frontend.log
-            /tmp/postgres.log
+            postgres.log
           retention-days: 14
