@@ -449,6 +449,14 @@ public final class EmployeeService {
         UUID managerId = blank(in.managerId()) ? null : id(in.managerId(), "manager");
         String reason = optional(in.reason(), 200);
         db.inTenant(ctx.tenantId(), c -> {
+            changeJobIn(c, ctx, employmentId, from, designation, departmentId, managerId, reason);
+            return null;
+        });
+    }
+
+    /** A job change inside the caller's transaction; the caller has checked permission and input. */
+    static UUID changeJobIn(Connection c, SessionCtx ctx, UUID employmentId, LocalDate from, String designation, UUID departmentId,
+                            UUID managerId, String reason) throws SQLException {
             Map<String, Object> e = lockEmployment(c, employmentId);
             if (!"active".equals(e.get("status")) && !"onboarding".equals(e.get("status"))) {
                 throw new ApiException(409, "employee.not_active", "This employee has left; their job can no longer change");
@@ -466,15 +474,14 @@ public final class EmployeeService {
                 requireActiveManager(c, managerId);
                 checkReportingLoop(c, employmentId, managerId, from);
             }
-            Sql.update(c, "insert into app.job_assignment (tenant_id, employment_id, effective_from, designation, department_id, "
-                            + "manager_id, reason, created_by) values (?, ?, ?, ?, ?, ?, ?, ?)",
+            Map<String, Object> row = Sql.one(c, "insert into app.job_assignment (tenant_id, employment_id, effective_from, designation, department_id, "
+                            + "manager_id, reason, created_by) values (?, ?, ?, ?, ?, ?, ?, ?) returning id",
                     ctx.tenantId(), employmentId, from, designation, departmentId, managerId, reason, ctx.membershipId());
             UserService.audit(c, ctx, "employee.job_changed", "employment", employmentId,
                     detail("effectiveFrom", from.toString(), "designation", designation,
                             "departmentId", departmentId == null ? null : departmentId.toString(),
                             "managerId", managerId == null ? null : managerId.toString(), "reason", reason));
-            return null;
-        });
+            return AuthService.uuid(row.get("id"));
     }
 
     /**

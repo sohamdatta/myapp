@@ -570,6 +570,58 @@ Not yet: importing salaries and year-to-date history, a parallel run, PF and
 ESI return files, Form 130, loans, tax declarations, and arrears for a month
 already approved.
 
+## Performance
+
+Under Performance for managers (their team) and HR, and My performance for
+everyone. The design, as built, is `docs/performance/design.md`; the schema is
+`V20` to `V25` (`V20__performance_probation.sql` onwards).
+
+- **Probation.** Each new joiner on probation gets check-ins from their
+  manager at 30, 60 and 90 days (Setup), which they read and can answer; a
+  recommendation 21 days before the end; and HR's decision. Confirming and
+  extending issue their letters; not confirming starts a termination in Exits.
+- **Goals, one-to-ones and feedback.** Weighted goals for the goal year,
+  agreed by the manager, versioned when changed after agreement, with progress
+  and department goals to link to. One-to-ones keep shared notes, action items
+  and private notes. Feedback is praise or private to the manager; it can be
+  changed for a day, then only withdrawn. Anyone can ask up to five colleagues
+  for feedback.
+- **Review cycles.** HR sets up who is in a cycle, the form, the weight of
+  goals and competencies, and the dates, then starts it. Self review, the
+  manager's review with the overall rating worked out (and shown step by
+  step), optional peer reviews (up to five, anonymous by default) and optional
+  sign-off by the manager's manager.
+- **Calibration and outcomes.** HR calibrates in sessions against a guide
+  distribution, changing ratings with a reason the manager is told; an open
+  session holds the release. After release, outcomes come from the merit table
+  (Setup), with promotions and bonuses; someone other than the sender approves
+  them, which records the pay revision and the job change and issues the
+  increment and promotion letters.
+- **Improvement plans.** A manager drafts objectives, support, length and
+  check-ins; HR starts the plan and issues its letter; the employee
+  acknowledges and may respond; the manager checks in on every objective; HR
+  decides completed, extended once, or not met, which starts a termination.
+
+Nobody acts on their own review, probation, plan or outcome, even an Org Admin.
+Review answers, calibration reasons, private notes and plans are encrypted.
+
+## Branding
+
+The app carries the Nexvance brand (the wordmark from nexvance.in and the
+tagline "Advancing What's Next") on the sign-in page, in the browser tab and in
+the sidebar. To change the artwork, replace `frontend/src/brand/NexvanceLogo.jsx`
+and `frontend/public/favicon.svg`; the names are in `frontend/src/brand/brand.js`.
+
+An Org Admin can set the Organization's own logo under Organization settings
+(PNG or JPEG, at most 2 MB). It is drawn again as a PNG within 1200 by 400
+pixels, keeping transparency, and then replaces the Nexvance logo in the
+sidebar for everyone in that Organization, with "Powered by Nexvance" at the
+foot. Removing it brings the Nexvance logo back. The sign-in page always shows
+Nexvance, because people sign in before choosing an Organization. The logo is
+served without sign-in from `/api/branding/{organization id}/logo`, as logos
+are public; changes are in the audit log. The schema is
+`V26__organization_branding.sql`.
+
 ## Roles
 
 | Role | Can |

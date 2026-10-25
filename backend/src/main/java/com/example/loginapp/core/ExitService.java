@@ -326,6 +326,17 @@ public final class ExitService {
     /** HR starts an exit: a resignation given on paper (waits for acceptance), or any other kind with its last day. */
     public Map<String, Object> start(SessionCtx ctx, StartInput in) {
         requireManage(ctx);
+        LocalDate today = today();
+        return db.inTenant(ctx.tenantId(), c -> view(c, ctx, startIn(c, ctx, in, today), today, false));
+    }
+
+    /**
+     * Starts an exit inside the caller's transaction and returns its id, so that another decision
+     * (a probation not confirmed, an improvement plan that did not succeed) and the exit it opens
+     * are recorded together or not at all. The caller has checked {@code exit.manage}.
+     */
+    UUID startIn(Connection c, SessionCtx ctx, StartInput in, LocalDate today) throws SQLException {
+        requireManage(ctx);
         String kind = in.kind() == null ? "" : in.kind().trim();
         if (!KINDS.contains(kind)) {
             throw ApiException.badRequest("Choose the kind of exit: resignation, termination, end of contract, retirement, death or absconding");
@@ -333,7 +344,6 @@ public final class ExitService {
         UUID employment = id(in.employmentId(), "employee");
         String reason = in.reasonCategory() == null || in.reasonCategory().isBlank() ? defaultReason(kind) : reasonOf(in.reasonCategory(), REASONS);
         String note = noteOf(in.note());
-        LocalDate today = today();
         LocalDate last = in.lastWorkingDay() == null || in.lastWorkingDay().isBlank() ? null : date(in.lastWorkingDay(), "last working day");
         if (last == null && !kind.equals("resignation")) {
             throw ApiException.badRequest(kind.equals("death") ? "Give the date of passing"
@@ -342,36 +352,34 @@ public final class ExitService {
         if (kind.equals("death") && last.isAfter(today)) {
             throw ApiException.badRequest("The date of passing cannot be in the future");
         }
-        return db.inTenant(ctx.tenantId(), c -> {
-            ExitDefaults.ensure(c, ctx.tenantId());
-            Map<String, Object> e = lockEmployment(c, employment);
-            if (!"active".equals(e.get("status"))) {
-                throw new ApiException(409, "employee.not_active", "Only an active employee can leave");
+        ExitDefaults.ensure(c, ctx.tenantId());
+        Map<String, Object> e = lockEmployment(c, employment);
+        if (!"active".equals(e.get("status"))) {
+            throw new ApiException(409, "employee.not_active", "Only an active employee can leave");
+        }
+        if (ctx.membershipId() != null && ctx.membershipId().toString().equals(e.get("membershipId"))) {
+            throw new ApiException(409, "request.refused", "You cannot start your own exit here; resign from My exit instead");
+        }
+        refuseIfOpen(c, employment);
+        if (kind.equals("absconding")) {
+            // Absent without word: the case opens with the last day at work, and waits for the show-cause and final notices.
+            int days = ((Number) settings(c).get("abscondingDays")).intValue();
+            if (last.isAfter(today.minusDays(days))) {
+                throw new ApiException(409, "exit.too_soon", "Absconding can be recorded once someone has been away without word for "
+                        + days + " days; the last day at work must be on or before " + TemplateValues.DATE.format(today.minusDays(days)));
             }
-            if (ctx.membershipId() != null && ctx.membershipId().toString().equals(e.get("membershipId"))) {
-                throw new ApiException(409, "request.refused", "You cannot start your own exit here; resign from My exit instead");
-            }
-            refuseIfOpen(c, employment);
-            if (kind.equals("absconding")) {
-                // Absent without word: the case opens with the last day at work, and waits for the show-cause and final notices.
-                int days = ((Number) settings(c).get("abscondingDays")).intValue();
-                if (last.isAfter(today.minusDays(days))) {
-                    throw new ApiException(409, "exit.too_soon", "Absconding can be recorded once someone has been away without word for "
-                            + days + " days; the last day at work must be on or before " + TemplateValues.DATE.format(today.minusDays(days)));
-                }
-                UUID id = insertCase(c, ctx, e, kind, "proposed", reason, note, last, 0, today);
-                UserService.audit(c, ctx, "exit.started", "exit", id, Map.of("kind", kind, "employmentId", employment.toString()));
-                return view(c, ctx, id, today, false);
-            }
-            int notice = kind.equals("resignation") ? noticeDays(settings(c), e, today) : 0;
-            UUID id = insertCase(c, ctx, e, kind, "submitted", reason, note, last, notice, today);
+            UUID id = insertCase(c, ctx, e, kind, "proposed", reason, note, last, 0, today);
             UserService.audit(c, ctx, "exit.started", "exit", id, Map.of("kind", kind, "employmentId", employment.toString()));
-            if (last != null) {
-                // Recorded with its last day: accepted at once (HR is both the one who starts and accepts it).
-                fix(c, ctx, lockCase(c, id), last, in.shortfallAction(), in.newManagerId(), today);
-            }
-            return view(c, ctx, id, today, false);
-        });
+            return id;
+        }
+        int notice = kind.equals("resignation") ? noticeDays(settings(c), e, today) : 0;
+        UUID id = insertCase(c, ctx, e, kind, "submitted", reason, note, last, notice, today);
+        UserService.audit(c, ctx, "exit.started", "exit", id, Map.of("kind", kind, "employmentId", employment.toString()));
+        if (last != null) {
+            // Recorded with its last day: accepted at once (HR is both the one who starts and accepts it).
+            fix(c, ctx, lockCase(c, id), last, in.shortfallAction(), in.newManagerId(), today);
+        }
+        return id;
     }
 
     /** HR decides a request to withdraw an accepted resignation. */
