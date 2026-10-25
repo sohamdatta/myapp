@@ -236,6 +236,10 @@ test.describe.serial('performance', () => {
     await tab(hr, 'Reviews');
     await hr.getByTestId('cycles').getByRole('button', { name: 'New cycle' }).click();
     await hr.fill('#cy-name', 'Annual review');
+    // Ishita joined 80 days ago. The default cutoff (90 days before the period ends) leaves her
+    // out late in the year, as it should for a real cycle; reviewing everyone who has joined by
+    // today keeps her in on every date.
+    await hr.fill('#cy-joined', isoDay(0));
     await hr.getByRole('button', { name: 'Save' }).click();
     await expect(hr.getByTestId('eligible')).toContainText('Starting creates a review for');
     await shot(hr, 'perf-14-cycle-draft', true);
