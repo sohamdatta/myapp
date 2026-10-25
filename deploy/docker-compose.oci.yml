@@ -4,7 +4,7 @@
 # Adds what Lightsail gives production as managed services: a PostgreSQL 16 on the same
 # server, and a nightly backup of it (copied to OCI Object Storage when a bucket is set).
 #
-#   docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.oci.yml up -d --build
+#   deploy/hrms.sh uat up -d --build      (settings: deploy/env/uat.env)
 #
 # Guide: docs/deploy/oracle-cloud-uat.md
 services:
@@ -12,8 +12,8 @@ services:
     image: postgres:16
     environment:
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: ${DB_SUPERUSER_PASSWORD:?Set DB_SUPERUSER_PASSWORD in deploy/.env}
-      APP_DB_OWNER_PASSWORD: ${APP_DB_OWNER_PASSWORD:?Set APP_DB_OWNER_PASSWORD in deploy/.env}
+      POSTGRES_PASSWORD: ${DB_SUPERUSER_PASSWORD:?Set DB_SUPERUSER_PASSWORD in deploy/env/uat.env}
+      APP_DB_OWNER_PASSWORD: ${APP_DB_OWNER_PASSWORD:?Set APP_DB_OWNER_PASSWORD in deploy/env/uat.env}
       TZ: UTC
     volumes:
       - pgdata:/var/lib/postgresql/data

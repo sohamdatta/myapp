@@ -134,6 +134,11 @@ For demos and user acceptance testing, a separate copy runs on Oracle Cloud's fr
 see [Demo and UAT on Oracle Cloud](docs/deploy/oracle-cloud-uat.md). It runs PostgreSQL on
 the same server with a nightly backup, and holds demo data only; production stays on AWS.
 
+Each environment has its own settings file, `deploy/env/production.env` or
+`deploy/env/uat.env` (made from the `.env.example` beside it, never committed), and is run
+with `deploy/hrms.sh production …` or `deploy/hrms.sh uat …`, which picks that file and the
+environment's compose files.
+
 The database login the app is given needs to create roles and databases, but not be a
 superuser, which managed databases never give. Where it cannot create a role that
 bypasses row-level security, the app's function owner (`app_definer`) gets an equivalent

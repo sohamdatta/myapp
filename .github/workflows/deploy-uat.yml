@@ -65,7 +65,7 @@ jobs:
           ssh uat "SHA=$SHA bash -s" <<'EOF'
           set -euo pipefail
           cd ~/hrms
-          dc() { docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.oci.yml "$@"; }
+          dc() { deploy/hrms.sh uat "$@"; }
           git fetch --quiet origin main
           git checkout --quiet --detach "$SHA"
           echo "Now at: $(git log -1 --format='%h %s')"
@@ -86,4 +86,4 @@ jobs:
 
       - name: Show the app's log
         if: failure()
-        run: ssh uat 'cd ~/hrms && docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.oci.yml logs --no-color --tail 150 app web' || true
+        run: ssh uat 'cd ~/hrms && deploy/hrms.sh uat logs --no-color --tail 150 app web' || true

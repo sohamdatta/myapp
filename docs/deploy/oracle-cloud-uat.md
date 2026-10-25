@@ -105,15 +105,16 @@ ssh-keyscan -t ed25519 github.com >> ~/.ssh/known_hosts
 git clone git@github.com:sohamdatta/myapp.git hrms
 cd hrms
 sudo install -d -m 700 /srv/hrms-backups
-cp deploy/oci/env.example deploy/.env
-chmod 600 deploy/.env
-nano deploy/.env
+cp deploy/env/uat.env.example deploy/env/uat.env
+chmod 600 deploy/env/uat.env
+nano deploy/env/uat.env
 ```
 
-Fill in `deploy/.env` (each setting is explained in the file):
+Fill in `deploy/env/uat.env`, UAT's own settings file (each setting is explained in it). Production has a separate one on its own server; see "Settings: one file per environment" in the [AWS guide](aws-lightsail.md).
 
 | Setting | Value |
 | --- | --- |
+| `HRMS_ENVIRONMENT` | Leave as `uat` |
 | `DOMAIN` | The UAT address, without `https://` |
 | `APP_DB_URL` | Leave as `jdbc:postgresql://db:5432/hrms` |
 | `APP_DB_OWNER_PASSWORD`, `APP_DB_ROLE_PASSWORD`, `DB_SUPERUSER_PASSWORD` | Each `openssl rand -base64 24`, all different |
@@ -126,8 +127,8 @@ Save `APP_DATA_KEY` in a password manager, apart from the backups.
 Start everything:
 
 ```bash
-docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.oci.yml up -d --build
-docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.oci.yml logs -f app
+deploy/hrms.sh uat up -d --build
+deploy/hrms.sh uat logs -f app
 ```
 
 On its very first start the database creates the `dbmasteruser` login and the `hrms`
@@ -135,10 +136,11 @@ database, set up as on AWS (may create roles, not a superuser). The app then cre
 tables, Caddy fetches the certificate, and `https://<UAT address>` opens. The first build
 takes several minutes.
 
-To save typing, put this in `~/.bashrc`:
+`deploy/hrms.sh uat` runs `docker compose` with UAT's settings file and compose files.
+To save typing, put this in `~/.bashrc`; the commands below use it:
 
 ```bash
-alias dc='docker compose -f ~/hrms/deploy/docker-compose.yml -f ~/hrms/deploy/docker-compose.oci.yml'
+alias dc='~/hrms/deploy/hrms.sh uat'
 ```
 
 ## 5. Updating
@@ -170,7 +172,7 @@ That copy is on the same server. To keep one off it, in Object Storage (20 GB is
 3. Your user menu → **My profile → Customer secret keys → Generate secret key**. Copy the
    secret (shown once) and the access key.
 4. Find your **namespace** under **Tenancy details**.
-5. Fill in `deploy/.env`:
+5. Fill in `deploy/env/uat.env`:
 
    ```
    BACKUP_BUCKET=hrms-uat-backups
@@ -242,7 +244,9 @@ Until `UAT_HOST` is set, the workflow does nothing.
 | "Out of capacity" when creating the server | No free ARM capacity at that moment: try another availability domain, or later; upgrading to Pay As You Go helps |
 | The browser cannot reach the site at all | Port 80/443 missing from the security list, or from the server's own `iptables` (step 4) |
 | The browser warns about the certificate | The DNS record does not point at the reserved IP yet |
-| `Set DB_SUPERUSER_PASSWORD in deploy/.env` | `deploy/.env` was copied from `deploy/.env.example` (production's) instead of `deploy/oci/env.example` |
+| `No settings for uat: deploy/env/uat.env is missing` | Step 4's `cp` was not run, or you are not in `~/hrms` |
+| `deploy/env/uat.env says HRMS_ENVIRONMENT=production` | Production's settings file was copied here: start again from `uat.env.example`, with UAT's own values |
+| `Set DB_SUPERUSER_PASSWORD in deploy/env/uat.env` | That setting is empty in `deploy/env/uat.env` |
 | The app cannot sign in to the database after changing `APP_DB_OWNER_PASSWORD` | The database set the password on its first start only: `dc exec db psql -U postgres -c "alter role dbmasteruser password '<new>'"` |
 | Deploy to UAT fails setting up SSH or connecting | `UAT_SSH_KEY` is not the whole private key file, `UAT_KNOWN_HOSTS` is out of date, or port 22 is closed to GitHub (step 7) |
 | Deploy to UAT fails at `git fetch` | The deploy key is missing on GitHub or on the server (step 4) |
