@@ -202,7 +202,7 @@ Every pull request adds or changes tests. A bug fix starts with a failing test t
 
 | Need | Tool | How |
 | --- | --- | --- |
-| Versioning and applying | **Flyway** (open source, with `flyway-database-postgresql`), replacing the hand-written `Migrator` | Same `V<n>__name.sql` files in `db/migration`; Flyway records each file's checksum in `flyway_schema_history` and refuses to start when an applied file was edited or a version is missing. Existing databases are baselined at V19 from `public.schema_migration`. Application role passwords move to a `afterMigrate` callback. |
+| Versioning and applying | **Flyway** (open source, with `flyway-database-postgresql`), run by `Migrator` | Same `V<n>__name.sql` files in `db/migration`; Flyway records each file's checksum in `flyway_schema_history` and refuses to start when an applied file was edited or a version is missing. Existing databases were baselined at V19 from `public.schema_migration`; `--check-migrations` is the dry run before a deploy (docs/database.md). |
 | Script review (lint) | **Squawk** with its GitHub Action | Lints every new migration in a pull request and comments on it: dropping or renaming a column, adding a constraint without `NOT VALID`, an index without `CONCURRENTLY`, a type change that rewrites a table. **(CI)** |
 | Breaking-change detection | Schema diff in CI | CI applies `main`'s migrations and the branch's to two empty databases, diffs `pg_dump --schema-only`, and posts the diff on the pull request. A removed or renamed column, table or function, or a tightened type or constraint, fails unless the PR carries the `breaking-change` label and a code owner approves. |
 | Data safety | Migration tests | Every migration runs from an empty database and from an anonymized copy of the previous release's data. **(CI)** |
@@ -220,19 +220,21 @@ Every pull request adds or changes tests. A bug fix starts with a failing test t
 
 ## 10. Tooling
 
-Added in release Q1; all checks block a merge.
+The checks below block a merge once in place. "In place" ones run today; the rest arrive in roadmap
+release Q1.
 
-| Tool | Checks |
-| --- | --- |
-| Spotless | Java and SQL formatting |
-| Error Prone | Common Java bug patterns at compile time |
-| ArchUnit | `web` depends only on `core`; no SQL outside `core`; no new public method returns `Map<String, Object>`; controllers have no business logic |
-| JaCoCo `check` | Coverage gates in section 6 |
-| Flyway validate, Squawk, schema diff | Migrations: checksums, lint, breaking changes (section 9) |
-| oxlint | Frontend lint, warnings as errors |
-| Dependabot, OWASP dependency-check, `npm audit` | Dependencies, weekly |
-| Pull request template | The checklist below |
-| CODEOWNERS | Payroll, tax, migrations and security code need a second reviewer |
+| Tool | Checks | Status |
+| --- | --- | --- |
+| Flyway validate, checksum lock | Applied migrations unchanged (section 9) | In place |
+| Squawk, schema diff | New migrations linted; breaking changes fail unless labelled (section 9) | In place |
+| CODEOWNERS | Payroll, tax, migrations and security code request the owner's review | In place (approval enforced once there is a second reviewer) |
+| oxlint | Frontend lint | In place (warnings as errors: Q1) |
+| Spotless | Java and SQL formatting | Q1 |
+| Error Prone | Common Java bug patterns at compile time | Q1 |
+| ArchUnit | `web` depends only on `core`; no SQL outside `core`; no new public method returns `Map<String, Object>`; controllers have no business logic | Q1 |
+| JaCoCo `check` | Coverage gates in section 6 | Q1 (coverage is reported today, not enforced) |
+| Dependabot, OWASP dependency-check, `npm audit` | Dependencies, weekly | Q1 |
+| Pull request template | The checklist below | Q1 |
 
 ## 11. Review checklist
 
