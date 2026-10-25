@@ -1,0 +1,7 @@
+# Squawk lints each migration a pull request adds (CI job "Migration lint"); see docs/database.md.
+pg_version = "16"
+# Flyway runs each migration in a transaction.
+assume_in_transaction = true
+# Ids are UUIDs; small integers here hold bounded values (days, months), never sequences.
+# Statement timeouts would cut off legitimate backfills; lock timeouts are still required.
+excluded_rules = ["prefer-bigint-over-int", "prefer-bigint-over-smallint", "require-statement-timeout"]

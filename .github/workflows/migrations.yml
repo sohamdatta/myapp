@@ -1,0 +1,69 @@
+# Checks every pull request that touches database migrations (docs/database.md):
+#   lint         Squawk lints the migrations the pull request adds or changes (.squawk.toml):
+#                locks without a timeout, constraints without NOT VALID, indexes built without
+#                CONCURRENTLY on existing tables, dropped constraints.
+#   schema diff  builds the schema from main's migrations and from the branch's, compares them, and
+#                fails on changes that break the release still running during a deploy, unless the
+#                pull request has the label `breaking-change`. The report is in the job summary.
+# Runs again when that label is added or removed, without re-running the rest of CI.
+
+name: Migrations
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+    paths:
+      - backend/src/main/resources/db/migration/**
+      - .squawk.toml
+      - .github/scripts/schema_diff.py
+      - .github/workflows/migrations.yml
+
+concurrency:
+  group: migrations-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  migrations:
+    name: Migration lint and schema diff
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+    env:
+      BASE: origin/${{ github.base_ref }}
+      PGHOST: localhost
+      PGUSER: postgres
+      PGPASSWORD: postgres
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Tools
+        run: |
+          sudo apt-get install -y -q postgresql-client-16 > /dev/null
+          pip install --quiet squawk-cli==2.70.0
+
+      - name: Lint new and changed migrations
+        run: |
+          mapfile -t files < <(git diff --name-only --diff-filter=AM "$BASE"...HEAD -- backend/src/main/resources/db/migration)
+          if [ ${#files[@]} -eq 0 ]; then echo "No migrations added or changed."; exit 0; fi
+          printf 'Linting:\n'; printf '  %s\n' "${files[@]}"
+          squawk --config .squawk.toml "${files[@]}"
+
+      - name: Schema diff against ${{ github.base_ref }}
+        if: always()
+        env:
+          BREAKING_ALLOWED: ${{ contains(github.event.pull_request.labels.*.name, 'breaking-change') }}
+        run: python3 .github/scripts/schema_diff.py "$BASE" HEAD

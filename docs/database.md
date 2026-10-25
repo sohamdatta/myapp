@@ -13,11 +13,16 @@ as the database owner; the application then works only through its three roles (
 | Flyway validate | Every start | A database whose applied migrations differ from the files (checksums in `public.flyway_schema_history`); the backend refuses to start |
 | Naming and order | `MigratorFilesTest` | A file not named `V<n>__<words>.sql`, a gap or a duplicate version |
 | Upgrade path | `MigratorUpgradeTest` | Databases set up before Flyway (see below) |
+| Lint | "Migrations" workflow, Squawk (`.squawk.toml`) | In a pull request's new migrations: locks without a timeout, constraints without `NOT VALID`, indexes on existing tables without `CONCURRENTLY`, dropped constraints |
+| Schema diff | "Migrations" workflow, `.github/scripts/schema_diff.py` | Changes that break the release still running during a deploy (below); fails unless the pull request has the `breaking-change` label |
+| Code owners | `.github/CODEOWNERS` | Asks the owner to review any change to migrations, money or security code |
 
 ## Adding a migration
 
 1. Create `V<next>__<what_it_does>.sql` (lower case and underscores, the next whole number).
-2. Start it with a short header comment: what it changes, whether it is breaking, and how to undo it by hand.
+2. Start it with a short header comment (what it changes, whether it is breaking, how to undo it by hand),
+   then `set lock_timeout = '5s';` so a migration waiting on a busy table gives up instead of
+   blocking every request behind it.
 3. Run the backend tests. `MigratorFilesTest` fails and prints the line to add to
    `migration-checksums.txt`; add it. That line is the deliberate "this file is now frozen" step.
 4. Every tenant table gets `tenant_id` and forced row-level security, as in the existing files.
@@ -64,7 +69,21 @@ the applied ones match their files, then exits without changing anything. It exi
 would refuse. CI runs it in the production-like deployment job; the production guide runs it before
 every update.
 
-## Coming next (roadmap Q1)
+## The "Migrations" checks on a pull request
 
-Squawk to lint each new migration in pull requests, a schema diff of `main` against the branch that
-fails on breaking changes unless labelled, and code owners for this folder.
+They run when a pull request touches `db/migration`, and again when its labels change.
+
+- **Lint.** Squawk reads only the migrations the pull request adds or changes. Fix what it reports, or,
+  when the rule does not apply, put `-- squawk-ignore <rule>` on the line before the statement with a
+  comment saying why; the reviewer sees both. Rules switched off for the whole project, and why, are
+  in `.squawk.toml`.
+- **Schema diff.** Builds the schema from `main`'s migrations and from the branch's, and compares them.
+  The job summary shows the report and the full diff. It fails on:
+  - a table, view, column or function that is gone (dropped or renamed);
+  - a column whose type changed;
+  - a column that became NOT NULL;
+  - a new NOT NULL column without a default.
+
+  New or changed constraints are listed for review only. When a breaking change is intended and the
+  release plan covers it (expand, then contract), add the label `breaking-change` to the pull request;
+  the check runs again and passes.
