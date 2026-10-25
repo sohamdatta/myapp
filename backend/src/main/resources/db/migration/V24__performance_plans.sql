@@ -4,6 +4,11 @@
 -- acknowledges it and may respond. The manager checks in on each objective; the employee may reply.
 -- At the end HR decides: completed, extended once, or not met, which starts an exit.
 -- The design is docs/performance/design.md.
+--
+-- Breaking: no. It only adds tables, columns, permissions and allowed values.
+-- To undo by hand: drop the improvement plan tables and the improvement_plan_id column on app.issued_letter, and put back V23's letter-kind and message-event lists.
+
+set lock_timeout = '5s';
 
 create table app.improvement_plan (
   id                 uuid primary key default gen_random_uuid(),
@@ -112,23 +117,37 @@ create trigger plan_checkin_not_own before insert or update on app.plan_checkin
 
 -- ── letters and messages ─────────────────────────────────────────────
 
+-- ban-drop-constraint: the check is dropped only to be added again at once with a longer list; every value it allowed is still allowed.
+-- squawk-ignore ban-drop-constraint
 alter table app.letter_template drop constraint letter_template_kind_check;
+-- constraint-missing-not-valid: the table is small (per-Organization templates and letters, or a column added just above), so the scan is instant.
+-- squawk-ignore constraint-missing-not-valid
 alter table app.letter_template add constraint letter_template_kind_check
   check (kind in ('offer','appointment','confirmation','other','exit_acceptance','relieving','experience','termination',
                   'retirement','contract_end','show_cause','final_notice','probation_extension','increment','promotion',
                   'improvement_plan'));
+-- ban-drop-constraint: the check is dropped only to be added again at once with a longer list; every value it allowed is still allowed.
+-- squawk-ignore ban-drop-constraint
 alter table app.issued_letter drop constraint issued_letter_kind_check;
+-- constraint-missing-not-valid: the table is small (per-Organization templates and letters, or a column added just above), so the scan is instant.
+-- squawk-ignore constraint-missing-not-valid
 alter table app.issued_letter add constraint issued_letter_kind_check
   check (kind in ('offer','appointment','confirmation','other','exit_acceptance','relieving','experience','termination',
                   'retirement','contract_end','show_cause','final_notice','settlement','probation_extension','increment','promotion',
                   'improvement_plan'));
-alter table app.issued_letter
-  add column improvement_plan_id uuid,
-  add foreign key (tenant_id, improvement_plan_id) references app.improvement_plan (tenant_id, id);
+alter table app.issued_letter add column improvement_plan_id uuid;
+-- adding-foreign-key-constraint: the column is new and empty, or the table was created by this release, so the check has no rows to scan.
+-- constraint-missing-not-valid: the table is small (per-Organization templates and letters, or a column added just above), so the scan is instant.
+-- squawk-ignore adding-foreign-key-constraint, constraint-missing-not-valid
+alter table app.issued_letter add foreign key (tenant_id, improvement_plan_id) references app.improvement_plan (tenant_id, id);
 alter table app.improvement_plan
   add foreign key (letter_id) references app.issued_letter (id);
 
+-- ban-drop-constraint: the check is dropped only to be added again at once with a longer list; every value it allowed is still allowed.
+-- squawk-ignore ban-drop-constraint
 alter table app.message_template drop constraint message_template_event_check;
+-- constraint-missing-not-valid: the table is small (per-Organization templates and letters, or a column added just above), so the scan is instant.
+-- squawk-ignore constraint-missing-not-valid
 alter table app.message_template add constraint message_template_event_check
   check (event in ('joiner_invited','offer_issued','section_returned','reminder_joiner','task_assigned','task_due','task_overdue',
                    'joiner_ready','activated','welcome_team',

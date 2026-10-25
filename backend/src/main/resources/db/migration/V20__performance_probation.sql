@@ -4,6 +4,11 @@
 -- confirm (with the confirmation letter), extend (a new probation end and a new review), or not
 -- confirm (which starts an exit). Nothing is decided by itself when the probation end passes.
 -- The design is docs/performance/design.md.
+--
+-- Breaking: no. It only adds tables, columns, permissions and allowed values.
+-- To undo by hand: drop the probation tables and perf_settings, the probation_review_id column on app.issued_letter and the four performance permissions, and put back the V19 letter-kind and message-event lists.
+
+set lock_timeout = '5s';
 
 -- ── permissions ──────────────────────────────────────────────────────
 
@@ -152,19 +157,33 @@ create trigger probation_review_final before update on app.probation_review
 
 -- ── letters and messages ─────────────────────────────────────────────
 
+-- ban-drop-constraint: the check is dropped only to be added again at once with a longer list; every value it allowed is still allowed.
+-- squawk-ignore ban-drop-constraint
 alter table app.letter_template drop constraint letter_template_kind_check;
+-- constraint-missing-not-valid: the table is small (per-Organization templates and letters, or a column added just above), so the scan is instant.
+-- squawk-ignore constraint-missing-not-valid
 alter table app.letter_template add constraint letter_template_kind_check
   check (kind in ('offer','appointment','confirmation','other','exit_acceptance','relieving','experience','termination',
                   'retirement','contract_end','show_cause','final_notice','probation_extension'));
+-- ban-drop-constraint: the check is dropped only to be added again at once with a longer list; every value it allowed is still allowed.
+-- squawk-ignore ban-drop-constraint
 alter table app.issued_letter drop constraint issued_letter_kind_check;
+-- constraint-missing-not-valid: the table is small (per-Organization templates and letters, or a column added just above), so the scan is instant.
+-- squawk-ignore constraint-missing-not-valid
 alter table app.issued_letter add constraint issued_letter_kind_check
   check (kind in ('offer','appointment','confirmation','other','exit_acceptance','relieving','experience','termination',
                   'retirement','contract_end','show_cause','final_notice','settlement','probation_extension'));
-alter table app.issued_letter
-  add column probation_review_id uuid,
-  add foreign key (tenant_id, probation_review_id) references app.probation_review (tenant_id, id);
+alter table app.issued_letter add column probation_review_id uuid;
+-- adding-foreign-key-constraint: the column is new and empty, or the table was created by this release, so the check has no rows to scan.
+-- constraint-missing-not-valid: the table is small (per-Organization templates and letters, or a column added just above), so the scan is instant.
+-- squawk-ignore adding-foreign-key-constraint, constraint-missing-not-valid
+alter table app.issued_letter add foreign key (tenant_id, probation_review_id) references app.probation_review (tenant_id, id);
 
+-- ban-drop-constraint: the check is dropped only to be added again at once with a longer list; every value it allowed is still allowed.
+-- squawk-ignore ban-drop-constraint
 alter table app.message_template drop constraint message_template_event_check;
+-- constraint-missing-not-valid: the table is small (per-Organization templates and letters, or a column added just above), so the scan is instant.
+-- squawk-ignore constraint-missing-not-valid
 alter table app.message_template add constraint message_template_event_check
   check (event in ('joiner_invited','offer_issued','section_returned','reminder_joiner','task_assigned','task_due','task_overdue',
                    'joiner_ready','activated','welcome_team',

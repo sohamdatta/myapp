@@ -1,5 +1,10 @@
 -- Branding: an Organization's own logo, shown in the app in place of the product's (Nexvance).
 -- The logo is checked and drawn again as a PNG on upload; only an Org Admin changes it.
+--
+-- Breaking: no. It only adds tables, columns, permissions and allowed values.
+-- To undo by hand: drop app.organization_branding.
+
+set lock_timeout = '5s';
 
 create table app.organization_branding (
   tenant_id     uuid primary key references platform.tenant(id),

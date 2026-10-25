@@ -3,6 +3,11 @@
 -- drafts and submits a weighted set; the manager agrees it or returns it. A change to an agreed
 -- goal keeps the earlier version and is agreed again. One-to-ones belong to a manager and a
 -- report; feedback is given to anyone. The design is docs/performance/design.md.
+--
+-- Breaking: no. It only adds tables, columns, permissions and allowed values.
+-- To undo by hand: drop the rating scale, competency, goal, one-to-one and feedback tables and the columns this adds to app.perf_settings, and put back V20's message-event list.
+
+set lock_timeout = '5s';
 
 -- ── settings ─────────────────────────────────────────────────────────
 
@@ -35,6 +40,9 @@ create table app.rating_level (
   foreign key (tenant_id, scale_id) references app.rating_scale (tenant_id, id)
 );
 
+-- adding-foreign-key-constraint: the column is new and empty, or the table was created by this release, so the check has no rows to scan.
+-- constraint-missing-not-valid: the table is small (per-Organization templates and letters, or a column added just above), so the scan is instant.
+-- squawk-ignore adding-foreign-key-constraint, constraint-missing-not-valid
 alter table app.perf_settings add foreign key (tenant_id, rating_scale_id) references app.rating_scale (tenant_id, id);
 
 -- A scale in use never changes: a change is a new version.
@@ -264,7 +272,11 @@ create trigger feedback_not_self before insert on app.feedback for each row exec
 
 -- ── messages ─────────────────────────────────────────────────────────
 
+-- ban-drop-constraint: the check is dropped only to be added again at once with a longer list; every value it allowed is still allowed.
+-- squawk-ignore ban-drop-constraint
 alter table app.message_template drop constraint message_template_event_check;
+-- constraint-missing-not-valid: the table is small (per-Organization templates and letters, or a column added just above), so the scan is instant.
+-- squawk-ignore constraint-missing-not-valid
 alter table app.message_template add constraint message_template_event_check
   check (event in ('joiner_invited','offer_issued','section_returned','reminder_joiner','task_assigned','task_due','task_overdue',
                    'joiner_ready','activated','welcome_team',

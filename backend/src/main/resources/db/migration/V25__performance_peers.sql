@@ -3,6 +3,11 @@
 -- manager's manager to sign each review off before calibration. Outside cycles, anyone can ask
 -- colleagues for feedback about themselves, and a manager about someone in their team.
 -- The design is docs/performance/design.md.
+--
+-- Breaking: no. It only adds tables, columns, permissions and allowed values.
+-- To undo by hand: drop the peer, sign-off and feedback request tables and the columns this adds to app.review_cycle and app.review, and put back V24's message-event list.
+
+set lock_timeout = '5s';
 
 alter table app.review_cycle
   add column peer_reviews       smallint not null default 0 check (peer_reviews between 0 and 5),
@@ -70,7 +75,11 @@ create index feedback_request_giver on app.feedback_request (tenant_id, giver_id
 -- One open request from the same person to the same giver about the same person.
 create unique index feedback_request_open on app.feedback_request (requested_by, about_id, giver_id) where status = 'open';
 
+-- ban-drop-constraint: the check is dropped only to be added again at once with a longer list; every value it allowed is still allowed.
+-- squawk-ignore ban-drop-constraint
 alter table app.message_template drop constraint message_template_event_check;
+-- constraint-missing-not-valid: the table is small (per-Organization templates and letters, or a column added just above), so the scan is instant.
+-- squawk-ignore constraint-missing-not-valid
 alter table app.message_template add constraint message_template_event_check
   check (event in ('joiner_invited','offer_issued','section_returned','reminder_joiner','task_assigned','task_due','task_overdue',
                    'joiner_ready','activated','welcome_team',

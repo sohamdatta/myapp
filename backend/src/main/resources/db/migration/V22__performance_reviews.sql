@@ -1,6 +1,11 @@
 -- Performance management, stage 3: review cycles, review forms, self and manager reviews, the
 -- overall rating, release and acknowledgement. Calibration and outcomes come in stage 4; peers and
 -- skip-level sign-off in stage 6. The design is docs/performance/design.md.
+--
+-- Breaking: no. It only adds tables, columns, permissions and allowed values.
+-- To undo by hand: drop the review form, cycle, review and entry tables, and put back V21's message-event list.
+
+set lock_timeout = '5s';
 
 -- ── review forms ─────────────────────────────────────────────────────
 
@@ -147,7 +152,11 @@ create trigger review_entry_rules before insert or update on app.review_entry
 
 -- ── messages ─────────────────────────────────────────────────────────
 
+-- ban-drop-constraint: the check is dropped only to be added again at once with a longer list; every value it allowed is still allowed.
+-- squawk-ignore ban-drop-constraint
 alter table app.message_template drop constraint message_template_event_check;
+-- constraint-missing-not-valid: the table is small (per-Organization templates and letters, or a column added just above), so the scan is instant.
+-- squawk-ignore constraint-missing-not-valid
 alter table app.message_template add constraint message_template_event_check
   check (event in ('joiner_invited','offer_issued','section_returned','reminder_joiner','task_assigned','task_due','task_overdue',
                    'joiner_ready','activated','welcome_team',
