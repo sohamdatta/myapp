@@ -11,5 +11,6 @@ frontend/dist/
 *.iml
 .DS_Store
 
-# Deployment secrets
+# Deployment secrets: each environment's filled-in settings
 deploy/.env
+deploy/env/*.env

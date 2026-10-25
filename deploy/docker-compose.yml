@@ -1,14 +1,16 @@
 # The whole app on one server: the backend and the Caddy web server. The database is
-# separate (a managed PostgreSQL 16), reached with the settings in .env.
+# separate (a managed PostgreSQL 16), reached with the environment's settings file.
 #
-#   cp deploy/.env.example deploy/.env      # then fill it in
-#   docker compose -f deploy/docker-compose.yml up -d --build
+# Run it through deploy/hrms.sh, which picks the environment's settings file and compose files:
+#   deploy/hrms.sh production up -d --build
+# Plain `docker compose -f deploy/docker-compose.yml ...` still works, reading deploy/.env (as CI does).
 services:
   app:
     build:
       context: ..
       dockerfile: deploy/backend.Dockerfile
-    env_file: .env
+    # deploy/hrms.sh sets HRMS_ENV_FILE to env/<environment>.env.
+    env_file: ${HRMS_ENV_FILE:-.env}
     restart: unless-stopped
     healthcheck:
       # Signed out, the "who am I" call answers 401: the app and its database are up.
@@ -26,7 +28,7 @@ services:
       context: ..
       dockerfile: deploy/web.Dockerfile
     environment:
-      DOMAIN: ${DOMAIN:?Set DOMAIN in deploy/.env}
+      DOMAIN: ${DOMAIN:?Set DOMAIN in the environment's settings file (deploy/env/<environment>.env)}
       DEVICE_PORT: ${DEVICE_PORT:-8081}
     ports:
       - "80:80"
