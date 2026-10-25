@@ -130,6 +130,10 @@ To run it on a server, see [Deploying on AWS Lightsail](docs/deploy/aws-lightsai
 one server running the app behind Caddy (which handles HTTPS), and a managed
 PostgreSQL 16, in the Mumbai region. The files are in [`deploy/`](deploy).
 
+For demos and user acceptance testing, a separate copy runs on Oracle Cloud's free tier:
+see [Demo and UAT on Oracle Cloud](docs/deploy/oracle-cloud-uat.md). It runs PostgreSQL on
+the same server with a nightly backup, and holds demo data only; production stays on AWS.
+
 The database login the app is given needs to create roles and databases, but not be a
 superuser, which managed databases never give. Where it cannot create a role that
 bypasses row-level security, the app's function owner (`app_definer`) gets an equivalent

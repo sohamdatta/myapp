@@ -1,0 +1,73 @@
+# For the demo / UAT server on Oracle Cloud (OCI) only. Production stays on AWS Lightsail
+# with a managed database (docs/deploy/aws-lightsail.md).
+#
+# Adds what Lightsail gives production as managed services: a PostgreSQL 16 on the same
+# server, and a nightly backup of it (copied to OCI Object Storage when a bucket is set).
+#
+#   docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.oci.yml up -d --build
+#
+# Guide: docs/deploy/oracle-cloud-uat.md
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${DB_SUPERUSER_PASSWORD:?Set DB_SUPERUSER_PASSWORD in deploy/.env}
+      APP_DB_OWNER_PASSWORD: ${APP_DB_OWNER_PASSWORD:?Set APP_DB_OWNER_PASSWORD in deploy/.env}
+      TZ: UTC
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      # Creates the admin login the app uses (dbmasteruser: may create roles and databases,
+      # not a superuser, as on AWS) and the hrms database, on the very first start only.
+      - ./oci/db-init.sh:/docker-entrypoint-initdb.d/10-hrms.sh:ro
+    # Not published to the internet: only the app and the backup reach it, over Docker's network.
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "postgres", "-d", "hrms"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    shm_size: 256mb
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options: { max-size: "20m", max-file: "5" }
+
+  app:
+    depends_on:
+      db:
+        condition: service_healthy
+    # The database runs on the same server; keep the JVM to its share of the memory.
+    mem_limit: 6g
+
+  backup:
+    build:
+      context: ..
+      dockerfile: deploy/oci/backup.Dockerfile
+    environment:
+      PGHOST: db
+      PGUSER: postgres
+      PGPASSWORD: ${DB_SUPERUSER_PASSWORD}
+      BACKUP_AT_UTC: ${BACKUP_AT_UTC:-21:30}          # 03:00 in India
+      BACKUP_KEEP_DAYS: ${BACKUP_KEEP_DAYS:-14}
+      # Optional copy to OCI Object Storage, through its S3-compatible endpoint.
+      BACKUP_BUCKET: ${BACKUP_BUCKET:-}
+      RCLONE_CONFIG_OCI_TYPE: s3
+      RCLONE_CONFIG_OCI_PROVIDER: Other
+      RCLONE_CONFIG_OCI_ENDPOINT: ${BACKUP_S3_ENDPOINT:-}
+      RCLONE_CONFIG_OCI_REGION: ${BACKUP_S3_REGION:-}
+      RCLONE_CONFIG_OCI_ACCESS_KEY_ID: ${BACKUP_S3_ACCESS_KEY:-}
+      RCLONE_CONFIG_OCI_SECRET_ACCESS_KEY: ${BACKUP_S3_SECRET_KEY:-}
+      RCLONE_CONFIG_OCI_FORCE_PATH_STYLE: "true"
+      RCLONE_CONFIG_OCI_NO_CHECK_BUCKET: "true"
+    volumes:
+      - ${BACKUP_DIR:-/srv/hrms-backups}:/backups
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options: { max-size: "5m", max-file: "3" }
+
+volumes:
+  pgdata:
