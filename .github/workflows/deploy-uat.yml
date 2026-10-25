@@ -1,0 +1,89 @@
+# Deploys main to the demo / UAT server on Oracle Cloud each time CI passes on it.
+# Production (AWS) is never deployed from here: it is updated by hand, after UAT.
+#
+# The runner connects over SSH and, on the server: fetches the commit CI checked, takes a
+# database backup, rebuilds and restarts, and waits for the app to be healthy. Then it
+# checks the site answers from outside. Setup: docs/deploy/oracle-cloud-uat.md, step 7.
+#
+# Needs, under Settings > Secrets and variables > Actions:
+#   variables  UAT_HOST       the server's reserved IP address
+#              UAT_URL        https://uat.hr.example.com
+#   secrets    UAT_SSH_KEY    private key of a key pair whose public half is on the server
+#              UAT_KNOWN_HOSTS  the server's line from: ssh-keyscan -t ed25519 <UAT_HOST>
+# Until UAT_HOST is set, the deploy is skipped.
+
+name: Deploy to UAT
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+# One deploy at a time; a newer one waits rather than cancelling one half done.
+concurrency:
+  group: deploy-uat
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Deploy main to UAT
+    if: >-
+      vars.UAT_HOST != '' && (github.event_name == 'workflow_dispatch'
+      || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment:
+      name: uat
+      url: ${{ vars.UAT_URL }}
+    env:
+      SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+    steps:
+      - name: Set up SSH
+        env:
+          KEY: ${{ secrets.UAT_SSH_KEY }}
+          KNOWN: ${{ secrets.UAT_KNOWN_HOSTS }}
+        run: |
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/uat && chmod 600 ~/.ssh/uat
+          printf '%s\n' "$KNOWN" > ~/.ssh/known_hosts
+          cat > ~/.ssh/config <<EOF
+          Host uat
+            HostName ${{ vars.UAT_HOST }}
+            User ${{ vars.UAT_SSH_USER || 'ubuntu' }}
+            IdentityFile ~/.ssh/uat
+            StrictHostKeyChecking yes
+            ServerAliveInterval 30
+          EOF
+
+      - name: Deploy ${{ env.SHA }}
+        run: |
+          ssh uat "SHA=$SHA bash -s" <<'EOF'
+          set -euo pipefail
+          cd ~/hrms
+          dc() { docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.oci.yml "$@"; }
+          git fetch --quiet origin main
+          git checkout --quiet --detach "$SHA"
+          echo "Now at: $(git log -1 --format='%h %s')"
+          # A backup first, so a migration that goes wrong can be undone.
+          if [ -n "$(dc ps -q backup)" ]; then dc exec -T backup backup.sh now; else echo "Not running yet: no backup to take"; fi
+          dc up -d --build --remove-orphans --wait --wait-timeout 600
+          docker image prune -f > /dev/null
+          EOF
+
+      - name: Check the site answers
+        run: |
+          for i in $(seq 1 30); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' "${{ vars.UAT_URL }}/api/auth/me" || true)
+            if [ "$code" = "401" ]; then echo "UAT is up at $SHA"; exit 0; fi
+            sleep 5
+          done
+          echo "UAT did not answer at ${{ vars.UAT_URL }} (last status: $code)"; exit 1
+
+      - name: Show the app's log
+        if: failure()
+        run: ssh uat 'cd ~/hrms && docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.oci.yml logs --no-color --tail 150 app web' || true

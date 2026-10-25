@@ -4,14 +4,28 @@
 #   browser   the app started from the backend jar, then the Playwright suites
 #   deploy    the deployment images built and started as on a server, against a
 #             PostgreSQL whose admin login is not a superuser (as on AWS)
+#   deploy-oci the demo / UAT setup (PostgreSQL and backup on the server), as on OCI
 # A failing job marks the commit red and GitHub emails the person who pushed.
+#
+# To save Actions minutes (the repository is private): a change to documentation only
+# runs nothing, and on pull requests the browser tests run in UTC only; main runs them in
+# both time zones. Run it by hand (Actions > CI > Run workflow) for the full set on any branch.
+# When main passes, deploy-uat.yml deploys it to the UAT server.
 
 name: CI
 
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - 'docs/**'
+      - '**/*.md'
+      - '.devcontainer/**'
   pull_request:
+    paths-ignore:
+      - 'docs/**'
+      - '**/*.md'
+      - '.devcontainer/**'
   workflow_dispatch:
 
 concurrency:
@@ -108,9 +122,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        zone:
-          - { name: UTC, tz: UTC, slug: utc }
-          - { name: India time, tz: Asia/Kolkata, slug: ist }
+        # Pull requests: UTC only, as the servers run. main and manual runs: both zones.
+        zone: ${{ fromJSON(github.event_name == 'pull_request'
+          && '[{"name":"UTC","tz":"UTC","slug":"utc"}]'
+          || '[{"name":"UTC","tz":"UTC","slug":"utc"},{"name":"India time","tz":"Asia/Kolkata","slug":"ist"}]') }}
     services:
       postgres:
         image: postgres:16

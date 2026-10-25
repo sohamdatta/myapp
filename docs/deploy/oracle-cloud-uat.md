@@ -88,8 +88,21 @@ sudo usermod -aG docker ubuntu
 exit
 ```
 
+The repository is private, so the server reads it with a **deploy key**: a key that can read
+this one repository and nothing else.
+
 ```bash
-git clone https://github.com/sohamdatta/myapp.git hrms
+ssh-keygen -t ed25519 -N '' -f ~/.ssh/hrms_deploy -C uat-server
+cat ~/.ssh/hrms_deploy.pub
+```
+
+On GitHub, **the repository → Settings → Deploy keys → Add deploy key**: title `UAT server`,
+paste the line, leave **Allow write access** off. Then:
+
+```bash
+printf 'Host github.com\n  IdentityFile ~/.ssh/hrms_deploy\n  IdentitiesOnly yes\n' >> ~/.ssh/config
+ssh-keyscan -t ed25519 github.com >> ~/.ssh/known_hosts
+git clone git@github.com:sohamdatta/myapp.git hrms
 cd hrms
 sudo install -d -m 700 /srv/hrms-backups
 cp deploy/oci/env.example deploy/.env
@@ -130,8 +143,11 @@ alias dc='docker compose -f ~/hrms/deploy/docker-compose.yml -f ~/hrms/deploy/do
 
 ## 5. Updating
 
-Deploy each change to UAT first; once it has been checked there, deploy the same commit
-to production.
+Once step 7 is set up, every commit that passes CI on `main` deploys to UAT by itself. When a
+change has been checked on UAT, deploy the same commit to production by hand
+([AWS guide](aws-lightsail.md), "Updating").
+
+To deploy by hand instead (another branch, or before step 7 is set up):
 
 ```bash
 cd ~/hrms
@@ -185,6 +201,40 @@ dc start app
 To reset UAT to an empty app instead: `dc down`, then `docker volume rm deploy_pgdata`
 (this deletes every row), then `dc up -d`.
 
+## 7. Automatic deploys from GitHub
+
+[`.github/workflows/deploy-uat.yml`](../../.github/workflows/deploy-uat.yml) runs each time CI
+passes on `main`. It connects to the server over SSH, checks out that commit, takes a backup,
+rebuilds, waits for the app to be healthy, and checks `https://<UAT address>` answers. A
+failed deploy shows red under **Actions** and GitHub emails you. Production is never deployed
+from GitHub.
+
+Set it up once:
+
+1. On your own computer, make a key pair used only by GitHub to reach the server:
+
+   ```bash
+   ssh-keygen -t ed25519 -N '' -f uat_github -C github-actions
+   ```
+
+2. Put the public half on the server:
+
+   ```bash
+   ssh ubuntu@<reserved IP> "cat >> ~/.ssh/authorized_keys" < uat_github.pub
+   ```
+
+3. Step 2 limited SSH to your own address, and GitHub's runners connect from addresses that
+   change. In the subnet's security list, open port 22 to `0.0.0.0/0`: the server accepts
+   keys only, never passwords. (Or keep it closed, and deploy by hand as in step 5.)
+4. On GitHub, **Settings → Secrets and variables → Actions**:
+   - **Variables**: `UAT_HOST` = the reserved IP; `UAT_URL` = `https://<UAT address>`
+   - **Secrets**: `UAT_SSH_KEY` = the whole of the file `uat_github` (the private half);
+     `UAT_KNOWN_HOSTS` = the output of `ssh-keyscan -t ed25519 <reserved IP>`
+5. Delete `uat_github` from your computer once it is saved in GitHub.
+6. **Actions → Deploy to UAT → Run workflow** to try it.
+
+Until `UAT_HOST` is set, the workflow does nothing.
+
 ## When something is wrong
 
 | What you see | Likely cause |
@@ -194,6 +244,8 @@ To reset UAT to an empty app instead: `dc down`, then `docker volume rm deploy_p
 | The browser warns about the certificate | The DNS record does not point at the reserved IP yet |
 | `Set DB_SUPERUSER_PASSWORD in deploy/.env` | `deploy/.env` was copied from `deploy/.env.example` (production's) instead of `deploy/oci/env.example` |
 | The app cannot sign in to the database after changing `APP_DB_OWNER_PASSWORD` | The database set the password on its first start only: `dc exec db psql -U postgres -c "alter role dbmasteruser password '<new>'"` |
+| Deploy to UAT fails setting up SSH or connecting | `UAT_SSH_KEY` is not the whole private key file, `UAT_KNOWN_HOSTS` is out of date, or port 22 is closed to GitHub (step 7) |
+| Deploy to UAT fails at `git fetch` | The deploy key is missing on GitHub or on the server (step 4) |
 | "copy to bucket failed" in `dc logs backup` | Wrong endpoint, region, namespace or secret key; the local dump is kept |
 | The server has disappeared | Reclaimed as idle in a free-only account: upgrade to Pay As You Go (step 1), rebuild, and restore from the bucket |
 
