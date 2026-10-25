@@ -26,6 +26,8 @@ The versions here are Markdown exports. The live, editable versions are the clau
 
 [Database migrations](database.md): how Flyway applies them, adding one, breaking changes, and what to do when the backend refuses to start.
 
+[Engineering standards](engineering-standards.md): the rules every change follows (Java 21, less boilerplate, performance, testing, security, migrations) and the review checklist.
+
 ## Roadmap
 
 [Design for the next five releases](roadmap/next-releases.md): green CI, sign-in security (email, password reset, MFA), income tax filings (Forms 122, 138, 130), PF ECR and ESI returns, and the installable app. Live version: [claude.ai](https://claude.ai/artifact/RkLD2g8gjmfVprQ5pxRwUq).
