@@ -330,9 +330,13 @@ a domain of their own yet. A domain is needed before customers use the product: 
 only trust HTTPS for a name, not a bare IP address, and release 2's email (invitations,
 password reset, MFA notices) has to be sent from a domain the product owns.
 
-### Until the domain is bought
+**Production done 25 Oct 2026:** `https://peopleos.nexvance.in`, DNS on Cloudflare (DNS only),
+certificate from Let's Encrypt ([guide](../deploy/aws-lightsail.md), step 3). UAT and the email
+records below remain.
 
-Each server uses a free name that points at its IP address, from sslip.io: production is
+### Before a domain existed
+
+Each server used a free name that points at its IP address, from sslip.io: production was
 `3-6-15-236.sslip.io`. Set it as `DOMAIN` in the environment's settings file
 (`deploy/env/<environment>.env`); Caddy gets a real HTTPS certificate for it as usual.
 This is for setting up and internal testing only: it is not shared with customers, and it
@@ -343,7 +347,7 @@ data, which turns HTTPS off and sends passwords and PAN in clear text.
 
 | Address | Record | Points at |
 | --- | --- | --- |
-| `hr.<domain>` (production) | A, and AAAA for IPv6 | `3.6.15.236`, and production's IPv6 address |
+| `peopleos.nexvance.in` (production, done) | A, and AAAA for IPv6, DNS only | `3.6.15.236`, and production's IPv6 address |
 | `uat.hr.<domain>` (demo / UAT) | A | UAT's reserved IP on Oracle Cloud |
 | `<domain>` (email, release 2) | SPF, DKIM, DMARC | The mail provider's values |
 
@@ -425,7 +429,7 @@ The releases above fix about twenty operational values in code: lockout limits, 
 
 **For the product owner**
 
-- [ ] Domain: which one, and who registers it (in whose name and account)? Production and UAT run on temporary sslip.io names until then.
+- [x] Domain: `nexvance.in` (DNS on Cloudflare); production at `peopleos.nexvance.in`. UAT's name to choose when its server exists.
 - [ ] Mail provider: Amazon SES (fits the AWS deploy) or another? Which sending domain, and who sets up its SPF, DKIM and DMARC records?
 - [ ] Email before go-live: build the outbox and invitation and notice emails ahead of the rest of release 2, so customers are not sent links by hand?
 - [ ] Should MFA be required for admin and payroll roles in existing Organizations too, after a notice period, or stay their choice?

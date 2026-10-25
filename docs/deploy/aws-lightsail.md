@@ -29,7 +29,7 @@ Browser ──HTTPS──► Lightsail server hrms-prod (Ubuntu 24.04, Docker)
 | Firewall | HTTP 80 and HTTPS 443 from anywhere (IPv4 and IPv6); SSH 22 from Lightsail browser SSH only |
 | Database | `hrms-prod-db`: PostgreSQL 16.15, Standard, 2 GB ($30), public mode off, automatic backups on |
 | Database login | master user `dbmasteruser`; master database **`dbhrms`** |
-| Address | `3-6-15-236.sslip.io` until the product's own domain is bought ([roadmap](../roadmap/next-releases.md), "Domain and HTTPS") |
+| Address | **`peopleos.nexvance.in`**: DNS at Cloudflare, records **DNS only** (step 3) |
 | Tags | `env` = `production` on the server and the database |
 | Settings file | `deploy/env/production.env` on the server (from `deploy/env/production.env.example`) |
 
@@ -109,19 +109,35 @@ apart.
 
 ## 3. The address
 
-Until the product's own domain is bought, production uses a free name that points at its
-static IP: **`3-6-15-236.sslip.io`** (the IP with dashes, then `.sslip.io`). Nothing needs
-setting up for it, and Caddy gets a real HTTPS certificate for it. It is for setting up
-and internal testing; customers get the real domain
-([roadmap](../roadmap/next-releases.md), "Domain and HTTPS").
+Production is **`https://peopleos.nexvance.in`**. The domain `nexvance.in` is on Cloudflare;
+its DNS has these records for production:
 
-Once the domain is bought, at its DNS provider add an **A record** for the address people
-will open (for example `hr.example.com`) pointing at the static IP, and an **AAAA record**
-for the server's IPv6 address. Wait until `nslookup hr.example.com` returns it, change
-`DOMAIN` in `deploy/env/production.env`, and run `deploy/hrms.sh production up -d`.
+| Type | Name | Content | Proxy status |
+| --- | --- | --- | --- |
+| A | `peopleos` | `3.6.15.236` (the static IP) | **DNS only** (grey cloud) |
+| AAAA | `peopleos` | `hrms-prod`'s IPv6 address (Lightsail → **Networking**) | **DNS only** |
+| CAA | `nexvance.in` (`@`) | `0 issue "letsencrypt.org"` | — |
+
+**Keep them DNS only, never Proxied (orange cloud).** Caddy on the server gets and renews the
+HTTPS certificate from Let's Encrypt itself. Behind Cloudflare's proxy that fails (Cloudflare
+shows **error 525, "SSL handshake failed"**), the app would see Cloudflare's addresses instead of
+people's (breaking the office-network punch check), and Cloudflare does not pass port 8081 for
+biometric devices. The CAA record must keep allowing `letsencrypt.org`.
+
+To check the records from any computer, asking Cloudflare's resolver directly (an office resolver
+may hold an old answer for a few minutes):
+
+```bash
+nslookup peopleos.nexvance.in 1.1.1.1      # must return 3.6.15.236, not 104.21.x or 172.67.x
+```
+
+`DOMAIN=peopleos.nexvance.in` in `deploy/env/production.env` tells Caddy which name to serve.
+After changing it, or the records: `deploy/hrms.sh production up -d --force-recreate web`, then
+`deploy/hrms.sh production logs --tail 80 web` shows "certificate obtained successfully".
 
 Never set `DOMAIN` to `http://<IP address>`: that turns HTTPS off, and passwords and PAN
-would cross the internet in clear text.
+would cross the internet in clear text. (Before the domain existed, production used the free
+name `3-6-15-236.sslip.io`; it no longer answers, since Caddy serves one name.)
 
 ## 4. Install and start
 
@@ -166,7 +182,7 @@ deploy/aws/setup-production.sh
 
 | It asks | Answer |
 | --- | --- |
-| Address | Press Enter for `3-6-15-236.sslip.io` (step 3), or the real domain once it points here |
+| Address | Type `peopleos.nexvance.in` (its DNS must already point here; step 3) |
 | Database endpoint | From **Databases → hrms-prod-db → Connect** (`ls-….ap-south-1.rds.amazonaws.com`) |
 | Master database name / user | Press Enter for `dbhrms` / `dbmasteruser` |
 | Master user password | The database password from step 1, typed twice (not shown) |
@@ -182,7 +198,7 @@ somewhere offline, apart from the database backups**, then type `saved`. Without
 bank details and documents can never be read again; stored beside the backups, the
 encryption protects nothing.
 
-Then open `https://3-6-15-236.sslip.io` (or the domain), sign in as the Super Admin, and
+Then open `https://peopleos.nexvance.in`, sign in as the Super Admin, and
 create the first Organization from the Platform console, as the README describes.
 
 If a check fails, the script stops and says what to fix; run it again afterwards. It keeps
