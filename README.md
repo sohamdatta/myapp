@@ -126,6 +126,8 @@ docker run -d --name hrms-db -p 5432:5432 \
 
 ## Deploying
 
+Where each environment runs, its status and a log of changes: [docs/deploy](docs/deploy/README.md).
+
 To run it on a server, see [Deploying on AWS Lightsail](docs/deploy/aws-lightsail.md):
 one server running the app behind Caddy (which handles HTTPS), and a managed
 PostgreSQL 16, in the Mumbai region. The files are in [`deploy/`](deploy).
