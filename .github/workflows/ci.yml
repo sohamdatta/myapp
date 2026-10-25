@@ -98,6 +98,22 @@ jobs:
       - run: npm run lint
       - run: npm run build
 
+  e2e-dates:
+    # A browser test that steps more than five days from today can cross a month or tax-year end
+    # on some days only. Checks the lines a pull request adds; see e2e/check-dates.mjs.
+    name: Browser-test dates
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node e2e/check-dates.mjs origin/${{ github.base_ref }}
+
   browser:
     # Twice: in UTC, and with the database and the server in India time, as many customers run them.
     # Dates and times that are right in one zone and wrong in the other fail here, not in production.

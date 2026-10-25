@@ -40,3 +40,13 @@ Weakest areas, worth tests next:
 4. Run `npm run coverage -- coverage-raw` for the frontend report.
 
 **Both suites together.** Merge `backend/target/jacoco.exec` and `e2e.exec` with the JaCoCo command-line tool (`merge`, then `report`).
+
+## Dates that only break on some days
+
+Regular CI runs on the day of the push, so a test or a rule that fails only near a month or tax-year end goes unseen until that day. Two guards cover this:
+
+- **Fixed-date run** (`.github/workflows/fixed-date.yml`), every Sunday and on demand: the backend tests and the browser tests run with the whole stack's clock moved to 30 December, 26 February and 28 March. libfaketime moves PostgreSQL, the JVM and the Playwright runner by one shared offset, so they agree and time still passes; the browser takes its "now" from Playwright's clock (`E2E_FAKE_CLOCK`, see `e2e/tests/helpers.ts`). The JVM needs `FAKETIME_DONT_FAKE_MONOTONIC=1`, or its internal timers stall.
+
+  To try it locally (Linux, `apt install faketime`), run PostgreSQL, the backend and `npx playwright test` with the same `LD_PRELOAD=/usr/lib/x86_64-linux-gnu/faketime/libfaketime.so.1 FAKETIME=+<seconds> FAKETIME_DONT_FAKE_MONOTONIC=1`, and `E2E_FAKE_CLOCK=1` for Playwright.
+
+- **Browser-test dates check** (`e2e/check-dates.mjs`, the "Browser-test dates" job on pull requests): a line a pull request adds may not use `isoDay(n)` with n above 5 days. Use `withinMonth(n)` or `withinTaxYear(n)` from `e2e/tests/helpers.ts`, or end the line with `// date-safe: <why>` when the date is meant to be far away.

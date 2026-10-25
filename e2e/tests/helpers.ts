@@ -39,6 +39,10 @@ export async function newPage(browser: Browser, width = 1280): Promise<Page> {
     locale: 'en-IN',
     acceptDownloads: true,
   });
+  // The fixed-date run fakes the clock of this process and the server; give the browser the same "now".
+  if (process.env.E2E_FAKE_CLOCK) {
+    await context.clock.install({ time: new Date() });
+  }
   const page = await context.newPage();
   watch(page);
   await recordCoverage(page);
@@ -125,6 +129,30 @@ export function istWeekday(): number {
 }
 export function currentYear(): number {
   return istToday().getUTCFullYear();
+}
+
+/** The tax year today falls in (April to March, India time), as 2026-27, with the year it starts. */
+export function taxYear(): { label: string; start: number } {
+  const [y, m] = isoDay(0).split('-').map(Number);
+  const start = m >= 4 ? y : y - 1;
+  return { label: `${start}-${String((start + 1) % 100).padStart(2, '0')}`, start };
+}
+
+/** A day `offset` days from today, kept inside today's tax year (1 April to 31 March). */
+export function withinTaxYear(offset: number): string {
+  const start = `${taxYear().start}-04-01`;
+  const end = `${taxYear().start + 1}-03-31`;
+  const day = isoDay(offset);
+  return day < start ? start : day > end ? end : day;
+}
+
+/** A day `offset` days from today, kept inside today's calendar month (India time). */
+export function withinMonth(offset: number): string {
+  const today = istToday();
+  const first = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), 1)).toISOString().slice(0, 10);
+  const last = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth() + 1, 0)).toISOString().slice(0, 10);
+  const day = isoDay(offset);
+  return day < first ? first : day > last ? last : day;
 }
 
 /**

@@ -28,6 +28,9 @@ export default defineConfig({
     screenshot: 'only-on-failure',
     video: 'retain-on-failure',
     actionTimeout: 15_000,
+    // In the fixed-date run this process is started under libfaketime; Chromium gets its date from
+    // Playwright's clock instead (helpers.newPage), so it is launched without the preload.
+    ...(process.env.E2E_FAKE_CLOCK ? { launchOptions: { env: { ...process.env, LD_PRELOAD: '' } } } : {}),
   },
   projects: [
     { name: 'users', testMatch: /01-users\.spec\.ts/, use: desktop },
