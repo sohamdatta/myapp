@@ -1,0 +1,22 @@
+# Code owners are asked to review pull requests that touch these paths (docs/engineering-standards.md).
+# To make their approval required, turn on "Require review from Code Owners" in the branch protection
+# for main; that needs a second person who can approve, since nobody approves their own pull request.
+
+# Database migrations, their checksum lock and the rules that lint them
+/backend/src/main/resources/db/migration/              @sohamdatta
+/backend/src/test/resources/migration-checksums.txt    @sohamdatta
+/.squawk.toml                                          @sohamdatta
+/.github/scripts/schema_diff.py                        @sohamdatta
+
+# Money: payroll, tax and settlement rules
+/backend/src/main/java/com/example/loginapp/core/Formula.java           @sohamdatta
+/backend/src/main/java/com/example/loginapp/core/Payroll*.java          @sohamdatta
+/backend/src/main/java/com/example/loginapp/core/TaxDeclarations.java   @sohamdatta
+/backend/src/main/java/com/example/loginapp/core/ExitSettlement.java    @sohamdatta
+
+# Security: sign-in, sessions, encryption, deployment
+/backend/src/main/java/com/example/loginapp/core/AuthService.java   @sohamdatta
+/backend/src/main/java/com/example/loginapp/core/Crypto.java        @sohamdatta
+/backend/src/main/java/com/example/loginapp/core/Secrets.java       @sohamdatta
+/deploy/                                                            @sohamdatta
+/.github/workflows/                                                 @sohamdatta
