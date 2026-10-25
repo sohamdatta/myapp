@@ -24,6 +24,8 @@ The versions here are Markdown exports. The live, editable versions are the clau
 
 [Tests and coverage](testing.md): what each suite covers, coverage figures, the weakest areas and how to measure them.
 
+[Database migrations](database.md): how Flyway applies them, adding one, breaking changes, and what to do when the backend refuses to start.
+
 ## Roadmap
 
 [Design for the next five releases](roadmap/next-releases.md): green CI, sign-in security (email, password reset, MFA), income tax filings (Forms 122, 138, 130), PF ECR and ESI returns, and the installable app. Live version: [claude.ai](https://claude.ai/artifact/RkLD2g8gjmfVprQ5pxRwUq).

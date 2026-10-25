@@ -40,6 +40,11 @@ public final class Db {
         return tx(owner, work);
     }
 
+    /** The owner's connections, for Flyway in Migrator; nothing else uses them directly. */
+    DataSource ownerDataSource() {
+        return owner;
+    }
+
     public <T> T inPlatform(Work<T> work) {
         return tx(platform, work);
     }

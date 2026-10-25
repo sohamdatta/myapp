@@ -213,19 +213,60 @@ The script writes values in single quotes (`KEY='value'`), so characters such as
 Every change goes to UAT first, by itself, when CI passes on `main`
 ([UAT guide](oracle-cloud-uat.md), step 7). Once it has been checked there, deploy the
 same commit to production by hand, when nobody is using it (Saturday morning, not Sunday
-night):
+night). Production is never deployed by a workflow: its SSH stays closed to the internet.
 
-1. Take a database snapshot: **Databases** → `hrms-prod-db` → **Snapshots** → create.
-2. In **Connect using SSH**:
+**Before you start**
+
+- [ ] CI is green on the commit, and UAT runs that same commit (`git log -1` on UAT, or the
+      "Deploy to UAT" run in GitHub Actions).
+- [ ] It has been checked on UAT, including any screen its migrations touch.
+- [ ] You have the commit's short hash, and the hash production runs now (to roll back to).
+
+**Deploy**
+
+1. Take a database snapshot: **Databases** → `hrms-prod-db` → **Snapshots** → create, named
+   `before-<commit>`. Wait until it shows **Available**.
+2. In **Connect using SSH** on `hrms-prod`, fetch and build the new commit without starting it:
 
    ```bash
    cd ~/hrms
+   git log -1 --format='%h %s'          # note what runs now, to roll back to
    git fetch origin && git checkout --detach <commit checked on UAT>
-   deploy/hrms.sh production up -d --build
-   deploy/hrms.sh production logs -f app
+   deploy/hrms.sh production build app
    ```
 
-New database migrations run by themselves when the app starts.
+3. **Dry run** the migrations with the new build, against production. It changes nothing:
+
+   ```bash
+   deploy/hrms.sh production run --rm --no-deps -T app --check-migrations
+   ```
+
+   It prints the schema version, each migration the start will apply, and whether the applied
+   ones match their files. **Stop** if it says the next start would REFUSE to run, or lists a
+   migration you did not expect: check out the old commit again and find out why
+   ([database guide](../database.md)). The first time, it says the schema was set up by the
+   earlier migrator and that Flyway will record a baseline; that is expected and runs no SQL.
+4. Start it:
+
+   ```bash
+   deploy/hrms.sh production up -d --wait --wait-timeout 600
+   deploy/hrms.sh production logs --tail 100 app
+   ```
+
+   The log shows Flyway applying the migrations from the dry run, then the app starting.
+5. Check: the site opens and you can sign in; open a screen the change touched.
+
+**If it goes wrong**
+
+- **The new build misbehaves:** check out the commit you noted and
+  `deploy/hrms.sh production up -d --build`. The older build starts against the newer schema
+  (Flyway ignores migrations newer than the build), and works as long as the migration followed
+  expand-then-contract ([database guide](../database.md)).
+- **A migration damaged data, or broke the older build:** restore the `before-<commit>` snapshot
+  (**Databases** → `hrms-prod-db` → **Snapshots** → restore; it creates a new database), point
+  `APP_DB_URL` in `deploy/env/production.env` at it, check out the old commit and start it.
+  Anything entered since the snapshot is lost, which is why updates happen when nobody is using
+  the app. Then fix forward with a new migration.
 
 ## 6. Backups and checks
 
