@@ -13,6 +13,7 @@ Build these five in order: green CI first (half a day), then sign-in security, t
 | 3 | Income tax completion | Previous employer's income and TDS, challans, quarterly Form 138 return file, Form 130 Part B | 3–4 weeks | 1; uses tax declarations (V17) | V20 |
 | 4 | PF and ESI returns | Monthly PF ECR text file, ESI contribution file, with pre-checks and a filing log | 1.5–2 weeks | 1 | V21 |
 | 5 | Installable app (PWA) | Home-screen install, offline punch queue, web push, camera upload for proofs and documents | 3 weeks | 2 (push uses the outbox) | V22 |
+| — | Email (before go-live) | Invitations and the app's notices sent by email instead of copied links: the outbox, Amazon SES from the product's domain, an email beside each in-app notice, switches per event | 1–1.5 weeks | Domain and HTTPS; built as the first part of release 2 | With release 2's schema |
 | — | Domain and HTTPS (before go-live) | The product's own domain: addresses for production and UAT, their HTTPS certificates, and the sending domain release 2's email needs | 1 hour, plus DNS propagation and email DNS records | Buying the domain | none |
 
 Estimates assume one developer working with Claude and the current test discipline (JUnit against PostgreSQL plus a Playwright suite per release). Every release keeps the existing rules: maker-checker where money moves, row-level security per Organization, an audit event for every change, and statutory figures as rule data awaiting the payroll consultant's sign-off.
@@ -273,6 +274,55 @@ Tokens stay in session storage as today, so an installed app signs in again afte
 - Browser on a phone viewport: the manifest is valid and installable (Lighthouse PWA checks in CI); the app opens with the network cut; a punch taken offline is queued and sent on reconnect, and shows *offline* in the trail; a punch older than 12 hours is refused with the reason; sign-out clears caches and the queue.
 - JUnit: offline punch rules (age, location, clock skew flag); push subscriptions pruned on 410; notification preferences honoured by the outbox.
 
+## Email (before go-live)
+
+Today the app sends no email. Every invitation (an Organization's first Org Admin, each user,
+each new joiner) shows a link that someone copies and sends by hand, and every notice (a task
+assigned, a payslip released, a resignation to approve) is seen only by people who open the app.
+That is workable for a pilot, not for customers.
+
+**What it delivers**
+
+- **Invitations by email**: the Org Admin's invitation from the Platform console, user
+  invitations from User management, and joiner invitations from onboarding. The screen still
+  shows the link, so it can be resent by hand if a mail is lost.
+- **Notices by email**: every event that has an in-app notice today can also send an email:
+  onboarding (joiner invited, offer issued, section returned, reminders, tasks assigned, due and
+  overdue, joiner ready, welcome to the team), exit (resignation submitted, recommended,
+  accepted or withdrawn, exit tasks, last day, settlement due, letters issued, former access
+  ending), payroll (ready, sent back, payslip released), tax declarations (window open, proof
+  returned) and settings (a change waiting for approval, decided, a weakening change), plus the
+  performance events once that module is merged.
+- **Control**: an Org Admin switches email on or off per event for the Organization; each person
+  can turn off notice emails for themselves. Invitations and security mail (password reset,
+  email change, MFA) are always sent.
+- **Visibility**: the Platform console lists what was sent, what failed and why, and addresses
+  that bounce stop being mailed.
+
+**How it is built**: exactly the *Email outbox* designed in release 2: a mail is a row written
+in the same transaction as the change that causes it, sent by a worker with retries, through
+Amazon SES's SMTP endpoint, with `log` mode (no sending; links on screen, as today) when no mail
+settings are given, so UAT and development need nothing. It is built first in release 2, before
+password reset and MFA, which then reuse it.
+
+**Before it can be switched on in production**
+
+1. The domain is bought and in DNS ("Domain and HTTPS" below).
+2. Amazon SES in Mumbai (`ap-south-1`): verify the domain, add the DKIM records SES gives, and
+   add SPF and DMARC records.
+3. Ask AWS to move the account out of the SES sandbox (until then SES only sends to verified
+   addresses), giving the expected volume and how bounces are handled.
+4. Create SMTP credentials in SES and put them in `deploy/env/production.env`
+   (`APP_SMTP_HOST`, `APP_SMTP_USER`, `APP_SMTP_PASSWORD`, `APP_MAIL_FROM`, such as
+   `no-reply@<domain>`, and `APP_PUBLIC_URL` for links). UAT keeps `log` mode, or uses a
+   separate SES identity, so test mail never reaches real people.
+5. Send a test mail of each kind to a Gmail and an Outlook address and check it is not marked
+   as spam.
+
+**Tests**: the outbox and worker against a fake SMTP server (sent, retried, failed, suppressed);
+each invitation and notice writes exactly one row, in the same transaction; switching an event
+off writes none; security mail ignores the switches; `log` mode sends nothing.
+
 ## Domain and HTTPS (before go-live)
 
 Production (AWS Lightsail, static IP `3.6.15.236`) and UAT (Oracle Cloud) are set up without
@@ -377,6 +427,7 @@ The releases above fix about twenty operational values in code: lockout limits, 
 
 - [ ] Domain: which one, and who registers it (in whose name and account)? Production and UAT run on temporary sslip.io names until then.
 - [ ] Mail provider: Amazon SES (fits the AWS deploy) or another? Which sending domain, and who sets up its SPF, DKIM and DMARC records?
+- [ ] Email before go-live: build the outbox and invitation and notice emails ahead of the rest of release 2, so customers are not sent links by hand?
 - [ ] Should MFA be required for admin and payroll roles in existing Organizations too, after a notice period, or stay their choice?
 - [ ] Offline punch: allowed by default, or off until an Organization turns it on?
 - [ ] Statement filing: is producing the file for the department's utility enough for now, or is direct filing through a licensed intermediary wanted?
