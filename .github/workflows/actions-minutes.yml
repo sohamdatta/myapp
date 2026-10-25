@@ -1,0 +1,106 @@
+# Every Monday morning (India time), counts this month's GitHub Actions minutes for this
+# repository and projects them to the end of the month. If the projection passes the alert
+# level (80% of the 2,000 minutes GitHub Free includes for private repositories), it opens an
+# issue, or comments on the open one, so GitHub emails you before CI is blocked.
+#
+# Counts this repository only. Other private repositories on the account share the same
+# 2,000 minutes: for the account's total, see Settings > Billing and plans > Usage.
+# Minutes are counted as GitHub bills them: each job rounded up to the next whole minute.
+
+name: Actions minutes check
+
+on:
+  schedule:
+    - cron: '17 3 * * 1'     # Mondays 03:17 UTC, 08:47 in India
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  issues: write
+
+env:
+  INCLUDED_MINUTES: 2000
+  ALERT_PERCENT: 80
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Count this month's minutes
+        id: count
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          python3 - <<'EOF' | tee -a "$GITHUB_STEP_SUMMARY"
+          import calendar, json, math, os, subprocess
+          from datetime import datetime, timezone
+
+          repo = os.environ["REPO"]
+          now = datetime.now(timezone.utc)
+          start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+
+          def api(path):
+              return json.loads(subprocess.check_output(["gh", "api", path]))
+
+          def ts(s):
+              return datetime.fromisoformat(s.replace("Z", "+00:00"))
+
+          runs, page = [], 1
+          while True:
+              batch = api(f"repos/{repo}/actions/runs?per_page=100&page={page}"
+                          f"&created=%3E%3D{start:%Y-%m-%d}")["workflow_runs"]
+              runs += batch
+              if len(batch) < 100:
+                  break
+              page += 1
+
+          by_workflow, total = {}, 0
+          for r in runs:
+              jobs = api(f"repos/{repo}/actions/runs/{r['id']}/attempts/{r['run_attempt']}/jobs?per_page=100")["jobs"]
+              minutes = 0
+              for j in jobs:
+                  if j.get("started_at") and j.get("completed_at"):
+                      secs = (ts(j["completed_at"]) - ts(j["started_at"])).total_seconds()
+                      minutes += math.ceil(secs / 60) if secs > 0 else 0
+              by_workflow[r["name"]] = by_workflow.get(r["name"], 0) + minutes
+              total += minutes
+
+          days = calendar.monthrange(now.year, now.month)[1]
+          elapsed = max((now - start).total_seconds() / 86400, 1)
+          projected = round(total / elapsed * days)
+          included = int(os.environ["INCLUDED_MINUTES"])
+          alert_at = included * int(os.environ["ALERT_PERCENT"]) // 100
+
+          print(f"### Actions minutes, {now:%B %Y}\n")
+          print(f"- Used so far: **{total}** minutes in {len(runs)} runs (day {now.day} of {days})")
+          print(f"- Projected for the month: **{projected}** of {included} included (alert at {alert_at})\n")
+          print("| Workflow | Minutes |\n| --- | --- |")
+          for name, m in sorted(by_workflow.items(), key=lambda x: -x[1]):
+              print(f"| {name} | {m} |")
+
+          with open(os.environ["GITHUB_OUTPUT"], "a") as out:
+              out.write(f"used={total}\nprojected={projected}\nalert={'true' if projected >= alert_at else 'false'}\n")
+          EOF
+
+      - name: Open or update the alert issue
+        if: steps.count.outputs.alert == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          USED: ${{ steps.count.outputs.used }}
+          PROJECTED: ${{ steps.count.outputs.projected }}
+        run: |
+          title="GitHub Actions minutes: on course to pass the free ${INCLUDED_MINUTES}"
+          body="This month so far: **${USED}** minutes. Projected for the month: **${PROJECTED}** of the ${INCLUDED_MINUTES} included.
+
+          Past the included minutes, CI is blocked unless a payment method is on file (then about \$0.006 a minute on Linux).
+          To use fewer: fewer pushes to open pull requests (each push runs CI), or see the comment at the top of \`.github/workflows/ci.yml\`.
+          Account-wide usage: Settings > Billing and plans > Usage. Details: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          number=$(gh issue list --state open --search "\"$title\" in:title" --json number --jq '.[0].number')
+          if [ -n "$number" ]; then
+            gh issue comment "$number" --body "$body"
+          else
+            gh issue create --title "$title" --body "$body"
+          fi
