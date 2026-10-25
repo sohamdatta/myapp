@@ -90,6 +90,66 @@ class MigratorUpgradeTest {
                 || String.valueOf(e.getCause()).contains("every version from 1 to 3"), String.valueOf(e));
     }
 
+    @Test
+    void theDryRunListsWhatTheNextStartAppliesAndRefusesAnEditedMigration() throws Exception {
+        String url = freshDatabase("hrms_upgrade_test");
+        PGSimpleDataSource owner = source(url, ownerUser(), ownerPassword());
+
+        String empty = check(owner, 0);
+        assertTrue(empty.contains("an empty database"), empty);
+        assertTrue(empty.contains("applies " + migrationFiles().size() + " migration(s)"), empty);
+        assertTrue(empty.contains("V1  V1__user_module.sql"), empty);
+
+        Migrator.migrate(db(url), ROLE_PASSWORD);
+        String upToDate = check(owner, 0);
+        assertTrue(upToDate.contains("No migrations to apply."), upToDate);
+
+        try (Connection c = DriverManager.getConnection(url, ownerUser(), ownerPassword()); Statement st = c.createStatement()) {
+            st.execute("update public.flyway_schema_history set checksum = checksum + 1 where version = '3'");
+        }
+        String refused = check(owner, 1);
+        assertTrue(refused.contains("REFUSE"), refused);
+        assertTrue(refused.contains("3"), refused);
+    }
+
+    @Test
+    void theDryRunExplainsTheBaselineForADatabaseFromTheEarlierMigrator() throws Exception {
+        String url = freshDatabase("hrms_upgrade_test");
+        try (Connection c = DriverManager.getConnection(url, ownerUser(), ownerPassword()); Statement st = c.createStatement()) {
+            st.execute("create table public.schema_migration (version text primary key)");
+            for (String f : migrationFiles()) {
+                st.execute(Files.readString(Path.of("src/main/resources/db/migration", f), StandardCharsets.UTF_8));
+                st.execute("insert into public.schema_migration values ('" + f + "')");
+            }
+        }
+        String out = check(source(url, ownerUser(), ownerPassword()), 0);
+        assertTrue(out.contains("set up by the earlier migrator"), out);
+        assertTrue(out.contains("No migrations to apply."), out);
+    }
+
+    @Test
+    void anOlderBuildStartsAgainstANewerDatabaseSoTheAppCanBeRolledBack() throws Exception {
+        String url = freshDatabase("hrms_upgrade_test");
+        Migrator.migrate(db(url), ROLE_PASSWORD);
+        // A later build applied one more migration that this build does not have.
+        try (Connection c = DriverManager.getConnection(url, ownerUser(), ownerPassword()); Statement st = c.createStatement()) {
+            st.execute("insert into public.flyway_schema_history (installed_rank, version, description, type, script, checksum, "
+                    + "installed_by, execution_time, success) select max(installed_rank) + 1, '999', 'from a newer build', 'SQL', "
+                    + "'V999__from_a_newer_build.sql', 1, current_user, 1, true from public.flyway_schema_history");
+        }
+        Migrator.migrate(db(url), ROLE_PASSWORD);   // starts, applies nothing
+        String out = check(source(url, ownerUser(), ownerPassword()), 0);
+        assertTrue(out.contains("No migrations to apply."), out);
+    }
+
+    private static String check(PGSimpleDataSource owner, int expectedExit) {
+        java.io.ByteArrayOutputStream bytes = new java.io.ByteArrayOutputStream();
+        int exit = Migrator.check(owner, new java.io.PrintStream(bytes, true, StandardCharsets.UTF_8));
+        String out = bytes.toString(StandardCharsets.UTF_8);
+        assertEquals(expectedExit, exit, out);
+        return out;
+    }
+
     private static List<String> migrationFiles() throws Exception {
         try (Stream<Path> s = Files.list(Path.of("src/main/resources/db/migration"))) {
             return s.map(p -> p.getFileName().toString())

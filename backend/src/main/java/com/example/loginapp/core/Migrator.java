@@ -1,5 +1,7 @@
 package com.example.loginapp.core;
 
+import java.io.PrintStream;
+import java.sql.Connection;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
@@ -7,7 +9,12 @@ import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import javax.sql.DataSource;
+
 import org.flywaydb.core.Flyway;
+import org.flywaydb.core.api.MigrationInfo;
+import org.flywaydb.core.api.MigrationInfoService;
+import org.flywaydb.core.api.output.ValidateResult;
 import org.flywaydb.core.api.callback.Callback;
 import org.flywaydb.core.api.callback.Context;
 import org.flywaydb.core.api.callback.Event;
@@ -49,20 +56,7 @@ public final class Migrator {
 
     public static void migrate(Db db, String rolePassword) {
         Integer baseline = db.inOwner(Migrator::earlierMigratorVersion);
-        FluentConfiguration config = Flyway.configure()
-                .dataSource(db.ownerDataSource())
-                .locations(LOCATION)
-                .schemas("public")
-                .createSchemas(false)
-                .placeholderReplacement(false)   // the SQL is run as written; templates use {{...}}
-                .validateMigrationNaming(true)
-                .callbacks(new DefinerPolicies());
-        if (baseline != null) {
-            config.baselineOnMigrate(true)
-                    .baselineVersion(String.valueOf(baseline))
-                    .baselineDescription("Applied by the earlier migrator (public.schema_migration)");
-        }
-        config.load().migrate();
+        configure(db.ownerDataSource(), baseline).callbacks(new DefinerPolicies()).load().migrate();
 
         db.inOwner(c -> {
             try (Statement st = c.createStatement()) {
@@ -81,11 +75,81 @@ public final class Migrator {
         });
     }
 
+    /** The Flyway settings shared by migrate() and check(). */
+    private static FluentConfiguration configure(DataSource owner, Integer baseline) {
+        FluentConfiguration config = Flyway.configure()
+                .dataSource(owner)
+                .locations(LOCATION)
+                .schemas("public")
+                .createSchemas(false)
+                .placeholderReplacement(false)   // the SQL is run as written; templates use {{...}}
+                .validateMigrationNaming(true);
+        if (baseline != null) {
+            config.baselineOnMigrate(true)
+                    .baselineVersion(String.valueOf(baseline))
+                    .baselineDescription("Applied by the earlier migrator (public.schema_migration)");
+        }
+        return config;
+    }
+
+    /**
+     * The dry run before a deploy: prints the database's schema version and each migration the next
+     * start would apply, and checks every applied migration against its file. Changes nothing.
+     *
+     * @return 0 when the next start can migrate, 1 when it would refuse (the reasons are printed)
+     */
+    public static int check(DataSource owner, PrintStream out) {
+        Integer baseline;
+        try (Connection c = owner.getConnection()) {
+            baseline = earlierMigratorVersion(c);
+        } catch (SQLException e) {
+            out.println("Cannot read the database: " + e.getMessage());
+            return 1;
+        }
+        Flyway flyway = configure(owner, baseline).ignoreMigrationPatterns("*:pending", "*:future").load();
+        MigrationInfoService info = flyway.info();
+        MigrationInfo current = info.current();
+        if (current != null) {
+            out.println("Schema version: " + current.getVersion() + " (" + current.getDescription() + ")");
+        } else if (baseline != null) {
+            out.println("Schema version: " + baseline + ", set up by the earlier migrator. The next start records this as"
+                    + " Flyway's baseline and runs no SQL for versions up to " + baseline + ".");
+        } else {
+            out.println("Schema version: none (an empty database).");
+        }
+        List<MigrationInfo> pending = new ArrayList<>();
+        for (MigrationInfo m : info.pending()) {
+            if (baseline == null || Integer.parseInt(m.getVersion().getVersion()) > baseline) {
+                pending.add(m);
+            }
+        }
+        if (pending.isEmpty()) {
+            out.println("No migrations to apply.");
+        } else {
+            out.println("The next start applies " + pending.size() + " migration(s), in this order:");
+            for (MigrationInfo m : pending) {
+                out.println("  V" + m.getVersion() + "  " + m.getScript());
+            }
+        }
+        ValidateResult result = flyway.validateWithResult();
+        if (!result.validationSuccessful) {
+            out.println("The next start would REFUSE to run:");
+            for (String message : result.getAllErrorMessages().split("\\R")) {
+                if (!message.isBlank()) {
+                    out.println("  " + message.trim());
+                }
+            }
+            return 1;
+        }
+        out.println("Applied migrations match their files.");
+        return 0;
+    }
+
     /**
      * The highest version the earlier migrator applied, when this database was set up by it and Flyway
      * has not run yet; otherwise null. Refuses a database where that migrator left a gap.
      */
-    static Integer earlierMigratorVersion(java.sql.Connection c) throws SQLException {
+    static Integer earlierMigratorVersion(Connection c) throws SQLException {
         boolean flyway = Sql.one(c, "select 1 from pg_class where oid = to_regclass('public.flyway_schema_history')") != null;
         boolean earlier = Sql.one(c, "select 1 from pg_class where oid = to_regclass('public.schema_migration')") != null;
         if (flyway || !earlier) {

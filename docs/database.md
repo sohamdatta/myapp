@@ -53,8 +53,16 @@ deployment), so nothing runs twice. Files from V20 on are applied and checksumme
 - **"public.schema_migration does not list every version":** a database where the old migrator stopped
   part way. Compare the listed versions with the schema by hand, finish or record the missing ones, then
   start again.
-- **"Detected applied migration not resolved locally":** the database is newer than this build; deploy
-  the newer build.
+- **An older build against a newer database** starts: Flyway ignores migrations newer than the build.
+  That is what makes an app-only rollback possible, and why breaking changes follow expand-then-contract.
+
+## Dry run before a deploy
+
+`java -jar app.jar --check-migrations` (on a server: `deploy/hrms.sh <env> run --rm --no-deps -T app
+--check-migrations`) prints the schema version, each migration the next start will apply, and whether
+the applied ones match their files, then exits without changing anything. It exits 1 when the next start
+would refuse. CI runs it in the production-like deployment job; the production guide runs it before
+every update.
 
 ## Coming next (roadmap Q1)
 

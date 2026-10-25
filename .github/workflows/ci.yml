@@ -258,6 +258,15 @@ jobs:
           docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.ci.yml exec -T db \
             psql -U postgres -d hrms -Atc "select count(*) from pg_roles where rolname like 'app_%' and (rolbypassrls or rolsuper)" | grep -qx 0
 
+      - name: Migration dry run, as before a production deploy
+        working-directory: deploy
+        run: |
+          # The command docs/deploy/aws-lightsail.md has the operator run before starting a new build.
+          out=$(docker compose -f docker-compose.yml -f docker-compose.ci.yml run --rm --no-deps -T app --check-migrations)
+          echo "$out"
+          echo "$out" | grep -q "No migrations to apply."
+          echo "$out" | grep -q "Applied migrations match their files."
+
       - name: Show the logs
         if: always()
         run: docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.ci.yml logs --no-color | tail -200
