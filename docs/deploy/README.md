@@ -23,9 +23,10 @@ As of 25 Oct 2026.
 - [x] Static IP `hrms-prod-ip` (`3.6.15.236`) attached
 - [x] Firewall: HTTP 80 and HTTPS 443 from anywhere; SSH from Lightsail browser SSH only
 - [x] Database `hrms-prod-db`: PostgreSQL 16.15, 2 GB, public mode off, backups on; master database `dbhrms`
-- [ ] Block 1 on the server: Docker, fail2ban, swap ([guide](aws-lightsail.md), step 4)
-- [ ] Block 2: deploy key `hrms-prod` added on GitHub
-- [ ] Block 3: `deploy/aws/setup-production.sh` run; site answers at `https://3-6-15-236.sslip.io`
+- [x] Block 1 on the server: Docker, fail2ban, swap ([guide](aws-lightsail.md), step 4)
+- [x] Block 2: deploy key `hrms-prod` added on GitHub
+- [x] Block 3: `deploy/aws/setup-production.sh` run; site answers over HTTPS
+- [x] Address `https://peopleos.nexvance.in`: Cloudflare DNS, A and AAAA **DNS only**, CAA allows Let's Encrypt ([guide](aws-lightsail.md), step 3)
 - [ ] `APP_DATA_KEY` saved in a password manager and offline
 - [ ] First Organization created from the Platform console
 - [ ] One test restore of the database into a new database
@@ -45,7 +46,8 @@ As of 25 Oct 2026.
 
 ### Shared
 
-- [ ] Domain bought; production and UAT moved off the temporary sslip.io names ([roadmap](../roadmap/next-releases.md), "Domain and HTTPS")
+- [x] Domain: `nexvance.in`, DNS on Cloudflare; production at `peopleos.nexvance.in`
+- [ ] UAT address under `nexvance.in` (for example `uat.peopleos.nexvance.in`), once the UAT server exists
 - [ ] Email: Amazon SES set up for the domain and out of the sandbox, mail settings in `production.env` ([roadmap](../roadmap/next-releases.md), "Email"); until then invitation links are copied by hand
 - [ ] Repository made private (GitHub → Settings → Danger Zone); servers already read it with deploy keys
 - [x] CI trimmed for a private repository's free minutes; weekly minutes alert ([actions-minutes.yml](../../.github/workflows/actions-minutes.yml))
@@ -60,7 +62,7 @@ As of 25 Oct 2026.
 | Lightsail database Standard 2 GB, not $15 | The $15 plan is not encrypted at rest, and the data includes PAN and bank details |
 | SSH to production from Lightsail browser SSH only | Works from anywhere behind the AWS login and MFA; port 22 is closed to the internet |
 | One settings file per environment, run through `deploy/hrms.sh` | Production and UAT can never pick up each other's settings or secrets |
-| Temporary `<ip-with-dashes>.sslip.io` address until the domain is bought | Real HTTPS without a domain; never plain HTTP for real data |
+| Production at `peopleos.nexvance.in`; Cloudflare records DNS only, not proxied | Caddy gets its own certificate (proxied gave error 525); the app sees people's real addresses for the office-network punch check; device port 8081 still reachable |
 | UAT holds demo or masked data only, with its own keys and passwords | A leak from UAT must not expose people or unlock production |
 
 ## Log
@@ -69,6 +71,7 @@ Newest first. One line per change to a server, an account or the deployment setu
 
 | Date | Environment | What changed |
 | --- | --- | --- |
+| 2026-10-25 | Production | Address moved to `peopleos.nexvance.in` (Cloudflare: A and AAAA DNS only, CAA `letsencrypt.org`); error 525 fixed by turning Cloudflare's proxy off |
 | 2026-10-25 | Production | Setup script `deploy/aws/setup-production.sh` and install steps added (#10); server install pending |
 | 2026-10-25 | Shared | Domain and HTTPS added to the roadmap; sslip.io address until then (#9) |
 | 2026-10-25 | Shared | One settings file per environment and `deploy/hrms.sh` (#8) |
