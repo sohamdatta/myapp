@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { downloadDocument as download, performance } from '../api.js'
-import { formatDate, formatDay, useAction, useLoad } from '../hooks.js'
+import { formatDate, formatDay, indiaToday, useAction, useLoad } from '../hooks.js'
 import { Badge, Empty, ErrorNote } from '../ui.jsx'
 import { PLAN_STAGE, PROGRESS } from './performanceText.js'
 
@@ -332,7 +332,7 @@ function Acknowledgement({ plan: p, onChanged }) {
 }
 
 function StartPlan({ plan: p, onChanged }) {
-  const [day, setDay] = useState(() => new Date().toISOString().slice(0, 10))
+  const [day, setDay] = useState(indiaToday)
   const { busy, error, run } = useAction()
   return (
     <section className="panel" data-testid="start-plan">

@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { downloadDocument as download, performance } from '../api.js'
-import { formatDate, formatDay, localToday, useAction, useLoad } from '../hooks.js'
+import { formatDate, formatDay, indiaToday, localToday, useAction, useLoad } from '../hooks.js'
 import { Badge, Empty, ErrorNote } from '../ui.jsx'
 import { CHOICES, DECIDED, PROBATION_STAGES, RATINGS, months } from './performanceText.js'
 
@@ -377,7 +377,7 @@ function Decide({ review: r, onDone, onCancel }) {
         <>
           {!r.canEndEmployment && <p className="error">Ending an employment needs the exit.manage permission.</p>}
           <label htmlFor="dec-last-day">Last working day</label>
-          <input id="dec-last-day" type="date" min={localToday()} value={lastDay} onChange={(e) => setLastDay(e.target.value)} />
+          <input id="dec-last-day" type="date" min={indiaToday()} value={lastDay} onChange={(e) => setLastDay(e.target.value)} />
           <p className="hint">
             The probation notice is {r.probationNoticeDays} days. An exit starts under Exits, as a termination for performance, with its
             clearance and settlement. Take legal advice before not confirming someone.
