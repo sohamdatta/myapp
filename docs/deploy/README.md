@@ -46,6 +46,7 @@ As of 25 Oct 2026.
 ### Shared
 
 - [ ] Domain bought; production and UAT moved off the temporary sslip.io names ([roadmap](../roadmap/next-releases.md), "Domain and HTTPS")
+- [ ] Email: Amazon SES set up for the domain and out of the sandbox, mail settings in `production.env` ([roadmap](../roadmap/next-releases.md), "Email"); until then invitation links are copied by hand
 - [ ] Repository made private (GitHub → Settings → Danger Zone); servers already read it with deploy keys
 - [x] CI trimmed for a private repository's free minutes; weekly minutes alert ([actions-minutes.yml](../../.github/workflows/actions-minutes.yml))
 
