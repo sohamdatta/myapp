@@ -20,6 +20,10 @@ The versions here are Markdown exports. The live, editable versions are the clau
 
 [Settings framework, as built (V18)](configuration/design.md): one registry of settings, values by Organization, location or pay group and from a date, platform ranges and locks, password or second-person approval for weakening changes, history and undo. Live design: [claude.ai](https://claude.ai/artifact/3wSpJUPbWwxVxE4KtNi3Ug).
 
+## Deployment
+
+[Environments and deployment](deploy/README.md): production on AWS Lightsail and demo / UAT on Oracle Cloud, their status, decisions and a log of changes, with the setup guide for each.
+
 ## Tests
 
 [Tests and coverage](testing.md): what each suite covers, coverage figures, the weakest areas and how to measure them.
