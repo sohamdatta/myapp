@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { SUPER_ADMIN, PASSWORD, newPage, signIn, nav, tab, acceptInvite, api, expectRefused, expectNoConsoleErrors, expectNoSidewaysScroll, shot } from './helpers';
+import { SUPER_ADMIN, PASSWORD, newPage, signIn, nav, tab, acceptInvite, api, expectRefused, expectNoConsoleErrors, expectNoSidewaysScroll, nowMs, shot } from './helpers';
 
 // The Settings screen, in an Organization of its own: the owner shortens invitation links (safer, so
 // applied at once), lengthens them (weaker, so the password is asked for), sees both in the history and
@@ -66,7 +66,7 @@ test.describe.serial('settings', () => {
     await expect(owner.getByTestId(`value-${KEY}`)).toHaveText('3 days');
     await expect(owner.getByTestId(`source-${KEY}`)).toHaveText('Set for the Organization');
     const invited = await api(owner, 'POST', '/org/invitations', { email: 'guest@soylent-works.test', roles: ['employee'] });
-    const days = (Date.parse(invited.body.expiresAt) - Date.now()) / 86_400_000;
+    const days = (Date.parse(invited.body.expiresAt) - nowMs()) / 86_400_000;
     expect(days).toBeGreaterThan(2.9);
     expect(days).toBeLessThan(3.1);
   });

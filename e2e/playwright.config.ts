@@ -28,9 +28,10 @@ export default defineConfig({
     screenshot: 'only-on-failure',
     video: 'retain-on-failure',
     actionTimeout: 15_000,
-    // In the fixed-date run this process is started under libfaketime; Chromium gets its date from
-    // Playwright's clock instead (helpers.newPage), so it is launched without the preload.
-    ...(process.env.E2E_FAKE_CLOCK ? { launchOptions: { env: { ...process.env, LD_PRELOAD: '' } } } : {}),
+    // A local Chromium can be named with E2E_CHROMIUM_PATH when Playwright's download is not available.
+    ...(process.env.E2E_CHROMIUM_PATH
+      ? { launchOptions: { executablePath: process.env.E2E_CHROMIUM_PATH, args: ['--no-sandbox', '--disable-dev-shm-usage'] } }
+      : {}),
   },
   projects: [
     { name: 'users', testMatch: /01-users\.spec\.ts/, use: desktop },
