@@ -16,6 +16,8 @@ import com.example.loginapp.core.AttendanceImportService;
 import com.example.loginapp.core.AttendanceService;
 import com.example.loginapp.core.AttendanceSettingsService;
 import com.example.loginapp.core.AuthService;
+import com.example.loginapp.core.Branding;
+import com.example.loginapp.core.Calibration;
 import com.example.loginapp.core.ChecklistService;
 import com.example.loginapp.core.Crypto;
 import com.example.loginapp.core.Db;
@@ -23,25 +25,34 @@ import com.example.loginapp.core.DeviceService;
 import com.example.loginapp.core.DocumentService;
 import com.example.loginapp.core.EmployeeImport;
 import com.example.loginapp.core.EmployeeService;
-import com.example.loginapp.core.InvitationService;
-import com.example.loginapp.core.JoinerService;
-import com.example.loginapp.core.LeaveAdminService;
 import com.example.loginapp.core.ExitInterview;
 import com.example.loginapp.core.ExitLetters;
 import com.example.loginapp.core.ExitService;
 import com.example.loginapp.core.ExitSettlement;
 import com.example.loginapp.core.ExitTasks;
-import com.example.loginapp.core.LetterService;
+import com.example.loginapp.core.Feedback;
+import com.example.loginapp.core.Goals;
+import com.example.loginapp.core.InvitationService;
+import com.example.loginapp.core.JoinerService;
+import com.example.loginapp.core.LeaveAdminService;
 import com.example.loginapp.core.LeaveService;
+import com.example.loginapp.core.LetterService;
 import com.example.loginapp.core.Migrator;
 import com.example.loginapp.core.Notifications;
 import com.example.loginapp.core.NumberSeries;
 import com.example.loginapp.core.OnboardingConfigService;
+import com.example.loginapp.core.OneToOnes;
+import com.example.loginapp.core.Outcomes;
 import com.example.loginapp.core.PayrollConfig;
 import com.example.loginapp.core.PayrollPay;
 import com.example.loginapp.core.PayrollRuns;
+import com.example.loginapp.core.PerformanceSetup;
+import com.example.loginapp.core.PerformanceTeam;
+import com.example.loginapp.core.Plans;
 import com.example.loginapp.core.PlatformService;
 import com.example.loginapp.core.PolicyService;
+import com.example.loginapp.core.Probation;
+import com.example.loginapp.core.Reviews;
 import com.example.loginapp.core.SettingsService;
 import com.example.loginapp.core.TaxDeclarations;
 import com.example.loginapp.core.UserService;
@@ -160,6 +171,61 @@ public class AppConfig {
     @Bean
     public ExitService exitService(Db db, Crypto crypto) {
         return new ExitService(db, crypto);
+    }
+
+    @Bean
+    public Probation probation(Db db, Crypto crypto, ExitService exits) {
+        return new Probation(db, crypto, exits);
+    }
+
+    @Bean
+    public Goals goals(Db db) {
+        return new Goals(db);
+    }
+
+    @Bean
+    public OneToOnes oneToOnes(Db db, Crypto crypto) {
+        return new OneToOnes(db, crypto);
+    }
+
+    @Bean
+    public Feedback feedback(Db db, Crypto crypto) {
+        return new Feedback(db, crypto);
+    }
+
+    @Bean
+    public PerformanceSetup performanceSetup(Db db) {
+        return new PerformanceSetup(db);
+    }
+
+    @Bean
+    public PerformanceTeam performanceTeam(Db db) {
+        return new PerformanceTeam(db);
+    }
+
+    @Bean
+    public Reviews reviews(Db db, Crypto crypto) {
+        return new Reviews(db, crypto);
+    }
+
+    @Bean
+    public Calibration calibration(Db db, Crypto crypto) {
+        return new Calibration(db, crypto);
+    }
+
+    @Bean
+    public Outcomes outcomes(Db db, Crypto crypto) {
+        return new Outcomes(db, crypto);
+    }
+
+    @Bean
+    public Branding branding(Db db) {
+        return new Branding(db);
+    }
+
+    @Bean
+    public Plans plans(Db db, Crypto crypto, ExitService exits) {
+        return new Plans(db, crypto, exits);
     }
 
     @Bean

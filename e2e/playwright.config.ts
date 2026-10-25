@@ -57,6 +57,10 @@ export default defineConfig({
     { name: 'modules', testMatch: /19-modules\.spec\.ts/, use: desktop, dependencies: ['modes'] },
     // Page addresses, the phone menu, confirmations and notes.
     { name: 'navigation', testMatch: /20-navigation-and-feedback\.spec\.ts/, use: desktop, dependencies: ['modules'] },
+    // Performance: it adds a joiner on probation to the Organization the story has built.
+    { name: 'performance', testMatch: /24-performance\.spec\.ts/, use: desktop, dependencies: ['navigation'] },
+    // The Organization's own logo, after performance.
+    { name: 'branding', testMatch: /25-branding\.spec\.ts/, use: desktop, dependencies: ['performance'] },
     // Tax declarations bring their own Organization, so they run on their own as well: --project=tax.
     { name: 'tax', testMatch: /21-tax-declarations\.spec\.ts/, use: desktop },
     // Settings, likewise in an Organization of their own: --project=settings.

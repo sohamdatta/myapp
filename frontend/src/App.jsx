@@ -6,6 +6,8 @@ import { isPlainClick, pathFor, resetLocation, usePage } from './router.js'
 import { AcceptInvitation, Chooser, LoginForm } from './pages/SignIn.jsx'
 import { formatDate } from './hooks.js'
 import Bell from './Bell.jsx'
+import { PRODUCT, logoUrl } from './brand/brand.js'
+import NexvanceLogo from './brand/NexvanceLogo.jsx'
 import { firstPage, navFor } from './nav.js'
 
 function inviteTokenFromUrl() {
@@ -20,12 +22,13 @@ function Shell({ me, nav, page, onNavigate, onSwitch, onSignOut, onEndSupport, c
   const where = me.kind === 'platform' ? 'Platform console' : me.organization.name
   const items = nav.flatMap((section) => section.items)
   const title = items.find((item) => item.id === page)?.label || where
+  const logo = me.kind === 'platform' ? null : logoUrl(me.organization)
   const [menuOpen, setMenuOpen] = useState(false)
   const heading = useRef(null)
   const firstRender = useRef(true)
 
   useEffect(() => {
-    document.title = title === where ? `${where} · HRMS` : `${title} · ${where}`
+    document.title = title === where ? `${where} · ${PRODUCT.name} HRMS` : `${title} · ${where}`
   }, [title, where])
 
   // After moving to another page, start at its top with the focus on its title, as a page load would.
@@ -76,15 +79,17 @@ function Shell({ me, nav, page, onNavigate, onSwitch, onSignOut, onEndSupport, c
       <div className="shell-body">
         {menuOpen && <div className="drawer-backdrop" aria-hidden="true" onClick={() => setMenuOpen(false)} />}
         <nav id="main-nav" className={menuOpen ? 'sidebar sidebar-open' : 'sidebar'} aria-label="Main">
-          <div className="brand">
-            <div className="brand-mark" aria-hidden="true">
-              {where[0].toUpperCase()}
-            </div>
-            <div>
+          {logo ? (
+            <div className="brand brand-org">
+              <img className="org-logo" src={logo} alt={`${where} logo`} />
               <div className="where">{where}</div>
-              <div className="brand-sub">HRMS</div>
             </div>
-          </div>
+          ) : (
+            <div className="brand">
+              <NexvanceLogo />
+            </div>
+          )}
+          {!logo && <div className="where where-under">{where}</div>}
           {nav.map((section) => (
             <div key={section.label} className="nav-section">
               <div className="nav-label">{section.label}</div>
@@ -107,6 +112,9 @@ function Shell({ me, nav, page, onNavigate, onSwitch, onSignOut, onEndSupport, c
               ))}
             </div>
           ))}
+          <a className="powered-by" href={PRODUCT.site} target="_blank" rel="noreferrer">
+            {logo ? `Powered by ${PRODUCT.name}` : PRODUCT.tagline}
+          </a>
         </nav>
         <main className="main">
           <header className="topbar">
@@ -148,7 +156,7 @@ function Shell({ me, nav, page, onNavigate, onSwitch, onSignOut, onEndSupport, c
 }
 
 /** The signed-in app: the address decides which page shows. Remounted when the person moves to another place. */
-function Workspace({ me, onSwitch, onSignOut, onEndSupport, onEnteredSupport }) {
+function Workspace({ me, onSwitch, onSignOut, onEndSupport, onEnteredSupport, onRefresh }) {
   const nav = navFor(me)
   const allowed = nav.flatMap((section) => section.items.map((item) => item.id))
   const landing = firstPage(nav)
@@ -158,7 +166,7 @@ function Workspace({ me, onSwitch, onSignOut, onEndSupport, onEnteredSupport }) 
   }, [me, landing])
   return (
     <Shell me={me} nav={nav} page={page} onNavigate={navigate} onSwitch={onSwitch} onSignOut={onSignOut} onEndSupport={onEndSupport}>
-      <PageView me={me} page={page} onNavigate={navigate} onEnteredSupport={onEnteredSupport} />
+      <PageView me={me} page={page} onNavigate={navigate} onEnteredSupport={onEnteredSupport} onRefresh={onRefresh} />
     </Shell>
   )
 }
@@ -265,6 +273,7 @@ export default function App() {
       onSignOut={handleSignOut}
       onEndSupport={handleEndSupport}
       onEnteredSupport={entered}
+      onRefresh={refresh}
     />
   )
 }

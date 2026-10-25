@@ -34,7 +34,7 @@ class PageLoadError extends Component {
 }
 
 /** The page the sidebar points at, for an Organization or the platform console. */
-export default function PageView({ me, page: id, onNavigate, onEnteredSupport }) {
+export default function PageView({ me, page: id, onNavigate, onEnteredSupport, onRefresh }) {
   if (!id) {
     return (
       <section className="panel">
@@ -51,7 +51,7 @@ export default function PageView({ me, page: id, onNavigate, onEnteredSupport })
   return (
     <PageLoadError key={id}>
       <Suspense fallback={<PageSkeleton />}>
-        <Page {...props({ me, page: id, onNavigate, onEnteredSupport })} />
+        <Page {...props({ me, page: id, onNavigate, onEnteredSupport, onRefresh })} />
       </Suspense>
     </PageLoadError>
   )

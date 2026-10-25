@@ -97,6 +97,15 @@ export function localToday() {
 
 export const localMonth = () => localToday().slice(0, 7)
 
+/**
+ * Today's date in India, as the server counts days: use it for a default the server checks against
+ * its own today ("starts today or later"), so a browser on another time zone, or the hours just
+ * after midnight when the UTC date is still yesterday, never proposes a day the server refuses.
+ */
+export function indiaToday() {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date())
+}
+
 /** A month such as 2026-10, shown as October 2026. */
 export function formatMonth(month) {
   return new Date(`${month}-01T00:00:00`).toLocaleDateString(undefined, { month: 'long', year: 'numeric' })

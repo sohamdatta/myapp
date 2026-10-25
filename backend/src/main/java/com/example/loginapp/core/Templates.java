@@ -41,10 +41,32 @@ public final class Templates {
     /** What exit letters can say: everything other letters can, and the exit's own details. */
     public static final Map<String, String> EXIT_LETTER;
 
+    /** What performance letters can say: everything other letters can, and the probation's and review's own details. */
+    public static final Map<String, String> PERFORMANCE_LETTER;
+
     /** What messages can say: everything letters can, and the event's own details. */
     public static final Map<String, String> MESSAGE;
 
     static {
+        java.util.Map<String, String> p = new java.util.TreeMap<>(LETTER);
+        p.put("probation.end_date", "The end of the probation the letter is about");
+        p.put("probation.confirmed_from", "The day a confirmation takes effect");
+        p.put("probation.new_end_date", "The new end of an extended probation");
+        p.put("probation.extension_months", "How many months the probation is extended by, as 3 months");
+        p.put("employment.tenure", "Length of service, as 3 years 2 months");
+        p.put("review.cycle", "The review cycle, as Annual review 2026-27");
+        p.put("review.rating", "The final rating, in words");
+        p.put("outcome.increment_pct", "The increment, as 8%");
+        p.put("outcome.new_annual", "The new yearly pay, as ₹12,96,000");
+        p.put("outcome.new_designation", "The designation of a promotion");
+        p.put("outcome.bonus", "The bonus, as ₹50,000, or nothing");
+        p.put("outcome.effective_from", "The day the outcome takes effect");
+        p.put("plan.start_date", "The day an improvement plan starts");
+        p.put("plan.end_date", "The day an improvement plan ends");
+        p.put("plan.objectives", "The plan's objectives and how each is measured, one to a line");
+        p.put("plan.checkin_every", "How often the manager checks in, as every 2 weeks");
+        PERFORMANCE_LETTER = java.util.Collections.unmodifiableMap(p);
+
         java.util.Map<String, String> x = new java.util.TreeMap<>(LETTER);
         x.put("exit.kind", "The kind of exit, in words: resignation, retirement and so on");
         x.put("exit.submitted_on", "When the resignation was given, or the exit started");
@@ -69,6 +91,19 @@ public final class Templates {
         m.put("letter.title", "The letter's title");
         m.put("settlement.line", "A settlement line, such as Gratuity");
         m.put("settlement.due_date", "When a settlement line is due");
+        m.putAll(PERFORMANCE_LETTER);
+        m.put("probation.checkin_day", "The check-in, as day 30");
+        m.put("probation.checkin_due", "When the check-in is due");
+        m.put("probation.recommendation", "The manager's recommendation, in words");
+        m.put("probation.decision", "HR's decision, in words");
+        m.put("goals.period", "The goal period, as FY 2026-27");
+        m.put("goal.title", "The goal's title");
+        m.put("giver.name", "Who gave the feedback");
+        m.put("review.cycle", "The review cycle, as Annual review FY 2026-27");
+        m.put("review.due", "When the review is due");
+        m.put("plan.decision", "HR's decision on an improvement plan, in words");
+        m.put("plan.checkin_due", "When a plan check-in is due");
+        m.put("requester.name", "Who asked for the feedback");
         MESSAGE = java.util.Collections.unmodifiableMap(m);
     }
 

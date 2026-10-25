@@ -40,6 +40,7 @@ export function navFor(me) {
   const hasOwnLeave = hasLeave && Boolean(scopes['leave.read']) && me.kind === 'tenant' && (scopes['leave.read'] === 'self' || me.permissions.includes('leave.apply'))
   const seesOthersLeave = hasLeave && Boolean(scopes['leave.read']) && scopes['leave.read'] !== 'self'
   const seesPeople = Boolean(scopes['employee.read']) && scopes['employee.read'] !== 'self'
+  const seesOthersPerformance = Boolean(scopes['performance.read']) && scopes['performance.read'] !== 'self'
   return [
     {
       label: 'My work',
@@ -48,6 +49,7 @@ export function navFor(me) {
         hasOwnLeave && { id: 'my-leave', label: 'My leave' },
         me.openTasks > 0 && { id: 'my-tasks', label: 'My tasks' },
         hasPayroll && me.employment && me.kind === 'tenant' && { id: 'my-pay', label: 'My pay' },
+        me.employment && me.kind === 'tenant' && Boolean(scopes['performance.read']) && { id: 'my-performance', label: 'My performance' },
         me.employment && me.kind === 'tenant' && { id: 'my-profile', label: 'My profile' },
         me.employment && me.kind === 'tenant' && { id: 'my-exit', label: 'My exit' },
       ].filter(Boolean),
@@ -62,6 +64,7 @@ export function navFor(me) {
         !hasAttendance && scopes['attendance.manage'] === 'tenant' && { id: 'work-calendar', label: 'Work locations' },
         seesOthersLeave && { id: 'leave', label: 'Leave' },
         Boolean(scopes['exit.read']) && scopes['exit.read'] !== 'self' && { id: 'exits', label: 'Exits' },
+        seesOthersPerformance && { id: 'performance', label: 'Performance' },
         hasPayroll && (me.permissions.includes('payroll.read') || me.permissions.includes('payroll.prepare')) && { id: 'payroll', label: 'Payroll' },
         // Declarations are checked by whoever handles salaries for everyone: HR Admins and the payroll roles.
         hasPayroll && me.kind === 'tenant' && [scopes['compensation.read'], scopes['payroll.read']].some((s) => s === 'tenant' || s === 'assigned') && {
@@ -72,6 +75,7 @@ export function navFor(me) {
         // Settings are for whoever owns one (security for the Org Admin, windows for attendance) and, read-only, for auditors.
         me.kind === 'tenant' && ['tenant.manage', 'attendance.manage', 'audit.read'].some((p) => scopes[p] === 'tenant') && { id: 'settings', label: 'Settings' },
         me.permissions.includes('audit.read') && { id: 'audit', label: 'Audit log' },
+        me.permissions.includes('tenant.manage') && me.kind === 'tenant' && { id: 'org-settings', label: 'Organization settings' },
       ].filter(Boolean),
     },
   ].filter((section) => section.items.length > 0)

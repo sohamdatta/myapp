@@ -470,6 +470,98 @@ export const exitTasks = {
   reassign: (id, membershipId) => post(`/org/people/exit-tasks/${id}/reassign`, { membershipId }),
 }
 
+// ── performance: the employee's own, and their team's or everyone's ──
+
+export const performance = {
+  mine: () => get('/org/me/performance'),
+  replyToCheckin: (id, reply) => post(`/org/me/performance/probation/checkins/${id}/reply`, { reply }),
+
+  probations: (status) => get(`/org/performance/probation${query({ status })}`),
+  probation: (id) => get(`/org/performance/probation/${id}`),
+  writeCheckin: (id, checkinId, body) => put(`/org/performance/probation/${id}/checkins/${checkinId}`, body),
+  recommend: (id, body) => post(`/org/performance/probation/${id}/recommend`, body),
+  decide: (id, body) => post(`/org/performance/probation/${id}/decide`, body),
+
+  probationSettings: () => get('/org/performance/setup/probation'),
+  saveProbationSettings: (body) => put('/org/performance/setup/probation', body),
+
+  team: () => get('/org/performance/team'),
+
+  goals: (employmentId, period) => get(`/org/performance/goals${query({ employmentId, period })}`),
+  addGoal: (body) => post('/org/performance/goals', body),
+  changeGoal: (id, body) => put(`/org/performance/goals/${id}`, body),
+  removeGoal: (id) => del(`/org/performance/goals/${id}`),
+  dropGoal: (id, reason) => post(`/org/performance/goals/${id}/drop`, { reason }),
+  goalCheckin: (id, body) => post(`/org/performance/goals/${id}/checkins`, body),
+  submitGoals: (periodStart) => post('/org/me/performance/goals/submit', { periodStart }),
+  agreeGoals: (employmentId, periodStart) => post('/org/performance/goals/agree', { employmentId, periodStart }),
+  returnGoals: (employmentId, periodStart, note) => post('/org/performance/goals/return', { employmentId, periodStart, note }),
+  departmentGoals: (period) => get(`/org/performance/department-goals${query({ period })}`),
+
+  oneToOnes: (withId) => get(`/org/performance/one-to-ones${query({ with: withId })}`),
+  addOneToOne: (body) => post('/org/performance/one-to-ones', body),
+  changeOneToOne: (id, body) => put(`/org/performance/one-to-ones/${id}`, body),
+  addItem: (id, body) => post(`/org/performance/one-to-ones/${id}/items`, body),
+  markItem: (id, done) => put(`/org/performance/one-to-one-items/${id}`, { done }),
+
+  feedbackAbout: (employmentId) => get(`/org/performance/feedback${query({ employmentId })}`),
+  giveFeedback: (body) => post('/org/performance/feedback', body),
+  editFeedback: (id, text) => put(`/org/performance/feedback/${id}`, { text }),
+  withdrawFeedback: (id) => post(`/org/performance/feedback/${id}/withdraw`),
+  givenFeedback: () => get('/org/me/performance/feedback/given'),
+  colleagues: () => get('/org/performance/colleagues'),
+
+  cycles: () => get('/org/performance/cycles'),
+  cycle: (id) => get(`/org/performance/cycles/${id}`),
+  saveCycle: (id, body) => (id ? put(`/org/performance/cycles/${id}`, body) : post('/org/performance/cycles', body)),
+  cycleAction: (id, action, body) => post(`/org/performance/cycles/${id}/${action}`, body || {}),
+  reviewsToWrite: () => get('/org/performance/reviews/to-write'),
+  myReviews: () => get('/org/me/performance/reviews'),
+  review: (id) => get(`/org/performance/reviews/${id}`),
+  saveEntry: (id, role, body) => put(`/org/performance/reviews/${id}/entries/${role}`, body),
+  returnSelf: (id, reason) => post(`/org/performance/reviews/${id}/return-self`, { reason }),
+  acknowledge: (id, comment) => post(`/org/performance/reviews/${id}/acknowledge`, { comment }),
+  withdrawReview: (id, reason) => post(`/org/performance/reviews/${id}/withdraw`, { reason }),
+  moveOn: (id, reason) => post(`/org/performance/reviews/${id}/move-on`, { reason }),
+  forms: () => get('/org/performance/setup/forms'),
+  saveForm: (id, body) => (id ? put(`/org/performance/setup/forms/${id}`, body) : post('/org/performance/setup/forms', body)),
+
+  setup: () => get('/org/performance/setup'),
+  saveGeneral: (body) => put('/org/performance/setup/general', body),
+  saveScale: (levels) => put('/org/performance/setup/scale', { levels }),
+  saveCompetency: (id, body) => (id ? put(`/org/performance/setup/competencies/${id}`, body) : post('/org/performance/setup/competencies', body)),
+  saveCompetencySet: (id, body) =>
+    id ? put(`/org/performance/setup/competency-sets/${id}`, body) : post('/org/performance/setup/competency-sets', body),
+
+  requestPeers: (id, employmentIds) => post(`/org/performance/reviews/${id}/peers`, { employmentIds }),
+  signOff: (id, action, note) => post(`/org/performance/reviews/${id}/sign-off`, { action, note }),
+  peerReview: (id) => get(`/org/me/performance/peer-reviews/${id}`),
+  savePeerReview: (id, answers, submit) => put(`/org/me/performance/peer-reviews/${id}`, { answers, submit }),
+  declinePeerReview: (id, reason) => post(`/org/me/performance/peer-reviews/${id}/decline`, { reason }),
+  feedbackAsked: () => get('/org/me/performance/feedback/requests'),
+  askForFeedback: (body) => post('/org/me/performance/feedback/requests', body),
+  declineFeedbackRequest: (id, text) => post(`/org/me/performance/feedback/requests/${id}/decline`, { text }),
+  plans: (status) => get(`/org/performance/plans${status ? `?status=${status}` : ''}`),
+  plan: (id) => get(`/org/performance/plans/${id}`),
+  savePlan: (id, body) => (id ? put(`/org/performance/plans/${id}`, body) : post('/org/performance/plans', body)),
+  startPlan: (id, startDate) => post(`/org/performance/plans/${id}/start`, { startDate }),
+  decidePlan: (id, body) => post(`/org/performance/plans/${id}/decide`, body),
+  planCheckin: (id, checkinId, body) => put(`/org/performance/plans/${id}/checkins/${checkinId}`, body),
+  acknowledgePlan: (id, text) => post(`/org/me/performance/plan/${id}/acknowledge`, { text }),
+  replyToPlanCheckin: (id, text) => post(`/org/me/performance/plan/checkins/${id}/reply`, { text }),
+
+  calibration: (cycleId) => get(`/org/performance/cycles/${cycleId}/calibration`),
+  openSession: (cycleId, body) => post(`/org/performance/cycles/${cycleId}/calibration/sessions`, body),
+  session: (id) => get(`/org/performance/calibration/${id}`),
+  sessionAction: (id, action, body) => post(`/org/performance/calibration/${id}/${action}`, body || {}),
+  calibrate: (sessionId, reviewId, level, reason) => post(`/org/performance/calibration/${sessionId}/reviews/${reviewId}`, { level, reason }),
+  merit: () => get('/org/performance/merit'),
+  saveMerit: (body) => put('/org/performance/merit', body),
+  outcomes: (cycleId) => get(`/org/performance/cycles/${cycleId}/outcomes`),
+  outcomesAction: (cycleId, action, body) => post(`/org/performance/cycles/${cycleId}/outcomes/${action}`, body || {}),
+  saveOutcome: (id, body) => put(`/org/performance/outcomes/${id}`, body),
+}
+
 export const notifications = {
   list: () => get('/org/notifications'),
   read: (ids) => post('/org/notifications/read', { ids }),
@@ -599,4 +691,12 @@ export const orgSettings = {
   reject: (id, body) => post(`/org/settings/changes/${id}/reject`, body),
   withdraw: (id) => post(`/org/settings/changes/${id}/withdraw`),
   undo: (id, body) => post(`/org/settings/changes/${id}/undo`, body || {}),
+}
+
+// ── the Organization's own brand ────────────────────────────────────
+
+export const branding = {
+  get: () => get('/org/setup/branding'),
+  uploadLogo: (file) => uploadFile('/org/setup/branding/logo', file),
+  removeLogo: () => del('/org/setup/branding/logo'),
 }
