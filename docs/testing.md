@@ -153,3 +153,13 @@ Findings so far: `EmployeeService.list` stops at **500 rows**, so an Organizatio
 (search narrows it, but there is no paging); the org chart answers with 315 KB for 2,000 people. Neither is fixed here.
 Not covered yet: sign-in under load (password hashing), attendance month view, payslip release, readers during a calculation,
 and a run on server-sized hardware.
+
+## Sign-in limits
+
+`RateLimits` counts failures per email address (as many as the platform's `auth.lockout.after_failures`, over `auth.lockout.minutes`)
+and per client address (100 in 15 minutes); invitation links are limited per address (30 accepts, 120 looks). An address with no
+account and one with an account are refused the same way at the same point (429 `auth.locked`, no minutes in the message), and
+accepting an invitation with an existing login's password counts like signing in. `RateLimitsTest` and `SignInLimitsTest` cover
+this. **Limits are in memory: per application instance, reset on restart.** Move them to the database before running a second
+instance. A known gap: an account's lock ends when its database lock ends, a stranger's address when its failures leave the
+window, which can differ by a few minutes.

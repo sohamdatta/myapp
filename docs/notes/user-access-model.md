@@ -404,7 +404,7 @@ Tenant audit (table owned by C8) needs these columns for this module: `actor_kin
 | Code | HTTP | When |
 |---|---|---|
 | `auth.invalid_credentials` | 401 | Wrong email or password (same for both) |
-| `auth.locked` | 423 | Too many failures |
+| `auth.locked` | 429 | Too many failed sign-ins for this address or account (the same answer whether or not the account exists) |
 | `auth.mfa_required` | 401 | MFA challenge or enrolment needed |
 | `auth.token_stale` | 401 | `scope_version` mismatch; client refreshes silently |
 | `auth.session_revoked` | 401 | Suspended, ended, reset or signed out elsewhere |

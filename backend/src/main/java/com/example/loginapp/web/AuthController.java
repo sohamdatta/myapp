@@ -77,7 +77,8 @@ public class AuthController {
 
     @GetMapping("/invitations/preview")
     public Map<String, Object> previewInvitation(@RequestParam("token") String token, HttpServletRequest http) {
-        return invitations.preview(token, Requests.clientIp(http, trustForwardedFor));
+        invitations.checkPreviewAllowed(Requests.clientIp(http, trustForwardedFor));
+        return invitations.preview(token);
     }
 
     @PostMapping("/invitations/accept")

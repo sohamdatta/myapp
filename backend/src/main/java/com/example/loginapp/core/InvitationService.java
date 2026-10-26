@@ -30,12 +30,11 @@ public final class InvitationService {
         return lookup(token);
     }
 
-    /** What the invitation offers, limited by the address asking (links are long random tokens, but nobody should hammer them). */
-    public Map<String, Object> preview(String token, String address) {
-        if (!limits.tryHit(RateLimits.INVITE_PREVIEWS_PER_ADDRESS, address)) {
+    /** Counts a look at an invitation link against the address asking; refuses when it looks too often (a null address is not limited). */
+    public void checkPreviewAllowed(String address) {
+        if (address != null && !limits.tryHit(RateLimits.INVITE_PREVIEWS_PER_ADDRESS, address)) {
             throw tooMany();
         }
-        return lookup(token);
     }
 
     /** What the invitation offers. One generic error covers expired, used, revoked and unknown tokens. */
@@ -58,7 +57,7 @@ public final class InvitationService {
      * its password, or by already being signed in with the invited email.
      */
     public String accept(String token, String password, SessionCtx signedIn) {
-        return accept(token, password, signedIn, "unknown");
+        return accept(token, password, signedIn, null);   // no address: callers inside the process, which are not limited by one
     }
 
     /**
@@ -67,7 +66,7 @@ public final class InvitationService {
      * so an invitation link is no way round the sign-in limits.
      */
     public String accept(String token, String password, SessionCtx signedIn, String address) {
-        if (!limits.tryHit(RateLimits.INVITE_ATTEMPTS_PER_ADDRESS, address)) {
+        if (address != null && !limits.tryHit(RateLimits.INVITE_ATTEMPTS_PER_ADDRESS, address)) {
             throw tooMany();
         }
         Map<String, Object> offer = lookup(token);
@@ -125,7 +124,9 @@ public final class InvitationService {
         }
         if ("password".equals(joined.get("refused"))) {
             limits.hit(RateLimits.LOGIN_FAILURES_PER_EMAIL, email);
-            limits.hit(RateLimits.LOGIN_FAILURES_PER_ADDRESS, address);
+            if (address != null) {
+                limits.hit(RateLimits.LOGIN_FAILURES_PER_ADDRESS, address);
+            }
             throw new ApiException(403, "invitation.email_mismatch", "Enter the password for " + email + " to accept this invitation");
         }
         if (exists && !alreadySignedIn) {

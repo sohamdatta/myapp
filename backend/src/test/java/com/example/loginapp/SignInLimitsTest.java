@@ -164,9 +164,9 @@ class SignInLimitsTest {
         assertEquals(429, refusal(() -> invitations.accept("not-a-token", PASSWORD, null, "10.2.2.2")).status());
         assertEquals(410, refusal(() -> invitations.accept("not-a-token", PASSWORD, null, "10.2.2.3")).status());
         for (int i = 0; i < 120; i++) {
-            assertEquals(410, refusal(() -> invitations.preview("not-a-token-" + SEQ.incrementAndGet(), "10.3.3.3")).status());
+            assertEquals(410, refusal(() -> { invitations.checkPreviewAllowed("10.3.3.3"); invitations.preview("not-a-token-" + SEQ.incrementAndGet()); }).status());
         }
-        assertEquals(429, refusal(() -> invitations.preview("not-a-token", "10.3.3.3")).status());
+        assertEquals(429, refusal(() -> invitations.checkPreviewAllowed("10.3.3.3")).status());
     }
 
     private static PGSimpleDataSource source(String url, String user, String password) {

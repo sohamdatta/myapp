@@ -36,7 +36,7 @@ public final class AuthService {
 
     /** Checks the email and password and returns a token for a session with no Organization chosen yet. */
     public String login(String email, String password) {
-        return login(email, password, "unknown");
+        return login(email, password, null);   // no address: callers inside the process, which are not limited by one
     }
 
     /** As {@link #login(String, String)}, limited by the email and by the address the request came from. */
@@ -44,7 +44,7 @@ public final class AuthService {
         if (email == null || email.isBlank() || password == null || password.isEmpty()) {
             throw new ApiException(400, "request.invalid", "Enter your email and password");
         }
-        if (!limits.allowed(RateLimits.LOGIN_FAILURES_PER_ADDRESS, address)) {
+        if (address != null && !limits.allowed(RateLimits.LOGIN_FAILURES_PER_ADDRESS, address)) {
             throw tooManyFailures();
         }
         String token = Secrets.newToken();
@@ -82,7 +82,9 @@ public final class AuthService {
         }
         if (!outcome.equals("ok")) {
             limits.hit(RateLimits.LOGIN_FAILURES_PER_EMAIL, email);
-            limits.hit(RateLimits.LOGIN_FAILURES_PER_ADDRESS, address);
+            if (address != null) {
+                limits.hit(RateLimits.LOGIN_FAILURES_PER_ADDRESS, address);
+            }
             throw new ApiException(401, "auth.invalid_credentials", "Incorrect email or password");
         }
         limits.clear(RateLimits.LOGIN_FAILURES_PER_EMAIL, email);
