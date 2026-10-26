@@ -90,7 +90,7 @@ A question for the consultant that the scenarios raise: whether annual tax is ro
 
 Regular CI runs on the day of the push, so a test or a rule that fails only near a month or tax-year end goes unseen until that day. Two guards cover this:
 
-- **Fixed-date run** (`.github/workflows/fixed-date.yml`), every Sunday and on demand: the backend tests and the browser tests run with the server's clock moved to 30 December, 26 February and 28 March. libfaketime moves PostgreSQL and the JVM by one shared offset, so they agree and time still passes; the JVM needs `FAKETIME_DONT_FAKE_MONOTONIC=1`, or its internal timers stall. The Playwright runner and the browser keep the real clock: the tests read "now" from `nowMs()`, which adds `E2E_CLOCK_SHIFT_SECONDS`, and each browser context's clock starts there (`e2e/tests/helpers.ts`). Tests should use `nowMs()`, `isoDay()` and `currentYear()`, never `Date.now()` or `new Date()` directly.
+- **Fixed-date run** (`.github/workflows/fixed-date.yml`), every day at 02:00 India time and on demand (not on pull requests): the backend tests and the browser tests run with the server's clock moved to 30 December, 26 February and 28 March. libfaketime moves PostgreSQL and the JVM by one shared offset, so they agree and time still passes; the JVM needs `FAKETIME_DONT_FAKE_MONOTONIC=1`, or its internal timers stall. The Playwright runner and the browser keep the real clock: the tests read "now" from `nowMs()`, which adds `E2E_CLOCK_SHIFT_SECONDS`, and each browser context's clock starts there (`e2e/tests/helpers.ts`). Tests should use `nowMs()`, `isoDay()` and `currentYear()`, never `Date.now()` or `new Date()` directly.
 
   To try it locally (Linux, `apt install faketime`): compute the offset in seconds, start PostgreSQL and the backend with `LD_PRELOAD=/usr/lib/x86_64-linux-gnu/faketime/libfaketime.so.1 FAKETIME=+<seconds> FAKETIME_DONT_FAKE_MONOTONIC=1`, then run `E2E_CLOCK_SHIFT_SECONDS=<seconds> npx playwright test`.
 
@@ -117,3 +117,24 @@ What it asserts is about the **body**, not the status: no row id from any tenant
 - **Found on first run and fixed here:** the loading skeleton had an `aria-label` on a plain `div` (now `role="status"`); the logo file input had no label; the audit log's scrollable table could not be reached by keyboard.
 - The fixed-date workflow skips it (`--grep-invert @a11y`).
 - **Mutation check done once:** removing the skeleton's role made the scan fail with `aria-prohibited-attr`.
+
+## Scale check (2,000 employees)
+
+Budgets from the roadmap: payroll calculation for 2,000 employees under 60 s; reads at the 95th percentile under 300 ms.
+
+- `PayrollScaleTest` (does nothing unless `SCALE_TEST=true`) seeds one Organization through the services, then times
+  `PayrollRuns.calculate` and the People list and search (service level, no HTTP). It leaves the database `hrms_test_scale`
+  with `hr@scale.test` (password `correct-horse-battery`) in place.
+- `perf/k6/reads.js` signs in as that person and reads the People list, a search, the org chart, payroll runs and `/api/auth/me`
+  with 30 virtual users for a minute, per-request p95 thresholds tagged by name.
+- The **Scale check** workflow (Actions, run by hand) does both on a runner. Budgets only print until someone runs it with
+  *enforce* on; turn it on for good once the first real figures are in the table below.
+
+| Date | Where | Payroll calculate, 2,000 | People list p95 | k6 reads p95 | Notes |
+| --- | --- | --- | --- | --- | --- |
+| 2026-10-26 | developer container, local PostgreSQL | 1.6 s | 62 ms (service level) | not run | seeding takes 141 s; employees have no attendance, leave, holds or arrears, so this is a floor, not the real month |
+
+Findings so far: `EmployeeService.list` stops at **500 rows**, so an Organization of 2,000 cannot see everyone on the People list
+(search narrows it, but there is no paging); the org chart answers with 315 KB for 2,000 people. Neither is fixed here.
+Not covered yet: sign-in under load (password hashing), attendance month view, payslip release, readers during a calculation,
+and a run on server-sized hardware.

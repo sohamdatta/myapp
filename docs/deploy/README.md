@@ -29,7 +29,7 @@ As of 25 Oct 2026.
 - [x] Address `https://peopleos.nexvance.in`: Cloudflare DNS, A and AAAA **DNS only**, CAA allows Let's Encrypt ([guide](aws-lightsail.md), step 3)
 - [ ] `APP_DATA_KEY` saved in a password manager and offline
 - [ ] First Organization created from the Platform console
-- [ ] One test restore of the database into a new database
+- [ ] One timed restore drill ([restore-drills.md](restore-drills.md)): record it in the log there
 - [ ] Metric alarms: server CPU, database free storage
 - [ ] Before customers rely on it: database to the **High availability** plan ($60)
 

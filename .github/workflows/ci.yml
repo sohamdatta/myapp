@@ -135,7 +135,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - name: Shell check
-        run: shellcheck --severity=warning deploy/logs/*.sh deploy/ntp/*.sh
+        run: shellcheck --severity=warning deploy/logs/*.sh deploy/ntp/*.sh deploy/restore-drill.sh
       - name: Log shipping
         run: deploy/logs/test-ship-logs.sh
       - name: Clock check
