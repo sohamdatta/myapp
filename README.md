@@ -914,9 +914,9 @@ app on an empty database, then:
 ./start.sh                            # in one terminal; the database must be empty
 cd e2e && npm install
 npx playwright install --with-deps chromium   # first time only
-npx playwright test                   # all suites, in order
+npx playwright test                   # all suites; the story runs in order, independent suites beside it (E2E_WORKERS, default 2)
 npx playwright test --ui              # watch each step in a browser window
-E2E_SHOTS=../shots npx playwright test  # also save the screenshots used in the setup and user guide
+E2E_WORKERS=1 E2E_SHOTS=../shots npx playwright test  # also save the screenshots used in the setup and user guide (one worker, so the Organization list in them is the same every time)
 ```
 
 They create an Organization called Globex Ltd, so they need a fresh database

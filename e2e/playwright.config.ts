@@ -1,8 +1,13 @@
 import { defineConfig, devices } from '@playwright/test';
 
-// The suites are one story told in order: the Super Admin creates an Organization,
-// its people set up attendance, then use leave and work from home. Each project
-// depends on the one before, so they always run in this order, on a fresh database.
+// Most suites are one story told in order: the Super Admin creates an Organization,
+// its people set up attendance, then use leave and work from home. Each project in that
+// chain depends on the one before, so they always run in this order, on a fresh database.
+//
+// Suites that create their own Organization (modes, modules, tax, settings, neg-tax-settings)
+// are outside the chain and can run beside it on a second worker. E2E_WORKERS sets how many
+// run at once (default 2). A chain is still one file at a time, so extra workers only take
+// the independent suites. The fixed-date workflow sets 1, as libfaketime slows the JVM.
 //
 // The app must already be running (backend on 8080, frontend on 5173), or set
 // E2E_BASE_URL to wherever it runs.
@@ -12,7 +17,7 @@ const desktop = { ...devices['Desktop Chrome'], viewport: { width: 1280, height:
 export default defineConfig({
   testDir: './tests',
   fullyParallel: false,
-  workers: 1,
+  workers: Number(process.env.E2E_WORKERS) || 2,   // a missing or non-numeric value means 2
   forbidOnly: !!process.env.CI,
   retries: 0,
   timeout: 120_000,
@@ -53,10 +58,11 @@ export default defineConfig({
     { name: 'neg-payroll', testMatch: /16-negative-payroll\.spec\.ts/, use: desktop, dependencies: ['neg-people'] },
     // A tour of each role through its own login, for the guide's screenshots.
     { name: 'role-tour', testMatch: /17-role-tour\.spec\.ts/, use: desktop, dependencies: ['neg-payroll'] },
-    { name: 'modes', testMatch: /18-attendance-modes\.spec\.ts/, use: desktop, dependencies: ['role-tour'] },
-    { name: 'modules', testMatch: /19-modules\.spec\.ts/, use: desktop, dependencies: ['modes'] },
+    // Attendance modes and module switches each create their own Organization: --project=modes, --project=modules.
+    { name: 'modes', testMatch: /18-attendance-modes\.spec\.ts/, use: desktop },
+    { name: 'modules', testMatch: /19-modules\.spec\.ts/, use: desktop },
     // Page addresses, the phone menu, confirmations and notes.
-    { name: 'navigation', testMatch: /20-navigation-and-feedback\.spec\.ts/, use: desktop, dependencies: ['modules'] },
+    { name: 'navigation', testMatch: /20-navigation-and-feedback\.spec\.ts/, use: desktop, dependencies: ['role-tour'] },
     // Performance: it adds a joiner on probation to the Organization the story has built.
     { name: 'performance', testMatch: /24-performance\.spec\.ts/, use: desktop, dependencies: ['navigation'] },
     // The Organization's own logo, after performance.
