@@ -13,14 +13,11 @@
 name: Fixed-date tests
 
 on:
+  # Once a day, not on pull requests: each date takes an hour or more. To try a change to this workflow or to the
+  # date helpers before merging, run it by hand from the branch (Actions -> Fixed-date tests -> Run workflow).
   schedule:
-    - cron: '30 20 * * 6'   # Sundays 02:00 India time
+    - cron: '30 20 * * *'   # every day 02:00 India time
   workflow_dispatch:
-  pull_request:
-    paths:
-      - .github/workflows/fixed-date.yml
-      - e2e/playwright.config.ts
-      - e2e/tests/helpers.ts
 
 concurrency:
   group: fixed-date-${{ github.ref }}
