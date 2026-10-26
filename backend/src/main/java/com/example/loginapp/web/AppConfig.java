@@ -53,6 +53,7 @@ import com.example.loginapp.core.Plans;
 import com.example.loginapp.core.PlatformService;
 import com.example.loginapp.core.PolicyService;
 import com.example.loginapp.core.Probation;
+import com.example.loginapp.core.RateLimits;
 import com.example.loginapp.core.Reviews;
 import com.example.loginapp.core.SettingsService;
 import com.example.loginapp.core.TaxDeclarations;
@@ -87,9 +88,15 @@ public class AppConfig {
         return new ClientErrors(db);
     }
 
+    /** One set of counts for everything that limits attempts (sign-in, invitations). Per instance; see RateLimits. */
     @Bean
-    public AuthService authService(Db db) {
-        return new AuthService(db);
+    public RateLimits rateLimits() {
+        return new RateLimits();
+    }
+
+    @Bean
+    public AuthService authService(Db db, RateLimits limits) {
+        return new AuthService(db, limits);
     }
 
     @Bean
@@ -310,8 +317,8 @@ public class AppConfig {
     }
 
     @Bean
-    public InvitationService invitationService(Db db) {
-        return new InvitationService(db);
+    public InvitationService invitationService(Db db, RateLimits limits) {
+        return new InvitationService(db, limits);
     }
 
     @Bean

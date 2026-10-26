@@ -10,14 +10,35 @@ public final class InvitationService {
     private static final ApiException INVALID = new ApiException(410, "invitation.invalid",
             "This invitation link is not valid. It may have expired, been used or been withdrawn");
 
+    private static ApiException tooMany() {
+        return new ApiException(429, "request.rate_limited", "Too many attempts. Try again in a few minutes");
+    }
+
     private final Db db;
+    private final RateLimits limits;
 
     public InvitationService(Db db) {
+        this(db, new RateLimits());
+    }
+
+    public InvitationService(Db db, RateLimits limits) {
         this.db = db;
+        this.limits = limits;
+    }
+
+    public Map<String, Object> preview(String token) {
+        return lookup(token);
+    }
+
+    /** Counts a look at an invitation link against the address asking; refuses when it looks too often (a null address is not limited). */
+    public void checkPreviewAllowed(String address) {
+        if (address != null && !limits.tryHit(RateLimits.INVITE_PREVIEWS_PER_ADDRESS, address)) {
+            throw tooMany();
+        }
     }
 
     /** What the invitation offers. One generic error covers expired, used, revoked and unknown tokens. */
-    public Map<String, Object> preview(String token) {
+    private Map<String, Object> lookup(String token) {
         if (token == null || token.isBlank()) {
             throw INVALID;
         }
@@ -36,7 +57,28 @@ public final class InvitationService {
      * its password, or by already being signed in with the invited email.
      */
     public String accept(String token, String password, SessionCtx signedIn) {
-        Map<String, Object> offer = preview(token);
+        return accept(token, password, signedIn, null);   // no address: callers inside the process, which are not limited by one
+    }
+
+    /**
+     * As {@link #accept(String, String, SessionCtx)}, limited by the address. Proving an existing login by its password
+     * here counts like signing in: wrong passwords add to the same per-email count and lock the account the same way,
+     * so an invitation link is no way round the sign-in limits.
+     */
+    public String accept(String token, String password, SessionCtx signedIn, String address) {
+        // only attempts that fail count: a person accepting a real link is not guessing, and an office accepting many is not abusing
+        if (address != null && !limits.allowed(RateLimits.INVITE_ATTEMPTS_PER_ADDRESS, address)) {
+            throw tooMany();
+        }
+        Map<String, Object> offer;
+        try {
+            offer = lookup(token);
+        } catch (ApiException e) {
+            if (address != null) {
+                limits.hit(RateLimits.INVITE_ATTEMPTS_PER_ADDRESS, address);
+            }
+            throw e;
+        }
         String email = (String) offer.get("email");
         boolean exists = Boolean.TRUE.equals(offer.get("identityExists"));
         boolean alreadySignedIn = signedIn != null && signedIn.email().equalsIgnoreCase(email);
@@ -47,14 +89,22 @@ public final class InvitationService {
         Map<String, Object> joined = db.inAuth(c -> {
             UUID identityId;
             if (exists) {
+                AuthService.lockEmail(c, email);
                 Map<String, Object> identity = Sql.one(c,
-                        "select id, password_hash from auth.identity where email = ?::citext and status = 'active'", email);
+                        "select id, password_hash from auth.identity where email = ?::citext and status = 'active' for update", email);
                 if (identity == null) {
                     throw INVALID;
                 }
-                if (!alreadySignedIn && !Secrets.verifyPassword(password, (String) identity.get("passwordHash"))) {
-                    throw new ApiException(403, "invitation.email_mismatch",
-                            "Enter the password for " + email + " to accept this invitation");
+                if (!alreadySignedIn) {
+                    if (AuthService.lockedOut(c, email)) {
+                        return Map.<String, Object>of("refused", "locked");
+                    }
+                    if (!Secrets.verifyPassword(password, (String) identity.get("passwordHash"))) {
+                        // recorded here and refused below: throwing now would roll the failure back
+                        AuthService.recordFailure(c, email);
+                        return Map.<String, Object>of("refused", "password");
+                    }
+                    AuthService.clearFailures(c, email);
                 }
                 identityId = AuthService.uuid(identity.get("id"));
             } else {
@@ -76,6 +126,16 @@ public final class InvitationService {
             out.put("membershipId", membershipId);
             return out;
         });
+        if ("locked".equals(joined.get("refused"))) {
+            throw AuthService.tooManyFailures();
+        }
+        if ("password".equals(joined.get("refused"))) {
+            if (address != null) {
+                limits.hit(RateLimits.LOGIN_FAILURES_PER_ADDRESS, address);
+                limits.hit(RateLimits.INVITE_ATTEMPTS_PER_ADDRESS, address);
+            }
+            throw new ApiException(403, "invitation.email_mismatch", "Enter the password for " + email + " to accept this invitation");
+        }
         UUID tenantId = (UUID) joined.get("tenantId");
         UUID membershipId = (UUID) joined.get("membershipId");
         db.inTenant(tenantId, c -> Sql.update(c,
