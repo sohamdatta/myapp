@@ -1,0 +1,32 @@
+{
+  "name": "06-one-time-arrears",
+  "why": "A one-time arrears payment entered for the month: paid and taxed, but not part of the wage base for PF.",
+  "status": "provisional",
+  "period": "2026-10-01",
+  "employee": {
+    "days": {
+      "base": 31,
+      "paid": 31,
+      "lop": 0
+    },
+    "inputs": {
+      "ARREARS": 12000
+    }
+  },
+  "expected": {
+    "gross": "85200",
+    "deductions": "2000.00",
+    "net": "83200.00",
+    "employerCost": "1800",
+    "lines": [
+      {"code": "BASIC", "kind": "earning", "amount": "37500"},
+      {"code": "HRA", "kind": "earning", "amount": "15000"},
+      {"code": "SPECIAL", "kind": "earning", "amount": "20700"},
+      {"code": "ARREARS", "kind": "earning", "amount": "12000"},
+      {"code": "PF_EE", "kind": "deduction", "amount": "1800"},
+      {"code": "PF_ER", "kind": "employer", "amount": "1800"},
+      {"code": "PT", "kind": "deduction", "amount": "200.00"}
+    ],
+    "exceptions": []
+  }
+}

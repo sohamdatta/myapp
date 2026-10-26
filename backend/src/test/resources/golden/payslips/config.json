@@ -1,0 +1,223 @@
+{
+  "settings": {
+    "proration": "calendar",
+    "pfRestrict": true,
+    "variancePct": 10,
+    "largeOneTime": 25000,
+    "metroLocations": []
+  },
+  "components": {
+    "BASIC": {
+      "code": "BASIC",
+      "name": "Basic",
+      "kind": "earning",
+      "statutory": false,
+      "position": 10,
+      "amountType": "formula",
+      "formula": "CTC_MONTHLY * 0.5",
+      "wage": "include",
+      "esiWage": true,
+      "taxable": true,
+      "prorate": true,
+      "rounding": "nearest",
+      "oneTime": false
+    },
+    "HRA": {
+      "code": "HRA",
+      "name": "House rent allowance",
+      "kind": "earning",
+      "statutory": false,
+      "position": 20,
+      "amountType": "formula",
+      "formula": "BASIC * if(location.metro, 0.5, 0.4)",
+      "wage": "conditional",
+      "esiWage": true,
+      "taxable": true,
+      "prorate": true,
+      "rounding": "nearest",
+      "oneTime": false
+    },
+    "SPECIAL": {
+      "code": "SPECIAL",
+      "name": "Special allowance",
+      "kind": "earning",
+      "statutory": false,
+      "position": 30,
+      "amountType": "formula",
+      "formula": "CTC_MONTHLY - BASIC - HRA - PF_ER",
+      "wage": "conditional",
+      "esiWage": true,
+      "taxable": true,
+      "prorate": true,
+      "rounding": "nearest",
+      "oneTime": false
+    },
+    "PF_EE": {
+      "code": "PF_EE",
+      "name": "Provident fund",
+      "kind": "deduction",
+      "statutory": true,
+      "position": 100,
+      "amountType": "statutory",
+      "wage": "exclude",
+      "rounding": "nearest"
+    },
+    "ESI_EE": {
+      "code": "ESI_EE",
+      "name": "ESI",
+      "kind": "deduction",
+      "statutory": true,
+      "position": 110,
+      "amountType": "statutory",
+      "wage": "exclude",
+      "rounding": "up"
+    },
+    "PT": {
+      "code": "PT",
+      "name": "Professional tax",
+      "kind": "deduction",
+      "statutory": true,
+      "position": 120,
+      "amountType": "statutory",
+      "wage": "exclude",
+      "rounding": "none"
+    },
+    "LWF_EE": {
+      "code": "LWF_EE",
+      "name": "Labour welfare fund",
+      "kind": "deduction",
+      "statutory": true,
+      "position": 130,
+      "amountType": "statutory",
+      "wage": "exclude",
+      "rounding": "none"
+    },
+    "TDS": {
+      "code": "TDS",
+      "name": "Income tax",
+      "kind": "deduction",
+      "statutory": true,
+      "position": 140,
+      "amountType": "statutory",
+      "wage": "exclude",
+      "rounding": "nearest"
+    },
+    "PF_ER": {
+      "code": "PF_ER",
+      "name": "Employer PF",
+      "kind": "employer",
+      "statutory": true,
+      "position": 200,
+      "amountType": "statutory",
+      "wage": "exclude",
+      "rounding": "nearest"
+    },
+    "ESI_ER": {
+      "code": "ESI_ER",
+      "name": "Employer ESI",
+      "kind": "employer",
+      "statutory": true,
+      "position": 210,
+      "amountType": "statutory",
+      "wage": "exclude",
+      "rounding": "up"
+    },
+    "LWF_ER": {
+      "code": "LWF_ER",
+      "name": "Employer LWF",
+      "kind": "employer",
+      "statutory": true,
+      "position": 220,
+      "amountType": "statutory",
+      "wage": "exclude",
+      "rounding": "none"
+    },
+    "ARREARS": {
+      "code": "ARREARS",
+      "name": "Arrears",
+      "kind": "earning",
+      "statutory": false,
+      "position": 40,
+      "amountType": "input",
+      "wage": "exclude",
+      "esiWage": true,
+      "taxable": true,
+      "prorate": false,
+      "rounding": "nearest",
+      "oneTime": true
+    }
+  },
+  "structures": {
+    "s1": {
+      "id": "s1",
+      "name": "Staff",
+      "basis": "ctc",
+      "validFrom": "2025-04-01",
+      "balancing": "SPECIAL",
+      "lines": [{"code": "BASIC"}, {"code": "HRA"}, {"code": "SPECIAL"}, {"code": "PF_ER"}]
+    }
+  },
+  "tables": {},
+  "registrations": ["pf", "esi", "pt:KA", "lwf:KA", "pt:MH", "lwf:MH"],
+  "rules": {
+    "pf": {"employeeRate": 12, "employerRate": 12, "epsRate": 8.33, "ceiling": 15000},
+    "esi": {"employeeRate": 0.75, "employerRate": 3.25, "threshold": 21000, "thresholdDisability": 25000, "lowWageDaily": 176},
+    "pt": {
+      "KA": {
+        "men": [{"from": 0, "to": 24999.99, "monthly": 0}, {"from": 25000, "to": null, "monthly": 200, "february": 300}],
+        "yearlyCeiling": 2500
+      },
+      "MH": {
+        "men": [
+          {"from": 0, "to": 7500, "monthly": 0},
+          {"from": 7500.01, "to": 10000, "monthly": 175},
+          {"from": 10000.01, "to": null, "monthly": 200, "february": 300}
+        ],
+        "women": [{"from": 0, "to": 25000, "monthly": 0}, {"from": 25000.01, "to": null, "monthly": 200, "february": 300}],
+        "yearlyCeiling": 2500
+      }
+    },
+    "lwf": {
+      "KA": {
+        "employee": 50,
+        "employer": 100,
+        "months": [12]
+      },
+      "MH": {
+        "employee": 25,
+        "employer": 75,
+        "months": [6, 12]
+      }
+    },
+    "tax": {
+      "cess": 4,
+      "new": {
+        "standardDeduction": 75000,
+        "slabs": [
+          {"upTo": 400000, "rate": 0},
+          {"upTo": 800000, "rate": 5},
+          {"upTo": 1200000, "rate": 10},
+          {"upTo": 1600000, "rate": 15},
+          {"upTo": 2000000, "rate": 20},
+          {"upTo": 2400000, "rate": 25},
+          {"upTo": null, "rate": 30}
+        ],
+        "rebateLimit": 1200000,
+        "rebateMax": 60000,
+        "rebateMarginalRelief": true,
+        "surcharge": [{"above": 5000000, "rate": 10}, {"above": 10000000, "rate": 15}, {"above": 20000000, "rate": 25}]
+      },
+      "old": {
+        "standardDeduction": 50000,
+        "slabs": [{"upTo": 250000, "rate": 0}, {"upTo": 500000, "rate": 5}, {"upTo": 1000000, "rate": 20}, {"upTo": null, "rate": 30}],
+        "rebateLimit": 500000,
+        "rebateMax": 12500,
+        "section80cMax": 150000,
+        "surcharge": [{"above": 5000000, "rate": 10}]
+      }
+    },
+    "ruleIds": {},
+    "sources": {},
+    "drafts": {}
+  }
+}

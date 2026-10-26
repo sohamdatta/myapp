@@ -72,6 +72,7 @@ public final class AuthService {
             Map<String, Object> row = Sql.one(c,
                     "select s.id, s.identity_id, s.kind, s.tenant_id, s.membership_id, s.impersonation_grant_id, i.email, "
                             + "t.name as tenant_name, t.status as tenant_status, "
+                            + "s.last_seen_at < now() - interval '1 minute' as seen_stale, "
                             + "g.mode as grant_mode, g.expires_at as grant_expires_at, "
                             + "(g.status = 'approved' and g.revoked_at is null and g.expires_at > now()) as grant_live, "
                             + "p.id as platform_user_id, p.role as platform_role, p.status as platform_status, "
@@ -87,7 +88,9 @@ public final class AuthService {
                             + "and s.last_seen_at > now() - case s.kind when 'platform' then interval '15 minutes' "
                             + "when 'identity' then interval '30 minutes' else interval '60 minutes' end",
                     Secrets.sha256(token));
-            if (row != null) {
+            // The idle limits are 15, 30 and 60 minutes, so a minute's resolution is enough: write the
+            // time at most once a minute per session, not on every request.
+            if (row != null && Boolean.TRUE.equals(row.get("seenStale"))) {
                 Sql.update(c, "update auth.session set last_seen_at = now() where id = ?::uuid", row.get("id"));
             }
             return row;

@@ -49,6 +49,30 @@ public final class Sql {
         }
     }
 
+    /**
+     * Runs one statement once for each row of parameters, sending them to the database together:
+     * one round trip for the lot instead of one each. Returns how many rows were written. Rows are
+     * bound exactly as in {@link #update}. A statement that needs the generated key back cannot use
+     * this; generate the key in Java and insert it.
+     */
+    public static int batch(Connection c, String sql, List<Object[]> rows) throws SQLException {
+        if (rows.isEmpty()) {
+            return 0;
+        }
+        try (PreparedStatement ps = c.prepareStatement(sql)) {
+            for (Object[] row : rows) {
+                bind(c, ps, row);
+                ps.addBatch();
+            }
+            int written = 0;
+            for (int n : ps.executeBatch()) {
+                // A driver may answer "succeeded, count unknown" for a batch; that is one row here.
+                written += n == PreparedStatement.SUCCESS_NO_INFO ? 1 : n;
+            }
+            return written;
+        }
+    }
+
     private static void bind(Connection c, PreparedStatement ps, Object[] params) throws SQLException {
         for (int i = 0; i < params.length; i++) {
             Object p = params[i];

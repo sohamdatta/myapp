@@ -1,0 +1,28 @@
+{
+  "name": "03-leaver-mid-month",
+  "why": "Last working day the 12th: 12 of 31 days are paid.",
+  "status": "provisional",
+  "period": "2026-10-01",
+  "employee": {
+    "days": {
+      "base": 31,
+      "paid": 12,
+      "lop": 0
+    }
+  },
+  "expected": {
+    "gross": "28335",
+    "deductions": "1942.00",
+    "net": "26393.00",
+    "employerCost": "1742",
+    "lines": [
+      {"code": "BASIC", "kind": "earning", "amount": "14516"},
+      {"code": "HRA", "kind": "earning", "amount": "5806"},
+      {"code": "SPECIAL", "kind": "earning", "amount": "8013"},
+      {"code": "PF_EE", "kind": "deduction", "amount": "1742"},
+      {"code": "PF_ER", "kind": "employer", "amount": "1742"},
+      {"code": "PT", "kind": "deduction", "amount": "200.00"}
+    ],
+    "exceptions": []
+  }
+}

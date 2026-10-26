@@ -56,6 +56,13 @@
       <version>1.5.1</version>
       <scope>test</scope>
     </dependency>
+    <!-- Property-based tests (FormulaPropertiesTest): generated inputs instead of hand-picked ones. -->
+    <dependency>
+      <groupId>net.jqwik</groupId>
+      <artifactId>jqwik</artifactId>
+      <version>1.10.2</version>
+      <scope>test</scope>
+    </dependency>
   </dependencies>
 
   <build>
@@ -63,6 +70,41 @@
       <plugin>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-maven-plugin</artifactId>
+      </plugin>
+      <!-- Error Prone (docs/engineering-standards.md, section 10): bug patterns found while compiling.
+           Only its ERROR-level checks, which are bugs rather than style, fail the build; its warnings are
+           switched off (-XepDisableAllWarnings) until the existing ones have been looked through. javac
+           runs in its own JVM because Error Prone needs access to javac's internals on Java 17 and later. -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-compiler-plugin</artifactId>
+        <configuration>
+          <fork>true</fork>
+          <compilerArgs>
+            <arg>-XDcompilePolicy=simple</arg>
+            <arg>--should-stop=ifError=FLOW</arg>
+            <arg>-XDaddTypeAnnotationsToSymbol=true</arg>
+            <arg>-Xplugin:ErrorProne -XepDisableAllWarnings</arg>
+            <arg>-J--add-exports=jdk.compiler/com.sun.tools.javac.api=ALL-UNNAMED</arg>
+            <arg>-J--add-exports=jdk.compiler/com.sun.tools.javac.file=ALL-UNNAMED</arg>
+            <arg>-J--add-exports=jdk.compiler/com.sun.tools.javac.main=ALL-UNNAMED</arg>
+            <arg>-J--add-exports=jdk.compiler/com.sun.tools.javac.model=ALL-UNNAMED</arg>
+            <arg>-J--add-exports=jdk.compiler/com.sun.tools.javac.parser=ALL-UNNAMED</arg>
+            <arg>-J--add-exports=jdk.compiler/com.sun.tools.javac.processing=ALL-UNNAMED</arg>
+            <arg>-J--add-exports=jdk.compiler/com.sun.tools.javac.tree=ALL-UNNAMED</arg>
+            <arg>-J--add-exports=jdk.compiler/com.sun.tools.javac.util=ALL-UNNAMED</arg>
+            <arg>-J--add-exports=jdk.compiler/com.sun.tools.javac.code=ALL-UNNAMED</arg>
+            <arg>-J--add-opens=jdk.compiler/com.sun.tools.javac.code=ALL-UNNAMED</arg>
+            <arg>-J--add-opens=jdk.compiler/com.sun.tools.javac.comp=ALL-UNNAMED</arg>
+          </compilerArgs>
+          <annotationProcessorPaths>
+            <path>
+              <groupId>com.google.errorprone</groupId>
+              <artifactId>error_prone_core</artifactId>
+              <version>2.51.0</version>
+            </path>
+          </annotationProcessorPaths>
+        </configuration>
       </plugin>
       <!-- Line and branch coverage of the backend tests: target/site/jacoco/index.html after `mvn verify`. -->
       <plugin>
@@ -82,6 +124,84 @@
             <goals>
               <goal>report</goal>
             </goals>
+          </execution>
+          <execution>
+            <id>check</id>
+            <phase>verify</phase>
+            <goals>
+              <goal>check</goal>
+            </goals>
+            <configuration>
+              <!-- Coverage ratchet (docs/testing.md): the floors are today's numbers, rounded down
+                   with a point of room. A pull request that lowers coverage fails here; one that
+                   raises it also raises the floor. Payroll and tax classes must reach 95% lines and
+                   90% branches by Gate B, so each release lifts their floors. -->
+              <rules>
+              <rule>
+                <element>BUNDLE</element>
+                <limits>
+                  <limit><counter>LINE</counter><value>COVEREDRATIO</value><minimum>0.83</minimum></limit>
+                  <limit><counter>BRANCH</counter><value>COVEREDRATIO</value><minimum>0.68</minimum></limit>
+                </limits>
+              </rule>
+              <rule>
+                <element>CLASS</element>
+                <includes><include>com.example.loginapp.core.Formula</include></includes>
+                <limits>
+                  <limit><counter>LINE</counter><value>COVEREDRATIO</value><minimum>0.58</minimum></limit>
+                  <limit><counter>BRANCH</counter><value>COVEREDRATIO</value><minimum>0.39</minimum></limit>
+                </limits>
+              </rule>
+              <rule>
+                <element>CLASS</element>
+                <includes><include>com.example.loginapp.core.PayrollConfig</include></includes>
+                <limits>
+                  <limit><counter>LINE</counter><value>COVEREDRATIO</value><minimum>0.61</minimum></limit>
+                  <limit><counter>BRANCH</counter><value>COVEREDRATIO</value><minimum>0.39</minimum></limit>
+                </limits>
+              </rule>
+              <rule>
+                <element>CLASS</element>
+                <includes><include>com.example.loginapp.core.Payslips</include></includes>
+                <limits>
+                  <limit><counter>LINE</counter><value>COVEREDRATIO</value><minimum>0.32</minimum></limit>
+                  <limit><counter>BRANCH</counter><value>COVEREDRATIO</value><minimum>0.16</minimum></limit>
+                </limits>
+              </rule>
+              <rule>
+                <element>CLASS</element>
+                <includes><include>com.example.loginapp.core.PayrollRuns</include></includes>
+                <limits>
+                  <limit><counter>LINE</counter><value>COVEREDRATIO</value><minimum>0.87</minimum></limit>
+                  <limit><counter>BRANCH</counter><value>COVEREDRATIO</value><minimum>0.64</minimum></limit>
+                </limits>
+              </rule>
+              <rule>
+                <element>CLASS</element>
+                <includes><include>com.example.loginapp.core.PayrollEngine</include></includes>
+                <limits>
+                  <limit><counter>LINE</counter><value>COVEREDRATIO</value><minimum>0.89</minimum></limit>
+                  <limit><counter>BRANCH</counter><value>COVEREDRATIO</value><minimum>0.70</minimum></limit>
+                </limits>
+              </rule>
+              <rule>
+                <element>CLASS</element>
+                <includes><include>com.example.loginapp.core.ExitSettlement</include></includes>
+                <limits>
+                  <limit><counter>LINE</counter><value>COVEREDRATIO</value><minimum>0.85</minimum></limit>
+                  <limit><counter>BRANCH</counter><value>COVEREDRATIO</value><minimum>0.65</minimum></limit>
+                </limits>
+              </rule>
+              <rule>
+                <element>CLASS</element>
+                <includes><include>com.example.loginapp.core.TaxDeclarations</include></includes>
+                <limits>
+                  <limit><counter>LINE</counter><value>COVEREDRATIO</value><minimum>0.93</minimum></limit>
+                  <limit><counter>BRANCH</counter><value>COVEREDRATIO</value><minimum>0.77</minimum></limit>
+                </limits>
+              </rule>
+              </rules>
+            </configuration>
           </execution>
         </executions>
       </plugin>

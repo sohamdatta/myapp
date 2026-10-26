@@ -1,0 +1,28 @@
+{
+  "name": "02-joiner-mid-month",
+  "why": "Joined on the 15th: 17 of 31 days are paid; the full-month amounts are prorated, not recomputed.",
+  "status": "provisional",
+  "period": "2026-10-01",
+  "employee": {
+    "days": {
+      "base": 31,
+      "paid": 17,
+      "lop": 0
+    }
+  },
+  "expected": {
+    "gross": "40143",
+    "deductions": "2000.00",
+    "net": "38143.00",
+    "employerCost": "1800",
+    "lines": [
+      {"code": "BASIC", "kind": "earning", "amount": "20565"},
+      {"code": "HRA", "kind": "earning", "amount": "8226"},
+      {"code": "SPECIAL", "kind": "earning", "amount": "11352"},
+      {"code": "PF_EE", "kind": "deduction", "amount": "1800"},
+      {"code": "PF_ER", "kind": "employer", "amount": "1800"},
+      {"code": "PT", "kind": "deduction", "amount": "200.00"}
+    ],
+    "exceptions": []
+  }
+}

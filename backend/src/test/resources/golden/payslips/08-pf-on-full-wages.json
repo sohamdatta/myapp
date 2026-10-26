@@ -1,0 +1,34 @@
+{
+  "name": "08-pf-on-full-wages",
+  "why": "The same pay when the employer pays PF on full wages: 12% of the wage base, not of the ceiling. (Starts this month, so there is no income earlier in the tax year and the new-regime rebate covers the six months projected: no TDS.)",
+  "status": "provisional",
+  "period": "2026-10-01",
+  "configPatch": {
+    "settings": {
+      "pfRestrict": false
+    }
+  },
+  "employee": {
+    "annual": 1800000,
+    "days": {
+      "base": 31,
+      "paid": 31,
+      "lop": 0
+    }
+  },
+  "expected": {
+    "gross": "141000",
+    "deductions": "9200.00",
+    "net": "131800.00",
+    "employerCost": "9000",
+    "lines": [
+      {"code": "BASIC", "kind": "earning", "amount": "75000"},
+      {"code": "HRA", "kind": "earning", "amount": "30000"},
+      {"code": "SPECIAL", "kind": "earning", "amount": "36000"},
+      {"code": "PF_EE", "kind": "deduction", "amount": "9000"},
+      {"code": "PF_ER", "kind": "employer", "amount": "9000"},
+      {"code": "PT", "kind": "deduction", "amount": "200.00"}
+    ],
+    "exceptions": []
+  }
+}

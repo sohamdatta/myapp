@@ -1,0 +1,44 @@
+# Weekly dependency updates (docs/engineering-standards.md, section 10). Related updates are
+# grouped into one pull request so the review is one diff, not twenty. Major versions are
+# opened on their own so they get their own review. Spring Boot's version is reviewed by hand.
+version: 2
+updates:
+  - package-ecosystem: maven
+    directory: /backend
+    schedule: { interval: weekly, day: monday, time: '06:00', timezone: Asia/Kolkata }
+    groups:
+      backend-minor-and-patch:
+        update-types: [minor, patch]
+    ignore:
+      - dependency-name: org.springframework.boot:spring-boot-starter-parent
+        update-types: [version-update:semver-major]
+    labels: [dependencies]
+
+  - package-ecosystem: npm
+    directory: /frontend
+    schedule: { interval: weekly, day: monday, time: '06:00', timezone: Asia/Kolkata }
+    groups:
+      frontend-minor-and-patch:
+        update-types: [minor, patch]
+    labels: [dependencies]
+
+  - package-ecosystem: npm
+    directory: /e2e
+    schedule: { interval: weekly, day: monday, time: '06:00', timezone: Asia/Kolkata }
+    groups:
+      e2e-minor-and-patch:
+        update-types: [minor, patch]
+    labels: [dependencies]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule: { interval: weekly, day: monday, time: '06:00', timezone: Asia/Kolkata }
+    groups:
+      actions:
+        update-types: [minor, patch]
+    labels: [dependencies]
+
+  - package-ecosystem: docker
+    directory: /deploy
+    schedule: { interval: weekly, day: monday, time: '06:00', timezone: Asia/Kolkata }
+    labels: [dependencies]

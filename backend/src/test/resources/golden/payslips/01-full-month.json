@@ -1,0 +1,28 @@
+{
+  "name": "01-full-month",
+  "why": "A full month, no surprises: the design's worked example without loss of pay.",
+  "status": "provisional",
+  "period": "2026-10-01",
+  "employee": {
+    "days": {
+      "base": 31,
+      "paid": 31,
+      "lop": 0
+    }
+  },
+  "expected": {
+    "gross": "73200",
+    "deductions": "2000.00",
+    "net": "71200.00",
+    "employerCost": "1800",
+    "lines": [
+      {"code": "BASIC", "kind": "earning", "amount": "37500"},
+      {"code": "HRA", "kind": "earning", "amount": "15000"},
+      {"code": "SPECIAL", "kind": "earning", "amount": "20700"},
+      {"code": "PF_EE", "kind": "deduction", "amount": "1800"},
+      {"code": "PF_ER", "kind": "employer", "amount": "1800"},
+      {"code": "PT", "kind": "deduction", "amount": "200.00"}
+    ],
+    "exceptions": []
+  }
+}

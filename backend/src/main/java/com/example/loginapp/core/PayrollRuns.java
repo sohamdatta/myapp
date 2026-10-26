@@ -341,11 +341,21 @@ public final class PayrollRuns {
             int blocking = 0;
             int warnings = 0;
             Set<String> runLevel = new HashSet<>();
+            // Holds are read now, not from the snapshot: pay can be held after the inputs are frozen.
+            // One query for the run, not one per person.
+            Set<UUID> onHold = new HashSet<>();
+            for (Map<String, Object> h : Sql.query(c, "select employment_id from app.pay_hold where run_id = ?", runId)) {
+                onHold.add(AuthService.uuid(h.get("employmentId")));
+            }
+            // Rows are collected and written in three batches after the loop (payslips, then their lines,
+            // then exceptions), instead of one statement per row.
+            List<Object[]> payslipRows = new ArrayList<>();
+            List<Object[]> lineRows = new ArrayList<>();
+            List<Object[]> exceptionRows = new ArrayList<>();
             for (Map<String, Object> emp : PayrollEngine.list(snapshot, "employees")) {
                 PayrollEngine.Calc calc = PayrollEngine.calculate(config, emp, period);
                 UUID employment = AuthService.uuid(emp.get("employmentId"));
-                // Holds are read now, not from the snapshot: pay can be held after the inputs are frozen.
-                boolean heldPay = Sql.one(c, "select 1 from app.pay_hold where run_id = ? and employment_id = ?", runId, employment) != null;
+                boolean heldPay = onHold.contains(employment);
                 if (calc.calculated()) {
                     boolean held = heldPay;
                     Map<String, Object> info = new LinkedHashMap<>(calc.info());
@@ -353,16 +363,15 @@ public final class PayrollRuns {
                     info.put("structure", PayrollEngine.map(PayrollEngine.map(config, "structures"), (String) emp.get("structureId")).get("name"));
                     info.put("compensationFrom", emp.get("compensationFrom"));
                     info.put("proration", PayrollEngine.map(config, "settings").get("proration"));
-                    UUID payslip = AuthService.uuid(Sql.one(c, "insert into app.payslip (tenant_id, run_id, employment_id, membership_id, days_in_period, "
-                                    + "days_paid, lop_days, gross, deductions, net, employer_cost, held, info) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb) "
-                                    + "returning id", ctx.tenantId(), runId, employment, emp.get("membershipId") == null ? null : AuthService.uuid(emp.get("membershipId")),
+                    UUID payslip = UUID.randomUUID();   // made here so the lines can name it without waiting for the insert
+                    payslipRows.add(new Object[] {payslip, ctx.tenantId(), runId, employment,
+                            emp.get("membershipId") == null ? null : AuthService.uuid(emp.get("membershipId")),
                             calc.daysInPeriod(), calc.daysPaid(), calc.lopDays(), calc.gross(), calc.deductions(), calc.net(), calc.employer(), held,
-                            Json.write(info)).get("id"));
+                            Json.write(info)});
                     for (Map<String, Object> l : calc.lines()) {
-                        Sql.update(c, "insert into app.payslip_line (tenant_id, payslip_id, position, code, name, kind, amount, unrounded, full_month, "
-                                        + "rule_id, trace) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?::uuid, ?::jsonb)", ctx.tenantId(), payslip,
+                        lineRows.add(new Object[] {ctx.tenantId(), payslip,
                                 (short) PayrollEngine.intOf(l.get("position")), l.get("code"), l.get("name"), l.get("kind"), l.get("amount"),
-                                l.get("unrounded"), l.get("fullMonth"), l.get("ruleId"), Json.write(l.get("trace")));
+                                l.get("unrounded"), l.get("fullMonth"), l.get("ruleId"), Json.write(l.get("trace"))});
                     }
                     gross = gross.add(calc.gross());
                     deductions = deductions.add(calc.deductions());
@@ -384,11 +393,9 @@ public final class PayrollRuns {
                         continue;
                     }
                     Map<String, Object> was = accepted.get((who == null ? "null" : who.toString()) + "|" + code);
-                    Sql.update(c, "insert into app.run_exception (tenant_id, run_id, employment_id, code, level, acceptable, message, link, "
-                                    + "accepted_by, accepted_reason, accepted_at) values (?, ?, ?, ?, ?, ?, ?, ?, ?::uuid, ?, ?::timestamptz)",
-                            ctx.tenantId(), runId, who, code.contains(":") ? code.substring(0, code.indexOf(':')) : code, x.get("level"),
-                            x.get("acceptable"), x.get("message"), x.get("link"), was == null ? null : was.get("acceptedBy"),
-                            was == null ? null : was.get("acceptedReason"), was == null ? null : was.get("acceptedAt"));
+                    exceptionRows.add(new Object[] {ctx.tenantId(), runId, who, code.contains(":") ? code.substring(0, code.indexOf(':')) : code,
+                            x.get("level"), x.get("acceptable"), x.get("message"), x.get("link"), was == null ? null : was.get("acceptedBy"),
+                            was == null ? null : was.get("acceptedReason"), was == null ? null : was.get("acceptedAt")});
                     if ("blocking".equals(x.get("level"))) {
                         blocking++;
                     } else {
@@ -396,6 +403,12 @@ public final class PayrollRuns {
                     }
                 }
             }
+            Sql.batch(c, "insert into app.payslip (id, tenant_id, run_id, employment_id, membership_id, days_in_period, days_paid, lop_days, "
+                    + "gross, deductions, net, employer_cost, held, info) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb)", payslipRows);
+            Sql.batch(c, "insert into app.payslip_line (tenant_id, payslip_id, position, code, name, kind, amount, unrounded, full_month, "
+                    + "rule_id, trace) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?::uuid, ?::jsonb)", lineRows);
+            Sql.batch(c, "insert into app.run_exception (tenant_id, run_id, employment_id, code, level, acceptable, message, link, "
+                    + "accepted_by, accepted_reason, accepted_at) values (?, ?, ?, ?, ?, ?, ?, ?, ?::uuid, ?, ?::timestamptz)", exceptionRows);
             int attempt = ((Number) r.get("attempt")).intValue() + 1;
             Map<String, Object> totals = new LinkedHashMap<>();
             totals.put("people", people);
