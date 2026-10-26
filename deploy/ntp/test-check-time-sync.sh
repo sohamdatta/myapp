@@ -45,6 +45,6 @@ out="$(run)" && fail "no usable source was accepted"
 [[ "$out" == *"no NIC or NPL source"* ]] || fail "unusable message: $out"
 
 # chronyc missing
-out="$(PATH=/usr/bin:/bin "$here/check-time-sync.sh" 2>&1)" && fail "missing chronyc accepted" || true
+out="$(CHRONYC=no-such-chronyc "$here/check-time-sync.sh" 2>&1)" && fail "missing chronyc accepted" || true
 [[ "$out" == *"not installed"* ]] || fail "missing message: $out"
 echo "check-time-sync: all checks passed"
