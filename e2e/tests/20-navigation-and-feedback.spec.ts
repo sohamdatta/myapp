@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 import { OWNER, HR, SUPER_ADMIN, signIn, nav, expectNoConsoleErrors, forgetConsoleErrors } from './helpers';
 
 // Page addresses, the phone menu, confirmations, notes and a page that fails to download.
-// Runs last, against everything the story before it has built.
+// Runs after the role tour, against everything the story before it has built.
 
 const title = (page: import('@playwright/test').Page) => page.locator('.page-title');
 const path = (page: import('@playwright/test').Page) => new URL(page.url()).pathname;
