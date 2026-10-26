@@ -79,7 +79,11 @@ jobs:
 
       - name: Fetch Maven dependencies with the real clock
         working-directory: backend
-        run: mvn -B -ntp -q dependency:go-offline
+        # go-offline does not fetch the annotation processor path, so Error Prone (compiler plugin) is
+        # fetched by compiling once; with the faked clock Maven Central's TLS certificate looks expired.
+        run: |
+          mvn -B -ntp -q dependency:go-offline
+          mvn -B -ntp -q test-compile
 
       - name: Backend tests
         working-directory: backend

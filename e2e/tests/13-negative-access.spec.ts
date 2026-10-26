@@ -203,7 +203,12 @@ test.describe.serial('negative: signing in, invitations, access', () => {
     await tab(owner, 'Users');
     const row = owner.locator('tr', { hasText: 'suspend.me@globex.test' });
     await row.locator('summary').click();
-    await row.getByRole('button', { name: 'Suspend', exact: true }).click();
+    // Wait for the suspension to be saved: a click returns before its request has finished, and a
+    // probe sent in that gap sees the session still working (seen on the slower fixed-date runners).
+    await Promise.all([
+      owner.waitForResponse((res) => /\/org\/users\/[^/]+\/suspend$/.test(res.url()) && res.request().method() === 'POST' && res.ok()),
+      row.getByRole('button', { name: 'Suspend', exact: true }).click(),
+    ]);
     // The open session stops working at once.
     const r = await api(victim, 'GET', '/org/leave/me/balances', undefined, token);
     expect([401, 403]).toContain(r.status);
