@@ -66,7 +66,7 @@ jobs:
         run: mvn -B -ntp verify
       - name: Keep the test reports
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: backend-test-reports
           path: backend/target/surefire-reports/
@@ -82,13 +82,13 @@ jobs:
           print(f"### Backend test coverage\n\nLines {line:.1f}% · branches {branch:.1f}% (backend tests only; the browser tests cover the web layer)")
           EOF
       - name: Keep the coverage report
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: backend-coverage
           path: backend/target/site/jacoco/
           retention-days: 14
       - name: Keep the application jar for the browser tests
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: backend-jar
           path: backend/target/login-app-*.jar
@@ -206,7 +206,7 @@ jobs:
 
       - name: Keep the report, screenshots and recordings
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: playwright-report-${{ matrix.zone.slug }}
           path: |
