@@ -44,6 +44,7 @@ export default function OrgSettings({ me, onRefresh }) {
           <input
             ref={input}
             id="logo-file"
+            aria-label="Logo file"
             type="file"
             accept="image/png,image/jpeg"
             className="sr-only"

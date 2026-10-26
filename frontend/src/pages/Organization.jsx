@@ -440,7 +440,7 @@ export function AuditTab() {
         <input id="audit-filter" type="search" placeholder="Filter" value={filter} onChange={(e) => setFilter(e.target.value)} />
         <span className="you">The latest 200 events, newest first</span>
       </div>
-      <div className="table-wrap">
+      <div className="table-wrap" tabIndex={0} role="region" aria-label="Audit log">
         <table>
           <thead>
             <tr>

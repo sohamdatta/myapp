@@ -107,6 +107,17 @@ What it asserts is about the **body**, not the status: no row id from any tenant
 - **Mutation check done once:** switching row-level security off on `app.leave_type` makes it fail with a 200 from `/api/org/leave/balances` carrying the other Organization's leave type id.
 - **Not covered yet:** POST/PUT/DELETE with the other Organization's ids; routes whose useful data needs modules other than users, attendance and leave to be seeded (payroll, exits, performance rows are only reached if the seed creates them); `/api/platform`.
 
+## The accessibility scan
+
+`e2e/tests/30-accessibility.spec.ts` (Playwright project `a11y`, tagged `@a11y`) runs axe (`@axe-core/playwright`, WCAG 2.0/2.1 A and AA) over the sign-in page, the invitation page, and **every sidebar page** that the Super Admin, an Org Admin and an employee can reach, plus the Org Admin's pages at 390 px. Pages are found from the sidebar, so a new page is scanned without anyone adding it. It makes its own Organization and needs no other spec.
+
+- **The rule:** no serious or critical violation on any page (engineering standards, section 6). The baseline `e2e/a11y-baseline.json` is empty; if a violation must be tolerated for a while, it is recorded there by page and rule with a count of elements, and the test fails only when a count rises or a new one appears. `E2E_A11Y_UPDATE=1` rewrites the file; the test prints when counts have fallen.
+- Moderate and minor findings are attached to the report (`minor-and-moderate.json`), not failed on. The selectors of serious findings are printed and attached (`where.json`).
+- What it scans is each page as first drawn (after its loading skeleton has gone), not every tab, dialog or state inside it. Colour contrast in dark mode and keyboard order are not covered.
+- **Found on first run and fixed here:** the loading skeleton had an `aria-label` on a plain `div` (now `role="status"`); the logo file input had no label; the audit log's scrollable table could not be reached by keyboard.
+- The fixed-date workflow skips it (`--grep-invert @a11y`).
+- **Mutation check done once:** removing the skeleton's role made the scan fail with `aria-prohibited-attr`.
+
 ## Scale check (2,000 employees)
 
 Budgets from the roadmap: payroll calculation for 2,000 employees under 60 s; reads at the 95th percentile under 300 ms.
