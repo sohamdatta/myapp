@@ -30,7 +30,7 @@ jobs:
           java-version: '21'
           cache: maven
       - name: Keep the vulnerability database between runs
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.m2/repository/org/owasp/dependency-check-data
           key: nvd-${{ github.run_id }}
