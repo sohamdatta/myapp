@@ -1,0 +1,67 @@
+{
+  "name": "17-high-pay-old-regime",
+  "why": "The same pay and history under the old regime. By hand: income 2,378,400; less 50,000 standard deduction, 2,400 professional tax (1,200 so far + 6 x 200) and 21,600 PF under 80C = 2,304,400; slabs 12,500 + 100,000 + 30% of 1,304,400 (391,320) = 503,820; with 4% cess 523,972.80, which the engine rounds to the whole rupee, 523,973. 261,986 is already deducted, so 261,987 over the 6 months left is 43,664.50, rounded to 43,665 a month. Open question for the consultant: whether annual tax is rounded to the rupee, as here, or to the nearest ten rupees.",
+  "status": "provisional",
+  "period": "2026-10-01",
+  "employee": {
+    "annual": 2400000,
+    "profile": {
+      "taxRegime": "old"
+    },
+    "days": {
+      "base": 31,
+      "paid": 31,
+      "lop": 0
+    },
+    "ytd": {
+      "taxable": 1189200,
+      "tds": 261986,
+      "pt": 1200,
+      "pfEe": 10800
+    }
+  },
+  "expected": {
+    "gross": "198200",
+    "deductions": "45665.00",
+    "net": "152535.00",
+    "employerCost": "1800",
+    "lines": [
+      {
+        "code": "BASIC",
+        "kind": "earning",
+        "amount": "100000"
+      },
+      {
+        "code": "HRA",
+        "kind": "earning",
+        "amount": "40000"
+      },
+      {
+        "code": "SPECIAL",
+        "kind": "earning",
+        "amount": "58200"
+      },
+      {
+        "code": "PF_EE",
+        "kind": "deduction",
+        "amount": "1800"
+      },
+      {
+        "code": "PF_ER",
+        "kind": "employer",
+        "amount": "1800"
+      },
+      {
+        "code": "PT",
+        "kind": "deduction",
+        "amount": "200.00"
+      },
+      {
+        "code": "TDS",
+        "kind": "deduction",
+        "amount": "43665"
+      }
+    ],
+    "exceptions": []
+  }
+}

@@ -41,6 +41,22 @@ Weakest areas, worth tests next:
 
 **Both suites together.** Merge `backend/target/jacoco.exec` and `e2e.exec` with the JaCoCo command-line tool (`merge`, then `report`).
 
+## Golden payslips
+
+`GoldenPayslipsTest` runs the pure payroll engine on 18 fixed scenarios and compares the whole payslip with a file: gross, deductions, net, employer cost, every line in order, and the exceptions raised. The scenarios are in `backend/src/test/resources/golden/payslips` (`NN-name.json`, with a shared `config.json`) and cover a full month, a joiner and a leaver part-way through, loss of pay (whole and half days), a one-time arrears payment, PF at the ceiling and on full wages, ESI covered and over the threshold, professional tax in February and by state and gender, labour welfare fund, metro and non-metro HRA, a state with no rules, and the new and old tax regimes. Each file says in `why` what it shows, and for the tax scenarios the hand calculation.
+
+A change to any payroll figure fails the matching scenario with a message such as `16-high-pay-new-regime.json: deductions changed from 25907.00 to 22492.00`. If the change is intended, regenerate the figures and put the diff in the pull request for the code owner to read:
+
+```
+mvn -f backend/pom.xml test -Dtest=GoldenPayslipsTest -Dgolden.update=true
+```
+
+Updating refuses to run in CI. The harness also fails if a scenario is deleted.
+
+**Status: provisional.** The figures were produced by the engine and checked by hand against the arithmetic in each scenario, but not yet against the payroll consultant's spreadsheet. When they are, replace the figures with the consultant's, set `"status": "signed-off"` and add the date. Payslip lines are not the whole run: pay holds, reopened runs and arrears over several months involve the database and are covered in `PayrollTest`.
+
+A question for the consultant that the scenarios raise: whether annual tax is rounded to the whole rupee (as now) or to the nearest ten rupees (scenario 17).
+
 ## Dates that only break on some days
 
 Regular CI runs on the day of the push, so a test or a rule that fails only near a month or tax-year end goes unseen until that day. Two guards cover this:

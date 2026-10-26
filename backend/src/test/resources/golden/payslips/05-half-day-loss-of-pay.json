@@ -1,0 +1,28 @@
+{
+  "name": "05-half-day-loss-of-pay",
+  "why": "One and a half days of loss of pay: fractional days prorate like whole ones.",
+  "status": "provisional",
+  "period": "2026-10-01",
+  "employee": {
+    "days": {
+      "base": 31,
+      "paid": 29.5,
+      "lop": 1.5
+    }
+  },
+  "expected": {
+    "gross": "69657",
+    "deductions": "2000.00",
+    "net": "67657.00",
+    "employerCost": "1800",
+    "lines": [
+      {"code": "BASIC", "kind": "earning", "amount": "35685"},
+      {"code": "HRA", "kind": "earning", "amount": "14274"},
+      {"code": "SPECIAL", "kind": "earning", "amount": "19698"},
+      {"code": "PF_EE", "kind": "deduction", "amount": "1800"},
+      {"code": "PF_ER", "kind": "employer", "amount": "1800"},
+      {"code": "PT", "kind": "deduction", "amount": "200.00"}
+    ],
+    "exceptions": []
+  }
+}

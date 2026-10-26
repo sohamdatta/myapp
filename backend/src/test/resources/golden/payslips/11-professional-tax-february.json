@@ -1,0 +1,28 @@
+{
+  "name": "11-professional-tax-february",
+  "why": "Karnataka takes 300 in February instead of 200, so the yearly total reaches 2,500.",
+  "status": "provisional",
+  "period": "2027-02-01",
+  "employee": {
+    "days": {
+      "base": 28,
+      "paid": 28,
+      "lop": 0
+    }
+  },
+  "expected": {
+    "gross": "73200",
+    "deductions": "2100.00",
+    "net": "71100.00",
+    "employerCost": "1800",
+    "lines": [
+      {"code": "BASIC", "kind": "earning", "amount": "37500"},
+      {"code": "HRA", "kind": "earning", "amount": "15000"},
+      {"code": "SPECIAL", "kind": "earning", "amount": "20700"},
+      {"code": "PF_EE", "kind": "deduction", "amount": "1800"},
+      {"code": "PF_ER", "kind": "employer", "amount": "1800"},
+      {"code": "PT", "kind": "deduction", "amount": "300.00"}
+    ],
+    "exceptions": []
+  }
+}

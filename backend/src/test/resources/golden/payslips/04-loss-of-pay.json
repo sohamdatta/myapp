@@ -1,0 +1,28 @@
+{
+  "name": "04-loss-of-pay",
+  "why": "Nine days of unpaid leave in a 31-day month.",
+  "status": "provisional",
+  "period": "2026-10-01",
+  "employee": {
+    "days": {
+      "base": 31,
+      "paid": 22,
+      "lop": 9
+    }
+  },
+  "expected": {
+    "gross": "51948",
+    "deductions": "2000.00",
+    "net": "49948.00",
+    "employerCost": "1800",
+    "lines": [
+      {"code": "BASIC", "kind": "earning", "amount": "26613"},
+      {"code": "HRA", "kind": "earning", "amount": "10645"},
+      {"code": "SPECIAL", "kind": "earning", "amount": "14690"},
+      {"code": "PF_EE", "kind": "deduction", "amount": "1800"},
+      {"code": "PF_ER", "kind": "employer", "amount": "1800"},
+      {"code": "PT", "kind": "deduction", "amount": "200.00"}
+    ],
+    "exceptions": []
+  }
+}

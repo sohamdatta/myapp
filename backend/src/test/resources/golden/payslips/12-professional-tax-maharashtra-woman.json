@@ -1,0 +1,30 @@
+{
+  "name": "12-professional-tax-maharashtra-woman",
+  "why": "Maharashtra has a women's slab with no tax below 25,000 a month. Pay of 25,000 a month gives gross 23,500, so a woman pays no professional tax; scenario 18 shows the same pay for a man, who pays 200.",
+  "status": "provisional",
+  "period": "2026-10-01",
+  "employee": {
+    "state": "MH",
+    "gender": "female",
+    "days": {
+      "base": 31,
+      "paid": 31,
+      "lop": 0
+    },
+    "annual": 300000
+  },
+  "expected": {
+    "gross": "23500",
+    "deductions": "1500",
+    "net": "22000",
+    "employerCost": "1500",
+    "lines": [
+      {"code": "BASIC", "kind": "earning", "amount": "12500"},
+      {"code": "HRA", "kind": "earning", "amount": "5000"},
+      {"code": "SPECIAL", "kind": "earning", "amount": "6000"},
+      {"code": "PF_EE", "kind": "deduction", "amount": "1500"},
+      {"code": "PF_ER", "kind": "employer", "amount": "1500"}
+    ],
+    "exceptions": []
+  }
+}
