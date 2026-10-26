@@ -59,7 +59,7 @@ String message(ClaimCheck check) {
 
 ### 3.1 Inject the session, don't parse the header in every method
 
-Today 284 controller methods take `@RequestHeader("Authorization")` and call `Requests.session(...)`. New code uses an argument resolver and an annotation for the module check (to be added in Q1):
+Most controllers still take `@RequestHeader("Authorization")` and call `Requests.session(...)`. `LeaveController` is converted and is the pattern; new code and any controller you touch use the argument resolver and `@RequiresModule`:
 
 ```java
 // Before
@@ -70,13 +70,13 @@ public List<Map<String, Object>> balances(@RequestHeader(value = "Authorization"
 
 // After
 @GetMapping("/me/balances")
-@RequiresModule("leave")
-public List<Balance> balances(SessionCtx ctx) {
+// @RequiresModule(Modules.LEAVE) is on the controller class
+public List<Map<String, Object>> balances(SessionCtx ctx) {
     return leave.balances(ctx);
 }
 ```
 
-A `HandlerMethodArgumentResolver` supplies `SessionCtx`; a `HandlerInterceptor` reads `@RequiresModule`. Both are tested once, not in every endpoint.
+`SessionCtxResolver` supplies `SessionCtx` and applies `@RequiresModule` itself (parameter, then method, then class; `RequiresModule.NONE` opts out). Put `SessionCtx` first in the parameter list so the caller is identified, and `module.off` raised, before a request body is read. Precedence is tested once in `SessionCtxResolverTest`, not in every endpoint.
 
 ### 3.2 Typed rows instead of maps
 
