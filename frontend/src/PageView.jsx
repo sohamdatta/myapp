@@ -5,7 +5,7 @@ import { registry } from './pageRegistry.js'
 /** Grey bars in the shape of a page, while its code or first data arrives. */
 function PageSkeleton() {
   return (
-    <div className="skeleton" aria-busy="true" aria-label="Loading">
+    <div className="skeleton" role="status" aria-busy="true" aria-label="Loading">
       <div className="skeleton-bar skeleton-wide" />
       <div className="skeleton-bar" />
       <div className="skeleton-bar" />

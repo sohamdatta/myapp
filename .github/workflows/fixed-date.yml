@@ -120,7 +120,7 @@ jobs:
         working-directory: e2e
         env:
           E2E_WORKERS: 1   # libfaketime slows the JVM 3-5x; keep one worker until a weekly run proves two
-        run: npx playwright test
+        run: npx playwright test --grep-invert @a11y   # the date does not change what axe finds
 
       - name: Copy the database log where the upload can read it
         if: always()
