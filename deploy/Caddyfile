@@ -11,6 +11,14 @@
 		-Server
 	}
 
+	# Browser crash reports are short; anything larger is not one.
+	handle /api/client-errors {
+		request_body {
+			max_size 8KB
+		}
+		reverse_proxy app:8080
+	}
+
 	# The API. Documents are up to 10 MB; the employee import file up to 5 MB.
 	# Caddy replaces any X-Forwarded-For the browser sends with the address it sees, so the
 	# backend (APP_TRUST_FORWARDED_FOR=true) gets the user's real address for the

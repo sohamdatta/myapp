@@ -67,6 +67,8 @@ export default defineConfig({
     { name: 'performance', testMatch: /24-performance\.spec\.ts/, use: desktop, dependencies: ['navigation'] },
     // The Organization's own logo, after performance.
     { name: 'branding', testMatch: /25-branding\.spec\.ts/, use: desktop, dependencies: ['performance'] },
+    // A page that crashes stays inside its region and is reported: --project=boundary.
+    { name: 'boundary', testMatch: /31-error-boundary\.spec\.ts/, use: desktop },
     // Tax declarations bring their own Organization, so they run on their own as well: --project=tax.
     { name: 'tax', testMatch: /21-tax-declarations\.spec\.ts/, use: desktop },
     // Settings, likewise in an Organization of their own: --project=settings.
