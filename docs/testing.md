@@ -50,3 +50,14 @@ Regular CI runs on the day of the push, so a test or a rule that fails only near
   To try it locally (Linux, `apt install faketime`): compute the offset in seconds, start PostgreSQL and the backend with `LD_PRELOAD=/usr/lib/x86_64-linux-gnu/faketime/libfaketime.so.1 FAKETIME=+<seconds> FAKETIME_DONT_FAKE_MONOTONIC=1`, then run `E2E_CLOCK_SHIFT_SECONDS=<seconds> npx playwright test`.
 
 - **Browser-test dates check** (`e2e/check-dates.mjs`, the "Browser-test dates" job on pull requests): a line a pull request adds may not use `isoDay(n)` with n above 5 days. Use `withinMonth(n)` or `withinTaxYear(n)` from `e2e/tests/helpers.ts`, or end the line with `// date-safe: <why>` when the date is meant to be far away.
+
+## The cross-Organization sweep
+
+`CrossOrgSweepTest` starts the whole application on a random port with its own database (`hrms_test_crossorg`), seeds two Organizations (users, a location, a shift, a leave type, a balance and a request in each), and calls **every GET route under `/api/` except `/api/platform`** as an administrator of one, with the other's row ids in the path. The routes come from `RequestMappingHandlerMapping`, so a new endpoint is covered without anyone adding it.
+
+What it asserts is about the **body**, not the status: no row id from any tenant table of the other Organization, and not its name, may appear in any response, whatever the status code. A 5xx also fails. It also checks it is not blind: an Organization's own ids must show up in its own responses.
+
+- The framework's own error body repeats the request path (`"path":"…"`); that fragment is removed before scanning, nothing else is.
+- Required query parameters are sent with a plausible value (an id, a date, a month or a year) so the request reaches the handler instead of stopping at a 400.
+- **Mutation check done once:** switching row-level security off on `app.leave_type` makes it fail with a 200 from `/api/org/leave/balances` carrying the other Organization's leave type id.
+- **Not covered yet:** POST/PUT/DELETE with the other Organization's ids; routes whose useful data needs modules other than users, attendance and leave to be seeded (payroll, exits, performance rows are only reached if the seed creates them); `/api/platform`.
