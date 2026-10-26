@@ -1,0 +1,55 @@
+name: Dependency check
+
+# OWASP dependency-check on the backend's libraries: known vulnerabilities (CVEs) in what the jar ships.
+# Weekly, and by hand. It does not run on pull requests: the vulnerability database download is slow and a new
+# CVE appearing should not block unrelated work. Dependabot covers version updates; this covers "a version we already use
+# turned out to be vulnerable".
+#
+# Needs the repository secret NVD_API_KEY (free, from https://nvd.nist.gov/developers/request-an-api-key). Without it
+# the NVD download is rate limited and the run is likely to time out; the run then says so and fails.
+# Fails the run at CVSS 7 or higher. A false positive goes in backend/config/dependency-check-suppressions.xml with a reason and an
+# "until" date.
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '17 3 * * 1'
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    name: Backend libraries
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - name: Keep the vulnerability database between runs
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/repository/org/owasp/dependency-check-data
+          key: nvd-${{ github.run_id }}
+          restore-keys: nvd-
+      - name: Check
+        working-directory: backend
+        env:
+          NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
+        run: |
+          if [ -z "$NVD_API_KEY" ]; then echo "::warning::NVD_API_KEY is not set; the database download will be slow and may time out"; fi
+          mvn -B -ntp org.owasp:dependency-check-maven:12.1.0:check \
+            -DfailBuildOnCVSS=7 \
+            -DsuppressionFiles=config/dependency-check-suppressions.xml \
+            -DnvdApiKey="$NVD_API_KEY" \
+            -Dformats=HTML,JSON \
+            -DassemblyAnalyzerEnabled=false
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: dependency-check-report
+          path: backend/target/dependency-check-report.*
+          retention-days: 30

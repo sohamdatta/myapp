@@ -3,6 +3,20 @@
 {$DOMAIN} {
 	encode zstd gzip
 
+	# One JSON line per request, to the container log, which deploy/logs/ship-logs.sh sends daily to the
+	# Indian-region log bucket (CERT-In: keep logs 180 days, inside India). Caddy leaves out the
+	# Authorization and Cookie headers; the invitation token in a link's query is blanked too.
+	log {
+		output stdout
+		format filter {
+			request>uri query {
+				replace invite REDACTED
+				replace token REDACTED
+			}
+			wrap json
+		}
+	}
+
 	header {
 		Strict-Transport-Security "max-age=31536000; includeSubDomains"
 		X-Content-Type-Options "nosniff"

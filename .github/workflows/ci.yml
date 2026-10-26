@@ -128,6 +128,19 @@ jobs:
           node-version: '22'
       - run: node e2e/check-dates.mjs origin/${{ github.base_ref }}
 
+  scripts:
+    name: Deploy scripts
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      - name: Shell check
+        run: shellcheck --severity=warning deploy/logs/*.sh deploy/ntp/*.sh deploy/restore-drill.sh
+      - name: Log shipping
+        run: deploy/logs/test-ship-logs.sh
+      - name: Clock check
+        run: deploy/ntp/test-check-time-sync.sh
+
   browser:
     # Twice: in UTC, and with the database and the server in India time, as many customers run them.
     # Dates and times that are right in one zone and wrong in the other fail here, not in production.
