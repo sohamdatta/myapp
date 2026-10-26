@@ -63,7 +63,7 @@ async function scanAllPages(page: Page, role: string) {
   }
 }
 
-test.describe.serial('accessibility', () => {
+test.describe.serial('accessibility @a11y', () => {
   test('sign-in page, signed out', async ({ browser }) => {
     const page = await newPage(browser);
     await page.goto('/');
