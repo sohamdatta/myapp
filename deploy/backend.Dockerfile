@@ -1,6 +1,6 @@
 # The backend: built with Maven, run on a Java 21 runtime as an unprivileged user.
 # Build from the repository root: docker build -f deploy/backend.Dockerfile .
-FROM maven:3.9-eclipse-temurin-21 AS build
+FROM maven:3.9-eclipse-temurin-26 AS build
 WORKDIR /src
 COPY backend/pom.xml .
 RUN mvn -B -ntp dependency:go-offline
