@@ -46,7 +46,7 @@ jobs:
       FAKETIME_DONT_FAKE_MONOTONIC: '1'   # the JVM's internal timers must keep the real monotonic clock
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: '21'
