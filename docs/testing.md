@@ -162,7 +162,7 @@ address: as many as the platform's `auth.lockout.after_failures` within `auth.lo
 per-email advisory lock makes parallel guesses count one by one. The password is hashed whatever the account's status, so a
 suspended account is not quicker to refuse. Accepting an invitation with an existing login's password counts the same way.
 `RateLimits` (in memory) holds only the per-client-address limits (100 failures in 15 minutes; IPv6 grouped by /64) and the
-invitation-link limits (30 accepts, 120 looks per address). **Those in-memory limits are per application instance and reset on
+invitation-link limits (30 failed accepts, 120 looks per address). **Those in-memory limits are per application instance and reset on
 restart**; move them to the database before running a second instance. **Accepted trade-off:** because the lock is per email,
 anyone who knows an address can keep it locked out by failing on purpose. Changing that means a CAPTCHA or per-address+email
 keys, which we have not done. `RateLimitsTest` and `SignInLimitsTest` cover all of this.

@@ -66,10 +66,19 @@ public final class InvitationService {
      * so an invitation link is no way round the sign-in limits.
      */
     public String accept(String token, String password, SessionCtx signedIn, String address) {
-        if (address != null && !limits.tryHit(RateLimits.INVITE_ATTEMPTS_PER_ADDRESS, address)) {
+        // only attempts that fail count: a person accepting a real link is not guessing, and an office accepting many is not abusing
+        if (address != null && !limits.allowed(RateLimits.INVITE_ATTEMPTS_PER_ADDRESS, address)) {
             throw tooMany();
         }
-        Map<String, Object> offer = lookup(token);
+        Map<String, Object> offer;
+        try {
+            offer = lookup(token);
+        } catch (ApiException e) {
+            if (address != null) {
+                limits.hit(RateLimits.INVITE_ATTEMPTS_PER_ADDRESS, address);
+            }
+            throw e;
+        }
         String email = (String) offer.get("email");
         boolean exists = Boolean.TRUE.equals(offer.get("identityExists"));
         boolean alreadySignedIn = signedIn != null && signedIn.email().equalsIgnoreCase(email);
@@ -123,6 +132,7 @@ public final class InvitationService {
         if ("password".equals(joined.get("refused"))) {
             if (address != null) {
                 limits.hit(RateLimits.LOGIN_FAILURES_PER_ADDRESS, address);
+                limits.hit(RateLimits.INVITE_ATTEMPTS_PER_ADDRESS, address);
             }
             throw new ApiException(403, "invitation.email_mismatch", "Enter the password for " + email + " to accept this invitation");
         }
