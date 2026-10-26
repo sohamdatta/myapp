@@ -99,4 +99,16 @@ class RateLimitsTest {
         }
         assertFalse(limits.allowed(rule, "target"), "flooding other keys must not forget one that is in use");
     }
+
+    @Test
+    void anIpv6CustomerIsOneKeyWhateverTheLowerBits() {
+        RateLimits limits = new RateLimits(clock);
+        Rule one = new Rule("v6", 1, Duration.ofMinutes(10));
+        limits.hit(one, "2001:db8:1:2:aaaa:bbbb:cccc:dddd");
+        assertFalse(limits.allowed(one, "2001:db8:1:2:1111:2222:3333:4444"));
+        assertTrue(limits.allowed(one, "2001:db8:1:3:1111:2222:3333:4444"), "another /64 is another customer");
+        limits.hit(one, "203.0.113.7");
+        assertFalse(limits.allowed(one, "203.0.113.7"));
+        assertTrue(limits.allowed(one, "203.0.113.8"));
+    }
 }

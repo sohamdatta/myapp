@@ -12,6 +12,9 @@ import java.util.Map;
  * Sliding-window limits on how often something may be tried: sign-in, accepting an invitation, and (later) password reset
  * and one-time codes. Each {@link Rule} counts events per key (an email address, a client address) in a window.
  *
+ * <p>Not used for the per-email lock after wrong passwords: that lives in the database ({@code auth.login_failure}), the
+ * same for an address with an account and one without, so it survives restarts and cannot tell the two apart.
+ *
  * <p>Held in memory, so the counts are per application instance and start again when it restarts. That is acceptable
  * while one instance runs (the compose files run one); before a second is added the counts must move to the database,
  * or a guesser gets the limit once per instance. Memory is bounded: past {@link #MAX_KEYS} the least recently used
@@ -25,8 +28,6 @@ public final class RateLimits {
 
     public record Rule(String name, int max, Duration window) {}
 
-    /** Wrong passwords for one email address, whether or not the account exists. */
-    public static final Rule LOGIN_FAILURES_PER_EMAIL = new Rule("login-email", 10, Duration.ofMinutes(15));
     /** Wrong passwords from one client address, over all the emails it tried. */
     public static final Rule LOGIN_FAILURES_PER_ADDRESS = new Rule("login-address", 100, Duration.ofMinutes(15));
     /** Every attempt to accept an invitation from one client address. */
@@ -58,15 +59,10 @@ public final class RateLimits {
         return allowed(rule, key, rule.max(), rule.window());
     }
 
-    /**
-     * As {@link #allowed(Rule, String)} with the limit and window chosen by the caller. Sign-in uses the platform's
-     * lockout settings here, so an address with no account locks after the same number of failures, for the same time,
-     * as one with an account, and the two cannot be told apart.
-     */
+    /** As {@link #allowed(Rule, String)} with a limit and window chosen by the caller. */
     public synchronized boolean allowed(Rule rule, String key, int max, Duration window) {
         long cutoff = clock.millis() - window.toMillis();
-        Deque<Long> times = recent(rule, key, false);
-        return times.stream().filter(t -> t > cutoff).count() < max;
+        return recent(rule, key, false).stream().filter(t -> t > cutoff).count() < max;
     }
 
     /** Counts one event for this key. */
@@ -107,6 +103,24 @@ public final class RateLimits {
     }
 
     private static String normalise(String key) {
-        return key == null ? "" : key.trim().toLowerCase(Locale.ROOT);
+        String k = key == null ? "" : key.trim().toLowerCase(Locale.ROOT);
+        return k.indexOf(':') >= 0 && k.matches("[0-9a-f:.]+") ? ipv6Network(k) : k;
+    }
+
+    /** One IPv6 customer holds at least a /64, billions of addresses, so the first 64 bits are the key. */
+    static String ipv6Network(String literal) {
+        try {
+            byte[] bytes = java.net.InetAddress.getByName(literal).getAddress();   // a literal: no name lookup happens
+            if (bytes.length != 16) {
+                return literal;   // an IPv4 address written the IPv6 way arrives as 4 bytes and is its own key
+            }
+            StringBuilder sb = new StringBuilder("v6/");
+            for (int i = 0; i < 8; i++) {
+                sb.append(String.format("%02x", bytes[i]));
+            }
+            return sb.toString();
+        } catch (java.net.UnknownHostException e) {
+            return literal;
+        }
     }
 }

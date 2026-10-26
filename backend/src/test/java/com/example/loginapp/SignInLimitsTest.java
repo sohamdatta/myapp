@@ -169,6 +169,67 @@ class SignInLimitsTest {
         assertEquals(429, refusal(() -> invitations.checkPreviewAllowed("10.3.3.3")).status());
     }
 
+    @Test
+    void failuresOlderThanTheLockTimeCountForNothingForAnyEmail() throws Exception {
+        RateLimits limits = new RateLimits();
+        AuthService auth = new AuthService(db, limits);
+        String real = owner(new InvitationService(db, limits));
+        String stranger = "old-" + SEQ.incrementAndGet() + "@nowhere.test";
+        for (String email : List.of(real, stranger)) {
+            for (int i = 0; i < 5; i++) {
+                String address = "10.4.4." + (i + 1);
+                refusal(() -> auth.login(email, "wrong-password", address));
+            }
+            assertEquals(429, refusal(() -> auth.login(email, "wrong-password", "10.4.4.9")).status());
+        }
+        // age every failure past the lock time
+        try (Connection c = DriverManager.getConnection("jdbc:postgresql://" + env("APP_TEST_DB_HOST", "localhost:5432")
+                + "/hrms_test_signin_limits", env("APP_DB_OWNER_USER", "postgres"), env("APP_DB_OWNER_PASSWORD", "postgres"));
+             Statement st = c.createStatement()) {
+            st.execute("update auth.login_failure set at = now() - interval '2 hours'");
+        }
+        for (String email : List.of(real, stranger)) {
+            assertEquals("auth.invalid_credentials", refusal(() -> auth.login(email, "wrong-password", "10.4.5.1")).code());
+        }
+        assertNotNull(auth.login(real, PASSWORD, "10.4.5.2"));
+    }
+
+    @Test
+    void parallelWrongPasswordsAreCountedNotRacedPastTheLimit() throws Exception {
+        RateLimits limits = new RateLimits();
+        AuthService auth = new AuthService(db, limits);
+        String real = owner(new InvitationService(db, limits));
+        int threads = 12;
+        java.util.concurrent.ExecutorService pool = java.util.concurrent.Executors.newFixedThreadPool(threads);
+        java.util.concurrent.CountDownLatch go = new java.util.concurrent.CountDownLatch(1);
+        List<java.util.concurrent.Future<Integer>> results = new java.util.ArrayList<>();
+        for (int i = 0; i < threads; i++) {
+            results.add(pool.submit(() -> {
+                go.await();
+                try {
+                    auth.login(real, "wrong-password", "10.5.5.5");
+                    return 200;
+                } catch (ApiException e) {
+                    return e.status();
+                }
+            }));
+        }
+        go.countDown();
+        int unauthorised = 0;
+        int tooMany = 0;
+        for (java.util.concurrent.Future<Integer> f : results) {
+            int status = f.get();
+            if (status == 401) {
+                unauthorised++;
+            } else if (status == 429) {
+                tooMany++;
+            }
+        }
+        pool.shutdown();
+        assertEquals(5, unauthorised, "exactly the platform's allowance of wrong passwords is let through");
+        assertEquals(threads - 5, tooMany);
+    }
+
     private static PGSimpleDataSource source(String url, String user, String password) {
         PGSimpleDataSource ds = new PGSimpleDataSource();
         ds.setUrl(url);

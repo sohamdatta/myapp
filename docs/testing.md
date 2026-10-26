@@ -156,10 +156,13 @@ and a run on server-sized hardware.
 
 ## Sign-in limits
 
-`RateLimits` counts failures per email address (as many as the platform's `auth.lockout.after_failures`, over `auth.lockout.minutes`)
-and per client address (100 in 15 minutes); invitation links are limited per address (30 accepts, 120 looks). An address with no
-account and one with an account are refused the same way at the same point (429 `auth.locked`, no minutes in the message), and
-accepting an invitation with an existing login's password counts like signing in. `RateLimitsTest` and `SignInLimitsTest` cover
-this. **Limits are in memory: per application instance, reset on restart.** Move them to the database before running a second
-instance. A known gap: an account's lock ends when its database lock ends, a stranger's address when its failures leave the
-window, which can differ by a few minutes.
+Wrong passwords are counted per email address in the database (`auth.login_failure`, V28), whether or not an account has that
+address: as many as the platform's `auth.lockout.after_failures` within `auth.lockout.minutes` and the address is refused
+(429 `auth.locked`, no minutes in the message) with the same answer, at the same point, for a real account and a stranger. A
+per-email advisory lock makes parallel guesses count one by one. The password is hashed whatever the account's status, so a
+suspended account is not quicker to refuse. Accepting an invitation with an existing login's password counts the same way.
+`RateLimits` (in memory) holds only the per-client-address limits (100 failures in 15 minutes; IPv6 grouped by /64) and the
+invitation-link limits (30 accepts, 120 looks per address). **Those in-memory limits are per application instance and reset on
+restart**; move them to the database before running a second instance. **Accepted trade-off:** because the lock is per email,
+anyone who knows an address can keep it locked out by failing on purpose. Changing that means a CAPTCHA or per-address+email
+keys, which we have not done. `RateLimitsTest` and `SignInLimitsTest` cover all of this.

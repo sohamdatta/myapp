@@ -49,53 +49,67 @@ public final class AuthService {
         }
         String token = Secrets.newToken();
         String outcome = db.inAuth(c -> {
-            // The same count and time as the account lock below, for any address, so that "locked" does not say "exists".
-            int lockAfter = Settings.platform(c, Settings.LOCKOUT_AFTER).asInt();
-            int minutes = Settings.platform(c, Settings.LOCKOUT_MINUTES).asInt();
-            if (!limits.allowed(RateLimits.LOGIN_FAILURES_PER_EMAIL, email, lockAfter, java.time.Duration.ofMinutes(minutes))) {
-                return "locked:" + minutes;
+            lockEmail(c, email);   // one attempt per email at a time, so parallel guesses are counted, not raced past the limit
+            // The lock is kept per email address, account or not, so "locked" does not say "exists".
+            if (lockedOut(c, email)) {
+                return "locked";
             }
             Map<String, Object> identity = Sql.one(c,
-                    "select id, password_hash, status, (locked_until is not null and locked_until > now()) as locked "
-                            + "from auth.identity where email = ?::citext for update", email.trim());
+                    "select id, password_hash, status from auth.identity where email = ?::citext for update", email.trim());
             if (identity == null) {
-                Secrets.verifyPassword(password, "pbkdf2-sha256$210000$AAAAAAAAAAAAAAAAAAAAAA==$AAAA");   // same work as a real check
+                Secrets.verifyPassword(password, DUMMY_HASH);   // same work as a real check
+                recordFailure(c, email);
                 return "invalid";
-            }
-            int lockMinutes = Settings.platform(c, Settings.LOCKOUT_MINUTES).asInt();
-            if (Boolean.TRUE.equals(identity.get("locked"))) {
-                return "locked:" + lockMinutes;
             }
             UUID id = UUID.fromString((String) identity.get("id"));
-            boolean ok = "active".equals(identity.get("status"))
-                    && Secrets.verifyPassword(password, (String) identity.get("passwordHash"));
-            if (!ok) {
-                recordFailure(c, id, lockMinutes);
+            // the password is checked whatever the status, so a suspended account takes as long to refuse as any other
+            boolean passwordOk = Secrets.verifyPassword(password, (String) identity.get("passwordHash"));
+            if (!passwordOk || !"active".equals(identity.get("status"))) {
+                recordFailure(c, email);
                 return "invalid";
             }
-            Sql.update(c, "update auth.identity set failed_login_count = 0, locked_until = null, last_login_at = now() where id = ?", id);
+            clearFailures(c, email);
+            Sql.update(c, "update auth.identity set last_login_at = now() where id = ?", id);
             insertSession(c, token, id, "identity", null, null, null, "30 minutes");
             return "ok";
         });
-        if (outcome.startsWith("locked:")) {
+        if (outcome.equals("locked")) {
             throw tooManyFailures();   // the same answer as for an address that has failed too often but has no account
         }
         if (!outcome.equals("ok")) {
-            limits.hit(RateLimits.LOGIN_FAILURES_PER_EMAIL, email);
             if (address != null) {
                 limits.hit(RateLimits.LOGIN_FAILURES_PER_ADDRESS, address);
             }
             throw new ApiException(401, "auth.invalid_credentials", "Incorrect email or password");
         }
-        limits.clear(RateLimits.LOGIN_FAILURES_PER_EMAIL, email);
         return token;
     }
 
-    /** Counts a wrong password against the account and locks it after too many in a row. */
-    static void recordFailure(Connection c, UUID identityId, int lockMinutes) throws SQLException {
-        Sql.update(c, "update auth.identity set failed_login_count = failed_login_count + 1 where id = ?", identityId);
-        Sql.update(c, "update auth.identity set locked_until = now() + make_interval(mins => ?), failed_login_count = 0 "
-                + "where id = ? and failed_login_count >= ?", lockMinutes, identityId, Settings.platform(c, Settings.LOCKOUT_AFTER).asInt());
+    private static final String DUMMY_HASH = "pbkdf2-sha256$210000$AAAAAAAAAAAAAAAAAAAAAA==$AAAA";
+
+    /** Makes the rest of this transaction the only one working on this email address. Released at commit. */
+    static void lockEmail(Connection c, String email) throws SQLException {
+        Sql.query(c, "select pg_advisory_xact_lock(hashtext(lower(?)))", email.trim());
+    }
+
+    /** Whether this email address has failed as many times as the platform allows, within the platform's lock time. */
+    static boolean lockedOut(Connection c, String email) throws SQLException {
+        int after = Settings.platform(c, Settings.LOCKOUT_AFTER).asInt();
+        int minutes = Settings.platform(c, Settings.LOCKOUT_MINUTES).asInt();
+        Number recent = (Number) Sql.one(c, "select count(*) as n from auth.login_failure "
+                + "where email = ?::citext and at > now() - make_interval(mins => ?)", email.trim(), minutes).get("n");
+        return recent.longValue() >= after;
+    }
+
+    /** Counts a wrong password against this email address, account or not; also clears rows too old to matter. */
+    static void recordFailure(Connection c, String email) throws SQLException {
+        Sql.update(c, "insert into auth.login_failure (email) values (?::citext)", email.trim());
+        Sql.update(c, "delete from auth.login_failure where email = ?::citext and at < now() - interval '1 day'", email.trim());
+    }
+
+    /** A correct password ends the run of failures. */
+    static void clearFailures(Connection c, String email) throws SQLException {
+        Sql.update(c, "delete from auth.login_failure where email = ?::citext", email.trim());
     }
 
     /** Loads the session for a token, with its current permissions. Throws when it is missing, expired or revoked. */

@@ -80,24 +80,22 @@ public final class InvitationService {
         Map<String, Object> joined = db.inAuth(c -> {
             UUID identityId;
             if (exists) {
+                AuthService.lockEmail(c, email);
                 Map<String, Object> identity = Sql.one(c,
-                        "select id, password_hash, (locked_until is not null and locked_until > now()) as locked "
-                                + "from auth.identity where email = ?::citext and status = 'active' for update", email);
+                        "select id, password_hash from auth.identity where email = ?::citext and status = 'active' for update", email);
                 if (identity == null) {
                     throw INVALID;
                 }
                 if (!alreadySignedIn) {
-                    if (Boolean.TRUE.equals(identity.get("locked")) || !limits.allowed(RateLimits.LOGIN_FAILURES_PER_EMAIL, email,
-                            Settings.platform(c, Settings.LOCKOUT_AFTER).asInt(),
-                            java.time.Duration.ofMinutes(Settings.platform(c, Settings.LOCKOUT_MINUTES).asInt()))) {
+                    if (AuthService.lockedOut(c, email)) {
                         return Map.<String, Object>of("refused", "locked");
                     }
                     if (!Secrets.verifyPassword(password, (String) identity.get("passwordHash"))) {
                         // recorded here and refused below: throwing now would roll the failure back
-                        AuthService.recordFailure(c, AuthService.uuid(identity.get("id")),
-                                Settings.platform(c, Settings.LOCKOUT_MINUTES).asInt());
+                        AuthService.recordFailure(c, email);
                         return Map.<String, Object>of("refused", "password");
                     }
+                    AuthService.clearFailures(c, email);
                 }
                 identityId = AuthService.uuid(identity.get("id"));
             } else {
@@ -123,14 +121,10 @@ public final class InvitationService {
             throw AuthService.tooManyFailures();
         }
         if ("password".equals(joined.get("refused"))) {
-            limits.hit(RateLimits.LOGIN_FAILURES_PER_EMAIL, email);
             if (address != null) {
                 limits.hit(RateLimits.LOGIN_FAILURES_PER_ADDRESS, address);
             }
             throw new ApiException(403, "invitation.email_mismatch", "Enter the password for " + email + " to accept this invitation");
-        }
-        if (exists && !alreadySignedIn) {
-            limits.clear(RateLimits.LOGIN_FAILURES_PER_EMAIL, email);
         }
         UUID tenantId = (UUID) joined.get("tenantId");
         UUID membershipId = (UUID) joined.get("membershipId");
