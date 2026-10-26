@@ -4,10 +4,22 @@ Two automated suites run on every pull request and every push to main.
 
 | Suite | Where | What it checks | Count |
 | --- | --- | --- | --- |
-| Backend | `backend/src/test` (JUnit, real PostgreSQL) | Services, rules and database security per module | 268 tests |
+| Backend | `backend/src/test` (JUnit, real PostgreSQL) | Services, rules and database security per module | 282 tests |
 | Browser | `e2e/tests` (Playwright, Chromium) | The app end to end, screens and API, in India time and in UTC | 188 tests in 25 files |
 
 Negative cases have files of their own: `13-negative-access` to `16-negative-payroll` for the main story, and `23-negative-tax-settings` for tax declarations, settings, devices and setup lists. Together with refusals inside the other tests, the browser suite asserts more than 230 refused requests; the backend tests assert several hundred more.
+
+## Property tests
+
+`FormulaPropertiesTest` uses [jqwik](https://jqwik.net) to generate thousands of inputs for the payroll formula language, where a hand-picked example shows only the cases someone thought of. It checks that:
+
+- any text, including arbitrary Unicode and shuffled formula parts, is either accepted or refused with a `Formula.Error` whose position lies inside the text, and nothing else is ever thrown;
+- generated well-formed formulas evaluate to what a separate reference evaluator computes, including the divide-by-zero flag and which components and facts were read;
+- precedence, left-to-right order and unary minus behave as written;
+- `round`, `round_up` and `round_down` land on a multiple of the step, in the right direction;
+- the 2,000-character and nesting limits hold.
+
+A failing property prints its seed. To reproduce it, put the seed in `@Property(seed = "...")` or run with `-Djqwik.seeds.whenfixed=true`. Settings are in `backend/src/test/resources/junit-platform.properties`; jqwik's record of past failures goes under `target/` and is not committed. When adding a property, break the code under test once on purpose and confirm the property fails.
 
 ## Coverage (24 Oct 2026)
 
