@@ -28,6 +28,23 @@ Weakest areas, worth tests next:
 - The setup screens for flows and lists (`SetupFlows.jsx`, `SetupLists.jsx`, about 60%)
 - The web layer's error branches (45%)
 
+## The coverage gate
+
+`mvn verify` fails when backend coverage drops below a floor set in `backend/pom.xml` (the `check` execution of the JaCoCo plugin). The floors are the numbers measured on 26 Oct 2026, rounded down with a point of room, so today's code passes and a change that removes tests, or adds code without them, does not.
+
+| Scope | Lines | Branches |
+| --- | --- | --- |
+| Whole backend | 83% | 68% |
+| `Formula` | 58% | 39% |
+| `PayrollConfig` | 61% | 39% |
+| `Payslips` | 32% | 16% |
+| `PayrollRuns` | 87% | 64% |
+| `PayrollEngine` | 89% | 70% |
+| `ExitSettlement` | 85% | 65% |
+| `TaxDeclarations` | 93% | 77% |
+
+The rule for changes: a pull request that adds tests raises the floors it made possible, in the same pull request. The payroll and tax classes must reach 95% lines and 90% branches by Gate B; `Payslips` and `PayrollConfig` are far from that and need tests of their own, not just a higher number. The web layer has no controller tests of its own (the browser suite covers it), so the whole-backend floor counts it as uncovered by JUnit.
+
 ## Measuring it
 
 **Backend tests.** `mvn verify` in `backend` writes `target/site/jacoco/index.html`. CI prints the totals in the job summary and keeps the report as the `backend-coverage` artifact.
