@@ -17,7 +17,7 @@ const desktop = { ...devices['Desktop Chrome'], viewport: { width: 1280, height:
 export default defineConfig({
   testDir: './tests',
   fullyParallel: false,
-  workers: Number(process.env.E2E_WORKERS || 2),
+  workers: Number(process.env.E2E_WORKERS) || 2,   // a missing or non-numeric value means 2
   forbidOnly: !!process.env.CI,
   retries: 0,
   timeout: 120_000,
