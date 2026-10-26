@@ -46,11 +46,15 @@ public class PeopleController {
     }
 
     @GetMapping("/employees")
-    public List<Map<String, Object>> list(@RequestHeader(value = "Authorization", required = false) String authorization,
+    public ResponseEntity<List<Map<String, Object>>> list(@RequestHeader(value = "Authorization", required = false) String authorization,
                                           @RequestParam(value = "q", required = false) String q,
                                           @RequestParam(value = "status", required = false) String status,
-                                          @RequestParam(value = "department", required = false) String department) {
-        return employees.list(Requests.session(auth, authorization), q, status, department);
+                                          @RequestParam(value = "department", required = false) String department,
+                                          @RequestParam(value = "limit", required = false) Integer limit) {
+        EmployeeService.Page page = employees.listPage(Requests.session(auth, authorization), q, status, department,
+                limit == null ? EmployeeService.MAX_LIST : limit);
+        // X-Total-Count is how many match; when it is more than the rows sent, the list was cut off.
+        return ResponseEntity.ok().header("X-Total-Count", String.valueOf(page.total())).body(page.rows());
     }
 
     /** The org chart: everyone working here and who they report to, for every employee. */

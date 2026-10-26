@@ -61,8 +61,20 @@ public final class EmployeeService {
 
     // ── reading ─────────────────────────────────────────────────────────
 
+    /** The most rows one list answers with. The People page searches what it was given, so a lower cap hides people. */
+    public static final int MAX_LIST = 5000;
+
+    /** A page of the list and how many employees match in all, so a cut-off list can say so. */
+    public record Page(List<Map<String, Object>> rows, long total) {}
+
     /** Employees the caller can see. Status is active (the default), onboarding, exited or all. */
     public List<Map<String, Object>> list(SessionCtx ctx, String query, String status, String departmentId) {
+        return listPage(ctx, query, status, departmentId, MAX_LIST).rows();
+    }
+
+    /** As {@link #list}, at most {@code limit} rows (never more than {@link #MAX_LIST}), with the number that match in all. */
+    public Page listPage(SessionCtx ctx, String query, String status, String departmentId, int limit) {
+        int rowLimit = Math.max(1, Math.min(limit, MAX_LIST));
         String scope = ctx.scopeOf("employee.read");
         if (scope == null) {
             throw ApiException.denied("employee.read");
@@ -101,8 +113,10 @@ public final class EmployeeService {
                     params.add(q);
                 }
             }
-            sql.append(" order by p.legal_name, e.joining_date desc limit 500");
-            return Sql.query(c, sql.toString(), params.toArray());
+            Object[] args = params.toArray();
+            Number total = (Number) Sql.one(c, "select count(*) as n from (" + sql + ") matching", args).get("n");
+            sql.append(" order by p.legal_name, e.joining_date desc limit ").append(rowLimit);
+            return new Page(Sql.query(c, sql.toString(), args), total.longValue());
         });
     }
 

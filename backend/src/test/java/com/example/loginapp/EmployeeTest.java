@@ -214,6 +214,24 @@ class EmployeeTest {
     }
 
     @Test
+    void aListCutOffByTheLimitSaysHowManyMatch() {
+        Org org = newOrg();
+        for (String name : List.of("Asha Anand", "Bela Bose", "Chitra Chopra", "Dev Dutta")) {
+            add(org.admin, person(name, null, null, null, null, null, null, null));
+        }
+        EmployeeService.Page page = employees.listPage(org.admin, null, "all", null, 2);
+        assertEquals(List.of("Asha Anand", "Bela Bose"), page.rows().stream().map(r -> r.get("legalName")).toList());
+        assertEquals(4, page.total());   // two rows sent, four match: the page can say "2 of 4"
+        // a search counts only what matches, and an absurd limit is clamped, not an error
+        EmployeeService.Page search = employees.listPage(org.admin, "chop", "all", null, 1_000_000);
+        assertEquals(1, search.total());
+        assertEquals(1, search.rows().size());
+        assertEquals(4, employees.listPage(org.admin, null, "all", null, 0).total());   // below 1 means 1 row, not none
+        assertEquals(1, employees.listPage(org.admin, null, "all", null, 0).rows().size());
+        assertEquals(4, employees.list(org.admin, null, "all", null).size());
+    }
+
+    @Test
     void badIdentifiersAreRefusedWithAReason() {
         Org org = newOrg();
         assertError(400, "employee.invalid_pan", () -> add(org.admin, person("A", "ABCCE1234F", null, null, null, null, null, null)));

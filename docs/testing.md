@@ -149,7 +149,8 @@ Budgets from the roadmap: payroll calculation for 2,000 employees under 60 s; re
 | --- | --- | --- | --- | --- | --- |
 | 2026-10-26 | developer container, local PostgreSQL | 1.6 s | 62 ms (service level) | not run | seeding takes 141 s; employees have no attendance, leave, holds or arrears, so this is a floor, not the real month |
 
-Findings so far: `EmployeeService.list` stops at **500 rows**, so an Organization of 2,000 cannot see everyone on the People list
-(search narrows it, but there is no paging); the org chart answers with 315 KB for 2,000 people. Neither is fixed here.
+Findings so far: `EmployeeService.list` stopped at 500 rows with no signal, so an Organization of 2,000 could not see (or search)
+everyone on the People list. Fixed: the cap is 5,000 and the list sends `X-Total-Count`; the People page says "Showing the first N of M" when it is cut off
+(`EmployeeTest.aListCutOffByTheLimitSaysHowManyMatch`). The joiners and exits lists still stop at 500. The org chart answers with 315 KB for 2,000 people and is not fixed.
 Not covered yet: sign-in under load (password hashing), attendance month view, payslip release, readers during a calculation,
 and a run on server-sized hardware.

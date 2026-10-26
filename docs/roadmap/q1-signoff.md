@@ -36,7 +36,7 @@ checksum lock, Squawk and schema diff, the fixed-date workflow repaired (and a r
 
 ## Findings from this work, not fixed
 
-- The People list is cut at 500 rows, so an Organization of 2,000 cannot see everyone (no paging).
+- The People list was cut at 500 rows with no signal. Fixed: cap 5,000, total sent, page says when cut off. Joiners and exits lists still stop at 500; true paging is a product decision.
 - The org chart answers with 315 KB for 2,000 people.
 - A leave request crossing 31 Dec / 1 Jan: should January days come from next year's balance? Needs a decision.
 - Golden payslip figures were produced by the engine and checked by hand; they are **provisional** until the consultant confirms
@@ -51,4 +51,4 @@ checksum lock, Squawk and schema diff, the fixed-date workflow repaired (and a r
       the Point of Contact registration, the rehearsal).
 - [ ] A real, timed restore drill on UAT and on production ([restore-drills.md](../deploy/restore-drills.md)).
 - [ ] Decide the Java version for production on purpose (#51).
-- [ ] Decide the People list paging and the January-leave question above.
+- [ ] Decide whether the People list needs real paging (above 5,000), and the January-leave question above.
