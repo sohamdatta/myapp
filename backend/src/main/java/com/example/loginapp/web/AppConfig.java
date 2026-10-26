@@ -18,6 +18,7 @@ import com.example.loginapp.core.AttendanceSettingsService;
 import com.example.loginapp.core.AuthService;
 import com.example.loginapp.core.Branding;
 import com.example.loginapp.core.Calibration;
+import com.example.loginapp.core.ClientErrors;
 import com.example.loginapp.core.ChecklistService;
 import com.example.loginapp.core.Crypto;
 import com.example.loginapp.core.Db;
@@ -79,6 +80,11 @@ public class AppConfig {
                 pool(url, "app_tenant", rolePassword, 10));
         Migrator.migrate(db, rolePassword);
         return db;
+    }
+
+    @Bean
+    public ClientErrors clientErrors(Db db) {
+        return new ClientErrors(db);
     }
 
     @Bean

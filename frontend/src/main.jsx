@@ -7,14 +7,20 @@ import './index.css'
 import App from './App.jsx'
 import { ConfirmProvider, ToastProvider } from './feedback.jsx'
 import { preloadLikely } from './pageRegistry.js'
+import RegionBoundary from './RegionBoundary.jsx'
+import { watchWindowErrors } from './errors.js'
+import { pageFromLocation } from './router.js'
 
 preloadLikely()
+watchWindowErrors(() => pageFromLocation() ?? 'root')
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>
     <ToastProvider>
       <ConfirmProvider>
-        <App />
+        <RegionBoundary region="app" page="app">
+          <App />
+        </RegionBoundary>
       </ConfirmProvider>
     </ToastProvider>
   </StrictMode>,

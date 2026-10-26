@@ -107,6 +107,21 @@ What it asserts is about the **body**, not the status: no row id from any tenant
 - **Mutation check done once:** switching row-level security off on `app.leave_type` makes it fail with a 200 from `/api/org/leave/balances` carrying the other Organization's leave type id.
 - **Not covered yet:** POST/PUT/DELETE with the other Organization's ids; routes whose useful data needs modules other than users, attendance and leave to be seeded (payroll, exits, performance rows are only reached if the seed creates them); `/api/platform`.
 
+## Page crashes and the client-error report
+
+Each page region (the whole app, the menu, the bell, the page itself) sits in a `RegionBoundary`. A crash shows
+"Something went wrong on this page" with Try again, leaves the rest of the app working, and is reported to
+`POST /api/client-errors` (page id, region, a message blanked of emails, ids, long tokens and numbers, and the build).
+Errors outside any boundary (handlers, timers, promises) are reported with region `window`; extension and cross-origin
+"Script error." noise is dropped in the browser.
+
+- The endpoint needs no sign-in, always answers 204, keeps nothing about the user or Organization, takes 10 reports a
+  minute per address and 300 in all (turned-away reports are counted in a warning in the log), and clears rows after 90 days.
+  Caddy caps the body at 8 KB. Read the reports with `select * from auth.client_error order by id desc`.
+- `ClientErrorsTest` covers cleaning, limits and clearing; `e2e/tests/31-error-boundary.spec.ts` (project `boundary`) makes
+  the Users page crash with a bad response and checks the alert, the rest of the app, the report, recovery and de-duplication.
+- Only the Users page crash has been exercised end to end; the other boundaries are the same component.
+
 ## The accessibility scan
 
 `e2e/tests/30-accessibility.spec.ts` (Playwright project `a11y`, tagged `@a11y`) runs axe (`@axe-core/playwright`, WCAG 2.0/2.1 A and AA) over the sign-in page, the invitation page, and **every sidebar page** that the Super Admin, an Org Admin and an employee can reach, plus the Org Admin's pages at 390 px. Pages are found from the sidebar, so a new page is scanned without anyone adding it. It makes its own Organization and needs no other spec.

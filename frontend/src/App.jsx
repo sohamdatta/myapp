@@ -6,6 +6,7 @@ import { isPlainClick, pathFor, resetLocation, usePage } from './router.js'
 import { AcceptInvitation, Chooser, LoginForm } from './pages/SignIn.jsx'
 import { formatDate } from './hooks.js'
 import Bell from './Bell.jsx'
+import RegionBoundary from './RegionBoundary.jsx'
 import { PRODUCT, logoUrl } from './brand/brand.js'
 import NexvanceLogo from './brand/NexvanceLogo.jsx'
 import { NavIcon } from './icons.jsx'
@@ -92,29 +93,31 @@ function Shell({ me, nav, page, onNavigate, onSwitch, onSignOut, onEndSupport, c
             </div>
           )}
           {!logo && <div className="where where-under">{where}</div>}
-          {nav.map((section) => (
-            <div key={section.label} className="nav-section">
-              <div className="nav-label">{section.label}</div>
-              {section.items.map((item) => (
-                <a
-                  key={item.id}
-                  href={pathFor(item.id)}
-                  className={item.id === page ? 'nav-item nav-current' : 'nav-item'}
-                  aria-current={item.id === page ? 'page' : undefined}
-                  onPointerEnter={() => preloadPage(me, item.id)}
-                  onFocus={() => preloadPage(me, item.id)}
-                  onClick={(e) => {
-                    if (!isPlainClick(e)) return
-                    e.preventDefault()
-                    go(item.id)
-                  }}
-                >
-                  <NavIcon id={item.id} />
-                  <span>{item.label}</span>
-                </a>
-              ))}
-            </div>
-          ))}
+          <RegionBoundary region="nav" page={page} fallback={<p className="hint">The menu could not be drawn. Reload the page.</p>}>
+            {nav.map((section) => (
+              <div key={section.label} className="nav-section">
+                <div className="nav-label">{section.label}</div>
+                {section.items.map((item) => (
+                  <a
+                    key={item.id}
+                    href={pathFor(item.id)}
+                    className={item.id === page ? 'nav-item nav-current' : 'nav-item'}
+                    aria-current={item.id === page ? 'page' : undefined}
+                    onPointerEnter={() => preloadPage(me, item.id)}
+                    onFocus={() => preloadPage(me, item.id)}
+                    onClick={(e) => {
+                      if (!isPlainClick(e)) return
+                      e.preventDefault()
+                      go(item.id)
+                    }}
+                  >
+                    <NavIcon id={item.id} />
+                    <span>{item.label}</span>
+                  </a>
+                ))}
+              </div>
+            ))}
+          </RegionBoundary>
           <a className="powered-by" href={PRODUCT.site} target="_blank" rel="noreferrer">
             {logo ? `Powered by ${PRODUCT.name}` : PRODUCT.tagline}
           </a>
@@ -137,7 +140,11 @@ function Shell({ me, nav, page, onNavigate, onSwitch, onSignOut, onEndSupport, c
               </h1>
             </div>
             <div className="topbar-actions">
-              {me.kind === 'tenant' && me.membershipId && <Bell pages={items.map((item) => item.id)} onNavigate={go} />}
+              {me.kind === 'tenant' && me.membershipId && (
+                <RegionBoundary region="bell" page={page} fallback={null}>
+                  <Bell pages={items.map((item) => item.id)} onNavigate={go} />
+                </RegionBoundary>
+              )}
               <span className="who">
                 <span className="who-avatar" aria-hidden="true">
                   {initials(null, me.email)}
