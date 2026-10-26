@@ -476,10 +476,14 @@ public final class Formula {
 
     // ── parsing ─────────────────────────────────────────────────────────
 
+    /** The most "not" or "-" that may follow one another; far more than any real formula needs. */
+    private static final int MAX_PREFIX = 50;
+
     private static final class Parser {
         private final String s;
         private int i;
         private int depth;
+        private int prefix;   // prefix operators in a row (not, -): they nest without brackets
 
         Parser(String s) {
             this.s = s;
@@ -543,10 +547,20 @@ public final class Formula {
             }
         }
 
+        /** Counts one more prefix operator in a row. Without a limit, 2,000 characters of them recurse deeper than the stack allows. */
+        private void enterPrefix() {
+            if (++prefix > MAX_PREFIX) {
+                throw new Error("Too many \"not\" or \"-\" in a row", i);
+            }
+        }
+
         Node not() {
             int at = i;
             if (word("not")) {
-                return new Not(not(), at);
+                enterPrefix();
+                Node operand = not();
+                prefix--;
+                return new Not(operand, at);
             }
             return comparison();
         }
@@ -597,7 +611,10 @@ public final class Formula {
             skip();
             int at = i;
             if (symbol("-")) {
-                return new Neg(unary(), at);
+                enterPrefix();
+                Node operand = unary();
+                prefix--;
+                return new Neg(operand, at);
             }
             return primary();
         }

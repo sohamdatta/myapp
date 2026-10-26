@@ -1,5 +1,6 @@
 package com.example.loginapp;
 
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -234,16 +235,15 @@ class FormulaPropertiesTest {
                 () -> Formula.parse("(".repeat(60) + "1" + ")".repeat(60)));
         assertTrue(e.getMessage().contains("nested too deeply"), e.getMessage());
 
-        // Prefix operators nest without brackets; thousands of them must still end in an Error, not a StackOverflowError.
-        String nots = "not ".repeat(450) + "yes";
-        String minuses = "-".repeat(1990) + "1";
-        for (String source : List.of(nots, minuses)) {
-            try {
-                Formula.parse(source).check(COMPONENTS, FACTS);
-            } catch (Formula.Error expected) {
-                // a refusal is fine; escaping as anything else is not
-            }
+        // Prefix operators nest without brackets. Thousands of them used to be left to the stack (the 2,000
+        // character limit was the only guard) and overflowed on a slower JVM; now they are refused in the parser.
+        for (String source : List.of("not ".repeat(450) + "yes", "-".repeat(1990) + "1", "- ".repeat(300) + "1", "not ".repeat(30) + "- ".repeat(30) + "1")) {
+            Formula.Error refused = assertThrows(Formula.Error.class, () -> Formula.parse(source), source.substring(0, 12));
+            assertTrue(refused.getMessage().contains("in a row"), refused.getMessage());
         }
+        // a sensible run of them is still fine
+        assertEquals(0, BigDecimal.ONE.compareTo(Formula.parse("-".repeat(40) + "1").evaluate(ENV).value()));
+        assertDoesNotThrow(() -> Formula.parse("not ".repeat(40) + "yes"));
     }
 
     @Example
