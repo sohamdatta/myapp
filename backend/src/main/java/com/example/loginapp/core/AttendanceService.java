@@ -14,9 +14,11 @@ import java.time.LocalTime;
 import java.time.YearMonth;
 import java.time.ZoneId;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 import static com.example.loginapp.core.AttendanceDays.Assigned;
@@ -402,12 +404,17 @@ public final class AttendanceService {
                         ? "None of those dates needs a request: they are days off or already your regular remote days"
                         : "None of those dates is a working day");
             }
+            // Already-approved requests for the whole range in one query, not one per date.
+            Set<LocalDate> approved = new HashSet<>();
+            for (Map<String, Object> x : Sql.query(c, "select work_date from app.attendance_request where membership_id = ? and kind = ? "
+                    + "and status = 'approved' and work_date between ? and ?", me, kind, from, to)) {
+                approved.add(LocalDate.parse((String) x.get("workDate")));
+            }
             for (LocalDate d : days) {
                 if (!correction && LeaveService.hasLeave(c, me, d)) {
                     throw new ApiException(409, "attendance.leave_on_date", "You have leave on " + d + ". Cancel the leave first");
                 }
-                if (Sql.one(c, "select 1 from app.attendance_request where membership_id = ? and work_date = ? and kind = ? "
-                        + "and status = 'approved'", me, d, kind) != null) {
+                if (approved.contains(d)) {
                     throw new ApiException(409, "attendance.request_exists", "A request for " + d + " is already approved");
                 }
             }

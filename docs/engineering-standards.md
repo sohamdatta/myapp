@@ -150,6 +150,8 @@ Sql.batch(c, "insert into app.payslip_line (...) values (?, ?, ?, ...)",
         calc.lines().stream().map(l -> new Object[] {tenantId, payslipId, l.position(), l.code(), l.amount()}).toList());
 ```
 
+`Sql.batch` binds each row as `Sql.update` does and returns the number of rows written. It cannot return generated keys, so a parent row whose children need its id gets the id made in Java (`UUID.randomUUID()`), and the parents are written first, then the children (`PayrollRuns.calculate` writes payslips, then their lines, then exceptions). Session and run-level reads follow the same rule in reverse: read the set once (`select employment_id from app.pay_hold where run_id = ?`) and test membership in memory.
+
 ## 6. Testing
 
 Every pull request adds or changes tests. A bug fix starts with a failing test that reproduces it.
