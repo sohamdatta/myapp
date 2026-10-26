@@ -61,6 +61,8 @@ export default defineConfig({
     { name: 'performance', testMatch: /24-performance\.spec\.ts/, use: desktop, dependencies: ['navigation'] },
     // The Organization's own logo, after performance.
     { name: 'branding', testMatch: /25-branding\.spec\.ts/, use: desktop, dependencies: ['performance'] },
+    // An axe scan of every page each role reaches, in an Organization of its own: --project=a11y.
+    { name: 'a11y', testMatch: /30-accessibility\.spec\.ts/, use: desktop },
     // Tax declarations bring their own Organization, so they run on their own as well: --project=tax.
     { name: 'tax', testMatch: /21-tax-declarations\.spec\.ts/, use: desktop },
     // Settings, likewise in an Organization of their own: --project=settings.

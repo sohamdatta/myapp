@@ -9,6 +9,7 @@
     "coverage": "node coverage-report.mjs"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.14.0",
     "@playwright/test": "1.64.1",
     "@types/node": "^26.6.5",
     "monocart-coverage-reports": "^3.0.0"

@@ -1,0 +1,20 @@
+{
+  "org admin / Leave": {
+    "aria-prohibited-attr": {
+      "impact": "serious",
+      "nodes": 1
+    }
+  },
+  "org admin / Organization settings": {
+    "aria-prohibited-attr": {
+      "impact": "serious",
+      "nodes": 1
+    }
+  },
+  "org admin on a phone / Organization settings": {
+    "label": {
+      "impact": "critical",
+      "nodes": 1
+    }
+  }
+}
