@@ -1,6 +1,8 @@
 -- Failed sign-ins, kept per email address whether or not an account has that address, so a lock looks the same for both
 -- (auth.identity.failed_login_count and locked_until only exist for real accounts, which would tell the two apart).
 -- Rows older than the lock window mean nothing and are deleted by the application.
+set lock_timeout = '5s';
+
 create table auth.login_failure (
   id    bigint generated always as identity primary key,
   email citext not null,
