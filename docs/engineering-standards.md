@@ -231,12 +231,12 @@ release Q1.
 | Squawk, schema diff | New migrations linted; breaking changes fail unless labelled (section 9) | In place |
 | CODEOWNERS | Payroll, tax, migrations and security code request the owner's review | In place (approval enforced once there is a second reviewer) |
 | oxlint | Frontend lint | In place (warnings as errors: Q1) |
-| Spotless | Java and SQL formatting | Q1 |
-| Error Prone | Common Java bug patterns at compile time | Q1 |
-| ArchUnit | `web` depends only on `core`; no SQL outside `core`; no new public method returns `Map<String, Object>`; controllers have no business logic | Q1 |
-| JaCoCo `check` | Coverage gates in section 6 | Q1 (coverage is reported today, not enforced) |
-| Dependabot, OWASP dependency-check, `npm audit` | Dependencies, weekly | Q1 |
-| Pull request template | The checklist below | Q1 |
+| Spotless | Java and SQL formatting | Deferred: one formatting-only commit after the Q1 pull requests merge, listed in `.git-blame-ignore-revs` ([Q1 sign-off](roadmap/q1-signoff.md)) |
+| Error Prone | Common Java bug patterns at compile time | In place (errors fail the build) |
+| ArchUnit | `web` depends only on `core`; no SQL outside `core`; no new public method returns `Map<String, Object>`; controllers have no business logic | In place (existing violations frozen) |
+| JaCoCo `check` | Coverage gates in section 6 | In place |
+| Dependabot, OWASP dependency-check, `npm audit` | Dependencies, weekly | Dependabot in place; OWASP check is a weekly workflow that needs the `NVD_API_KEY` secret; `npm audit` not added |
+| Pull request template | The checklist below | In place |
 
 ## 11. Review checklist
 
