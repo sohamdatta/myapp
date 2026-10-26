@@ -3,6 +3,7 @@ package com.example.loginapp.web;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -17,6 +18,8 @@ import com.example.loginapp.core.AuthService;
 import com.example.loginapp.core.InvitationService;
 import com.example.loginapp.core.SessionCtx;
 
+import jakarta.servlet.http.HttpServletRequest;
+
 /** Sign-in, choosing where to work, and accepting an invitation. */
 @RestController
 @RequestMapping("/api")
@@ -30,15 +33,18 @@ public class AuthController {
 
     private final AuthService auth;
     private final InvitationService invitations;
+    private final boolean trustForwardedFor;
 
-    public AuthController(AuthService auth, InvitationService invitations) {
+    public AuthController(AuthService auth, InvitationService invitations,
+                          @Value("${app.trust-forwarded-for:false}") boolean trustForwardedFor) {
         this.auth = auth;
         this.invitations = invitations;
+        this.trustForwardedFor = trustForwardedFor;
     }
 
     @PostMapping("/auth/login")
-    public Map<String, Object> login(@RequestBody LoginRequest request) {
-        return withToken(auth.login(request.email(), request.password()));
+    public Map<String, Object> login(@RequestBody LoginRequest request, HttpServletRequest http) {
+        return withToken(auth.login(request.email(), request.password(), Requests.clientIp(http, trustForwardedFor)));
     }
 
     @GetMapping("/auth/me")
@@ -70,16 +76,16 @@ public class AuthController {
     }
 
     @GetMapping("/invitations/preview")
-    public Map<String, Object> previewInvitation(@RequestParam("token") String token) {
-        return invitations.preview(token);
+    public Map<String, Object> previewInvitation(@RequestParam("token") String token, HttpServletRequest http) {
+        return invitations.preview(token, Requests.clientIp(http, trustForwardedFor));
     }
 
     @PostMapping("/invitations/accept")
     public Map<String, Object> acceptInvitation(
             @RequestHeader(value = "Authorization", required = false) String authorization,
-            @RequestBody AcceptRequest request) {
+            @RequestBody AcceptRequest request, HttpServletRequest http) {
         SessionCtx signedIn = Requests.optionalSession(auth, authorization);
-        return withToken(invitations.accept(request.token(), request.password(), signedIn));
+        return withToken(invitations.accept(request.token(), request.password(), signedIn, Requests.clientIp(http, trustForwardedFor)));
     }
 
     private Map<String, Object> withToken(String token) {

@@ -114,7 +114,7 @@ class UserModuleTest {
         for (int i = 0; i < 5; i++) {
             assertError(401, "auth.invalid_credentials", () -> auth.login(org.adminEmail, "wrong-password-here"));
         }
-        assertError(423, "auth.locked", () -> auth.login(org.adminEmail, PASSWORD));
+        assertError(429, "auth.locked", () -> auth.login(org.adminEmail, PASSWORD));
     }
 
     @Test

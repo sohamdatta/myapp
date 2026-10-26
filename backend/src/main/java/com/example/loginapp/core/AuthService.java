@@ -17,19 +17,44 @@ import com.example.loginapp.core.SessionCtx.Perm;
 public final class AuthService {
 
 
+    /** One answer for every reason sign-in is refused for trying too much, so it does not say whether an account exists. */
+    static ApiException tooManyFailures() {
+        return new ApiException(429, "auth.locked", "Too many failed sign-ins. Try again in a few minutes");
+    }
+
     private final Db db;
+    private final RateLimits limits;
 
     public AuthService(Db db) {
+        this(db, new RateLimits());
+    }
+
+    public AuthService(Db db, RateLimits limits) {
         this.db = db;
+        this.limits = limits;
     }
 
     /** Checks the email and password and returns a token for a session with no Organization chosen yet. */
     public String login(String email, String password) {
+        return login(email, password, "unknown");
+    }
+
+    /** As {@link #login(String, String)}, limited by the email and by the address the request came from. */
+    public String login(String email, String password, String address) {
         if (email == null || email.isBlank() || password == null || password.isEmpty()) {
             throw new ApiException(400, "request.invalid", "Enter your email and password");
         }
+        if (!limits.allowed(RateLimits.LOGIN_FAILURES_PER_ADDRESS, address)) {
+            throw tooManyFailures();
+        }
         String token = Secrets.newToken();
         String outcome = db.inAuth(c -> {
+            // The same count and time as the account lock below, for any address, so that "locked" does not say "exists".
+            int lockAfter = Settings.platform(c, Settings.LOCKOUT_AFTER).asInt();
+            int minutes = Settings.platform(c, Settings.LOCKOUT_MINUTES).asInt();
+            if (!limits.allowed(RateLimits.LOGIN_FAILURES_PER_EMAIL, email, lockAfter, java.time.Duration.ofMinutes(minutes))) {
+                return "locked:" + minutes;
+            }
             Map<String, Object> identity = Sql.one(c,
                     "select id, password_hash, status, (locked_until is not null and locked_until > now()) as locked "
                             + "from auth.identity where email = ?::citext for update", email.trim());
@@ -45,9 +70,7 @@ public final class AuthService {
             boolean ok = "active".equals(identity.get("status"))
                     && Secrets.verifyPassword(password, (String) identity.get("passwordHash"));
             if (!ok) {
-                Sql.update(c, "update auth.identity set failed_login_count = failed_login_count + 1 where id = ?", id);
-                Sql.update(c, "update auth.identity set locked_until = now() + make_interval(mins => ?), failed_login_count = 0 "
-                        + "where id = ? and failed_login_count >= ?", lockMinutes, id, Settings.platform(c, Settings.LOCKOUT_AFTER).asInt());
+                recordFailure(c, id, lockMinutes);
                 return "invalid";
             }
             Sql.update(c, "update auth.identity set failed_login_count = 0, locked_until = null, last_login_at = now() where id = ?", id);
@@ -55,12 +78,22 @@ public final class AuthService {
             return "ok";
         });
         if (outcome.startsWith("locked:")) {
-            throw new ApiException(423, "auth.locked", "Too many failed sign-ins. Try again in " + outcome.substring(7) + " minutes");
+            throw tooManyFailures();   // the same answer as for an address that has failed too often but has no account
         }
         if (!outcome.equals("ok")) {
+            limits.hit(RateLimits.LOGIN_FAILURES_PER_EMAIL, email);
+            limits.hit(RateLimits.LOGIN_FAILURES_PER_ADDRESS, address);
             throw new ApiException(401, "auth.invalid_credentials", "Incorrect email or password");
         }
+        limits.clear(RateLimits.LOGIN_FAILURES_PER_EMAIL, email);
         return token;
+    }
+
+    /** Counts a wrong password against the account and locks it after too many in a row. */
+    static void recordFailure(Connection c, UUID identityId, int lockMinutes) throws SQLException {
+        Sql.update(c, "update auth.identity set failed_login_count = failed_login_count + 1 where id = ?", identityId);
+        Sql.update(c, "update auth.identity set locked_until = now() + make_interval(mins => ?), failed_login_count = 0 "
+                + "where id = ? and failed_login_count >= ?", lockMinutes, identityId, Settings.platform(c, Settings.LOCKOUT_AFTER).asInt());
     }
 
     /** Loads the session for a token, with its current permissions. Throws when it is missing, expired or revoked. */

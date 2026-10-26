@@ -296,7 +296,10 @@ class SettingsTest {
             }
             ApiException locked = assertThrows(ApiException.class, () -> auth.login(ravi, PASSWORD));
             assertEquals("auth.locked", locked.code());
-            assertTrue(locked.getMessage().contains("20 minutes"), locked.getMessage());
+            assertEquals(429, locked.status());
+            // the message no longer names the minutes (that would tell a stranger the account exists); the setting still
+            // decides when the lock ends, which the account holder learns from the platform's documentation
+            assertFalse(locked.getMessage().contains("20 minutes"), locked.getMessage());
         } finally {
             settings.setPlatformValue(superAdmin, "auth.lockout.after_failures", new PlatformInput(null, true, null));
             settings.setPlatformValue(superAdmin, "auth.lockout.minutes", new PlatformInput(null, true, null));
