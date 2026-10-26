@@ -1,0 +1,28 @@
+{
+  "name": "10-esi-threshold-crossed",
+  "why": "Pay of 23,000 a month is over the threshold and not already in a contribution period: no ESI.",
+  "status": "provisional",
+  "period": "2026-10-01",
+  "employee": {
+    "annual": 276000,
+    "days": {
+      "base": 31,
+      "paid": 31,
+      "lop": 0
+    }
+  },
+  "expected": {
+    "gross": "21620",
+    "deductions": "1380",
+    "net": "20240",
+    "employerCost": "1380",
+    "lines": [
+      {"code": "BASIC", "kind": "earning", "amount": "11500"},
+      {"code": "HRA", "kind": "earning", "amount": "4600"},
+      {"code": "SPECIAL", "kind": "earning", "amount": "5520"},
+      {"code": "PF_EE", "kind": "deduction", "amount": "1380"},
+      {"code": "PF_ER", "kind": "employer", "amount": "1380"}
+    ],
+    "exceptions": []
+  }
+}

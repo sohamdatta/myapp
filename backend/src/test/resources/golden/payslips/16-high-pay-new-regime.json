@@ -1,0 +1,36 @@
+{
+  "name": "16-high-pay-new-regime",
+  "why": "Pay of 2 lakh a month under the new regime, with six months already paid this tax year. By hand: income 6 x 198,200 so far + 198,200 this month + 5 x 198,200 ahead = 2,378,400; less 75,000 standard deduction = 2,303,400; slabs 20,000 + 40,000 + 60,000 + 80,000 + 25% of 303,400 (75,850) = 275,850; with 4% cess 286,884. Half is already deducted (143,442), so the remaining 143,442 over 6 months is 23,907 a month.",
+  "status": "provisional",
+  "period": "2026-10-01",
+  "employee": {
+    "annual": 2400000,
+    "days": {
+      "base": 31,
+      "paid": 31,
+      "lop": 0
+    },
+    "ytd": {
+      "taxable": 1189200,
+      "tds": 143442,
+      "pt": 1200,
+      "pfEe": 10800
+    }
+  },
+  "expected": {
+    "gross": "198200",
+    "deductions": "25907.00",
+    "net": "172293.00",
+    "employerCost": "1800",
+    "lines": [
+      {"code": "BASIC", "kind": "earning", "amount": "100000"},
+      {"code": "HRA", "kind": "earning", "amount": "40000"},
+      {"code": "SPECIAL", "kind": "earning", "amount": "58200"},
+      {"code": "PF_EE", "kind": "deduction", "amount": "1800"},
+      {"code": "PF_ER", "kind": "employer", "amount": "1800"},
+      {"code": "PT", "kind": "deduction", "amount": "200.00"},
+      {"code": "TDS", "kind": "deduction", "amount": "23907"}
+    ],
+    "exceptions": []
+  }
+}

@@ -1,0 +1,30 @@
+{
+  "name": "13-labour-welfare-fund-month",
+  "why": "December in Karnataka: labour welfare fund is due, 50 from the employee and 100 from the employer.",
+  "status": "provisional",
+  "period": "2026-12-01",
+  "employee": {
+    "days": {
+      "base": 31,
+      "paid": 31,
+      "lop": 0
+    }
+  },
+  "expected": {
+    "gross": "73200",
+    "deductions": "2050.00",
+    "net": "71150.00",
+    "employerCost": "1900.00",
+    "lines": [
+      {"code": "BASIC", "kind": "earning", "amount": "37500"},
+      {"code": "HRA", "kind": "earning", "amount": "15000"},
+      {"code": "SPECIAL", "kind": "earning", "amount": "20700"},
+      {"code": "PF_EE", "kind": "deduction", "amount": "1800"},
+      {"code": "PF_ER", "kind": "employer", "amount": "1800"},
+      {"code": "PT", "kind": "deduction", "amount": "200.00"},
+      {"code": "LWF_EE", "kind": "deduction", "amount": "50.00"},
+      {"code": "LWF_ER", "kind": "employer", "amount": "100.00"}
+    ],
+    "exceptions": []
+  }
+}

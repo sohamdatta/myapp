@@ -1,0 +1,30 @@
+{
+  "name": "15-state-without-rules",
+  "why": "A state with no rules in the pack: refused with an exception, not guessed.",
+  "status": "provisional",
+  "period": "2026-10-01",
+  "employee": {
+    "state": "TN",
+    "days": {
+      "base": 31,
+      "paid": 31,
+      "lop": 0
+    }
+  },
+  "expected": {
+    "gross": "73200",
+    "deductions": "1800",
+    "net": "71400",
+    "employerCost": "1800",
+    "lines": [
+      {"code": "BASIC", "kind": "earning", "amount": "37500"},
+      {"code": "HRA", "kind": "earning", "amount": "15000"},
+      {"code": "SPECIAL", "kind": "earning", "amount": "20700"},
+      {"code": "PF_EE", "kind": "deduction", "amount": "1800"},
+      {"code": "PF_ER", "kind": "employer", "amount": "1800"}
+    ],
+    "exceptions": [
+      {"level": "blocking", "code": "missing_state_pack"}
+    ]
+  }
+}

@@ -1,0 +1,29 @@
+{
+  "name": "14-metro-hra",
+  "why": "Metro city: HRA is 50% of basic, not 40%, and the special allowance balances the rest.",
+  "status": "provisional",
+  "period": "2026-10-01",
+  "employee": {
+    "metro": true,
+    "days": {
+      "base": 31,
+      "paid": 31,
+      "lop": 0
+    }
+  },
+  "expected": {
+    "gross": "73200",
+    "deductions": "2000.00",
+    "net": "71200.00",
+    "employerCost": "1800",
+    "lines": [
+      {"code": "BASIC", "kind": "earning", "amount": "37500"},
+      {"code": "HRA", "kind": "earning", "amount": "18750"},
+      {"code": "SPECIAL", "kind": "earning", "amount": "16950"},
+      {"code": "PF_EE", "kind": "deduction", "amount": "1800"},
+      {"code": "PF_ER", "kind": "employer", "amount": "1800"},
+      {"code": "PT", "kind": "deduction", "amount": "200.00"}
+    ],
+    "exceptions": []
+  }
+}

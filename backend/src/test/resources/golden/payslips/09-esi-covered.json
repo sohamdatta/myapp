@@ -1,0 +1,30 @@
+{
+  "name": "09-esi-covered",
+  "why": "Pay of 20,000 a month is under the 21,000 ESI threshold: both shares are deducted, rounded up.",
+  "status": "provisional",
+  "period": "2026-10-01",
+  "employee": {
+    "annual": 240000,
+    "days": {
+      "base": 31,
+      "paid": 31,
+      "lop": 0
+    }
+  },
+  "expected": {
+    "gross": "18800",
+    "deductions": "1341",
+    "net": "17459",
+    "employerCost": "1811",
+    "lines": [
+      {"code": "BASIC", "kind": "earning", "amount": "10000"},
+      {"code": "HRA", "kind": "earning", "amount": "4000"},
+      {"code": "SPECIAL", "kind": "earning", "amount": "4800"},
+      {"code": "PF_EE", "kind": "deduction", "amount": "1200"},
+      {"code": "PF_ER", "kind": "employer", "amount": "1200"},
+      {"code": "ESI_EE", "kind": "deduction", "amount": "141"},
+      {"code": "ESI_ER", "kind": "employer", "amount": "611"}
+    ],
+    "exceptions": []
+  }
+}

@@ -1,0 +1,31 @@
+{
+  "name": "18-professional-tax-maharashtra-man",
+  "why": "The same pay as scenario 12 for a man in Maharashtra: gross 23,500 is over 10,000, so professional tax is 200.",
+  "status": "provisional",
+  "period": "2026-10-01",
+  "employee": {
+    "state": "MH",
+    "gender": "male",
+    "days": {
+      "base": 31,
+      "paid": 31,
+      "lop": 0
+    },
+    "annual": 300000
+  },
+  "expected": {
+    "gross": "23500",
+    "deductions": "1700.00",
+    "net": "21800.00",
+    "employerCost": "1500",
+    "lines": [
+      {"code": "BASIC", "kind": "earning", "amount": "12500"},
+      {"code": "HRA", "kind": "earning", "amount": "5000"},
+      {"code": "SPECIAL", "kind": "earning", "amount": "6000"},
+      {"code": "PF_EE", "kind": "deduction", "amount": "1500"},
+      {"code": "PF_ER", "kind": "employer", "amount": "1500"},
+      {"code": "PT", "kind": "deduction", "amount": "200.00"}
+    ],
+    "exceptions": []
+  }
+}
