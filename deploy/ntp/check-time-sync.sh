@@ -12,10 +12,11 @@ max_ms="${MAX_OFFSET_MS:-100}"
 allowed='(^|\.)(nic\.in|nplindia\.org|nplindia\.in)$'
 problems=()
 
-command -v chronyc >/dev/null 2>&1 || { echo "PROBLEM: chronyc is not installed (apt install chrony)."; exit 1; }
+chronyc="${CHRONYC:-chronyc}"   # CHRONYC lets the test point at a stand-in
+command -v "$chronyc" >/dev/null 2>&1 || { echo "PROBLEM: chronyc is not installed (apt install chrony)."; exit 1; }
 
 # 1. the clock is synchronised, and its offset is small
-tracking="$(chronyc -c tracking 2>/dev/null || true)"
+tracking="$("$chronyc" -c tracking 2>/dev/null || true)"
 if [ -z "$tracking" ]; then
   problems+=("chrony did not answer (is the chrony service running?)")
 else
@@ -31,7 +32,7 @@ else
 fi
 
 # 2. the sources are the government ones
-sources="$(chronyc -c sources 2>/dev/null || true)"
+sources="$("$chronyc" -c sources 2>/dev/null || true)"
 good=0; other=()
 while IFS=, read -r _ state name _; do
   [ -n "${name:-}" ] || continue
