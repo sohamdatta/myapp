@@ -42,3 +42,10 @@ updates:
     directory: /deploy
     schedule: { interval: weekly, day: monday, time: '06:00', timezone: Asia/Kolkata }
     labels: [dependencies]
+    # The code is built and every test runs on Java 21 (CI uses temurin 21), so the image must too. A move to a newer
+    # Java is a decision made with CI changed to match, not a weekly bump.
+    ignore:
+      - dependency-name: maven
+        update-types: ['version-update:semver-major', 'version-update:semver-minor']
+      - dependency-name: eclipse-temurin
+        update-types: ['version-update:semver-major']
