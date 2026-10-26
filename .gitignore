@@ -14,3 +14,6 @@ frontend/dist/
 # Deployment secrets: each environment's filled-in settings
 deploy/.env
 deploy/env/*.env
+
+# Property tests: past failures kept by jqwik
+backend/.jqwik-database
