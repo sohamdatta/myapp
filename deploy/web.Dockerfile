@@ -1,7 +1,7 @@
 # The web server: Caddy serving the built frontend and passing /api to the backend.
 # It gets and renews the HTTPS certificate for DOMAIN by itself.
 # Build from the repository root: docker build -f deploy/web.Dockerfile .
-FROM node:22-alpine AS build
+FROM node:26-alpine AS build
 WORKDIR /src
 COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci
