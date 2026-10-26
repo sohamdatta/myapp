@@ -2,7 +2,7 @@ import { test, expect, type Page } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { SUPER_ADMIN, PASSWORD, newPage, signIn, acceptInvite, api } from './helpers';
+import { SUPER_ADMIN, PASSWORD, newPage, signIn, acceptInvite, api, expectNoConsoleErrors } from './helpers';
 
 // An axe scan of every page each role can reach, in an Organization of its own.
 //
@@ -64,6 +64,10 @@ async function scanAllPages(page: Page, role: string) {
 }
 
 test.describe.serial('accessibility @a11y', () => {
+  test.afterAll(() => {
+    expectNoConsoleErrors();
+  });
+
   test('sign-in page, signed out', async ({ browser }) => {
     const page = await newPage(browser);
     await page.goto('/');
@@ -114,8 +118,13 @@ test.describe.serial('accessibility @a11y', () => {
     await testInfo.attach('where.json', { body: JSON.stringify(where, null, 2), contentType: 'application/json' });
     if (Object.keys(where).length) console.log('Serious or critical findings:\n' + JSON.stringify(where, null, 2));
     await testInfo.attach('serious-and-critical.json', { body: JSON.stringify(found, null, 2), contentType: 'application/json' });
-    // 1 sign-in + 1 invitation + 3 roles' sidebars + a phone's: far fewer means pages went missing from the sidebar.
-    expect(scanned.size, 'pages scanned').toBeGreaterThanOrEqual(30);
+    // Far fewer than this per role means pages went missing from the sidebar, and the scan would pass by seeing less.
+    const count = (prefix: string) => [...scanned].filter((n) => n.startsWith(prefix)).length;
+    expect(count('signed out'), 'signed-out pages').toBe(2);
+    expect(count('super admin'), 'Super Admin pages').toBeGreaterThanOrEqual(3);
+    expect(count('org admin /'), 'Org Admin pages').toBeGreaterThanOrEqual(10);
+    expect(count('employee'), 'employee pages').toBeGreaterThanOrEqual(2);
+    expect(count('org admin on a phone'), 'Org Admin pages on a phone').toBeGreaterThanOrEqual(10);
 
     if (process.env.E2E_A11Y_UPDATE) {
       writeFileSync(BASELINE, JSON.stringify(sorted(found), null, 2) + '\n');
@@ -127,7 +136,10 @@ test.describe.serial('accessibility @a11y', () => {
     for (const [name, rules] of Object.entries(found)) {
       for (const [rule, now] of Object.entries(rules)) {
         const before = baseline[name]?.[rule]?.nodes ?? 0;
-        if (now.nodes > before) worse.push(`${name}: ${rule} (${now.impact}) touches ${now.nodes} elements, baseline ${before}`);
+        // The Super Admin's lists grow with every Organization on the platform, so a recorded rule there
+        // is compared by presence, not by count. (The baseline is empty, so for now any finding fails.)
+        const tolerated = name.startsWith('super admin') && before > 0;
+        if (now.nodes > before && !tolerated) worse.push(`${name}: ${rule} (${now.impact}) touches ${now.nodes} elements, baseline ${before}`);
       }
     }
     for (const [name, rules] of Object.entries(baseline)) {
