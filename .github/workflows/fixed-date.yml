@@ -121,6 +121,8 @@ jobs:
 
       - name: Browser tests
         working-directory: e2e
+        env:
+          E2E_WORKERS: 1   # libfaketime slows the JVM 3-5x; keep one worker until a weekly run proves two
         run: npx playwright test
 
       - name: Copy the database log where the upload can read it
