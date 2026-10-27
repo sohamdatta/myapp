@@ -15,6 +15,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.example.loginapp.core.ApiException;
 import com.example.loginapp.core.AuthService;
+import com.example.loginapp.core.EmailChangeService;
 import com.example.loginapp.core.InvitationService;
 import com.example.loginapp.core.MfaService;
 import com.example.loginapp.core.PasswordService;
@@ -41,6 +42,10 @@ public class AuthController {
 
     public record DisableMfaRequest(String password, String code) {}
 
+    public record EmailChangeRequest(String newEmail, String password) {}
+
+    public record TokenRequest(String token) {}
+
     public record ForgotRequest(String email) {}
 
     public record ResetRequest(String token, String password) {}
@@ -51,14 +56,16 @@ public class AuthController {
     private final InvitationService invitations;
     private final PasswordService passwords;
     private final MfaService mfa;
+    private final EmailChangeService emailChanges;
     private final boolean trustForwardedFor;
 
     public AuthController(AuthService auth, InvitationService invitations, PasswordService passwords, MfaService mfa,
-                          @Value("${app.trust-forwarded-for:false}") boolean trustForwardedFor) {
+                          EmailChangeService emailChanges, @Value("${app.trust-forwarded-for:false}") boolean trustForwardedFor) {
         this.auth = auth;
         this.invitations = invitations;
         this.passwords = passwords;
         this.mfa = mfa;
+        this.emailChanges = emailChanges;
         this.trustForwardedFor = trustForwardedFor;
     }
 
@@ -80,6 +87,25 @@ public class AuthController {
     @GetMapping("/auth/mfa")
     public MfaService.Status mfaStatus(@RequestHeader(value = "Authorization", required = false) String authorization) {
         return mfa.status(Requests.session(auth, authorization));
+    }
+
+    @PostMapping("/auth/email-change")
+    public ResponseEntity<Void> emailChange(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                            @RequestBody EmailChangeRequest request) {
+        emailChanges.request(Requests.session(auth, authorization), request.newEmail(), request.password());
+        return ResponseEntity.noContent().build();
+    }
+
+    @PostMapping("/auth/email-change/confirm")
+    public ResponseEntity<Void> emailChangeConfirm(@RequestBody TokenRequest request, HttpServletRequest http) {
+        emailChanges.confirm(request.token(), Requests.clientIp(http, trustForwardedFor));
+        return ResponseEntity.noContent().build();
+    }
+
+    @PostMapping("/auth/email-change/undo")
+    public ResponseEntity<Void> emailChangeUndo(@RequestBody TokenRequest request, HttpServletRequest http) {
+        emailChanges.undo(request.token(), Requests.clientIp(http, trustForwardedFor));
+        return ResponseEntity.noContent().build();
     }
 
     @PostMapping("/auth/step-up")

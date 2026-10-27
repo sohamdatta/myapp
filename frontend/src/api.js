@@ -202,6 +202,9 @@ export const forgotPassword = (email) => post('/auth/forgot', { email })
 
 export const resetPassword = (token, password) => post('/auth/reset', { token, password })
 
+export const changeEmail = (newEmail, password) => post('/auth/email-change', { newEmail, password })
+export const confirmEmailChange = (token) => post('/auth/email-change/confirm', { token })
+export const undoEmailChange = (token) => post('/auth/email-change/undo', { token })
 export const changePassword = (currentPassword, newPassword) => post('/auth/password', { currentPassword, newPassword })
 
 /** The signed-in person, or null when there is no valid session. */

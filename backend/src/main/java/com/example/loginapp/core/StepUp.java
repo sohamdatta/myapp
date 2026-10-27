@@ -12,6 +12,17 @@ public final class StepUp {
 
     private StepUp() {}
 
+    /** For things only the person themselves should do (their own address): a fresh code, but only if they have two-step on. */
+    public static void requireIfEnrolled(Db db, SessionCtx ctx) {
+        Map<String, Object> state = db.inAuth(c -> Sql.one(c,
+                "select s.step_up_at is not null and s.step_up_at > now() - make_interval(mins => ?) as fresh, "
+                        + "i.mfa_enrolled_at is not null as enrolled "
+                        + "from auth.session s join auth.identity i on i.id = s.identity_id where s.id = ?", MINUTES, ctx.sessionId()));
+        if (state != null && Boolean.TRUE.equals(state.get("enrolled")) && !Boolean.TRUE.equals(state.get("fresh"))) {
+            throw new ApiException(403, "stepup.required", "Enter a fresh code from your authenticator app to continue");
+        }
+    }
+
     public static void require(Db db, SessionCtx ctx) {
         if (ctx.isSupport()) {
             throw new ApiException(403, "permission.denied", "A support session cannot do this");   // never by support, whatever its role rows say

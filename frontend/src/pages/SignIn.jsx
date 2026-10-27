@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useState } from 'react'
-import { acceptInvitation, completeMfa, enterConsole, enterOrganization, forgotPassword, login, previewInvitation, resetPassword } from '../api.js'
+import { acceptInvitation, completeMfa, confirmEmailChange, undoEmailChange, enterConsole, enterOrganization, forgotPassword, login, previewInvitation, resetPassword } from '../api.js'
 import { useAction } from '../hooks.js'
 import { ErrorNote } from '../ui.jsx'
 import NexvanceLogo from '../brand/NexvanceLogo.jsx'
@@ -308,6 +308,54 @@ function ForgotPassword({ onBack }) {
 }
 
 /** The page behind a reset link: choose a new password. Nobody is signed in by it. */
+/** The page behind the link that confirms a new sign-in address, or the one that undoes the change. Needs a click, not just a visit. */
+export function EmailLink({ kind, token, onDone }) {
+  const [done, setDone] = useState(false)
+  const { busy, error, run } = useAction()
+  const confirming = kind === 'confirm'
+
+  async function go() {
+    const ok = await run(async () => {
+      await (confirming ? confirmEmailChange(token) : undoEmailChange(token))
+      return true
+    })
+    if (ok) setDone(true)
+  }
+
+  if (done) {
+    return (
+      <div className="card">
+        <h1>{confirming ? 'Address changed' : 'Address put back'}</h1>
+        <p role="status">
+          {confirming
+            ? 'Your sign-in address is changed, and you were signed out everywhere. Sign in with the new address.'
+            : 'The earlier address is back, and you were signed out everywhere. Sign in, then change your password.'}
+        </p>
+        <button type="button" className="primary" onClick={onDone}>
+          Go to sign in
+        </button>
+      </div>
+    )
+  }
+  return (
+    <div className="card">
+      <h1>{confirming ? 'Confirm your new address' : 'Undo the change of address'}</h1>
+      <p className="muted">
+        {confirming
+          ? 'Use this address to sign in from now on. Every session will end.'
+          : 'Go back to the earlier sign-in address. Every session will end.'}
+      </p>
+      <ErrorNote>{error}</ErrorNote>
+      <button type="button" className="primary" disabled={busy} onClick={go}>
+        {confirming ? 'Confirm' : 'Undo the change'}
+      </button>
+      <button type="button" className="quiet" onClick={onDone}>
+        Cancel
+      </button>
+    </div>
+  )
+}
+
 export function ResetPassword({ token, onDone, onCancel }) {
   const [password, setPassword] = useState('')
   const [confirm, setConfirm] = useState('')

@@ -232,3 +232,13 @@ which is a choice to confirm. `POST /auth/step-up` takes a code (authenticator o
 session only: switching Organization makes a new session and drops it. A code that passes also counts as the session's proof of a
 code (`mfa_at`). Wrong codes count against the sign-in lock and a code cannot be shown twice. Support sessions are refused
 outright. The front end shows one prompt for requests refused together and retries them, files included. `MfaServiceTest` covers it.
+
+## Changing the sign-in address
+
+From Security, with the password (and a fresh code when two-step is on): a link goes to the NEW address, good for 24 hours, and
+the old address is told a change was asked for. Opening the link (a click, not just a visit) moves the login, ends every session
+and sends the OLD address a link to undo it for 7 days; undoing puts the old address back, ends every session and tells both. An
+address that already has a login is answered the same and gets nothing, so the request does not say whether an account exists.
+A new request cancels the earlier one; 5 requests an hour per login; wrong links are limited per client address; a wrong password
+counts toward the sign-in lock. Undo does not change the password: the mail tells the person to. `EmailChangeTest` and
+`28-email-change.spec.ts` (project `email-change`) cover it.
