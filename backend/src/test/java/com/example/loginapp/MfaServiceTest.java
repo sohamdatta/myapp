@@ -127,7 +127,7 @@ class MfaServiceTest {
     private List<String> enrol(String email) {
         SessionCtx ctx = auth.resolve(auth.login(email, PASSWORD));
         MfaService.Enrolment e = mfa.start(ctx);
-        List<String> codes = mfa.confirm(ctx, codeNow(e.secret()));
+        List<String> codes = mfa.confirm(ctx, PASSWORD, codeNow(e.secret()));
         advance(30);
         java.util.ArrayList<String> out = new java.util.ArrayList<>();
         out.add(e.secret());
@@ -157,13 +157,13 @@ class MfaServiceTest {
         String email = owner();
         SessionCtx ctx = auth.resolve(auth.login(email, PASSWORD));
         assertFalse(mfa.status(ctx).enrolled());
-        assertEquals(409, refusal(() -> mfa.confirm(ctx, "123456")).status(), "nothing started yet");
+        assertEquals(409, refusal(() -> mfa.confirm(ctx, PASSWORD, "123456")).status(), "nothing started yet");
         MfaService.Enrolment e = mfa.start(ctx);
         assertTrue(e.uri().startsWith("otpauth://totp/"));
         assertTrue(e.uri().contains("secret=" + e.secret()));
-        assertEquals(400, refusal(() -> mfa.confirm(ctx, "000000")).status(), "a wrong code does not turn it on");
+        assertEquals(400, refusal(() -> mfa.confirm(ctx, PASSWORD, "000000")).status(), "a wrong code does not turn it on");
         assertFalse(mfa.status(ctx).enrolled());
-        List<String> codes = mfa.confirm(ctx, codeNow(e.secret()));
+        List<String> codes = mfa.confirm(ctx, PASSWORD, codeNow(e.secret()));
         assertEquals(10, codes.size());
         assertEquals(10, codes.stream().distinct().count());
         assertTrue(codes.get(0).matches("[A-Z2-7]{5}-[A-Z2-7]{5}"), codes.get(0));
@@ -176,6 +176,40 @@ class MfaServiceTest {
         assertFalse(owner("select encode(mfa_secret_enc, 'escape') from auth.identity where email = '" + email + "'").contains(e.secret().substring(0, 8)));
         String stored = owner("select string_agg(encode(code_hash, 'hex'), ',') from auth.mfa_recovery_code");
         assertFalse(stored.toUpperCase().contains(codes.get(0).replace("-", "")));
+    }
+
+    @Test
+    void settingUpNeedsThePasswordAndEndsEarlierSessions() throws Exception {
+        String email = owner();
+        String before = auth.login(email, PASSWORD);
+        String mine = auth.login(email, PASSWORD);
+        SessionCtx ctx = auth.resolve(mine);
+        MfaService.Enrolment e = mfa.start(ctx);
+        assertEquals(403, refusal(() -> mfa.confirm(ctx, "wrong-password-here", codeNow(e.secret()))).status(), "a stolen session cannot turn it on");
+        assertFalse(mfa.status(ctx).enrolled());
+        mfa.confirm(ctx, PASSWORD, codeNow(e.secret()));
+        assertEquals(401, refusal(() -> auth.resolve(before)).status(), "a session from before it was on is ended");
+        assertNotNull(auth.resolve(mine), "the session that set it up stays");
+    }
+
+    @Test
+    void aResetDoesNotGiveACodeGuesserFreshGuessesAndEndsOpenChallenges() throws Exception {
+        String email = owner();
+        enrol(email);
+        AuthService.SignIn step = auth.signIn(email, PASSWORD, null);
+        for (int i = 0; i < 3; i++) {
+            AuthService.SignIn s = auth.signIn(email, PASSWORD, null);
+            assertEquals("auth.invalid_code", refusal(() -> mfa.complete(s.token(), "000000", null)).code());
+        }
+        String hold = auth.signIn(email, PASSWORD, null).token();
+        com.example.loginapp.core.PasswordService passwords = new com.example.loginapp.core.PasswordService(db, outbox, limits, "https://x.test", false);
+        passwords.requestReset(email, "10.9.9.1");
+        passwords.sendWaitingLinks();
+        ownerExec("update auth.password_reset set token_hash = sha256('known-token'::bytea) where identity_id = (select id from auth.identity where email = '" + email + "') and used_at is null");
+        passwords.reset("known-token", "a-new-long-password-9", null);
+        assertEquals("auth.challenge_expired", refusal(() -> mfa.complete(hold, "000000", null)).code(), "open challenges end with the reset");
+        assertEquals(3L, Long.parseLong(owner("select count(*) from auth.login_failure where email = '" + email + "'")), "the failures stay");
+        assertNotNull(step);
     }
 
     @Test
@@ -265,9 +299,12 @@ class MfaServiceTest {
         String slug = "mfa-second-" + SEQ.incrementAndGet();
         Map<String, Object> created = platform.createOrganization(superAdmin, "Org " + slug, slug, "growth", email);
         InvitationService invitations = new InvitationService(db, limits);
-        ApiException e = refusal(() -> invitations.accept((String) created.get("invitationToken"), PASSWORD, null, "10.5.5.5"));
+        String link = (String) created.get("invitationToken");
+        ApiException e = refusal(() -> invitations.accept(link, PASSWORD, null, "10.5.5.5"));
         assertEquals("auth.mfa_required", e.code());
         assertEquals(403, e.status());
+        // a wrong password learns nothing about two steps: it is the ordinary refusal, and it counts
+        assertEquals("invitation.email_mismatch", refusal(() -> invitations.accept(link, "wrong-password-here", null, "10.5.5.6")).code());
     }
 
     @Test

@@ -126,7 +126,12 @@ public final class PasswordService {
             Sql.update(c, "update auth.password_reset set used_at = now() where identity_id = ? and used_at is null", identityId);
             Sql.update(c, "update auth.identity set password_hash = ? where id = ?", hash, identityId);
             AuthService.revokeAll(c, identityId, null);
-            AuthService.clearFailures(c, email);
+            MfaService.endChallenges(c, identityId);
+            // a login with two-step sign-in keeps its run of failures: wrong codes are guesses at the second factor, and a
+            // reset (which anyone with the mailbox can ask for) must not hand a code-guesser a fresh set
+            if (Sql.one(c, "select 1 as x from auth.identity where id = ? and mfa_enrolled_at is not null", identityId) == null) {
+                AuthService.clearFailures(c, email);
+            }
             notifyChanged(c, email, "reset:" + link.get("id"));
             return "ok";
         });
@@ -171,6 +176,7 @@ public final class PasswordService {
             }
             Sql.update(c, "update auth.identity set password_hash = ? where id = ?", hash, ctx.identityId());
             AuthService.revokeAll(c, ctx.identityId(), ctx.sessionId());
+            MfaService.endChallenges(c, ctx.identityId());
             Sql.update(c, "update auth.password_reset set used_at = now() where identity_id = ? and used_at is null", ctx.identityId());
             AuthService.clearFailures(c, ctx.email());
             notifyChanged(c, ctx.email(), "changed:" + UUID.randomUUID());

@@ -207,5 +207,5 @@ from the data key and used with one `update … where used_at is null`. A right 
 session, and does **not** clear the failure run; wrong codes are failures on the same per-email lock (5 → 429) and five wrong codes kill the
 challenge, so retyping the password does not restart guessing. Invitation links refuse (403 `auth.mfa_required`) for such a login. Sessions made by
 switching Organization keep the old session's `mfa_at`. Turning it off needs the password (checked first, so a wrong password does not use up a code)
-and a code, and ends other sessions. `MfaServiceTest` (fake clock) and `27-two-step.spec.ts` (works out codes like an app) cover it. Not yet: requiring
+and a code, and ends other sessions. `MfaServiceTest` (fake clock) and `27-two-step.spec.ts` (works out codes like an app) cover it. Turning it on needs the password too (a stolen session must not be able to take over the second factor) and ends earlier sessions; a reset or password change ends open challenges, and a reset keeps a two-step login's run of failures so it never hands a code-guesser fresh guesses (so a victim of lock-out spam waits it out). Not yet: requiring
 it by role, and asking for a fresh code before sensitive actions (the next two PRs).

@@ -80,11 +80,12 @@ function TwoStepSection() {
 
   async function confirm(event) {
     event.preventDefault()
-    const result = await run(() => mfa.confirm(code))
+    const result = await run(() => mfa.confirm(password, code))
     if (result) {
       setCodes(result.recoveryCodes)
       setSetup(null)
       setCode('')
+      setPassword('')
       status.reload()
     }
   }
@@ -147,9 +148,11 @@ function TwoStepSection() {
           <p className="hint">
             Cannot scan? Enter this key by hand: <code id="mfa-secret">{setup.secret}</code>
           </p>
+          <label htmlFor="mfa-confirm-password">Your password</label>
+          <input id="mfa-confirm-password" type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} />
           <label htmlFor="mfa-confirm-code">Code from the app</label>
           <input id="mfa-confirm-code" inputMode="numeric" autoComplete="one-time-code" value={code} onChange={(e) => setCode(e.target.value)} />
-          <button type="submit" className="primary" disabled={busy || !code.trim()}>
+          <button type="submit" className="primary" disabled={busy || !code.trim() || !password}>
             Turn on
           </button>
         </form>

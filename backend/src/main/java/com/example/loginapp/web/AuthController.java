@@ -89,8 +89,8 @@ public class AuthController {
 
     @PostMapping("/auth/mfa/confirm")
     public RecoveryCodes mfaConfirm(@RequestHeader(value = "Authorization", required = false) String authorization,
-                                    @RequestBody CodeRequest request) {
-        return new RecoveryCodes(mfa.confirm(Requests.session(auth, authorization), request.code()));
+                                    @RequestBody DisableMfaRequest request) {
+        return new RecoveryCodes(mfa.confirm(Requests.session(auth, authorization), request.password(), request.code()));
     }
 
     @PostMapping("/auth/mfa/recovery")

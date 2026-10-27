@@ -78,10 +78,22 @@ public final class MfaService {
     }
 
     /** Turns it on when the code from the app is right. Returns the ten recovery codes, which are shown this once. */
-    public List<String> confirm(SessionCtx ctx, String code) {
+    public List<String> confirm(SessionCtx ctx, String password, String code) {
         requireOwnLogin(ctx);
+        String[] failure = new String[1];
         List<String> codes = db.inAuth(c -> {
             AuthService.lockEmail(c, ctx.email());
+            if (AuthService.lockedOut(c, ctx.email())) {
+                failure[0] = "locked";
+                return null;
+            }
+            // turning it on is protected like turning it off: a stolen session alone must not be able to lock the owner out
+            Map<String, Object> identity = Sql.one(c, "select password_hash from auth.identity where id = ? for update", ctx.identityId());
+            if (password == null || !Secrets.verifyPassword(password, (String) identity.get("passwordHash"))) {
+                AuthService.recordFailure(c, ctx.email());
+                failure[0] = "wrong";
+                return null;
+            }
             byte[] pending = bytes(c, "select mfa_pending_secret_enc from auth.identity where id = ? and mfa_enrolled_at is null for update", ctx.identityId());
             if (pending == null) {
                 throw new ApiException(409, "mfa.not_started", "Start setting up two-step sign-in first");
@@ -98,12 +110,16 @@ public final class MfaService {
                 ps.executeUpdate();
             }
             Sql.update(c, "update auth.session set mfa_at = now() where id = ?", ctx.sessionId());
+            AuthService.revokeAll(c, ctx.identityId(), ctx.sessionId());   // sessions from before it was on never proved a second factor
             List<String> fresh = newRecoveryCodes(c, ctx.identityId());
             notice(c, ctx.email(), "Two-step sign-in was turned on", "Two-step sign-in was just turned on for " + ctx.email()
                     + ". From now on signing in asks for a code from your authenticator app.\n\n"
                     + "If this was not you, reset your password and tell your administrator.\n");
             return fresh;
         });
+        if (failure[0] != null) {
+            refuseUnless(failure[0]);
+        }
         return codes;
     }
 
@@ -164,6 +180,7 @@ public final class MfaService {
             Sql.update(c, "update auth.identity set mfa_secret_enc = null, mfa_pending_secret_enc = null, mfa_enrolled_at = null, "
                     + "mfa_last_step = null where id = ?", ctx.identityId());
             Sql.update(c, "update auth.mfa_recovery_code set used_at = coalesce(used_at, now()) where identity_id = ?", ctx.identityId());
+            endChallenges(c, ctx.identityId());
             AuthService.revokeAll(c, ctx.identityId(), ctx.sessionId());
             AuthService.clearFailures(c, ctx.email());
             notice(c, ctx.email(), "Two-step sign-in was turned off", "Two-step sign-in was just turned off for " + ctx.email()
@@ -233,6 +250,11 @@ public final class MfaService {
     }
 
     // ── shared ──────────────────────────────────────────────────────────
+
+    /** Challenges still open when the password or the second step changes are no longer worth anything. */
+    static void endChallenges(Connection c, UUID identityId) throws SQLException {
+        Sql.update(c, "update auth.mfa_challenge set used_at = now() where identity_id = ? and used_at is null", identityId);
+    }
 
     private static void requireOwnLogin(SessionCtx ctx) {
         if (ctx.isSupport()) {

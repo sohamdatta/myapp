@@ -96,10 +96,6 @@ public final class InvitationService {
                     throw INVALID;
                 }
                 if (!alreadySignedIn) {
-                    if (Boolean.TRUE.equals(identity.get("mfa"))) {
-                        // a password alone is not a sign-in for this login, so it cannot be one here either
-                        return Map.<String, Object>of("refused", "mfa");
-                    }
                     if (AuthService.lockedOut(c, email)) {
                         return Map.<String, Object>of("refused", "locked");
                     }
@@ -107,6 +103,11 @@ public final class InvitationService {
                         // recorded here and refused below: throwing now would roll the failure back
                         AuthService.recordFailure(c, email);
                         return Map.<String, Object>of("refused", "password");
+                    }
+                    if (Boolean.TRUE.equals(identity.get("mfa"))) {
+                        // the password is right but is not a sign-in for this login, so it cannot be one here either; this is
+                        // only said after the password, so a link alone does not tell whether an account uses two steps
+                        return Map.<String, Object>of("refused", "mfa");
                     }
                     AuthService.clearFailures(c, email);
                 }
@@ -122,6 +123,9 @@ public final class InvitationService {
             UUID membershipId = AuthService.uuid(result.get("membershipId"));
             Sql.update(c, "update auth.identity set last_login_at = now() where id = ?", identityId);
             AuthService.insertSession(c, sessionToken, identityId, "tenant", tenantId, membershipId, null, "12 hours");
+            if (signedIn != null && alreadySignedIn) {
+                AuthService.carryMfa(c, signedIn.sessionId(), sessionToken);
+            }
             if (signedIn != null && alreadySignedIn && !signedIn.isSupport()) {
                 AuthService.revoke(c, signedIn.sessionId());
             }

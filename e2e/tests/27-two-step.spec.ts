@@ -83,6 +83,7 @@ test.describe.serial('two-step sign-in', () => {
     secret = (await page.locator('#mfa-secret').innerText()).trim();
     expect(secret).toMatch(/^[A-Z2-7]{32}$/);
 
+    await page.fill('#mfa-confirm-password', PASSWORD);
     await page.fill('#mfa-confirm-code', '000000');
     await page.getByRole('button', { name: 'Turn on' }).click();
     await expect(page.getByText('That code is not right')).toBeVisible();

@@ -177,7 +177,7 @@ export async function completeMfa(challenge, code) {
 export const mfa = {
   status: () => get('/auth/mfa'),
   start: () => post('/auth/mfa/start'),
-  confirm: (code) => post('/auth/mfa/confirm', { code }),
+  confirm: (password, code) => post('/auth/mfa/confirm', { password, code }),
   recovery: (code) => post('/auth/mfa/recovery', { code }),
   disable: (password, code) => post('/auth/mfa/disable', { password, code }),
 }
