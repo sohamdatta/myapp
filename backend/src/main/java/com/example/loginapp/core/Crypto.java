@@ -130,6 +130,11 @@ public final class Crypto {
         return hmac(hmacKey, (tenantId + "|" + kind + "|" + value).getBytes(StandardCharsets.UTF_8));
     }
 
+    /** A keyed hash of a value, for secrets that are only ever compared (recovery codes): a dump of the table alone cannot be guessed against. */
+    public byte[] keyedHash(String value) {
+        return hmac(hmacKey, value.getBytes(StandardCharsets.UTF_8));
+    }
+
     private static byte[] hmac(SecretKeySpec key, byte[] data) {
         try {
             Mac mac = Mac.getInstance("HmacSHA256");

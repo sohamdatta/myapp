@@ -39,8 +39,26 @@ public final class AuthService {
         return login(email, password, null);   // no address: callers inside the process, which are not limited by one
     }
 
-    /** As {@link #login(String, String)}, limited by the email and by the address the request came from. */
+    /** The result of the password step: a session token, or (when the login has two-step sign-in) a challenge to answer with a code. */
+    public record SignIn(String token, boolean mfaRequired) {}
+
+    /**
+     * As {@link #login(String, String)}, limited by the email and by the address the request came from. For a login with
+     * two-step sign-in set up this refuses: use {@link #signIn}, then answer the challenge.
+     */
     public String login(String email, String password, String address) {
+        SignIn result = signIn(email, password, address);
+        if (result.mfaRequired()) {
+            throw new ApiException(403, "auth.mfa_required", "This login needs the code from its authenticator app");
+        }
+        return result.token();
+    }
+
+    /**
+     * The password step of signing in. Returns a session, or a challenge when the login has two-step sign-in: nothing is
+     * granted, and the run of failures is not cleared, until the code is also right (see {@link MfaService#complete}).
+     */
+    public SignIn signIn(String email, String password, String address) {
         if (email == null || email.isBlank() || password == null || password.isEmpty()) {
             throw new ApiException(400, "request.invalid", "Enter your email and password");
         }
@@ -55,7 +73,8 @@ public final class AuthService {
                 return "locked";
             }
             Map<String, Object> identity = Sql.one(c,
-                    "select id, password_hash, status from auth.identity where email = ?::citext for update", email.trim());
+                    "select id, password_hash, status, mfa_enrolled_at is not null as mfa from auth.identity where email = ?::citext for update",
+                    email.trim());
             if (identity == null) {
                 Secrets.verifyPassword(password, DUMMY_HASH);   // same work as a real check
                 recordFailure(c, email);
@@ -68,6 +87,12 @@ public final class AuthService {
                 recordFailure(c, email);
                 return "invalid";
             }
+            if (Boolean.TRUE.equals(identity.get("mfa"))) {
+                // not signed in yet, and the failures stay: guessing codes after a right password must still lock
+                Sql.update(c, "insert into auth.mfa_challenge (token_hash, identity_id, expires_at) values (?, ?, now() + interval '5 minutes')",
+                        Secrets.sha256(token), id);
+                return "mfa";
+            }
             clearFailures(c, email);
             Sql.update(c, "update auth.identity set last_login_at = now() where id = ?", id);
             insertSession(c, token, id, "identity", null, null, null, "30 minutes");
@@ -76,13 +101,13 @@ public final class AuthService {
         if (outcome.equals("locked")) {
             throw tooManyFailures();   // the same answer as for an address that has failed too often but has no account
         }
-        if (!outcome.equals("ok")) {
+        if (!outcome.equals("ok") && !outcome.equals("mfa")) {
             if (address != null) {
                 limits.hit(RateLimits.LOGIN_FAILURES_PER_ADDRESS, address);
             }
             throw new ApiException(401, "auth.invalid_credentials", "Incorrect email or password");
         }
-        return token;
+        return new SignIn(token, outcome.equals("mfa"));
     }
 
     private static final String DUMMY_HASH = "pbkdf2-sha256$210000$AAAAAAAAAAAAAAAAAAAAAA==$AAAA";
@@ -293,6 +318,7 @@ public final class AuthService {
                 throw new ApiException(403, "tenant.unavailable", "You do not have access to that Organization");
             }
             insertSession(c, token, ctx.identityId(), "tenant", tenantId, uuid(m.get("membershipId")), null, "12 hours");
+            carryMfa(c, ctx.sessionId(), token);
             revoke(c, ctx.sessionId());
             return null;
         });
@@ -311,6 +337,7 @@ public final class AuthService {
                 throw new ApiException(403, "permission.denied", "This login has no platform role");
             }
             insertSession(c, token, ctx.identityId(), "platform", null, null, null, "8 hours");
+            carryMfa(c, ctx.sessionId(), token);
             revoke(c, ctx.sessionId());
             return null;
         });
@@ -335,6 +362,12 @@ public final class AuthService {
         Sql.update(c, "insert into auth.session (identity_id, kind, tenant_id, membership_id, impersonation_grant_id, "
                         + "refresh_token_hash, expires_at) values (?, ?, ?, ?, ?, ?, now() + ?::interval)",
                 identityId, kind, tenantId, membershipId, grantId, Secrets.sha256(token), lifetime);
+    }
+
+    /** A new session made from an old one (switching Organization) keeps the old one's proof of a recent code. */
+    static void carryMfa(Connection c, UUID fromSession, String newToken) throws SQLException {
+        Sql.update(c, "update auth.session set mfa_at = (select mfa_at from auth.session where id = ?) where refresh_token_hash = ?",
+                fromSession, Secrets.sha256(newToken));
     }
 
     /** Ends a session; returns 1 when it was still open, 0 when it had already ended. */

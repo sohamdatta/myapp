@@ -16,6 +16,7 @@ import org.springframework.web.bind.annotation.RestController;
 import com.example.loginapp.core.ApiException;
 import com.example.loginapp.core.AuthService;
 import com.example.loginapp.core.InvitationService;
+import com.example.loginapp.core.MfaService;
 import com.example.loginapp.core.PasswordService;
 import com.example.loginapp.core.SessionCtx;
 
@@ -32,6 +33,14 @@ public class AuthController {
 
     public record AcceptRequest(String token, String password) {}
 
+    public record MfaRequest(String challenge, String code) {}
+
+    public record CodeRequest(String code) {}
+
+    public record RecoveryCodes(java.util.List<String> recoveryCodes) {}
+
+    public record DisableMfaRequest(String password, String code) {}
+
     public record ForgotRequest(String email) {}
 
     public record ResetRequest(String token, String password) {}
@@ -41,19 +50,60 @@ public class AuthController {
     private final AuthService auth;
     private final InvitationService invitations;
     private final PasswordService passwords;
+    private final MfaService mfa;
     private final boolean trustForwardedFor;
 
-    public AuthController(AuthService auth, InvitationService invitations, PasswordService passwords,
+    public AuthController(AuthService auth, InvitationService invitations, PasswordService passwords, MfaService mfa,
                           @Value("${app.trust-forwarded-for:false}") boolean trustForwardedFor) {
         this.auth = auth;
         this.invitations = invitations;
         this.passwords = passwords;
+        this.mfa = mfa;
         this.trustForwardedFor = trustForwardedFor;
     }
 
     @PostMapping("/auth/login")
     public Map<String, Object> login(@RequestBody LoginRequest request, HttpServletRequest http) {
-        return withToken(auth.login(request.email(), request.password(), Requests.clientIp(http, trustForwardedFor)));
+        AuthService.SignIn result = auth.signIn(request.email(), request.password(), Requests.clientIp(http, trustForwardedFor));
+        if (result.mfaRequired()) {
+            return new LinkedHashMap<>(Map.of("mfaRequired", true, "challenge", result.token()));
+        }
+        return withToken(result.token());
+    }
+
+    /** Answers the challenge a right password earned, with a code from the authenticator app or a recovery code. */
+    @PostMapping("/auth/mfa")
+    public Map<String, Object> mfa(@RequestBody MfaRequest request, HttpServletRequest http) {
+        return withToken(mfa.complete(request.challenge(), request.code(), Requests.clientIp(http, trustForwardedFor)));
+    }
+
+    @GetMapping("/auth/mfa")
+    public MfaService.Status mfaStatus(@RequestHeader(value = "Authorization", required = false) String authorization) {
+        return mfa.status(Requests.session(auth, authorization));
+    }
+
+    @PostMapping("/auth/mfa/start")
+    public MfaService.Enrolment mfaStart(@RequestHeader(value = "Authorization", required = false) String authorization) {
+        return mfa.start(Requests.session(auth, authorization));
+    }
+
+    @PostMapping("/auth/mfa/confirm")
+    public RecoveryCodes mfaConfirm(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                    @RequestBody CodeRequest request) {
+        return new RecoveryCodes(mfa.confirm(Requests.session(auth, authorization), request.code()));
+    }
+
+    @PostMapping("/auth/mfa/recovery")
+    public RecoveryCodes mfaRecovery(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                     @RequestBody CodeRequest request) {
+        return new RecoveryCodes(mfa.regenerate(Requests.session(auth, authorization), request.code()));
+    }
+
+    @PostMapping("/auth/mfa/disable")
+    public ResponseEntity<Void> mfaDisable(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                           @RequestBody DisableMfaRequest request) {
+        mfa.disable(Requests.session(auth, authorization), request.password(), request.code());
+        return ResponseEntity.noContent().build();
     }
 
     /** Always 202 with the same body, whether or not the address has an account. */

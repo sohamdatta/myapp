@@ -108,7 +108,7 @@ test.describe.serial('password reset', () => {
   test('changing the password from inside needs the current one and tells the person', async ({ browser }) => {
     await fetch(`${MAIL}/messages`, { method: 'DELETE' });
     const page = await signIn(browser, OWNER, NEW_PASSWORD);
-    await page.getByRole('button', { name: 'Password', exact: true }).click();
+    await page.getByRole('button', { name: 'Security', exact: true }).click();
     await page.fill('#cp-current', 'not-my-password-at-all');
     await page.fill('#cp-new', THIRD_PASSWORD);
     await page.fill('#cp-confirm', THIRD_PASSWORD);

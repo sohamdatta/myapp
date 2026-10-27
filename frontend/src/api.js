@@ -162,8 +162,24 @@ const del = (path) => request('DELETE', path)
 
 export async function login(email, password) {
   const me = await post('/auth/login', { email, password })
+  if (me.mfaRequired) return me   // { mfaRequired, challenge }: the code comes next
   setToken(me.token)
   return enterDefault(me)
+}
+
+/** Answers the challenge a right password earned, with the app's code or a recovery code. */
+export async function completeMfa(challenge, code) {
+  const me = await post('/auth/mfa', { challenge, code })
+  setToken(me.token)
+  return enterDefault(me)
+}
+
+export const mfa = {
+  status: () => get('/auth/mfa'),
+  start: () => post('/auth/mfa/start'),
+  confirm: (code) => post('/auth/mfa/confirm', { code }),
+  recovery: (code) => post('/auth/mfa/recovery', { code }),
+  disable: (password, code) => post('/auth/mfa/disable', { password, code }),
 }
 
 /** Asks for a reset link. The answer is the same whether or not the address has an account. */

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { acceptInvitation, enterConsole, enterOrganization, forgotPassword, login, previewInvitation, resetPassword } from '../api.js'
+import { acceptInvitation, completeMfa, enterConsole, enterOrganization, forgotPassword, login, previewInvitation, resetPassword } from '../api.js'
 import { useAction } from '../hooks.js'
 import { ErrorNote } from '../ui.jsx'
 import NexvanceLogo from '../brand/NexvanceLogo.jsx'
@@ -11,6 +11,7 @@ export function LoginForm({ onSignedIn }) {
 }
 
 function SignInForm({ onSignedIn, onForgot }) {
+  const [challenge, setChallenge] = useState(null)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
@@ -19,8 +20,11 @@ function SignInForm({ onSignedIn, onForgot }) {
   async function handleSubmit(event) {
     event.preventDefault()
     const me = await run(() => login(email, password))
-    if (me) onSignedIn(me)
+    if (me?.mfaRequired) setChallenge(me.challenge)
+    else if (me) onSignedIn(me)
   }
+
+  if (challenge) return <CodeForm challenge={challenge} onSignedIn={onSignedIn} onBack={() => setChallenge(null)} />
 
   return (
     <>
@@ -332,6 +336,34 @@ export function ResetPassword({ token, onDone, onCancel }) {
       </button>
       <button type="button" className="link" onClick={onCancel}>
         Back to sign in
+      </button>
+    </form>
+  )
+}
+
+/** The second step: the code from the authenticator app, or one of the ten recovery codes. */
+function CodeForm({ challenge, onSignedIn, onBack }) {
+  const [code, setCode] = useState('')
+  const { busy, error, run } = useAction()
+
+  async function handleSubmit(event) {
+    event.preventDefault()
+    const me = await run(() => completeMfa(challenge, code))
+    if (me) onSignedIn(me)
+  }
+
+  return (
+    <form className="card" onSubmit={handleSubmit} noValidate>
+      <h1>Enter your code</h1>
+      <p className="muted">Open your authenticator app and enter the 6-digit code for this account. Lost your phone? Use a recovery code instead.</p>
+      <label htmlFor="mfa-code">Code</label>
+      <input id="mfa-code" name="code" inputMode="text" autoComplete="one-time-code" autoFocus value={code} onChange={(e) => setCode(e.target.value)} />
+      <ErrorNote>{error}</ErrorNote>
+      <button type="submit" className="primary" disabled={busy || !code.trim()}>
+        {busy ? 'Checking…' : 'Sign in'}
+      </button>
+      <button type="button" className="link" onClick={onBack}>
+        Start again
       </button>
     </form>
   )

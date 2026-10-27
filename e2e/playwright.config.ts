@@ -73,6 +73,8 @@ export default defineConfig({
     { name: 'a11y', testMatch: /30-accessibility\.spec\.ts/, use: desktop },
     // Forgot and reset password, with the emails read from the test mail server (mail-sink.mjs): --project=password.
     { name: 'password', testMatch: /26-password-reset\.spec\.ts/, use: desktop },
+    // Two-step sign-in with an authenticator app's codes worked out by the test: --project=two-step.
+    { name: 'two-step', testMatch: /27-two-step\.spec\.ts/, use: desktop },
     // Tax declarations bring their own Organization, so they run on their own as well: --project=tax.
     { name: 'tax', testMatch: /21-tax-declarations\.spec\.ts/, use: desktop },
     // Settings, likewise in an Organization of their own: --project=settings.

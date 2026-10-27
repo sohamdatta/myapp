@@ -91,11 +91,15 @@ public final class InvitationService {
             if (exists) {
                 AuthService.lockEmail(c, email);
                 Map<String, Object> identity = Sql.one(c,
-                        "select id, password_hash from auth.identity where email = ?::citext and status = 'active' for update", email);
+                        "select id, password_hash, mfa_enrolled_at is not null as mfa from auth.identity where email = ?::citext and status = 'active' for update", email);
                 if (identity == null) {
                     throw INVALID;
                 }
                 if (!alreadySignedIn) {
+                    if (Boolean.TRUE.equals(identity.get("mfa"))) {
+                        // a password alone is not a sign-in for this login, so it cannot be one here either
+                        return Map.<String, Object>of("refused", "mfa");
+                    }
                     if (AuthService.lockedOut(c, email)) {
                         return Map.<String, Object>of("refused", "locked");
                     }
@@ -126,6 +130,9 @@ public final class InvitationService {
             out.put("membershipId", membershipId);
             return out;
         });
+        if ("mfa".equals(joined.get("refused"))) {
+            throw new ApiException(403, "auth.mfa_required", "This login uses two-step sign-in. Sign in first, then open the invitation link again");
+        }
         if ("locked".equals(joined.get("refused"))) {
             throw AuthService.tooManyFailures();
         }
