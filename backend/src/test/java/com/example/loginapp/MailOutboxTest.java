@@ -58,7 +58,7 @@ class MailOutboxTest {
     private static String ownerPassword;
 
     /** Records what it is asked to send, and fails on demand. */
-    static final class Recorder implements MailSender {
+    public static final class Recorder implements MailSender {
         final List<Mail> sent = new ArrayList<>();
         final Set<Long> seen = ConcurrentHashMap.newKeySet();
         final AtomicInteger doubles = new AtomicInteger();

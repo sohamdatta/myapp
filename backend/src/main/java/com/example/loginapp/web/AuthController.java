@@ -16,6 +16,7 @@ import org.springframework.web.bind.annotation.RestController;
 import com.example.loginapp.core.ApiException;
 import com.example.loginapp.core.AuthService;
 import com.example.loginapp.core.InvitationService;
+import com.example.loginapp.core.PasswordService;
 import com.example.loginapp.core.SessionCtx;
 
 import jakarta.servlet.http.HttpServletRequest;
@@ -31,20 +32,48 @@ public class AuthController {
 
     public record AcceptRequest(String token, String password) {}
 
+    public record ForgotRequest(String email) {}
+
+    public record ResetRequest(String token, String password) {}
+
+    public record ChangePasswordRequest(String currentPassword, String newPassword) {}
+
     private final AuthService auth;
     private final InvitationService invitations;
+    private final PasswordService passwords;
     private final boolean trustForwardedFor;
 
-    public AuthController(AuthService auth, InvitationService invitations,
+    public AuthController(AuthService auth, InvitationService invitations, PasswordService passwords,
                           @Value("${app.trust-forwarded-for:false}") boolean trustForwardedFor) {
         this.auth = auth;
         this.invitations = invitations;
+        this.passwords = passwords;
         this.trustForwardedFor = trustForwardedFor;
     }
 
     @PostMapping("/auth/login")
     public Map<String, Object> login(@RequestBody LoginRequest request, HttpServletRequest http) {
         return withToken(auth.login(request.email(), request.password(), Requests.clientIp(http, trustForwardedFor)));
+    }
+
+    /** Always 202 with the same body, whether or not the address has an account. */
+    @PostMapping("/auth/forgot")
+    public ResponseEntity<Map<String, Object>> forgot(@RequestBody ForgotRequest request, HttpServletRequest http) {
+        passwords.requestReset(request.email(), Requests.clientIp(http, trustForwardedFor));
+        return ResponseEntity.accepted().body(Map.of("message", "If that address has an account, a reset link is on its way"));
+    }
+
+    @PostMapping("/auth/reset")
+    public ResponseEntity<Void> reset(@RequestBody ResetRequest request, HttpServletRequest http) {
+        passwords.reset(request.token(), request.password(), Requests.clientIp(http, trustForwardedFor));
+        return ResponseEntity.noContent().build();
+    }
+
+    @PostMapping("/auth/password")
+    public ResponseEntity<Void> changePassword(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                               @RequestBody ChangePasswordRequest request) {
+        passwords.change(Requests.session(auth, authorization), request.currentPassword(), request.newPassword());
+        return ResponseEntity.noContent().build();
     }
 
     @GetMapping("/auth/me")

@@ -183,3 +183,15 @@ at-least-once if a server stops mid-send. With no `APP_SMTP_HOST` and `APP_SMTP_
 encryption at rest, dedupe, suppression, backoff, permanent failure, a dead worker's claim, four parallel workers and the
 tenant connection's inability to read the table. Settings come from the environment, not the database, so the password never
 sits in a table. The browser tests will read a real SMTP sink (Mailpit) from the password-reset PR onward.
+
+## Password reset
+
+`POST /auth/forgot` only records the address (`auth.reset_request`) and answers 202 with the same body for everyone; the worker
+(`PasswordService.sendWaitingLinks`, every 5 s) later mints a 30-minute single-use token for an active account and puts the mail
+in the outbox, so neither the answer nor its timing tells an address with an account from one without. Asking again retires the
+older link. `POST /auth/reset` sets the password, ends every session, ends the sign-in lock and mails a notice; it never signs
+anyone in. `POST /auth/password` needs the current password (a wrong one counts toward the same per-email lock), ends all other
+sessions and keeps this one. Limits: 10 asks per address per 15 min (429), 3 per email per hour (accepted and ignored), 20 bad
+tokens per address per 15 min. `PasswordServiceTest` covers all of it; `26-password-reset.spec.ts` runs it in a browser
+against `e2e/mail-sink.mjs` (SMTP 1025, HTTP 8025; set `E2E_MAIL_URL` to enable, start the app with `APP_SMTP_HOST=127.0.0.1
+APP_SMTP_PORT=1025 APP_SMTP_SECURITY=none APP_SMTP_FROM=noreply@hrms.test`).

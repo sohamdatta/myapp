@@ -166,6 +166,13 @@ export async function login(email, password) {
   return enterDefault(me)
 }
 
+/** Asks for a reset link. The answer is the same whether or not the address has an account. */
+export const forgotPassword = (email) => post('/auth/forgot', { email })
+
+export const resetPassword = (token, password) => post('/auth/reset', { token, password })
+
+export const changePassword = (currentPassword, newPassword) => post('/auth/password', { currentPassword, newPassword })
+
 /** The signed-in person, or null when there is no valid session. */
 export async function currentUser() {
   if (!getToken()) return null

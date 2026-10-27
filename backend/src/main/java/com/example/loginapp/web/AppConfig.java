@@ -25,6 +25,7 @@ import com.example.loginapp.core.ChecklistService;
 import com.example.loginapp.core.Crypto;
 import com.example.loginapp.core.MailOutbox;
 import com.example.loginapp.core.MailSender;
+import com.example.loginapp.core.PasswordService;
 import com.example.loginapp.core.SmtpMailSender;
 import com.example.loginapp.core.Db;
 import com.example.loginapp.core.DeviceService;
@@ -111,8 +112,13 @@ public class AppConfig {
 
     @Bean
     @ConditionalOnProperty(name = "app.mail.worker", havingValue = "true", matchIfMissing = true)
-    public MailWorker mailWorker(MailOutbox outbox, java.util.Optional<MailSender> sender) {
-        return new MailWorker(outbox, sender.orElse(null));
+    public MailWorker mailWorker(MailOutbox outbox, PasswordService passwords, java.util.Optional<MailSender> sender) {
+        return new MailWorker(outbox, passwords, sender.orElse(null));
+    }
+
+    @Bean
+    public PasswordService passwordService(Db db, MailOutbox outbox, RateLimits limits, @Value("${app.public-url}") String publicUrl) {
+        return new PasswordService(db, outbox, limits, publicUrl);
     }
 
     @Bean
