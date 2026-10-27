@@ -209,3 +209,15 @@ challenge, so retyping the password does not restart guessing. Invitation links 
 switching Organization keep the old session's `mfa_at`. Turning it off needs the password (checked first, so a wrong password does not use up a code)
 and a code, and ends other sessions. `MfaServiceTest` (fake clock) and `27-two-step.spec.ts` (works out codes like an app) cover it. Turning it on needs the password too (a stolen session must not be able to take over the second factor) and ends earlier sessions; a reset or password change ends open challenges, and a reset keeps a two-step login's run of failures so it never hands a code-guesser fresh guesses (so a victim of lock-out spam waits it out). Not yet: requiring
 it by role, and asking for a fresh code before sensitive actions (the next two PRs).
+
+## Two-step sign-in required by role
+
+The Organization setting `auth.mfa.required_for` (none, admins, admins_payroll, everyone; default none) decides whose roles must use
+two-step sign-in. It is checked when a session enters an Organization (`AuthService.enterOrganization`): a member who must use it
+and has no code on the session is refused with 403 `mfa.enrolment_required` (not set up yet; the sign-in screen offers setup) or
+`mfa.required` (set up; sign in again with a code). `MfaServiceTest` covers the role mapping, both refusals and the pass.
+An invitation for a covered role joins the person but opens no session (403 `mfa.enrolment_required`); they sign in and set it up.
+Entry re-reads the session and the login's enrolment with the session row locked, and a login that turned two-step off is
+asked to set it up again. Lowering the choice needs the password (it is ordered none < admins < admins_payroll < everyone); an
+unknown stored value counts as required. Not covered by this setting, by decision to confirm: support sessions and the console,
+the Auditor role, and sessions already open when roles or the setting change.

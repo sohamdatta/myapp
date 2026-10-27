@@ -1,8 +1,10 @@
-import { useEffect, useState } from 'react'
+import { lazy, Suspense, useEffect, useState } from 'react'
 import { acceptInvitation, completeMfa, enterConsole, enterOrganization, forgotPassword, login, previewInvitation, resetPassword } from '../api.js'
 import { useAction } from '../hooks.js'
 import { ErrorNote } from '../ui.jsx'
 import NexvanceLogo from '../brand/NexvanceLogo.jsx'
+
+const Security = lazy(() => import('./Security.jsx'))
 
 export function LoginForm({ onSignedIn }) {
   const [forgot, setForgot] = useState(false)
@@ -80,9 +82,20 @@ export function Chooser({ me, onEntered, onSignOut, onCancel }) {
   const { busy, error, run } = useAction()
   const nothing = me.organizations.length === 0 && !me.console
   const suspended = me.suspendedIn || []
+  const [settingUp, setSettingUp] = useState(false)
+
+  const [refusal, setRefusal] = useState(me.entryRefused || null)
 
   async function enter(action) {
-    const next = await run(action)
+    setRefusal(null)
+    const next = await run(async () => {
+      try {
+        return await action()
+      } catch (err) {
+        if (err.code && err.code.startsWith('mfa.')) setRefusal({ code: err.code, message: err.message })
+        throw err
+      }
+    })
     if (next) onEntered(next)
   }
 
@@ -119,6 +132,17 @@ export function Chooser({ me, onEntered, onSignOut, onCancel }) {
       </div>
 
       <ErrorNote>{error}</ErrorNote>
+      {refusal && !error && <ErrorNote>{refusal.message}</ErrorNote>}
+      {refusal?.code === 'mfa.enrolment_required' && (
+        <button type="button" className="primary" onClick={() => setSettingUp(true)}>
+          Set up two-step sign-in
+        </button>
+      )}
+      {settingUp && (
+        <Suspense fallback={null}>
+          <Security onClose={() => { setSettingUp(false); setRefusal(null) }} />
+        </Suspense>
+      )}
 
       {onCancel && (
         <button type="button" className="quiet" onClick={onCancel}>

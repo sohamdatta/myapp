@@ -63,6 +63,13 @@ public final class Settings {
             .help("A link not used in time stops working; resending makes a new one.")
             .defaultValue(7).range(1, 30).weakens(Weakens.UP, Approval.PASSWORD).since("V18"));
 
+    public static final Setting MFA_REQUIRED_FOR = define(Setting.choice("auth.mfa.required_for", "none", "admins", "admins_payroll", "everyone")
+            .group("security").owner("tenant.manage")
+            .label("Who must use two-step sign-in")
+            .help("none: nobody. admins: Org Admin, HR Admin and IT Admin. admins_payroll: those and the payroll roles. everyone: all members. "
+                    + "Someone who must use it and has not set it up is asked to before entering the Organization.")
+            .defaultValue("none").weakens(Weakens.DOWN, Approval.PASSWORD).since("V31"));
+
     public static final Setting LEAVE_BACK_DAYS = define(Setting.integer("leave.apply.back_days")
             .group("attendance").owner("attendance.manage").module(Modules.ATTENDANCE)
             .label("Employees may apply for leave this far back").unit("days")
