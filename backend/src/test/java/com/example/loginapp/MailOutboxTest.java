@@ -240,6 +240,35 @@ class MailOutboxTest {
     }
 
     @Test
+    void aLateResultFromAWorkerThatLostItsClaimIsDropped() throws Exception {
+        String to = address();
+        long id = enqueue(to, "body", null);
+        var slow = outbox.deliverDue(new MailSender() {
+            @Override
+            public void send(Mail mail) throws Exception {
+                // while this worker is "sending", its claim runs out and another worker takes and finishes the message
+                ownerExec("update mail.outbox set locked_until = now() - interval '1 minute' where id = " + id);
+                Recorder other = new Recorder();
+                outbox.deliverDue(other);
+                assertEquals(1, other.sent.stream().filter(m -> m.to().equals(to)).count());
+                throw new java.io.IOException("timed out after the other worker sent it");
+            }
+
+            @Override
+            public String describe() {
+                return "slow";
+            }
+
+            @Override
+            public String from() {
+                return "noreply@test";
+            }
+        });
+        assertEquals(0, slow);
+        assertEquals("sent", ownerText("select status from mail.outbox where id = " + id, "status"), "the late failure must not undo it");
+    }
+
+    @Test
     void aMessageLeftSendingByADeadWorkerIsPickedUpAgain() throws Exception {
         Recorder sender = new Recorder();
         String to = address();
@@ -286,13 +315,23 @@ class MailOutboxTest {
 
     @Test
     void anOrganizationConnectionCanAddMailButNeverReadIt() throws Exception {
-        try (Connection c = DriverManager.getConnection(url, "app_tenant", ROLE_PASSWORD); Statement st = c.createStatement()) {
-            st.execute("insert into mail.outbox (to_email, template, subject) values ('x@mail.test', 't', 's')");
-            SQLException denied = assertThrows(SQLException.class, () -> st.executeQuery("select * from mail.outbox"));
-            assertEquals("42501", denied.getSQLState());
+        for (String role : List.of("app_tenant", "app_auth")) {
+            try (Connection c = DriverManager.getConnection(url, role, ROLE_PASSWORD); Statement st = c.createStatement()) {
+                for (String sql : List.of("select * from mail.outbox", "select dedupe_key from mail.outbox", "select * from mail.suppression",
+                        "insert into mail.outbox (to_email, template, subject) values ('x@mail.test', 't', 's')",
+                        "insert into mail.suppression (email, reason) values ('x@mail.test', 'manual')")) {
+                    SQLException denied = assertThrows(SQLException.class, () -> st.execute(sql), role + ": " + sql);
+                    assertEquals("42501", denied.getSQLState());
+                }
+            }
         }
+        // the function is the way in, and it refuses mail claiming another Organization
         try (Connection c = DriverManager.getConnection(url, "app_tenant", ROLE_PASSWORD); Statement st = c.createStatement()) {
-            assertThrows(SQLException.class, () -> st.execute("insert into mail.suppression (email, reason) values ('x@mail.test', 'manual')"));
+            c.setAutoCommit(false);
+            st.execute("select set_config('app.tenant_id', '00000000-0000-0000-0000-000000000001', true)");
+            SQLException other = assertThrows(SQLException.class, () -> st.execute(
+                    "select mail.enqueue('00000000-0000-0000-0000-000000000002', 'x@mail.test', 't', 's', 'b'::bytea, null)"));
+            assertEquals("42501", other.getSQLState());
         }
     }
 

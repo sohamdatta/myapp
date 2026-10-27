@@ -9,6 +9,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -99,9 +100,9 @@ public class AppConfig {
         return new MailOutbox(db, crypto);
     }
 
-    /** Present only when a mail server is configured (APP_SMTP_HOST); without one, mail waits in the outbox. */
+    /** Present only when a mail server and a from-address are set (APP_SMTP_HOST, APP_SMTP_FROM; an empty value counts as unset); without one, mail waits in the outbox. */
     @Bean
-    @ConditionalOnProperty(name = "app.smtp.host")
+    @ConditionalOnExpression("!'${app.smtp.host:}'.trim().isEmpty() && !'${app.smtp.from:}'.trim().isEmpty()")
     public MailSender mailSender(@Value("${app.smtp.host}") String host, @Value("${app.smtp.port:587}") int port,
                                  @Value("${app.smtp.user:}") String user, @Value("${app.smtp.password:}") String password,
                                  @Value("${app.smtp.from}") String from, @Value("${app.smtp.security:starttls}") String security) {

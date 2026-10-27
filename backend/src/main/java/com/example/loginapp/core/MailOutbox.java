@@ -18,11 +18,13 @@ import java.util.regex.Pattern;
  */
 public final class MailOutbox {
 
+    private static final org.slf4j.Logger LOG = org.slf4j.LoggerFactory.getLogger(MailOutbox.class);
+
     private static final Pattern EMAIL = Pattern.compile("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$");
     private static final String PURPOSE = "mail";
-    private static final int CLAIM = 20;
+    private static final int CLAIM = 10;
     /** How long a message may stay claimed before another worker may take it: the worker died mid-send. */
-    private static final String CLAIM_FOR = "5 minutes";
+    private static final String CLAIM_FOR = "10 minutes";
     /** The wait before attempt 2, 3, ...; after the last attempt the message is failed and waits for a person. */
     static final List<Duration> BACKOFF = List.of(Duration.ofMinutes(1), Duration.ofMinutes(5), Duration.ofMinutes(30),
             Duration.ofHours(2), Duration.ofHours(6));
@@ -59,11 +61,11 @@ public final class MailOutbox {
         if (!EMAIL.matcher(address).matches()) {
             throw new IllegalArgumentException("Not an email address: " + to);
         }
-        boolean suppressed = Sql.one(c, "select 1 as x from mail.suppression where email = ?::citext", address) != null;
-        return Sql.update(c, "insert into mail.outbox (tenant_id, to_email, template, subject, body_enc, status, dedupe_key) "
-                        + "values (?, ?::citext, ?, ?, ?, ?, ?) on conflict (dedupe_key) do nothing",
-                tenantId, address, template, subject, suppressed ? null : crypto.seal(PURPOSE, body.getBytes(java.nio.charset.StandardCharsets.UTF_8)),
-                suppressed ? "suppressed" : "queued", dedupeKey) > 0;
+        // through mail.enqueue, which runs as the table's owner: callers need no access to the tables, and the function
+        // refuses mail for another Organization. A suppressed address is recorded as such and never sent.
+        Map<String, Object> row = Sql.one(c, "select mail.enqueue(?, ?::citext, ?, ?, ?, ?) as added", tenantId, address, template,
+                subject, crypto.seal(PURPOSE, body.getBytes(java.nio.charset.StandardCharsets.UTF_8)), dedupeKey);
+        return Boolean.TRUE.equals(row.get("added"));
     }
 
     /** Takes up to a batch of due messages, marks them as being sent, and returns them with their bodies opened. */
@@ -71,14 +73,16 @@ public final class MailOutbox {
         return db.inPlatform(c -> {
             // read through JDBC directly: Sql never hands back a bytea, by design
             record Claimed(long id, String to, String subject, byte[] body) {}
+            UUID claim = UUID.randomUUID();
             List<Claimed> rows = new ArrayList<>();
             try (java.sql.PreparedStatement ps = c.prepareStatement(
-                    "update mail.outbox set status = 'sending', locked_until = now() + ?::interval, attempts = attempts + 1 "
+                    "update mail.outbox set status = 'sending', locked_until = now() + ?::interval, attempts = attempts + 1, claim = ? "
                             + "where id in (select id from mail.outbox "
                             + "  where next_attempt_at <= now() and (status = 'queued' or (status = 'sending' and locked_until < now())) "
                             + "  order by next_attempt_at limit " + CLAIM + " for update skip locked) "
                             + "returning id, to_email, subject, body_enc")) {
                 ps.setString(1, CLAIM_FOR);
+                ps.setObject(2, claim);
                 try (java.sql.ResultSet rs = ps.executeQuery()) {
                     while (rs.next()) {
                         rows.add(new Claimed(rs.getLong(1), rs.getString(2), rs.getString(3), rs.getBytes(4)));
@@ -89,7 +93,7 @@ public final class MailOutbox {
             for (Claimed r : rows) {
                 boolean listed = Sql.one(c, "select 1 as x from mail.suppression where email = ?::citext", r.to()) != null;
                 if (listed) {
-                    Sql.update(c, "update mail.outbox set status = 'suppressed', body_enc = null, locked_until = null where id = ?", r.id());
+                    Sql.update(c, "update mail.outbox set status = 'suppressed', body_enc = null, locked_until = null, claim = null where id = ?", r.id());
                     continue;
                 }
                 String body;
@@ -101,52 +105,77 @@ public final class MailOutbox {
                             "The message body could not be read", r.id());
                     continue;
                 }
-                out.add(new MailSender.Mail(r.id(), r.to(), r.subject(), body));
+                out.add(new MailSender.Mail(r.id(), r.to(), r.subject(), body, claim));
             }
             return out;
         });
     }
 
-    void markSent(long id) {
-        db.inPlatform(c -> Sql.update(c, "update mail.outbox set status = 'sent', sent_at = now(), body_enc = null, "
-                + "locked_until = null, last_error = null where id = ?", id));
+    /** Only the worker that still holds the claim may record a result: a late result after another worker took over is dropped. */
+    boolean markSent(MailSender.Mail mail) {
+        return db.inPlatform(c -> Sql.update(c, "update mail.outbox set status = 'sent', sent_at = now(), body_enc = null, "
+                + "locked_until = null, claim = null, last_error = null where id = ? and status = 'sending' and claim = ?",
+                mail.id(), mail.claim())) > 0;
     }
 
     /** A failed attempt: waits longer and tries again, or gives up when it was refused for good or the attempts are used up. */
-    void markFailed(long id, String error, boolean permanent) {
+    boolean markFailed(MailSender.Mail mail, String error, boolean permanent) {
         String shortError = error == null ? "failed" : error.substring(0, Math.min(error.length(), 500));
-        db.inPlatform(c -> {
-            int attempts = ((Number) Sql.one(c, "select attempts from mail.outbox where id = ?", id).get("attempts")).intValue();
+        return db.inPlatform(c -> {
+            Map<String, Object> row = Sql.one(c, "select attempts from mail.outbox where id = ? and status = 'sending' and claim = ? for update",
+                    mail.id(), mail.claim());
+            if (row == null) {
+                return false;
+            }
+            int attempts = ((Number) row.get("attempts")).intValue();
             if (permanent || attempts >= MAX_ATTEMPTS) {
-                return Sql.update(c, "update mail.outbox set status = 'failed', locked_until = null, last_error = ? where id = ?",
-                        shortError, id);
+                Sql.update(c, "update mail.outbox set status = 'failed', locked_until = null, claim = null, last_error = ? where id = ?",
+                        shortError, mail.id());
+                return true;
             }
             long seconds = BACKOFF.get(attempts - 1).toSeconds();
-            return Sql.update(c, "update mail.outbox set status = 'queued', locked_until = null, last_error = ?, "
-                    + "next_attempt_at = now() + make_interval(secs => ?) where id = ?", shortError, seconds, id);
+            Sql.update(c, "update mail.outbox set status = 'queued', locked_until = null, claim = null, last_error = ?, "
+                    + "next_attempt_at = now() + make_interval(secs => ?) where id = ?", shortError, seconds, mail.id());
+            return true;
         });
     }
 
-    /** Sends what is due, once. Returns how many went. */
+    /**
+     * Sends what is due, once. Returns how many went. A failure to record a result never stops the rest of the batch; if a
+     * sent message cannot be marked, its claim runs out and it is sent again (at least once, never lost).
+     */
     public int deliverDue(MailSender sender) {
         int sent = 0;
         for (MailSender.Mail mail : claim()) {
+            Exception failure = null;
+            boolean permanent = false;
             try {
                 sender.send(mail);
-                markSent(mail.id());
                 sent++;
             } catch (MailSender.Rejected e) {
-                markFailed(mail.id(), e.getMessage(), true);
+                failure = e;
+                permanent = true;
             } catch (Exception e) {
-                markFailed(mail.id(), e.getClass().getSimpleName() + ": " + e.getMessage(), false);
+                failure = e;
+            }
+            try {
+                if (failure == null) {
+                    markSent(mail);
+                } else {
+                    markFailed(mail, failure instanceof MailSender.Rejected ? failure.getMessage()
+                            : failure.getClass().getSimpleName() + ": " + failure.getMessage(), permanent);
+                }
+            } catch (RuntimeException e) {
+                LOG.warn("Could not record the result for mail {}; its claim will run out", mail.id(), e);
             }
         }
         return sent;
     }
 
-    /** Messages that are done with (sent) and older than a month are removed; failed ones stay until someone looks. */
+    /** Sent and suppressed messages are removed after a month, failed ones after two weeks: their bodies hold links that act as passwords. */
     public int purge() {
-        return db.inPlatform(c -> Sql.update(c, "delete from mail.outbox where status in ('sent', 'suppressed') and created_at < now() - interval '30 days'"));
+        return db.inPlatform(c -> Sql.update(c, "delete from mail.outbox where (status in ('sent', 'suppressed') and created_at < now() - interval '30 days') "
+                + "or (status = 'failed' and created_at < now() - interval '14 days')"));
     }
 
     // ── The platform Email page ─────────────────────────────────────────
@@ -182,14 +211,14 @@ public final class MailOutbox {
         ctx.requirePlatform("super_admin");
         int n = db.inPlatform(c -> {
             int changed = Sql.update(c, "update mail.outbox set status = 'queued', attempts = 0, next_attempt_at = now(), locked_until = null "
-                    + "where id = ? and status = 'failed' and body_enc is not null", id);
+                    + "where id = ? and status = 'failed' and body_enc is not null and created_at > now() - interval '1 day'", id);
             if (changed > 0) {
                 audit(c, ctx, "email.retried", String.valueOf(id));
             }
             return changed;
         });
         if (n == 0) {
-            throw new ApiException(409, "email.not_failed", "Only a failed message can be tried again");
+            throw new ApiException(409, "email.not_failed", "Only a message that failed within the last day can be tried again; the link in an older one would be stale");
         }
     }
 
