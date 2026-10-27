@@ -65,12 +65,21 @@ public final class Crypto {
     }
 
     public byte[] encrypt(UUID tenantId, byte[] plain) {
+        return seal(tenantId.toString(), plain);
+    }
+
+    /**
+     * Seals a value for a purpose that is not an Organization ("mail", "totp:" plus an identity id). The purpose
+     * is bound in as associated data, so a value made for one purpose does not open as another's, nor as any
+     * Organization's.
+     */
+    public byte[] seal(String purpose, byte[] plain) {
         try {
             byte[] nonce = new byte[NONCE_BYTES];
             RANDOM.nextBytes(nonce);
             Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
             cipher.init(Cipher.ENCRYPT_MODE, keys.get(primaryId), new GCMParameterSpec(TAG_BITS, nonce));
-            cipher.updateAAD(aad(tenantId));
+            cipher.updateAAD(purpose.getBytes(StandardCharsets.UTF_8));
             byte[] sealed = cipher.doFinal(plain);
             return ByteBuffer.allocate(1 + NONCE_BYTES + sealed.length).put(primaryId).put(nonce).put(sealed).array();
         } catch (GeneralSecurityException e) {
@@ -84,6 +93,11 @@ public final class Crypto {
 
     /** Throws when the value was not made for this Organization, was changed, or its key is not configured. */
     public byte[] decrypt(UUID tenantId, byte[] sealed) {
+        return open(tenantId.toString(), sealed);
+    }
+
+    /** The reverse of {@link #seal}; throws when the purpose differs, the value was changed, or its key is not configured. */
+    public byte[] open(String purpose, byte[] sealed) {
         if (sealed == null || sealed.length < 1 + NONCE_BYTES + TAG_BITS / 8) {
             throw new IllegalStateException("The stored value is not an encrypted value");
         }
@@ -95,7 +109,7 @@ public final class Crypto {
         try {
             Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
             cipher.init(Cipher.DECRYPT_MODE, key, new GCMParameterSpec(TAG_BITS, sealed, 1, NONCE_BYTES));
-            cipher.updateAAD(aad(tenantId));
+            cipher.updateAAD(purpose.getBytes(StandardCharsets.UTF_8));
             return cipher.doFinal(sealed, 1 + NONCE_BYTES, sealed.length - 1 - NONCE_BYTES);
         } catch (GeneralSecurityException e) {
             throw new IllegalStateException("The stored value could not be decrypted for this Organization", e);
@@ -114,10 +128,6 @@ public final class Crypto {
     /** HMAC-SHA256 of a value within one Organization, for finding duplicates without decrypting. */
     public byte[] fingerprint(UUID tenantId, String kind, String value) {
         return hmac(hmacKey, (tenantId + "|" + kind + "|" + value).getBytes(StandardCharsets.UTF_8));
-    }
-
-    private static byte[] aad(UUID tenantId) {
-        return tenantId.toString().getBytes(StandardCharsets.UTF_8);
     }
 
     private static byte[] hmac(SecretKeySpec key, byte[] data) {

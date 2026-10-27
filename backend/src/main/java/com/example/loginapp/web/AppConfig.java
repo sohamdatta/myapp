@@ -9,6 +9,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -21,6 +23,9 @@ import com.example.loginapp.core.Calibration;
 import com.example.loginapp.core.ClientErrors;
 import com.example.loginapp.core.ChecklistService;
 import com.example.loginapp.core.Crypto;
+import com.example.loginapp.core.MailOutbox;
+import com.example.loginapp.core.MailSender;
+import com.example.loginapp.core.SmtpMailSender;
 import com.example.loginapp.core.Db;
 import com.example.loginapp.core.DeviceService;
 import com.example.loginapp.core.DocumentService;
@@ -65,6 +70,7 @@ import com.zaxxer.hikari.HikariDataSource;
  * and creates the first Super Admin when the platform has none.
  */
 @Configuration
+@org.springframework.scheduling.annotation.EnableScheduling
 public class AppConfig {
 
     private static final Logger LOG = LoggerFactory.getLogger(AppConfig.class);
@@ -89,6 +95,26 @@ public class AppConfig {
     }
 
     /** One set of counts for everything that limits attempts (sign-in, invitations). Per instance; see RateLimits. */
+    @Bean
+    public MailOutbox mailOutbox(Db db, Crypto crypto) {
+        return new MailOutbox(db, crypto);
+    }
+
+    /** Present only when a mail server and a from-address are set (APP_SMTP_HOST, APP_SMTP_FROM; an empty value counts as unset); without one, mail waits in the outbox. */
+    @Bean
+    @ConditionalOnExpression("!'${app.smtp.host:}'.trim().isEmpty() && !'${app.smtp.from:}'.trim().isEmpty()")
+    public MailSender mailSender(@Value("${app.smtp.host}") String host, @Value("${app.smtp.port:587}") int port,
+                                 @Value("${app.smtp.user:}") String user, @Value("${app.smtp.password:}") String password,
+                                 @Value("${app.smtp.from}") String from, @Value("${app.smtp.security:starttls}") String security) {
+        return new SmtpMailSender(host, port, user, password, from, security);
+    }
+
+    @Bean
+    @ConditionalOnProperty(name = "app.mail.worker", havingValue = "true", matchIfMissing = true)
+    public MailWorker mailWorker(MailOutbox outbox, java.util.Optional<MailSender> sender) {
+        return new MailWorker(outbox, sender.orElse(null));
+    }
+
     @Bean
     public RateLimits rateLimits() {
         return new RateLimits();

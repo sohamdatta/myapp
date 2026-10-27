@@ -567,12 +567,169 @@ function SupportTab({ me, onEnteredSupport }) {
   )
 }
 
+/** How mail is doing: what is waiting, what failed, and who is not mailed. Sending is set up through the environment, not here. */
+function EmailTab({ me }) {
+  const email = useLoad(platform.email)
+  const { busy, error, run } = useAction()
+  const [to, setTo] = useState('')
+  const [suppressTo, setSuppressTo] = useState('')
+  const isSuperAdmin = me.platformRole === 'super_admin'
+
+  async function act(work, after) {
+    const done = await run(async () => {
+      await work()
+      return true
+    })
+    if (done) {
+      after?.()
+      email.reload()
+    }
+  }
+
+  if (email.loading) return <p className="muted">Loading…</p>
+  if (email.error) return <ErrorNote>{email.error}</ErrorNote>
+  const o = email.data
+  return (
+    <>
+      <div className="panel">
+        <h2>Sending</h2>
+        {o.configured ? (
+          <p>
+            Mail goes out through <strong>{o.server}</strong>, from <strong>{o.from}</strong>.
+          </p>
+        ) : (
+          <p>
+            <Badge>not set up</Badge> No mail server is set. Messages wait in the queue. Set <code>APP_SMTP_HOST</code> and{' '}
+            <code>APP_SMTP_FROM</code> on the server and restart it.
+          </p>
+        )}
+        <p className="hint">
+          Waiting {o.counts.queued + o.counts.sending} · Sent {o.counts.sent} · Failed {o.counts.failed} · Not mailed (on the list below){' '}
+          {o.counts.suppressed}
+        </p>
+        {isSuperAdmin && (
+          <form
+            onSubmit={(e) => {
+              e.preventDefault()
+              act(() => platform.sendTestEmail(to), () => setTo(''))
+            }}
+            noValidate
+          >
+            <label htmlFor="email-test">Send a test message to</label>
+            <input id="email-test" type="email" value={to} onChange={(e) => setTo(e.target.value)} />
+            <button type="submit" className="secondary" disabled={busy || !to}>
+              Send test
+            </button>
+          </form>
+        )}
+      </div>
+
+      <ErrorNote>{error}</ErrorNote>
+
+      <h2>Failed, or waiting to try again</h2>
+      {o.failures.length === 0 ? (
+        <Empty>Nothing has failed.</Empty>
+      ) : (
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>To</th>
+                <th>Message</th>
+                <th>Tries</th>
+                <th>Last error</th>
+                <th aria-label="Actions" />
+              </tr>
+            </thead>
+            <tbody>
+              {o.failures.map((m) => (
+                <tr key={m.id}>
+                  <td>{m.to}</td>
+                  <td>
+                    {m.subject}
+                    <div className="hint">{formatDate(m.createdAt)}</div>
+                  </td>
+                  <td>
+                    {m.attempts} {m.status === 'queued' && <div className="hint">next {formatDate(m.nextAttemptAt)}</div>}
+                  </td>
+                  <td>{m.lastError}</td>
+                  <td className="actions">
+                    {isSuperAdmin && m.status === 'failed' && (
+                      <button type="button" className="quiet" disabled={busy} onClick={() => act(() => platform.retryEmail(m.id))}>
+                        Try again
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      <h2>Not mailed</h2>
+      <p className="hint">Addresses that bounced, complained, or were added by hand. Nothing is sent to them.</p>
+      {isSuperAdmin && (
+        <form
+          onSubmit={(e) => {
+            e.preventDefault()
+            act(() => platform.suppressEmail(suppressTo, 'manual'), () => setSuppressTo(''))
+          }}
+          noValidate
+        >
+          <label htmlFor="email-suppress">Stop mailing</label>
+          <input id="email-suppress" type="email" value={suppressTo} onChange={(e) => setSuppressTo(e.target.value)} />
+          <button type="submit" className="secondary" disabled={busy || !suppressTo}>
+            Add to the list
+          </button>
+        </form>
+      )}
+      {o.suppressions.length === 0 ? (
+        <Empty>No addresses are blocked.</Empty>
+      ) : (
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Address</th>
+                <th>Why</th>
+                <th>Added</th>
+                <th aria-label="Actions" />
+              </tr>
+            </thead>
+            <tbody>
+              {o.suppressions.map((s) => (
+                <tr key={s.email}>
+                  <td>{s.email}</td>
+                  <td>{s.reason}</td>
+                  <td>
+                    {formatDate(s.at)}
+                    {s.by && <div className="hint">{s.by}</div>}
+                  </td>
+                  <td className="actions">
+                    {isSuperAdmin && (
+                      <button type="button" className="quiet" disabled={busy} onClick={() => act(() => platform.unsuppressEmail(s.email))}>
+                        Mail again
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </>
+  )
+}
+
 export default function Console({ me, page, onEnteredSupport }) {
   return (
     <>
       {page === 'organizations' && <OrganizationsTab me={me} />}
       {page === 'users' && <PlatformUsersTab me={me} />}
       {page === 'support' && <SupportTab me={me} onEnteredSupport={onEnteredSupport} />}
+      {page === 'email' && <EmailTab me={me} />}
     </>
   )
 }

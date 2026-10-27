@@ -13,6 +13,7 @@ export function navFor(me) {
           { id: 'organizations', label: 'Organizations' },
           isSuperAdmin && { id: 'users', label: 'Platform users' },
           canSupport && { id: 'support', label: 'Support access' },
+          canSupport && { id: 'email', label: 'Email' },
         ].filter(Boolean),
       },
     ]
