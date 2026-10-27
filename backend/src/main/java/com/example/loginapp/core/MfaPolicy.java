@@ -12,11 +12,15 @@ public final class MfaPolicy {
 
     /** Whether a member holding these role codes must use two-step sign-in under the chosen setting. */
     public static boolean applies(String choice, List<String> roles) {
+        if (choice == null) {
+            return true;   // an unreadable setting asks for the code rather than waving everyone in
+        }
         return switch (choice) {
             case "everyone" -> true;
             case "admins" -> roles.stream().anyMatch(ADMINS::contains);
             case "admins_payroll" -> roles.stream().anyMatch(r -> ADMINS.contains(r) || PAYROLL.contains(r));
-            default -> false;
+            case "none" -> false;
+            default -> true;   // a value this code does not know is treated as the strictest
         };
     }
 }

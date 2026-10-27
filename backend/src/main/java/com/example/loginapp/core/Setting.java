@@ -149,6 +149,11 @@ public final class Setting {
             case NEVER -> false;
             case ANY -> true;
             case UP, DOWN -> {
+                if (from instanceof String f && to instanceof String t) {   // a choice is ordered as listed: later is higher
+                    int x = choices.indexOf(f);
+                    int y = choices.indexOf(t);
+                    yield weakens == Weakens.UP ? y > x : y < x;
+                }
                 int a = from instanceof Boolean f ? (f ? 1 : 0) : ((Number) from).intValue();
                 int b = to instanceof Boolean t ? (t ? 1 : 0) : ((Number) to).intValue();
                 yield weakens == Weakens.UP ? b > a : b < a;

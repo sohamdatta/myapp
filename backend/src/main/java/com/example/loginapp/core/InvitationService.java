@@ -153,6 +153,18 @@ public final class InvitationService {
                 "insert into app.audit_event (tenant_id, actor_kind, actor_membership_id, actor_label, action, target_type, target_id) "
                         + "values (?, 'member', ?, ?, 'invitation.accepted', 'membership', ?)",
                 tenantId, membershipId, email, membershipId));
+        // Joining is done, but a role that must use two-step does not get a session without a code: sign in and set it up.
+        if (AuthService.mfaRequired(db, tenantId, membershipId)) {
+            Map<String, Object> state = db.inAuth(c -> Sql.one(c,
+                    "select s.mfa_at is not null as passed, i.mfa_enrolled_at is not null as enrolled "
+                            + "from auth.session s join auth.identity i on i.id = s.identity_id where s.refresh_token_hash = ?",
+                    Secrets.sha256(sessionToken)));
+            if (!Boolean.TRUE.equals(state.get("passed")) || !Boolean.TRUE.equals(state.get("enrolled"))) {
+                db.inAuth(c -> Sql.update(c, "update auth.session set revoked_at = now() where refresh_token_hash = ?", Secrets.sha256(sessionToken)));
+                throw new ApiException(403, "mfa.enrolment_required",
+                        "You have joined. This Organization requires two-step sign-in: sign in, then set it up to continue");
+            }
+        }
         return sessionToken;
     }
 }

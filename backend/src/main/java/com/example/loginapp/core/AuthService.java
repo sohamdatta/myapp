@@ -319,10 +319,20 @@ public final class AuthService {
             }
             return uuid(m.get("membershipId"));
         });
-        requireMfaIfRequired(ctx, tenantId, member);
+        boolean required = mfaRequired(db, tenantId, member);
         db.inAuth(c -> {
-            Map<String, Object> m = Map.of("membershipId", member.toString());
-            insertSession(c, token, ctx.identityId(), "tenant", tenantId, uuid(m.get("membershipId")), null, "12 hours");
+            // The state is read again here, with the session held, so a code or a session that ended a moment ago is not used.
+            Map<String, Object> state = Sql.one(c,
+                    "select s.mfa_at is not null as passed, i.mfa_enrolled_at is not null as enrolled "
+                            + "from auth.session s join auth.identity i on i.id = s.identity_id "
+                            + "where s.id = ? and s.revoked_at is null for update of s", ctx.sessionId());
+            if (state == null) {
+                throw ApiException.notSignedIn();
+            }
+            if (required) {
+                refuseWithoutCode(state);
+            }
+            insertSession(c, token, ctx.identityId(), "tenant", tenantId, member, null, "12 hours");
             carryMfa(c, ctx.sessionId(), token);
             revoke(c, ctx.sessionId());
             return null;
@@ -330,28 +340,26 @@ public final class AuthService {
         return token;
     }
 
-    /**
-     * Refuses entry to an Organization whose setting requires two-step sign-in of this member's roles, until the session
-     * has passed a code (403 mfa.required) or the login has set it up (403 mfa.enrolment_required).
-     */
-    private void requireMfaIfRequired(SessionCtx ctx, UUID tenantId, UUID membershipId) {
-        boolean required = db.inTenant(tenantId, c -> MfaPolicy.applies(
+    /** Whether the Organization's setting makes two-step sign-in a must for this member's roles. */
+    static boolean mfaRequired(Db db, UUID tenantId, UUID membershipId) {
+        return db.inTenant(tenantId, c -> MfaPolicy.applies(
                 Settings.get(c, Settings.MFA_REQUIRED_FOR).asString(),
                 Sql.query(c, "select r.code from app.membership_role mr join app.role r on r.id = mr.role_id where mr.membership_id = ?",
                         membershipId).stream().map(r -> (String) r.get("code")).toList()));
-        if (!required) {
-            return;
+    }
+
+    /**
+     * Where two-step is required, a session must have passed a code and the login must still have it set up:
+     * 403 mfa.required (set up, sign in again with a code) or mfa.enrolment_required (not set up).
+     */
+    static void refuseWithoutCode(Map<String, Object> state) {
+        boolean enrolled = Boolean.TRUE.equals(state.get("enrolled"));
+        if (!enrolled) {
+            throw new ApiException(403, "mfa.enrolment_required", "This Organization requires two-step sign-in. Set it up to continue");
         }
-        Map<String, Object> state = db.inAuth(c -> Sql.one(c,
-                "select s.mfa_at is not null as passed, i.mfa_enrolled_at is not null as enrolled "
-                        + "from auth.session s join auth.identity i on i.id = s.identity_id where s.id = ?", ctx.sessionId()));
-        if (Boolean.TRUE.equals(state.get("passed"))) {
-            return;
-        }
-        if (Boolean.TRUE.equals(state.get("enrolled"))) {
+        if (!Boolean.TRUE.equals(state.get("passed"))) {
             throw new ApiException(403, "mfa.required", "Sign in again and enter your code to open this Organization");
         }
-        throw new ApiException(403, "mfa.enrolment_required", "This Organization requires two-step sign-in. Set it up to continue");
     }
 
     /** Starts a console session, which carries no Organization at all. */

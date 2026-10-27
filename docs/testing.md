@@ -216,5 +216,8 @@ The Organization setting `auth.mfa.required_for` (none, admins, admins_payroll, 
 two-step sign-in. It is checked when a session enters an Organization (`AuthService.enterOrganization`): a member who must use it
 and has no code on the session is refused with 403 `mfa.enrolment_required` (not set up yet; the sign-in screen offers setup) or
 `mfa.required` (set up; sign in again with a code). `MfaServiceTest` covers the role mapping, both refusals and the pass.
-Known gaps, for the next pieces: an invitation accepted for the first time still opens that one session, and changing roles or
-raising the setting does not yet end sessions already open.
+An invitation for a covered role joins the person but opens no session (403 `mfa.enrolment_required`); they sign in and set it up.
+Entry re-reads the session and the login's enrolment with the session row locked, and a login that turned two-step off is
+asked to set it up again. Lowering the choice needs the password (it is ordered none < admins < admins_payroll < everyone); an
+unknown stored value counts as required. Not covered by this setting, by decision to confirm: support sessions and the console,
+the Auditor role, and sessions already open when roles or the setting change.

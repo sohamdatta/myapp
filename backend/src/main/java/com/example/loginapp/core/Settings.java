@@ -68,7 +68,7 @@ public final class Settings {
             .label("Who must use two-step sign-in")
             .help("none: nobody. admins: Org Admin, HR Admin and IT Admin. admins_payroll: those and the payroll roles. everyone: all members. "
                     + "Someone who must use it and has not set it up is asked to before entering the Organization.")
-            .defaultValue("none").weakens(Weakens.ANY, Approval.PASSWORD).since("V31"));
+            .defaultValue("none").weakens(Weakens.DOWN, Approval.PASSWORD).since("V31"));
 
     public static final Setting LEAVE_BACK_DAYS = define(Setting.integer("leave.apply.back_days")
             .group("attendance").owner("attendance.manage").module(Modules.ATTENDANCE)

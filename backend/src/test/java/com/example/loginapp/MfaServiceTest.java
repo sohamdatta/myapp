@@ -374,10 +374,17 @@ class MfaServiceTest {
     }
 
     private void requireFor(String email, String choice) {
-        SessionCtx identity = auth.resolve(auth.login(email, PASSWORD));
-        SessionCtx inside = auth.resolve(auth.enterOrganization(identity, organizationOf(identity)));
+        requireFor(insideOrganization(email), choice);
+    }
+
+    private void requireFor(SessionCtx inside, String choice) {
         new com.example.loginapp.core.SettingsService(db).change(inside, "auth.mfa.required_for",
                 new com.example.loginapp.core.SettingsService.ChangeInput("organization", null, null, choice, null, "test", PASSWORD));
+    }
+
+    private SessionCtx insideOrganization(String email) {
+        SessionCtx identity = auth.resolve(auth.login(email, PASSWORD));
+        return auth.resolve(auth.enterOrganization(identity, organizationOf(identity)));
     }
 
     @Test
@@ -387,7 +394,6 @@ class MfaServiceTest {
         SessionCtx identity = auth.resolve(auth.login(email, PASSWORD));
         java.util.UUID tenant = organizationOf(identity);
         assertEquals("mfa.enrolment_required", refusal(() -> auth.enterOrganization(identity, tenant)).code());
-        // setting it up works from this very session, and the next sign-in then ends in a code
         MfaService.Enrolment e = mfa.start(identity);
         mfa.confirm(identity, PASSWORD, codeNow(e.secret()));
         advance(30);
@@ -396,29 +402,90 @@ class MfaServiceTest {
     }
 
     @Test
-    void anEnrolledAdminOnAPlainSessionIsToldToSignInWithACode() throws Exception {
+    void anEnrolledAdminOnASessionWithoutACodeIsToldToSignInWithOne() throws Exception {
         String email = owner();
         requireFor(email, "admins");
-        // enrolling ends other sessions, and a session made after has no code in it only if it came from a plain login
         SessionCtx identity = auth.resolve(auth.login(email, PASSWORD));
         MfaService.Enrolment e = mfa.start(identity);
         mfa.confirm(identity, PASSWORD, codeNow(e.secret()));
-        // the session that enrolled counts as having passed; end that doubt by asking for a fresh one with no code
+        // the session that set it up has passed a code; one that has not is what a stolen password alone could make, so clear it
         ownerExec("update auth.session set mfa_at = null where id = '" + identity.sessionId() + "'");
         assertEquals("mfa.required", refusal(() -> auth.enterOrganization(identity, organizationOf(identity))).code());
     }
 
     @Test
-    void membersWhoseRolesAreNotCoveredEnterAsBefore() throws Exception {
+    void turningItOffDoesNotKeepTheDoorOpen() throws Exception {
         String email = owner();
-        SessionCtx identity = auth.resolve(auth.login(email, PASSWORD));
-        assertNotNull(auth.enterOrganization(identity, organizationOf(identity)), "the default asks nobody");
+        requireFor(email, "admins");
+        String secret = enrol(email).get(0);
+        SessionCtx passed = auth.resolve(mfa.complete(auth.signIn(email, PASSWORD, null).token(), codeNow(secret), null));
+        assertNotNull(auth.enterOrganization(passed, organizationOf(passed)));
+        advance(30);
+        SessionCtx again = auth.resolve(mfa.complete(auth.signIn(email, PASSWORD, null).token(), codeNow(secret), null));
+        advance(30);
+        mfa.disable(again, PASSWORD, codeNow(secret));
+        // the session still carries the code it passed, but the login no longer has two-step, so it cannot go on switching
+        assertEquals("mfa.enrolment_required", refusal(() -> auth.enterOrganization(again, organizationOf(again))).code());
+    }
+
+    @Test
+    void aMemberWhoseRolesAreNotCoveredEntersAndOneWhoseRolesAreCoveredDoesNot() throws Exception {
+        String email = owner();
+        SessionCtx admin = insideOrganization(email);
+        requireFor(admin, "admins");
+        com.example.loginapp.core.UserService users = new com.example.loginapp.core.UserService(db);
+        String employee = "emp@" + admin.tenantName().toLowerCase().replace(' ', '-') + ".test";
+        String employeeToken = (String) users.invite(admin, employee, List.of("employee")).get("token");
+        String employeeSession = new InvitationService(db, limits).accept(employeeToken, PASSWORD, null);
+        assertNotNull(auth.resolve(employeeSession), "an employee joins with a session under 'admins'");
+        SessionCtx emp = auth.resolve(auth.login(employee, PASSWORD));
+        assertNotNull(auth.enterOrganization(emp, organizationOf(emp)));
+        // everyone: now the same employee is asked
+        requireFor(admin, "everyone");
+        assertEquals("mfa.enrolment_required", refusal(() -> auth.enterOrganization(auth.resolve(auth.login(employee, PASSWORD)), organizationOf(emp))).code());
+    }
+
+    @Test
+    void anInvitationForARoleThatMustUseTwoStepOpensNoSession() throws Exception {
+        String email = owner();
+        SessionCtx admin = insideOrganization(email);
+        requireFor(admin, "admins_payroll");
+        com.example.loginapp.core.UserService users = new com.example.loginapp.core.UserService(db);
+        String hr = "hr@" + admin.tenantName().toLowerCase().replace(' ', '-') + ".test";
+        String token = (String) users.invite(admin, hr, List.of("hr_admin")).get("token");
+        assertEquals("mfa.enrolment_required", refusal(() -> new InvitationService(db, limits).accept(token, PASSWORD, null)).code());
+        assertEquals(0, Integer.parseInt(owner("select count(*) from auth.session s join auth.identity i on i.id = s.identity_id "
+                + "where i.email = '" + hr + "' and s.revoked_at is null and s.kind = 'tenant'")), "no live session was left");
+        // they did join, so they sign in and meet the same request
+        SessionCtx identity = auth.resolve(auth.login(hr, PASSWORD));
+        assertEquals("mfa.enrolment_required", refusal(() -> auth.enterOrganization(identity, organizationOf(identity))).code());
+    }
+
+    @Test
+    void raisingTheRequirementAsksForNothingExtraButLoweringNeedsThePassword() throws Exception {
+        String email = owner();
+        SessionCtx inside = insideOrganization(email);
+        com.example.loginapp.core.SettingsService svc = new com.example.loginapp.core.SettingsService(db);
+        svc.change(inside, "auth.mfa.required_for",
+                new com.example.loginapp.core.SettingsService.ChangeInput("organization", null, null, "everyone", null, "tighten", null));
+        ApiException e = refusal(() -> svc.change(inside, "auth.mfa.required_for",
+                new com.example.loginapp.core.SettingsService.ChangeInput("organization", null, null, "none", null, "loosen", null)));
+        assertEquals("setting.password_required", e.code());
+    }
+
+    @Test
+    void anUnknownStoredChoiceIsTreatedAsRequired() {
+        assertTrue(com.example.loginapp.core.MfaPolicy.applies("something-new", List.of("employee")));
+        assertTrue(com.example.loginapp.core.MfaPolicy.applies(null, List.of("employee")));
     }
 
     @Test
     void theChoiceDecidesWhichRolesMustUseIt() {
         assertFalse(com.example.loginapp.core.MfaPolicy.applies("none", List.of("owner")));
         assertTrue(com.example.loginapp.core.MfaPolicy.applies("admins", List.of("employee", "hr_admin")));
+        assertTrue(com.example.loginapp.core.MfaPolicy.applies("admins", List.of("owner")));
+        assertTrue(com.example.loginapp.core.MfaPolicy.applies("admins", List.of("it_admin")));
+        assertTrue(com.example.loginapp.core.MfaPolicy.applies("admins_payroll", List.of("payroll_operator")));
         assertFalse(com.example.loginapp.core.MfaPolicy.applies("admins", List.of("payroll_operator")));
         assertTrue(com.example.loginapp.core.MfaPolicy.applies("admins_payroll", List.of("payroll_approver")));
         assertFalse(com.example.loginapp.core.MfaPolicy.applies("admins_payroll", List.of("employee", "manager")));
