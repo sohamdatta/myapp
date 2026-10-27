@@ -53,7 +53,7 @@ export class ApiError extends Error {
   }
 }
 
-async function request(method, path, body) {
+async function send(method, path, body) {
   const headers = {}
   const token = getToken()
   if (token) headers.Authorization = `Bearer ${token}`
@@ -68,7 +68,7 @@ async function request(method, path, body) {
   } catch {
     throw new ApiError('Cannot reach the server. Check that the backend is running.', 0, 'network')
   }
-  if (response.status === 204) return null
+  if (response.status === 204) return { data: null, response }
   let data = {}
   try {
     data = await response.json()
@@ -82,7 +82,18 @@ async function request(method, path, body) {
       data.code || 'error',
     )
   }
-  return data
+  return { data, response }
+}
+
+async function request(method, path, body) {
+  return (await send(method, path, body)).data
+}
+
+/** A list and how many matched in all (the X-Total-Count header), for lists the server may cut off. */
+async function getWithTotal(path) {
+  const { data, response } = await send('GET', path)
+  const total = Number(response.headers.get('X-Total-Count'))
+  return { rows: data, total: Number.isFinite(total) && total >= data.length ? total : data.length }
 }
 
 /**
@@ -321,6 +332,7 @@ export const leave = {
 
 export const people = {
   employees: (params) => get(`/org/people/employees${query(params || {})}`),
+  employeesWithTotal: (params) => getWithTotal(`/org/people/employees${query(params || {})}`),
   employee: (id) => get(`/org/people/employees/${id}`),
   orgChart: () => get('/org/people/org-chart'),
   addEmployee: (body) => post('/org/people/employees', body),

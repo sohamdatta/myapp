@@ -147,10 +147,14 @@ Budgets from the roadmap: payroll calculation for 2,000 employees under 60 s; re
 
 | Date | Where | Payroll calculate, 2,000 | People list p95 | k6 reads p95 | Notes |
 | --- | --- | --- | --- | --- | --- |
+| 2026-10-27 | GitHub Actions runner (first run, [log](https://github.com/sohamdatta/myapp/actions/runs/40385478034)) | 1.75 s | 34 ms (service level) | **382 ms over all five reads, 30 users (budget 300)** | HTTP, through the real app; no per-read split yet; seeding 76 s |
+| 2026-10-27 | same runner, People-list fix branch | 1.75 s | 34 ms (service level) | **p95 per read at 30 users: people list 528 ms, people search 460 ms, org chart 372 ms, payroll runs 286 ms (budget 300); all five 426 ms** | the runner has 2 vCPUs shared by k6, the app and PostgreSQL, so this overstates a server's latency, but even the trivial `payroll runs` read sits at the budget, which points at per-request cost (session touch, row-level-security set-up) as well as payload size; not investigated yet |
 | 2026-10-26 | developer container, local PostgreSQL | 1.6 s | 62 ms (service level) | not run | seeding takes 141 s; employees have no attendance, leave, holds or arrears, so this is a floor, not the real month |
 
-Findings so far: `EmployeeService.list` stops at **500 rows**, so an Organization of 2,000 cannot see everyone on the People list
-(search narrows it, but there is no paging); the org chart answers with 315 KB for 2,000 people. Neither is fixed here.
+Findings so far: `EmployeeService.list` stopped at 500 rows with no signal, so an Organization of 2,000 could not see (or search)
+everyone on the People list. Fixed: the cap is 5,000 and the list sends `X-Total-Count`; the People page says "Showing the first N of M" when it is cut off
+(`EmployeeTest.aListCutOffByTheLimitSaysHowManyMatch`). The joiners and exits lists still stop at 500. The org chart answers with 315 KB for 2,000 people and is not fixed.
+**Read budget: not met on this runner.** Next step is to find where a trivial read spends its time before changing anything.
 Not covered yet: sign-in under load (password hashing), attendance month view, payslip release, readers during a calculation,
 and a run on server-sized hardware.
 

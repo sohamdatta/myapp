@@ -70,17 +70,17 @@ jobs:
 
       - uses: grafana/setup-k6-action@v1
       - name: Read load
+        continue-on-error: ${{ !inputs.enforce }}
         env:
           BASE_URL: http://localhost:8080
           EMAIL: hr@scale.test
           PASSWORD: correct-horse-battery
-          THRESHOLDS: ${{ inputs.enforce && 'enforce' || 'warn' }}
         run: k6 run perf/k6/reads.js | tee scale-reads.log
 
       - name: Summary
         if: always()
         run: |
-          { echo '### Scale check'; echo; grep '^SCALE' scale-payroll.log || echo 'no payroll line'; echo; echo '```'; grep -E 'http_req_duration|http_req_failed|checks' scale-reads.log || true; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          { echo '### Scale check'; echo; grep '^SCALE' scale-payroll.log || echo 'no payroll line'; echo; echo '```'; grep -E 'http_req_duration|http_req_failed|checks|✓|✗' scale-reads.log || true; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
 
       - uses: actions/upload-artifact@v7
         if: always()

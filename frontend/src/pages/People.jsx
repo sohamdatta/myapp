@@ -35,10 +35,10 @@ function EmployeeList({ canWrite, onOpen, onAdd }) {
   const [search, setSearch] = useState('')
   const [department, setDepartment] = useState('')
   const departments = useLoad(people.departments)
-  const list = useLoad(() => people.employees({ status }))
+  const list = useLoad(() => people.employeesWithTotal({ status }))
 
   const term = search.trim().toLowerCase()
-  const shown = (list.data || []).filter(
+  const shown = (list.data?.rows || []).filter(
     (e) =>
       (!department || e.departmentId === department) &&
       (!term ||
@@ -97,13 +97,19 @@ function EmployeeList({ canWrite, onOpen, onAdd }) {
         <ErrorNote>{list.error}</ErrorNote>
       ) : shown.length === 0 ? (
         <Empty>
-          {list.data.length === 0
+          {list.data.rows.length === 0
             ? status === 'active'
               ? 'No employee records yet. Add your existing staff here, starting with yourself.'
               : 'Nobody here.'
             : 'Nobody matches that search.'}
         </Empty>
       ) : (
+        <>
+        {list.data.total > list.data.rows.length && (
+          <p className="hint" role="status">
+            Showing the first {list.data.rows.length} of {list.data.total} people. The search and the department filter cover only these.
+          </p>
+        )}
         <div className="table-wrap">
           <table>
             <thead>
@@ -141,6 +147,7 @@ function EmployeeList({ canWrite, onOpen, onAdd }) {
             </tbody>
           </table>
         </div>
+        </>
       )}
     </>
   )
