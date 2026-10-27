@@ -22,15 +22,19 @@ public final class PasswordService {
     private final RateLimits limits;
     private final String publicUrl;
 
-    /** @param production true when the server is set up for production; links to localhost are then a mistake */
+    /** The address used when nothing is set, fine on a developer's machine and wrong anywhere else. */
+    public static final String DEVELOPMENT_URL = "http://localhost:5173";
+
+    /** @param production true when the server is set up for production; the development address is then a mistake */
     public PasswordService(Db db, MailOutbox outbox, RateLimits limits, String publicUrl, boolean production) {
-        if (production && publicUrl.matches("(?i)^https?://(localhost|127\\.0\\.0\\.1)([:/].*)?$")) {
-            throw new IllegalStateException("APP_PUBLIC_URL is not set: reset links in email would point at " + publicUrl);
+        if (production && publicUrl.equals(DEVELOPMENT_URL)) {
+            throw new IllegalStateException("Set APP_PUBLIC_URL (or DOMAIN): reset links in email would point at " + publicUrl);
         }
+        String withScheme = publicUrl.contains("://") ? publicUrl : "https://" + publicUrl;
         this.db = db;
         this.outbox = outbox;
         this.limits = limits;
-        this.publicUrl = publicUrl.endsWith("/") ? publicUrl.substring(0, publicUrl.length() - 1) : publicUrl;
+        this.publicUrl = withScheme.endsWith("/") ? withScheme.substring(0, withScheme.length() - 1) : withScheme;
     }
 
     private static ApiException invalidLink() {

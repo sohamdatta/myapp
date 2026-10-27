@@ -201,8 +201,10 @@ class PasswordServiceTest {
 
     @Test
     void aProductionServerRefusesToMailLinksToLocalhost() {
-        assertThrows(IllegalStateException.class, () -> new PasswordService(db, outbox, limits, "http://localhost:5173", true));
+        assertThrows(IllegalStateException.class, () -> new PasswordService(db, outbox, limits, PasswordService.DEVELOPMENT_URL, true));
         new PasswordService(db, outbox, limits, "https://hrms.example.com", true);
+        new PasswordService(db, outbox, limits, "hrms.example.com", true);   // a bare host name is fine
+        new PasswordService(db, outbox, limits, "http://localhost", true);   // set on purpose, as the CI deployment check does
     }
 
     @Test
