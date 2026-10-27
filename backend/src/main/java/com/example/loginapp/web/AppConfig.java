@@ -25,6 +25,7 @@ import com.example.loginapp.core.ChecklistService;
 import com.example.loginapp.core.Crypto;
 import com.example.loginapp.core.MailOutbox;
 import com.example.loginapp.core.MailSender;
+import com.example.loginapp.core.MfaService;
 import com.example.loginapp.core.PasswordService;
 import com.example.loginapp.core.SmtpMailSender;
 import com.example.loginapp.core.Db;
@@ -120,6 +121,11 @@ public class AppConfig {
     public PasswordService passwordService(Db db, MailOutbox outbox, RateLimits limits, @Value("${app.public-url}") String publicUrl,
                                          @Value("${app.data-key.required:false}") boolean production) {
         return new PasswordService(db, outbox, limits, publicUrl, production);
+    }
+
+    @Bean
+    public MfaService mfaService(Db db, Crypto crypto, MailOutbox outbox, RateLimits limits) {
+        return new MfaService(db, crypto, outbox, limits);
     }
 
     @Bean

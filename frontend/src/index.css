@@ -3668,3 +3668,6 @@ textarea.code {
     display: none;
   }
 }
+
+.recovery-codes { columns: 2; list-style: none; padding: 0; margin: 8px 0 16px; font-size: 1.05em; }
+.recovery-codes li { padding: 2px 0; }

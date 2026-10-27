@@ -196,3 +196,16 @@ Limits: 10 asks per address per 15 min (429), 5 per email per hour (accepted and
 tokens per address per 15 min. `PasswordServiceTest` covers all of it; `26-password-reset.spec.ts` runs it in a browser
 against `e2e/mail-sink.mjs` (SMTP 1025, HTTP 8025; set `E2E_MAIL_URL` to enable, start the app with `APP_SMTP_HOST=127.0.0.1
 APP_SMTP_PORT=1025 APP_SMTP_SECURITY=none APP_SMTP_FROM=noreply@hrms.test`).
+
+## Two-step sign-in (TOTP)
+
+`Totp` is RFC 6238 on RFC 4226: SHA-1, 6 digits, 30 s steps, plus ±1 step for clocks; `TotpTest` runs every Appendix B vector (SHA-1/256/512,
+8 digits) and the RFC 4226 counter vectors. The secret is 20 random bytes sealed with `Crypto.seal("totp:" + identity id)` (a TOTP value
+cannot be opened as a tenant's PAN or the other way round), written pending and made real only when a code from it is right. `mfa_last_step`
+is the last step accepted, so a code works once even inside its window; a recovery code (10, `XXXXX-XXXXX`, 50 bits) is stored as an HMAC keyed
+from the data key and used with one `update … where used_at is null`. A right password for a login with this on returns a 5-minute challenge, not a
+session, and does **not** clear the failure run; wrong codes are failures on the same per-email lock (5 → 429) and five wrong codes kill the
+challenge, so retyping the password does not restart guessing. Invitation links refuse (403 `auth.mfa_required`) for such a login. Sessions made by
+switching Organization keep the old session's `mfa_at`. Turning it off needs the password (checked first, so a wrong password does not use up a code)
+and a code, and ends other sessions. `MfaServiceTest` (fake clock) and `27-two-step.spec.ts` (works out codes like an app) cover it. Turning it on needs the password too (a stolen session must not be able to take over the second factor) and ends earlier sessions; a reset or password change ends open challenges, and a reset keeps a two-step login's run of failures so it never hands a code-guesser fresh guesses (so a victim of lock-out spam waits it out). Not yet: requiring
+it by role, and asking for a fresh code before sensitive actions (the next two PRs).

@@ -91,7 +91,7 @@ public final class InvitationService {
             if (exists) {
                 AuthService.lockEmail(c, email);
                 Map<String, Object> identity = Sql.one(c,
-                        "select id, password_hash from auth.identity where email = ?::citext and status = 'active' for update", email);
+                        "select id, password_hash, mfa_enrolled_at is not null as mfa from auth.identity where email = ?::citext and status = 'active' for update", email);
                 if (identity == null) {
                     throw INVALID;
                 }
@@ -103,6 +103,11 @@ public final class InvitationService {
                         // recorded here and refused below: throwing now would roll the failure back
                         AuthService.recordFailure(c, email);
                         return Map.<String, Object>of("refused", "password");
+                    }
+                    if (Boolean.TRUE.equals(identity.get("mfa"))) {
+                        // the password is right but is not a sign-in for this login, so it cannot be one here either; this is
+                        // only said after the password, so a link alone does not tell whether an account uses two steps
+                        return Map.<String, Object>of("refused", "mfa");
                     }
                     AuthService.clearFailures(c, email);
                 }
@@ -118,6 +123,9 @@ public final class InvitationService {
             UUID membershipId = AuthService.uuid(result.get("membershipId"));
             Sql.update(c, "update auth.identity set last_login_at = now() where id = ?", identityId);
             AuthService.insertSession(c, sessionToken, identityId, "tenant", tenantId, membershipId, null, "12 hours");
+            if (signedIn != null && alreadySignedIn) {
+                AuthService.carryMfa(c, signedIn.sessionId(), sessionToken);
+            }
             if (signedIn != null && alreadySignedIn && !signedIn.isSupport()) {
                 AuthService.revoke(c, signedIn.sessionId());
             }
@@ -126,6 +134,9 @@ public final class InvitationService {
             out.put("membershipId", membershipId);
             return out;
         });
+        if ("mfa".equals(joined.get("refused"))) {
+            throw new ApiException(403, "auth.mfa_required", "This login uses two-step sign-in. Sign in first, then open the invitation link again");
+        }
         if ("locked".equals(joined.get("refused"))) {
             throw AuthService.tooManyFailures();
         }

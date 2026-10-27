@@ -1,10 +1,11 @@
-import { useEffect, useRef, useState } from 'react'
+import { Suspense, lazy, useEffect, useRef, useState } from 'react'
 import { currentUser, endSupportSession, logout } from './api.js'
 import PageView from './PageView.jsx'
 import { preloadAll, preloadPage, rememberLanding } from './pageRegistry.js'
 import { isPlainClick, pathFor, resetLocation, usePage } from './router.js'
 import { AcceptInvitation, Chooser, LoginForm, ResetPassword } from './pages/SignIn.jsx'
-import ChangePassword from './pages/ChangePassword.jsx'
+// loaded when opened: it carries the QR code library, which most visits never need
+const Security = lazy(() => import('./pages/Security.jsx'))
 import { formatDate } from './hooks.js'
 import Bell from './Bell.jsx'
 import RegionBoundary from './RegionBoundary.jsx'
@@ -164,7 +165,7 @@ function Shell({ me, nav, page, onNavigate, onSwitch, onSignOut, onEndSupport, c
               )}
               {me.kind !== 'support' && (
                 <button type="button" className="quiet plain" onClick={() => setChangingPassword(true)}>
-                  Password
+                  Security
                 </button>
               )}
               {me.kind !== 'support' && (
@@ -175,7 +176,11 @@ function Shell({ me, nav, page, onNavigate, onSwitch, onSignOut, onEndSupport, c
             </div>
           </header>
           <div className="content">{children}</div>
-          {changingPassword && <ChangePassword onClose={() => setChangingPassword(false)} />}
+          {changingPassword && (
+            <Suspense fallback={null}>
+              <Security onClose={() => setChangingPassword(false)} />
+            </Suspense>
+          )}
         </main>
       </div>
     </div>

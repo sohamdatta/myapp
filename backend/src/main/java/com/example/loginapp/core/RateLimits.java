@@ -37,6 +37,8 @@ public final class RateLimits {
     public static final Rule FORGOT_PER_EMAIL = new Rule("forgot-email", 5, Duration.ofHours(1));
     /** Reset links that did not work, per client address: someone guessing tokens. */
     public static final Rule RESET_FAILURES_PER_ADDRESS = new Rule("reset-address", 20, Duration.ofMinutes(15));
+    /** Wrong two-step codes, per client address. */
+    public static final Rule MFA_FAILURES_PER_ADDRESS = new Rule("mfa-address", 30, Duration.ofMinutes(15));
     public static final Rule INVITE_ATTEMPTS_PER_ADDRESS = new Rule("invite-address", 30, Duration.ofMinutes(15));
     /** Looking up what an invitation link is for, from one client address. */
     public static final Rule INVITE_PREVIEWS_PER_ADDRESS = new Rule("invite-preview-address", 120, Duration.ofMinutes(5));
