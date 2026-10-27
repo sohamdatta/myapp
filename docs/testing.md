@@ -221,3 +221,12 @@ Entry re-reads the session and the login's enrolment with the session row locked
 asked to set it up again. Lowering the choice needs the password (it is ordered none < admins < admins_payroll < everyone); an
 unknown stored value counts as required. Not covered by this setting, by decision to confirm: support sessions and the console,
 the Auditor role, and sessions already open when roles or the setting change.
+
+## Step-up
+
+Four actions ask again for a fresh code (`StepUp.require`): approving a pay run, downloading the bank file, showing a full
+identifier (PAN, bank account and the like), and changing roles. Only members whose roles the Organization requires two-step
+for are asked (see the section above), so an Organization on the default is unchanged. `POST /auth/step-up` takes a code
+(authenticator or recovery) and is good for 15 minutes on that session; a request refused with `stepup.required` is retried once
+by the front end after the person enters a code. Wrong codes count against the sign-in lock, a code cannot be shown twice,
+and support sessions are not asked (they cannot do any of these). `MfaServiceTest` covers it.

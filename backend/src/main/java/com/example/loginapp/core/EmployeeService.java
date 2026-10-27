@@ -242,6 +242,7 @@ public final class EmployeeService {
             throw ApiException.badRequest("Say why you need the full value, in at least 5 characters");
         }
         LocalDate today = today();
+        StepUp.require(db, ctx);
         return db.inTenant(ctx.tenantId(), c -> {
             Map<String, Object> e = Sql.one(c, "select id, person_id, membership_id from app.employment where id = ?", employmentId);
             if (e == null || !canRead(c, ctx, e, today)) {

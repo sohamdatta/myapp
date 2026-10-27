@@ -125,6 +125,7 @@ public final class UserService {
         ctx.require("role.assign");
         requireMember(ctx);
         notSelf(ctx, membershipId, "change your own roles");
+        StepUp.require(db, ctx);
         db.inTenant(ctx.tenantId(), c -> {
             Map<String, Object> target = lock(c, membershipId);
             if ("ended".equals(target.get("status"))) {

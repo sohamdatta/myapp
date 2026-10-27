@@ -190,6 +190,28 @@ public final class MfaService {
         refuseUnless(outcome);
     }
 
+    /** Shows a fresh code on this session, so the actions that ask for one in the last {@link StepUp#MINUTES} minutes go ahead. */
+    public void stepUp(SessionCtx ctx, String code) {
+        requireOwnLogin(ctx);
+        String outcome = db.inAuth(c -> {
+            AuthService.lockEmail(c, ctx.email());
+            if (AuthService.lockedOut(c, ctx.email())) {
+                return "locked";
+            }
+            if (!enrolled(c, ctx.identityId())) {
+                return "off";
+            }
+            if (check(c, ctx.identityId(), code) == Result.WRONG) {
+                AuthService.recordFailure(c, ctx.email());   // guessing here counts like guessing at sign-in
+                return "wrong";
+            }
+            AuthService.clearFailures(c, ctx.email());
+            Sql.update(c, "update auth.session set step_up_at = now(), mfa_at = coalesce(mfa_at, now()) where id = ?", ctx.sessionId());
+            return "ok";
+        });
+        refuseUnless(outcome);
+    }
+
     // ── signing in ──────────────────────────────────────────────────────
 
     /** Answers a challenge from {@link AuthService#signIn} with a code (or a recovery code); returns the session token. */

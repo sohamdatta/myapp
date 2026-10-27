@@ -480,6 +480,42 @@ class MfaServiceTest {
     }
 
     @Test
+    void sensitiveActionsAskForAFreshCodeWhereTwoStepIsRequired() throws Exception {
+        String email = owner();
+        SessionCtx early = insideOrganization(email);
+        requireFor(early, "admins");
+        com.example.loginapp.core.UserService users = new com.example.loginapp.core.UserService(db);
+        String employee = "emp@" + early.tenantName().toLowerCase().replace(' ', '-') + ".test";
+        String employeeToken = (String) users.invite(early, employee, List.of("employee")).get("token");
+        java.util.UUID member = auth.resolve(new InvitationService(db, limits).accept(employeeToken, PASSWORD, null)).membershipId();
+        String secret = enrol(email).get(0);
+        SessionCtx admin = auth.resolve(auth.enterOrganization(
+                auth.resolve(mfa.complete(auth.signIn(email, PASSWORD, null).token(), codeNow(secret), null)),
+                early.tenantId()));
+        // signed in with a code, but changing roles asks again
+        assertEquals("stepup.required", refusal(() -> users.changeRoles(admin, member, List.of("employee", "manager"))).code());
+        advance(30);
+        assertEquals("auth.invalid_code", refusal(() -> mfa.stepUp(admin, "000000")).code(), "a wrong code does not count");
+        mfa.stepUp(admin, codeNow(secret));
+        users.changeRoles(admin, member, List.of("employee", "manager"));
+        assertEquals("auth.invalid_code", refusal(() -> mfa.stepUp(admin, codeNow(secret))).code(), "the same code cannot be shown twice");
+        // fifteen minutes on, it asks again
+        ownerExec("update auth.session set step_up_at = now() - interval '16 minutes' where id = '" + admin.sessionId() + "'");
+        assertEquals("stepup.required", refusal(() -> users.changeRoles(admin, member, List.of("employee"))).code());
+    }
+
+    @Test
+    void sensitiveActionsAskNothingExtraWhereTwoStepIsNotRequired() throws Exception {
+        String email = owner();
+        SessionCtx admin = insideOrganization(email);
+        com.example.loginapp.core.UserService users = new com.example.loginapp.core.UserService(db);
+        String employee = "emp@" + admin.tenantName().toLowerCase().replace(' ', '-') + ".test";
+        String token = (String) users.invite(admin, employee, List.of("employee")).get("token");
+        java.util.UUID member = auth.resolve(new InvitationService(db, limits).accept(token, PASSWORD, null)).membershipId();
+        users.changeRoles(admin, member, List.of("employee", "manager"));
+    }
+
+    @Test
     void theChoiceDecidesWhichRolesMustUseIt() {
         assertFalse(com.example.loginapp.core.MfaPolicy.applies("none", List.of("owner")));
         assertTrue(com.example.loginapp.core.MfaPolicy.applies("admins", List.of("employee", "hr_admin")));

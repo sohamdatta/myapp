@@ -476,6 +476,7 @@ public final class PayrollRuns {
 
     public void approve(SessionCtx ctx, UUID runId) {
         PayrollConfig.need(ctx, "payroll.approve");
+        StepUp.require(db, ctx);
         db.inTenant(ctx.tenantId(), c -> {
             Map<String, Object> r = lockRun(c, runId);
             if (!"calculated".equals(r.get("state"))) {
@@ -636,6 +637,7 @@ public final class PayrollRuns {
         requireRuns(ctx);
         if (kind.equals("bank")) {
             PayrollConfig.need(ctx, "payroll.release");
+            StepUp.require(db, ctx);
         }
         return db.inTenant(ctx.tenantId(), c -> {
             Map<String, Object> r = run(c, runId);
