@@ -13,8 +13,11 @@ public final class StepUp {
     private StepUp() {}
 
     public static void require(Db db, SessionCtx ctx) {
-        if (ctx.isSupport() || !ctx.inOrganization() || ctx.membershipId() == null) {
-            return;   // a support session has none of these powers to start with
+        if (ctx.isSupport()) {
+            throw new ApiException(403, "permission.denied", "A support session cannot do this");   // never by support, whatever its role rows say
+        }
+        if (!ctx.inOrganization() || ctx.membershipId() == null) {
+            return;
         }
         if (!AuthService.mfaRequired(db, ctx.tenantId(), ctx.membershipId())) {
             return;

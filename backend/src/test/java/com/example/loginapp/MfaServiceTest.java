@@ -432,10 +432,10 @@ class MfaServiceTest {
     void aMemberWhoseRolesAreNotCoveredEntersAndOneWhoseRolesAreCoveredDoesNot() throws Exception {
         String email = owner();
         SessionCtx admin = insideOrganization(email);
-        requireFor(admin, "admins");
         com.example.loginapp.core.UserService users = new com.example.loginapp.core.UserService(db);
         String employee = "emp@" + admin.tenantName().toLowerCase().replace(' ', '-') + ".test";
         String employeeToken = (String) users.invite(admin, employee, List.of("employee")).get("token");
+        requireFor(admin, "admins");
         String employeeSession = new InvitationService(db, limits).accept(employeeToken, PASSWORD, null);
         assertNotNull(auth.resolve(employeeSession), "an employee joins with a session under 'admins'");
         SessionCtx emp = auth.resolve(auth.login(employee, PASSWORD));
@@ -449,10 +449,10 @@ class MfaServiceTest {
     void anInvitationForARoleThatMustUseTwoStepOpensNoSession() throws Exception {
         String email = owner();
         SessionCtx admin = insideOrganization(email);
-        requireFor(admin, "admins_payroll");
         com.example.loginapp.core.UserService users = new com.example.loginapp.core.UserService(db);
         String hr = "hr@" + admin.tenantName().toLowerCase().replace(' ', '-') + ".test";
         String token = (String) users.invite(admin, hr, List.of("hr_admin")).get("token");
+        requireFor(admin, "admins_payroll");
         assertEquals("mfa.enrolment_required", refusal(() -> new InvitationService(db, limits).accept(token, PASSWORD, null)).code());
         assertEquals(0, Integer.parseInt(owner("select count(*) from auth.session s join auth.identity i on i.id = s.identity_id "
                 + "where i.email = '" + hr + "' and s.revoked_at is null and s.kind = 'tenant'")), "no live session was left");
@@ -483,10 +483,10 @@ class MfaServiceTest {
     void sensitiveActionsAskForAFreshCodeWhereTwoStepIsRequired() throws Exception {
         String email = owner();
         SessionCtx early = insideOrganization(email);
-        requireFor(early, "admins");
         com.example.loginapp.core.UserService users = new com.example.loginapp.core.UserService(db);
         String employee = "emp@" + early.tenantName().toLowerCase().replace(' ', '-') + ".test";
         String employeeToken = (String) users.invite(early, employee, List.of("employee")).get("token");
+        requireFor(early, "admins");
         java.util.UUID member = auth.resolve(new InvitationService(db, limits).accept(employeeToken, PASSWORD, null)).membershipId();
         String secret = enrol(email).get(0);
         SessionCtx admin = auth.resolve(auth.enterOrganization(
@@ -494,6 +494,8 @@ class MfaServiceTest {
                 early.tenantId()));
         // signed in with a code, but changing roles asks again
         assertEquals("stepup.required", refusal(() -> users.changeRoles(admin, member, List.of("employee", "manager"))).code());
+        assertEquals("stepup.required", refusal(() -> users.invite(admin, "new@" + early.tenantName().toLowerCase().replace(' ', '-') + ".test",
+                List.of("owner"))).code(), "an invitation can grant roles, so it asks too");
         advance(30);
         assertEquals("auth.invalid_code", refusal(() -> mfa.stepUp(admin, "000000")).code(), "a wrong code does not count");
         mfa.stepUp(admin, codeNow(secret));
@@ -502,6 +504,35 @@ class MfaServiceTest {
         // fifteen minutes on, it asks again
         ownerExec("update auth.session set step_up_at = now() - interval '16 minutes' where id = '" + admin.sessionId() + "'");
         assertEquals("stepup.required", refusal(() -> users.changeRoles(admin, member, List.of("employee"))).code());
+    }
+
+    @Test
+    void aRecoveryCodeWorksForStepUpAndSwitchingOrganizationDropsIt() throws Exception {
+        String email = owner();
+        SessionCtx early = insideOrganization(email);
+        requireFor(early, "admins");
+        com.example.loginapp.core.UserService users = new com.example.loginapp.core.UserService(db);
+        List<String> enrolment = enrol(email);
+        SessionCtx admin = auth.resolve(auth.enterOrganization(
+                auth.resolve(mfa.complete(auth.signIn(email, PASSWORD, null).token(), codeNow(enrolment.get(0)), null)), early.tenantId()));
+        mfa.stepUp(admin, enrolment.get(1));
+        assertNotNull(owner("select step_up_at from auth.session where id = '" + admin.sessionId() + "'"));
+        assertEquals("auth.invalid_code", refusal(() -> mfa.stepUp(admin, enrolment.get(1))).code(), "a recovery code is used once");
+        // a session made by switching starts without one, so the next sensitive action asks again
+        SessionCtx switched = auth.resolve(auth.enterOrganization(admin, early.tenantId()));
+        assertEquals(null, owner("select step_up_at from auth.session where id = '" + switched.sessionId() + "'"));
+        assertEquals("stepup.required", refusal(() -> users.invite(switched, "x@" + early.tenantName().toLowerCase().replace(' ', '-') + ".test",
+                List.of("employee"))).code());
+    }
+
+    @Test
+    void aMemberWhoMustUseTwoStepAndHasNoneIsToldToSetItUpNotAskedForACode() throws Exception {
+        String email = owner();
+        SessionCtx admin = insideOrganization(email);
+        requireFor(admin, "admins");
+        com.example.loginapp.core.UserService users = new com.example.loginapp.core.UserService(db);
+        assertEquals("mfa.enrolment_required", refusal(() -> users.invite(admin, "x@" + admin.tenantName().toLowerCase().replace(' ', '-') + ".test",
+                List.of("employee"))).code());
     }
 
     @Test

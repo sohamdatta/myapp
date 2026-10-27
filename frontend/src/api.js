@@ -136,7 +136,7 @@ export function uploadFile(path, file, onProgress) {
 }
 
 /** Fetches a file the server sends as an attachment, as a Blob to show or save. */
-export async function fetchFile(path) {
+export async function fetchFile(path, retried = false) {
   const headers = {}
   const token = getToken()
   if (token) headers.Authorization = `Bearer ${token}`
@@ -147,6 +147,9 @@ export async function fetchFile(path) {
       data = await response.json()
     } catch {
       // not JSON
+    }
+    if (data.code === 'stepup.required' && askForCode && !retried && (await askForCode())) {
+      return fetchFile(path, true)
     }
     throw new ApiError(data.message || 'The file could not be opened.', response.status, data.code || 'error')
   }

@@ -242,7 +242,9 @@ public final class EmployeeService {
             throw ApiException.badRequest("Say why you need the full value, in at least 5 characters");
         }
         LocalDate today = today();
-        StepUp.require(db, ctx);
+        if (ctx.can("employee.sensitive")) {
+            StepUp.require(db, ctx);   // only asked of someone who may reveal, so a refused person does not use up a code
+        }
         return db.inTenant(ctx.tenantId(), c -> {
             Map<String, Object> e = Sql.one(c, "select id, person_id, membership_id from app.employment where id = ?", employmentId);
             if (e == null || !canRead(c, ctx, e, today)) {
@@ -553,6 +555,7 @@ public final class EmployeeService {
     public void setBank(SessionCtx ctx, UUID employmentId, String holder, String accountNumber, String ifscCode,
                         String bankName, String branch, String effectiveFrom) {
         ctx.require("employee.write");
+        StepUp.require(db, ctx);   // a new account before a run is approved is the way round the approval
         String account = IdChecks.bankAccount(accountNumber);
         String ifsc = IdChecks.ifsc(ifscCode);
         LocalDate from = blank(effectiveFrom) ? today() : requiredDate(effectiveFrom, "date it applies from");

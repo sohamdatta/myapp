@@ -11,7 +11,14 @@ export default function StepUpPrompt() {
   const dialog = useRef(null)
 
   useEffect(() => {
-    onStepUp(() => new Promise((resolve) => setWaiting({ resolve })))
+    // requests refused together share one question and all go on after one code
+    let pending = null
+    onStepUp(() => {
+      if (!pending) {
+        pending = new Promise((resolve) => setWaiting({ resolve: (ok) => { pending = null; resolve(ok) } }))
+      }
+      return pending
+    })
     return () => onStepUp(null)
   }, [])
 

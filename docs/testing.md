@@ -224,9 +224,11 @@ the Auditor role, and sessions already open when roles or the setting change.
 
 ## Step-up
 
-Four actions ask again for a fresh code (`StepUp.require`): approving a pay run, downloading the bank file, showing a full
-identifier (PAN, bank account and the like), and changing roles. Only members whose roles the Organization requires two-step
-for are asked (see the section above), so an Organization on the default is unchanged. `POST /auth/step-up` takes a code
-(authenticator or recovery) and is good for 15 minutes on that session; a request refused with `stepup.required` is retried once
-by the front end after the person enters a code. Wrong codes count against the sign-in lock, a code cannot be shown twice,
-and support sessions are not asked (they cannot do any of these). `MfaServiceTest` covers it.
+These actions ask again for a fresh code (`StepUp.require`): approving a pay run, marking it paid, releasing payslips, the bank file,
+approving an exit settlement, showing a full identifier, changing an employee's bank account, and anything that grants roles
+(changing them, inviting, resending an invitation). Only members whose roles the Organization requires two-step for are asked
+(see the section above), so an Organization on the default is unchanged; under `admins` a plain payroll approver is not covered,
+which is a choice to confirm. `POST /auth/step-up` takes a code (authenticator or recovery) and is good for 15 minutes on that
+session only: switching Organization makes a new session and drops it. A code that passes also counts as the session's proof of a
+code (`mfa_at`). Wrong codes count against the sign-in lock and a code cannot be shown twice. Support sessions are refused
+outright. The front end shows one prompt for requests refused together and retries them, files included. `MfaServiceTest` covers it.

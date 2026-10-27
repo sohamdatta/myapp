@@ -206,7 +206,10 @@ public final class MfaService {
                 return "wrong";
             }
             AuthService.clearFailures(c, ctx.email());
-            Sql.update(c, "update auth.session set step_up_at = now(), mfa_at = coalesce(mfa_at, now()) where id = ?", ctx.sessionId());
+            if (Sql.update(c, "update auth.session set step_up_at = now(), mfa_at = coalesce(mfa_at, now()) "
+                    + "where id = ? and revoked_at is null", ctx.sessionId()) != 1) {
+                throw ApiException.notSignedIn();
+            }
             return "ok";
         });
         refuseUnless(outcome);
