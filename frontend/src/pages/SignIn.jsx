@@ -307,9 +307,8 @@ function ForgotPassword({ onBack }) {
   )
 }
 
-/** The page behind a reset link: choose a new password. Nobody is signed in by it. */
 /** The page behind the link that confirms a new sign-in address, or the one that undoes the change. Needs a click, not just a visit. */
-export function EmailLink({ kind, token, onDone }) {
+export function EmailLink({ kind, token, onDone, onCancel }) {
   const [done, setDone] = useState(false)
   const { busy, error, run } = useAction()
   const confirming = kind === 'confirm'
@@ -349,13 +348,14 @@ export function EmailLink({ kind, token, onDone }) {
       <button type="button" className="primary" disabled={busy} onClick={go}>
         {confirming ? 'Confirm' : 'Undo the change'}
       </button>
-      <button type="button" className="quiet" onClick={onDone}>
+      <button type="button" className="quiet" onClick={onCancel}>
         Cancel
       </button>
     </div>
   )
 }
 
+/** The page behind a reset link: choose a new password. Nobody is signed in by it. */
 export function ResetPassword({ token, onDone, onCancel }) {
   const [password, setPassword] = useState('')
   const [confirm, setConfirm] = useState('')

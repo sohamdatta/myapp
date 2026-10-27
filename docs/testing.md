@@ -235,10 +235,16 @@ outright. The front end shows one prompt for requests refused together and retri
 
 ## Changing the sign-in address
 
-From Security, with the password (and a fresh code when two-step is on): a link goes to the NEW address, good for 24 hours, and
-the old address is told a change was asked for. Opening the link (a click, not just a visit) moves the login, ends every session
-and sends the OLD address a link to undo it for 7 days; undoing puts the old address back, ends every session and tells both. An
-address that already has a login is answered the same and gets nothing, so the request does not say whether an account exists.
-A new request cancels the earlier one; 5 requests an hour per login; wrong links are limited per client address; a wrong password
-counts toward the sign-in lock. Undo does not change the password: the mail tells the person to. `EmailChangeTest` and
-`28-email-change.spec.ts` (project `email-change`) cover it.
+From Security, with the password (and a fresh code when two-step is on, or is required of the member's roles): a link goes to
+the NEW address, good for 24 hours, and the old address is told a change was asked for (whether or not the new address already
+has a login, so the requester's own inbox does not say). Opening the link (a click, not just a visit) moves the login, ends every
+session, voids earlier reset links and sends the OLD address a link to undo it for 7 days. Changing the password, or turning
+two-step on or off, cancels a request not yet confirmed.
+
+While a change can still be undone: no second change is made (a chain would take the first one's undo with it), and nobody can
+create a login at the address left behind (an invitation to it is refused). Undoing puts the old address back, ends every
+session, makes the password unusable (the owner chooses one with a reset link to that address) and removes any second step set up
+since the change, so whoever had the new address keeps nothing. Wrong links are limited per client address; 5 requests an hour per
+login; a wrong password counts toward the sign-in lock. Known and left alone: pending invitations to the old address stay as they
+were, `auth.login_failure` counts stay under the old address, and mail to a suppressed old address (so the undo link) is not sent.
+`EmailChangeTest` and `28-email-change.spec.ts` (project `email-change`) cover it.

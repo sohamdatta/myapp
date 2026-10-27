@@ -113,6 +113,10 @@ public final class InvitationService {
                 }
                 identityId = AuthService.uuid(identity.get("id"));
             } else {
+                AuthService.lockEmail(c, email);   // the same lock a change of address takes, so the two never collide on the unique address
+                if (EmailChangeService.reserved(c, email)) {
+                    throw INVALID;   // an address just left behind stays its owner's while the change can still be undone
+                }
                 identityId = AuthService.uuid(Sql.one(c,
                         "insert into auth.identity (email, password_hash) values (?::citext, ?) returning id",
                         email, Secrets.hashPassword(password)).get("id"));

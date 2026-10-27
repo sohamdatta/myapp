@@ -9,6 +9,7 @@ const STAMP = Date.now().toString(36);
 const OWNER = `owner@umbrella-${STAMP}.test`;
 const NEW_ADDRESS = `moved-${STAMP}@elsewhere.test`;
 const ORG = `Umbrella ${STAMP} Ltd`;
+const AFTER_UNDO = 'a-fresh-long-password-after-undo';
 
 async function mailTo(email: string, subject: string): Promise<string> {
   for (let i = 0; i < 40; i++) {
@@ -71,6 +72,28 @@ test.describe.serial('email change', () => {
     await back.getByRole('button', { name: 'Undo the change' }).click();
     await expect(back.getByRole('status')).toContainText('The earlier address is back');
     await back.context().close();
-    await (await signIn(browser, OWNER)).context().close();
+
+    // the undo made the old password unusable: the owner chooses a new one with a reset link to the earlier address
+    const stale = await newPage(browser);
+    await stale.goto('/');
+    await stale.fill('#email', OWNER);
+    await stale.fill('#password', PASSWORD);
+    await stale.click('button.primary');
+    await expect(stale.getByText('Incorrect email or password')).toBeVisible();
+    await stale.context().close();
+    await fetch(`${MAIL}/messages`, { method: 'DELETE' });
+    const forgot = await newPage(browser);
+    await forgot.goto('/');
+    await forgot.getByRole('button', { name: 'Forgot your password?' }).click();
+    await forgot.fill('#forgot-email', OWNER);
+    await forgot.getByRole('button', { name: 'Send the link' }).click();
+    const resetBody = await mailTo(OWNER, 'Reset your password');
+    await forgot.goto(`/?reset=${resetBody.match(/\?reset=([A-Za-z0-9_-]+)/)![1]}`);
+    await forgot.fill('#new-password', AFTER_UNDO);
+    await forgot.fill('#confirm-password', AFTER_UNDO);
+    await forgot.getByRole('button', { name: 'Change password' }).click();
+    await expect(forgot.getByRole('status')).toContainText('Your password is changed');
+    await forgot.context().close();
+    await (await signIn(browser, OWNER, AFTER_UNDO)).context().close();
   });
 });

@@ -14,6 +14,10 @@ public final class StepUp {
 
     /** For things only the person themselves should do (their own address): a fresh code, but only if they have two-step on. */
     public static void requireIfEnrolled(Db db, SessionCtx ctx) {
+        if (ctx.inOrganization() && !ctx.isSupport() && ctx.membershipId() != null && AuthService.mfaRequired(db, ctx.tenantId(), ctx.membershipId())) {
+            require(db, ctx);   // a member the Organization requires it of cannot skip it by not having set it up
+            return;
+        }
         Map<String, Object> state = db.inAuth(c -> Sql.one(c,
                 "select s.step_up_at is not null and s.step_up_at > now() - make_interval(mins => ?) as fresh, "
                         + "i.mfa_enrolled_at is not null as enrolled "

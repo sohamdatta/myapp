@@ -31,8 +31,8 @@ import com.example.loginapp.core.RateLimits;
 import com.example.loginapp.core.SessionCtx;
 
 /**
- * Forgot, reset and change password: the same answer for every address, one use per link, every other session ended, and
- * the limits. Needs PostgreSQL as described in {@link UserModuleTest}; skipped when it cannot be reached.
+ * Changing the sign-in address: confirm at the new address, undo from the old within seven days, and nothing an attacker
+ * could keep. Needs PostgreSQL as described in {@link UserModuleTest}.
  */
 class EmailChangeTest {
 
@@ -155,16 +155,17 @@ class EmailChangeTest {
         String signedIn = auth.login(target, PASSWORD);
         changes.undo(undo, "10.9.1.1");
         assertEquals(401, refusal(() -> auth.resolve(signedIn)).status(), "sessions end again");
-        assertNotNull(auth.login(email, PASSWORD));
+        assertEquals(1, rows("select count(*) from auth.identity where email = '" + email + "'"), "the address is the login's again");
         assertEquals(401, refusal(() -> auth.login(target, PASSWORD)).status());
         assertEquals(400, refusal(() -> changes.undo(undo, "10.9.1.1")).status(), "once");
         assertTrue(mailedTo(email, "put back"));
 
-        // a second change, undone too late
+        // another login: a change undone too late
+        String second = owner();
         String again = fresh();
-        changes.request(auth.resolve(auth.login(email, PASSWORD)), again, PASSWORD);
+        changes.request(auth.resolve(auth.login(second, PASSWORD)), again, PASSWORD);
         changes.confirm(linkTo(again, "https://hrms.test/?confirm-email="), "10.9.1.2");
-        String late = linkTo(email, "https://hrms.test/?undo-email=");
+        String late = linkTo(second, "https://hrms.test/?undo-email=");
         ownerExec("update auth.email_change set undo_until = now() - interval '1 minute' where undo_hash is not null and undone_at is null");
         assertEquals(400, refusal(() -> changes.undo(late, "10.9.1.2")).status());
         assertNotNull(auth.login(again, PASSWORD), "it stays changed");
@@ -177,7 +178,8 @@ class EmailChangeTest {
         SessionCtx ctx = auth.resolve(auth.login(email, PASSWORD));
         changes.request(ctx, taken, PASSWORD);   // no error, so it does not tell
         assertEquals(0, linkCount(taken));
-        assertEquals(0, rows("select count(*) from auth.email_change e join auth.identity i on i.id = e.identity_id where i.email = '" + email + "'"));
+        assertEquals(0, rows("select count(*) from auth.email_change e join auth.identity i on i.id = e.identity_id where i.email = '"
+                + email + "' and e.cancelled_at is null"), "nothing that could be confirmed");
     }
 
     private static int linkCount(String email) {
@@ -199,10 +201,92 @@ class EmailChangeTest {
         assertEquals(403, refusal(() -> changes.request(ctx, fresh(), "wrong-password-here")).status());
         assertEquals(400, refusal(() -> changes.request(ctx, "not-an-address", PASSWORD)).status());
         assertEquals(400, refusal(() -> changes.request(ctx, email.toUpperCase(), PASSWORD)).status(), "the same address");
-        for (int i = 0; i < 5; i++) {
-            refusal(() -> changes.request(ctx, fresh(), "wrong-password-here"));
+    }
+
+    @Test
+    void theRequestsAreLimitedPerLoginAndTheSignInLockAppliesToThemToo() {
+        String email = owner();
+        SessionCtx ctx = auth.resolve(auth.login(email, PASSWORD));
+        for (int i = 0; i < 4; i++) {
+            assertEquals("auth.wrong_password", refusal(() -> changes.request(ctx, fresh(), "wrong-password-here")).code());
         }
-        assertEquals(429, refusal(() -> changes.request(ctx, fresh(), PASSWORD)).status(), "too many wrong passwords lock the login");
+        changes.request(ctx, fresh(), PASSWORD);   // the fifth request of the hour
+        assertEquals("request.rate_limited", refusal(() -> changes.request(ctx, fresh(), PASSWORD)).code());
+
+        String other = owner();
+        SessionCtx ctx2 = auth.resolve(auth.login(other, PASSWORD));
+        for (int i = 0; i < 5; i++) {
+            assertEquals(401, refusal(() -> auth.login(other, "wrong-password-here")).status());
+        }
+        assertEquals("auth.locked", refusal(() -> changes.request(ctx2, fresh(), PASSWORD)).code(), "locked out, even with the right password");
+    }
+
+    /** Confirms a change from {@code email} to a fresh address as the attacker would; returns [new address, undo token]. */
+    private String[] takeOver(String email) {
+        String target = fresh();
+        changes.request(auth.resolve(auth.login(email, PASSWORD)), target, PASSWORD);
+        changes.confirm(linkTo(target, "https://hrms.test/?confirm-email="), "10.9.9.9");
+        return new String[] { target, linkTo(email, "https://hrms.test/?undo-email=") };
+    }
+
+    @Test
+    void whileAChangeCanBeUndoneNoSecondChangeIsMade() throws Exception {
+        String email = owner();
+        String[] taken = takeOver(email);
+        SessionCtx attacker = auth.resolve(auth.login(taken[0], PASSWORD));
+        assertEquals("email.undo_window", refusal(() -> changes.request(attacker, fresh(), PASSWORD)).code());
+        changes.undo(taken[1], "10.9.9.9");   // the undo still works, because the chain could not be extended
+        assertEquals(401, refusal(() -> auth.login(taken[0], PASSWORD)).status());
+    }
+
+    @Test
+    void theAddressLeftBehindCannotBeTakenWhileTheChangeCanBeUndone() throws Exception {
+        String email = owner();
+        String[] taken = takeOver(email);
+        SessionCtx attacker = auth.resolve(auth.login(taken[0], PASSWORD));
+        com.example.loginapp.core.UserService users = new com.example.loginapp.core.UserService(db);
+        SessionCtx inside = auth.resolve(auth.enterOrganization(attacker, java.util.UUID.fromString(
+                ((Map<?, ?>) ((java.util.List<?>) auth.destinations(attacker).get("organizations")).get(0)).get("tenantId").toString())));
+        String token = (String) users.invite(inside, email, java.util.List.of("employee")).get("token");
+        assertEquals(410, refusal(() -> new InvitationService(db, limits).accept(token, "squatter-password-12", null)).status());
+        changes.undo(taken[1], "10.9.9.9");
+        assertEquals(0, rows("select count(*) from auth.identity where email = '" + email + "' and password_hash is null"));
+    }
+
+    @Test
+    void anUndoLeavesTheAttackerNoPasswordAndNoSecondStep() throws Exception {
+        String email = owner();
+        String[] taken = takeOver(email);
+        SessionCtx attacker = auth.resolve(auth.login(taken[0], PASSWORD));
+        com.example.loginapp.core.MfaService mfa = new com.example.loginapp.core.MfaService(db, Crypto.withKey(Crypto.DEVELOPMENT_KEY), outbox, limits);
+        var enrolment = mfa.start(attacker);
+        mfa.confirm(attacker, PASSWORD, com.example.loginapp.core.Totp.code(com.example.loginapp.core.Totp.fromBase32(enrolment.secret()),
+                com.example.loginapp.core.Totp.stepAt(java.time.Instant.now())));
+        assertEquals(1, rows("select count(*) from auth.identity where email = '" + taken[0] + "' and mfa_enrolled_at is not null"));
+        changes.undo(taken[1], "10.9.9.9");
+        assertEquals(401, refusal(() -> auth.login(email, PASSWORD)).status(), "the password the attacker knew no longer works");
+        assertEquals(0, rows("select count(*) from auth.identity where email = '" + email + "' and mfa_enrolled_at is not null"),
+                "a second step set up in the window is gone");
+    }
+
+    @Test
+    void changingThePasswordCancelsAPendingRequest() {
+        String email = owner();
+        SessionCtx ctx = auth.resolve(auth.login(email, PASSWORD));
+        String target = fresh();
+        changes.request(ctx, target, PASSWORD);
+        String link = linkTo(target, "https://hrms.test/?confirm-email=");
+        new com.example.loginapp.core.PasswordService(db, outbox, limits, "https://hrms.test/", false).change(ctx, PASSWORD, "another-long-password-1");
+        assertEquals(400, refusal(() -> changes.confirm(link, "10.9.9.8")).status());
+    }
+
+    @Test
+    void theRequestersOwnInboxDoesNotSayWhetherTheAddressIsTaken() {
+        String email = owner();
+        String taken = owner();
+        changes.request(auth.resolve(auth.login(email, PASSWORD)), taken, PASSWORD);
+        assertTrue(mailedTo(email, "change of your sign-in address"), "told either way");
+        assertEquals(0, linkCount(taken));
     }
 
     @Test

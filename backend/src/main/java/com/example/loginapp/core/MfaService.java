@@ -110,6 +110,7 @@ public final class MfaService {
                 ps.executeUpdate();
             }
             Sql.update(c, "update auth.session set mfa_at = now() where id = ?", ctx.sessionId());
+            EmailChangeService.cancelPending(c, ctx.identityId());
             AuthService.revokeAll(c, ctx.identityId(), ctx.sessionId());   // sessions from before it was on never proved a second factor
             List<String> fresh = newRecoveryCodes(c, ctx.identityId());
             notice(c, ctx.email(), "Two-step sign-in was turned on", "Two-step sign-in was just turned on for " + ctx.email()
@@ -181,6 +182,7 @@ public final class MfaService {
                     + "mfa_last_step = null where id = ?", ctx.identityId());
             Sql.update(c, "update auth.mfa_recovery_code set used_at = coalesce(used_at, now()) where identity_id = ?", ctx.identityId());
             endChallenges(c, ctx.identityId());
+            EmailChangeService.cancelPending(c, ctx.identityId());
             AuthService.revokeAll(c, ctx.identityId(), ctx.sessionId());
             AuthService.clearFailures(c, ctx.email());
             notice(c, ctx.email(), "Two-step sign-in was turned off", "Two-step sign-in was just turned off for " + ctx.email()

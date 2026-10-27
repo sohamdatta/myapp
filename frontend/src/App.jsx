@@ -291,6 +291,7 @@ export default function App() {
             setEmailLink(null)
             setMe(null)   // either one ends every session, this one too
           }}
+          onCancel={() => setEmailLink(null)}
         />
       </main>
     )
