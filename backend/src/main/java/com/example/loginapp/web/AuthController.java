@@ -82,6 +82,13 @@ public class AuthController {
         return mfa.status(Requests.session(auth, authorization));
     }
 
+    @PostMapping("/auth/step-up")
+    public ResponseEntity<Void> stepUp(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                       @RequestBody CodeRequest request) {
+        mfa.stepUp(Requests.session(auth, authorization), request.code());
+        return ResponseEntity.noContent().build();
+    }
+
     @PostMapping("/auth/mfa/start")
     public MfaService.Enrolment mfaStart(@RequestHeader(value = "Authorization", required = false) String authorization) {
         return mfa.start(Requests.session(auth, authorization));

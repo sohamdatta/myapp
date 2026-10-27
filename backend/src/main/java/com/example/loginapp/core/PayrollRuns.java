@@ -476,6 +476,7 @@ public final class PayrollRuns {
 
     public void approve(SessionCtx ctx, UUID runId) {
         PayrollConfig.need(ctx, "payroll.approve");
+        StepUp.require(db, ctx);
         db.inTenant(ctx.tenantId(), c -> {
             Map<String, Object> r = lockRun(c, runId);
             if (!"calculated".equals(r.get("state"))) {
@@ -520,6 +521,7 @@ public final class PayrollRuns {
 
     public void markPaid(SessionCtx ctx, UUID runId, PaidInput in) {
         PayrollConfig.need(ctx, "payroll.release");
+        StepUp.require(db, ctx);
         LocalDate on = in.paidOn() == null || in.paidOn().isBlank() ? today() : PayrollConfig.date(in.paidOn(), "paid on");
         String ref = PayrollConfig.blank(in.reference());
         if (ref == null) {
@@ -544,6 +546,7 @@ public final class PayrollRuns {
         if (!ctx.reachesEveryone("payroll.prepare") && !ctx.reachesEveryone("payroll.release")) {
             throw ApiException.denied("payroll.prepare");
         }
+        StepUp.require(db, ctx);
         db.inTenant(ctx.tenantId(), c -> {
             Map<String, Object> r = lockRun(c, runId);
             if (!"paid".equals(r.get("state"))) {
@@ -636,6 +639,7 @@ public final class PayrollRuns {
         requireRuns(ctx);
         if (kind.equals("bank")) {
             PayrollConfig.need(ctx, "payroll.release");
+            StepUp.require(db, ctx);
         }
         return db.inTenant(ctx.tenantId(), c -> {
             Map<String, Object> r = run(c, runId);

@@ -59,6 +59,7 @@ public final class UserService {
     public Map<String, Object> invite(SessionCtx ctx, String email, List<String> roleCodes) {
         ctx.require("user.invite");
         requireMember(ctx);
+        StepUp.require(db, ctx);   // an invitation can grant any role the caller may grant, so it is a way to change roles
         if (email == null || !EMAIL.matcher(email.trim()).matches()) {
             throw ApiException.badRequest("Enter a valid email address");
         }
@@ -91,6 +92,8 @@ public final class UserService {
     /** Replaces the token and resets the expiry on the same invitation. */
     public Map<String, Object> resendInvitation(SessionCtx ctx, UUID invitationId) {
         ctx.require("user.invite");
+        requireMember(ctx);
+        StepUp.require(db, ctx);
         String token = Secrets.newToken();
         return db.inTenant(ctx.tenantId(), c -> {
             Map<String, Object> row = Sql.one(c,
@@ -125,6 +128,7 @@ public final class UserService {
         ctx.require("role.assign");
         requireMember(ctx);
         notSelf(ctx, membershipId, "change your own roles");
+        StepUp.require(db, ctx);
         db.inTenant(ctx.tenantId(), c -> {
             Map<String, Object> target = lock(c, membershipId);
             if ("ended".equals(target.get("status"))) {

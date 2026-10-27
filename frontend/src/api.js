@@ -53,7 +53,16 @@ export class ApiError extends Error {
   }
 }
 
-async function send(method, path, body) {
+let askForCode = null
+
+/** The screen registers how to ask for a fresh code; a request refused with stepup.required is retried once after it. */
+export function onStepUp(handler) {
+  askForCode = handler
+}
+
+export const stepUp = (code) => post('/auth/step-up', { code })
+
+async function send(method, path, body, retried = false) {
   const headers = {}
   const token = getToken()
   if (token) headers.Authorization = `Bearer ${token}`
@@ -76,6 +85,9 @@ async function send(method, path, body) {
     // An empty or non-JSON body: fall through with what the status tells us.
   }
   if (!response.ok) {
+    if (data.code === 'stepup.required' && askForCode && !retried && (await askForCode())) {
+      return send(method, path, body, true)
+    }
     throw new ApiError(
       data.message || 'Something went wrong. Try again.',
       response.status,
@@ -124,7 +136,7 @@ export function uploadFile(path, file, onProgress) {
 }
 
 /** Fetches a file the server sends as an attachment, as a Blob to show or save. */
-export async function fetchFile(path) {
+export async function fetchFile(path, retried = false) {
   const headers = {}
   const token = getToken()
   if (token) headers.Authorization = `Bearer ${token}`
@@ -135,6 +147,9 @@ export async function fetchFile(path) {
       data = await response.json()
     } catch {
       // not JSON
+    }
+    if (data.code === 'stepup.required' && askForCode && !retried && (await askForCode())) {
+      return fetchFile(path, true)
     }
     throw new ApiError(data.message || 'The file could not be opened.', response.status, data.code || 'error')
   }

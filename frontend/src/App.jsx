@@ -4,6 +4,7 @@ import PageView from './PageView.jsx'
 import { preloadAll, preloadPage, rememberLanding } from './pageRegistry.js'
 import { isPlainClick, pathFor, resetLocation, usePage } from './router.js'
 import { AcceptInvitation, Chooser, LoginForm, ResetPassword } from './pages/SignIn.jsx'
+import StepUpPrompt from './pages/StepUpPrompt.jsx'
 // loaded when opened: it carries the QR code library, which most visits never need
 const Security = lazy(() => import('./pages/Security.jsx'))
 import { formatDate } from './hooks.js'
@@ -176,6 +177,7 @@ function Shell({ me, nav, page, onNavigate, onSwitch, onSignOut, onEndSupport, c
             </div>
           </header>
           <div className="content">{children}</div>
+          <StepUpPrompt />
           {changingPassword && (
             <Suspense fallback={null}>
               <Security onClose={() => setChangingPassword(false)} />

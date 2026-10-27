@@ -343,6 +343,9 @@ public final class ExitSettlement {
         if (!ExitService.canManage(ctx) && !(ctx.can("payroll.approve") && ctx.membershipId() != null)) {
             throw ApiException.denied("exit.manage");
         }
+        if (ctx.can("payroll.approve")) {
+            StepUp.require(db, ctx);
+        }
         return db.inTenant(ctx.tenantId(), c -> {
             Map<String, Object> x = lockCase(c, caseId);
             refuseOwn(ctx, x);
