@@ -342,6 +342,12 @@ public final class AuthService {
         return Sql.update(c, "update auth.session set revoked_at = now() where id = ? and revoked_at is null", sessionId);
     }
 
+    /** Ends every open session of a person, except the one named (if any). */
+    static int revokeAll(Connection c, UUID identityId, UUID except) throws SQLException {
+        return Sql.update(c, "update auth.session set revoked_at = now() where identity_id = ? and revoked_at is null "
+                + "and (?::uuid is null or id <> ?::uuid)", identityId, except, except);
+    }
+
     static UUID uuid(Object value) {
         return value == null ? null : UUID.fromString(value.toString());
     }

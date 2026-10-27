@@ -1,10 +1,16 @@
 import { useEffect, useState } from 'react'
-import { acceptInvitation, enterConsole, enterOrganization, login, previewInvitation } from '../api.js'
+import { acceptInvitation, enterConsole, enterOrganization, forgotPassword, login, previewInvitation, resetPassword } from '../api.js'
 import { useAction } from '../hooks.js'
 import { ErrorNote } from '../ui.jsx'
 import NexvanceLogo from '../brand/NexvanceLogo.jsx'
 
 export function LoginForm({ onSignedIn }) {
+  const [forgot, setForgot] = useState(false)
+  if (forgot) return <ForgotPassword onBack={() => setForgot(false)} />
+  return <SignInForm onSignedIn={onSignedIn} onForgot={() => setForgot(true)} />
+}
+
+function SignInForm({ onSignedIn, onForgot }) {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
@@ -55,6 +61,9 @@ export function LoginForm({ onSignedIn }) {
 
       <button type="submit" className="primary" disabled={busy}>
         {busy ? 'Signing in…' : 'Sign in'}
+      </button>
+      <button type="button" className="link" onClick={onForgot}>
+        Forgot your password?
       </button>
     </form>
     <p className="muted">New here? Open the invitation link your administrator sent you.</p>
@@ -222,6 +231,107 @@ export function AcceptInvitation({ token, me, onAccepted, onCancel }) {
 
       <button type="submit" className="primary" disabled={busy}>
         {busy ? 'Joining…' : 'Accept invitation'}
+      </button>
+    </form>
+  )
+}
+
+/** Asks for a reset link. Says the same thing for every address, so it cannot be used to find who has an account. */
+function ForgotPassword({ onBack }) {
+  const [email, setEmail] = useState('')
+  const [sent, setSent] = useState(false)
+  const { busy, error, run } = useAction()
+
+  async function handleSubmit(event) {
+    event.preventDefault()
+    const done = await run(async () => {
+      await forgotPassword(email)
+      return true
+    })
+    if (done) setSent(true)
+  }
+
+  return (
+    <form className="card" onSubmit={handleSubmit} noValidate>
+      <h1>Reset your password</h1>
+      {sent ? (
+        <>
+          <p role="status">If {email.trim() || 'that address'} has an account, a reset link is on its way. It works once and expires in 30 minutes.</p>
+          <button type="button" className="primary" onClick={onBack}>
+            Back to sign in
+          </button>
+        </>
+      ) : (
+        <>
+          <p className="muted">Enter your work email and we will send you a link to choose a new password.</p>
+          <label htmlFor="forgot-email">Email</label>
+          <input id="forgot-email" type="email" autoComplete="username" autoFocus value={email} onChange={(e) => setEmail(e.target.value)} />
+          <ErrorNote>{error}</ErrorNote>
+          <button type="submit" className="primary" disabled={busy || !email.trim()}>
+            {busy ? 'Sending…' : 'Send the link'}
+          </button>
+          <button type="button" className="link" onClick={onBack}>
+            Back to sign in
+          </button>
+        </>
+      )}
+    </form>
+  )
+}
+
+/** The page behind a reset link: choose a new password. Nobody is signed in by it. */
+export function ResetPassword({ token, onDone, onCancel }) {
+  const [password, setPassword] = useState('')
+  const [confirm, setConfirm] = useState('')
+  const [formError, setFormError] = useState('')
+  const [changed, setChanged] = useState(false)
+  const { busy, error, run } = useAction()
+
+  async function handleSubmit(event) {
+    event.preventDefault()
+    setFormError('')
+    if (password.length < 12) {
+      setFormError('Choose a password of at least 12 characters')
+      return
+    }
+    if (password !== confirm) {
+      setFormError('The two passwords do not match')
+      return
+    }
+    const done = await run(async () => {
+      await resetPassword(token, password)
+      return true
+    })
+    if (done) setChanged(true)
+  }
+
+  if (changed) {
+    return (
+      <div className="card">
+        <h1>Password changed</h1>
+        <p role="status">Your password is changed and you were signed out everywhere. Sign in with the new one.</p>
+        <button type="button" className="primary" onClick={onDone}>
+          Go to sign in
+        </button>
+      </div>
+    )
+  }
+  return (
+    <form className="card" onSubmit={handleSubmit} noValidate>
+      <h1>Choose a new password</h1>
+      <label htmlFor="new-password">New password</label>
+      <input id="new-password" aria-describedby="new-password-hint" type="password" autoComplete="new-password" autoFocus value={password} onChange={(e) => setPassword(e.target.value)} />
+      <p id="new-password-hint" className="hint">
+        At least 12 characters. A few unrelated words make a strong one you can remember.
+      </p>
+      <label htmlFor="confirm-password">Repeat the password</label>
+      <input id="confirm-password" type="password" autoComplete="new-password" value={confirm} onChange={(e) => setConfirm(e.target.value)} />
+      <ErrorNote>{formError || error}</ErrorNote>
+      <button type="submit" className="primary" disabled={busy}>
+        {busy ? 'Saving…' : 'Change password'}
+      </button>
+      <button type="button" className="link" onClick={onCancel}>
+        Back to sign in
       </button>
     </form>
   )

@@ -3,7 +3,8 @@ import { currentUser, endSupportSession, logout } from './api.js'
 import PageView from './PageView.jsx'
 import { preloadAll, preloadPage, rememberLanding } from './pageRegistry.js'
 import { isPlainClick, pathFor, resetLocation, usePage } from './router.js'
-import { AcceptInvitation, Chooser, LoginForm } from './pages/SignIn.jsx'
+import { AcceptInvitation, Chooser, LoginForm, ResetPassword } from './pages/SignIn.jsx'
+import ChangePassword from './pages/ChangePassword.jsx'
 import { formatDate } from './hooks.js'
 import Bell from './Bell.jsx'
 import RegionBoundary from './RegionBoundary.jsx'
@@ -17,11 +18,16 @@ function inviteTokenFromUrl() {
   return new URLSearchParams(window.location.search).get('invite')
 }
 
+function resetTokenFromUrl() {
+  return new URLSearchParams(window.location.search).get('reset')
+}
+
 function clearInviteFromUrl() {
   window.history.replaceState(null, '', window.location.pathname)
 }
 
 function Shell({ me, nav, page, onNavigate, onSwitch, onSignOut, onEndSupport, children }) {
+  const [changingPassword, setChangingPassword] = useState(false)
   const where = me.kind === 'platform' ? 'Platform console' : me.organization.name
   const items = nav.flatMap((section) => section.items)
   const title = items.find((item) => item.id === page)?.label || where
@@ -157,6 +163,11 @@ function Shell({ me, nav, page, onNavigate, onSwitch, onSignOut, onEndSupport, c
                 </button>
               )}
               {me.kind !== 'support' && (
+                <button type="button" className="quiet plain" onClick={() => setChangingPassword(true)}>
+                  Password
+                </button>
+              )}
+              {me.kind !== 'support' && (
                 <button type="button" className="quiet plain" onClick={onSignOut}>
                   Sign out
                 </button>
@@ -164,6 +175,7 @@ function Shell({ me, nav, page, onNavigate, onSwitch, onSignOut, onEndSupport, c
             </div>
           </header>
           <div className="content">{children}</div>
+          {changingPassword && <ChangePassword onClose={() => setChangingPassword(false)} />}
         </main>
       </div>
     </div>
@@ -190,6 +202,12 @@ export default function App() {
   const [me, setMe] = useState(null)
   const [loading, setLoading] = useState(true)
   const [inviteToken, setInviteToken] = useState(inviteTokenFromUrl)
+  // A reset token is taken out of the address at once: it should not sit in the history while the page is open.
+  const [resetToken, setResetToken] = useState(() => {
+    const token = resetTokenFromUrl()
+    if (token) clearInviteFromUrl()
+    return token
+  })
   const [choosing, setChoosing] = useState(false)
 
   async function refresh() {
@@ -239,6 +257,21 @@ export default function App() {
     return (
       <main className="centered" aria-busy="true">
         <p className="muted">Loading…</p>
+      </main>
+    )
+  }
+
+  if (resetToken) {
+    return (
+      <main className="centered">
+        <ResetPassword
+          token={resetToken}
+          onDone={() => {
+            setResetToken(null)
+            setMe(null)   // a reset ends every session, this one too
+          }}
+          onCancel={() => setResetToken(null)}
+        />
       </main>
     )
   }

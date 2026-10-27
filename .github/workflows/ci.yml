@@ -186,7 +186,30 @@ jobs:
           name: backend-jar
           path: dist-backend
 
+      - name: Install Playwright
+        working-directory: e2e
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+
+      # Takes the app's email on SMTP and lists it over HTTP, so the password-reset test can read its own link.
+      - name: Start the test mail server
+        working-directory: e2e
+        run: |
+          nohup node mail-sink.mjs > ../mail-sink.log 2>&1 &
+          for i in $(seq 1 15); do
+            if curl -sf http://localhost:8025/messages > /dev/null; then echo "mail server is up"; exit 0; fi
+            sleep 1
+          done
+          echo "mail server did not start"; cat ../mail-sink.log; exit 1
+
       - name: Start the backend
+        env:
+          APP_SMTP_HOST: 127.0.0.1
+          APP_SMTP_PORT: '1025'
+          APP_SMTP_SECURITY: none
+          APP_SMTP_FROM: noreply@hrms.test
+          APP_PUBLIC_URL: http://localhost:5173
         run: |
           TZ=${{ matrix.zone.tz }} nohup java -jar dist-backend/login-app-*.jar > backend.log 2>&1 &
           for i in $(seq 1 60); do
@@ -207,14 +230,10 @@ jobs:
           done
           echo "frontend did not start"; cat ../frontend.log; exit 1
 
-      - name: Install Playwright
-        working-directory: e2e
-        run: |
-          npm ci
-          npx playwright install --with-deps chromium
-
       - name: Run the browser tests
         working-directory: e2e
+        env:
+          E2E_MAIL_URL: http://localhost:8025
         run: npx playwright test
 
       - name: Keep the report, screenshots and recordings
