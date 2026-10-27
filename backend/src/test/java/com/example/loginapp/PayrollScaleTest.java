@@ -109,9 +109,8 @@ class PayrollScaleTest {
             long s = System.nanoTime();
             List<Map<String, Object>> all = employees.list(admin, null, null, null);
             list[i] = (System.nanoTime() - s) / 1_000_000;
-            // The list is cut at 500 rows (EmployeeService.list), so an Organization of 2,000 cannot page through
-            // everyone; recorded in docs/testing.md as a finding for the People page.
-            assertEquals(Math.min(size, 500), all.size());
+            // The list is cut at 5,000 rows (EmployeeService.list), so all 2,000 come back.
+            assertEquals(Math.min(size, 5000), all.size());
             s = System.nanoTime();
             employees.list(admin, "Person 17", null, null);
             search[i] = (System.nanoTime() - s) / 1_000_000;
