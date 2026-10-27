@@ -82,7 +82,7 @@ class PasswordServiceTest {
 
     private final RateLimits limits = new RateLimits();
     private final AuthService auth = new AuthService(db, limits);
-    private final PasswordService passwords = new PasswordService(db, outbox, limits, "https://hrms.test/");
+    private final PasswordService passwords = new PasswordService(db, outbox, limits, "https://hrms.test/", false);
 
     /** An Organization owner with a login; returns the email. */
     private String owner() {
@@ -166,6 +166,8 @@ class PasswordServiceTest {
         String email = owner();
         passwords.requestReset(email, "10.0.3.1");
         String first = lastLinkTokenSentTo(email);
+        ownerExec("update auth.password_reset set expires_at = now() + interval '20 minutes' where used_at is null and identity_id = "
+                + "(select id from auth.identity where email = '" + email + "')");   // sent more than five minutes ago
         passwords.requestReset(email, "10.0.3.2");
         String second = lastLinkTokenSentTo(email);
         assertEquals(410, refusal(() -> passwords.reset(first, NEW_PASSWORD, "10.0.3.3")).status());
@@ -173,6 +175,51 @@ class PasswordServiceTest {
                 + "(select id from auth.identity where email = '" + email + "')");
         assertEquals(410, refusal(() -> passwords.reset(second, NEW_PASSWORD, "10.0.3.3")).status());
         assertNotNull(auth.login(email, PASSWORD), "nothing changed");
+    }
+
+    @Test
+    void aRequestRightAfterOneDoesNotKillTheLinkOnItsWayOrMailAgain() throws Exception {
+        String email = owner();
+        passwords.requestReset(email, "10.0.9.1");
+        String first = lastLinkTokenSentTo(email);
+        passwords.requestReset(email, "10.0.9.2");
+        assertEquals(null, lastLinkTokenSentTo(email), "no second mail inside five minutes");
+        passwords.reset(first, NEW_PASSWORD, "10.0.9.3");   // the first link still works
+        assertNotNull(auth.login(email, NEW_PASSWORD));
+    }
+
+    @Test
+    void aLinkIssuedBeforeASuspensionDoesNotSetAPasswordAfterIt() throws Exception {
+        String email = owner();
+        passwords.requestReset(email, "10.0.10.1");
+        String token = lastLinkTokenSentTo(email);
+        ownerExec("update auth.identity set status = 'disabled' where email = '" + email + "'");
+        assertEquals(410, refusal(() -> passwords.reset(token, NEW_PASSWORD, "10.0.10.2")).status());
+        ownerExec("update auth.identity set status = 'active' where email = '" + email + "'");
+        assertNotNull(auth.login(email, PASSWORD), "the password did not change");
+    }
+
+    @Test
+    void aProductionServerRefusesToMailLinksToLocalhost() {
+        assertThrows(IllegalStateException.class, () -> new PasswordService(db, outbox, limits, "http://localhost:5173", true));
+        new PasswordService(db, outbox, limits, "https://hrms.example.com", true);
+    }
+
+    @Test
+    void resettingAndChangingAtTheSameTimeNeverDeadlocks() throws Exception {
+        for (int round = 0; round < 5; round++) {
+            String email = owner();
+            String mine = auth.login(email, PASSWORD);
+            SessionCtx ctx = auth.resolve(mine);
+            passwords.requestReset(email, "10.0.11." + (round + 1));
+            String token = lastLinkTokenSentTo(email);
+            java.util.concurrent.ExecutorService pool = java.util.concurrent.Executors.newFixedThreadPool(2);
+            var a = pool.submit(() -> { try { passwords.reset(token, NEW_PASSWORD, null); } catch (ApiException e) { return e.status(); } return 0; });
+            var b = pool.submit(() -> { try { passwords.change(ctx, PASSWORD, "third-long-password-3"); } catch (ApiException e) { return e.status(); } return 0; });
+            a.get(30, java.util.concurrent.TimeUnit.SECONDS);   // an exception here would be a deadlock victim's 500
+            b.get(30, java.util.concurrent.TimeUnit.SECONDS);
+            pool.shutdown();
+        }
     }
 
     @Test
@@ -204,10 +251,10 @@ class PasswordServiceTest {
     @Test
     void askingTooOftenIsLimitedPerAddressAndQuietlyIgnoredPerEmail() throws Exception {
         String email = owner();
-        for (int i = 0; i < 4; i++) {
+        for (int i = 0; i < 6; i++) {
             passwords.requestReset(email, "10.0.6." + (i + 1));
         }
-        assertEquals(3, count("select count(*) from auth.reset_request where email = '" + email + "'"), "the fourth in the hour is ignored, with no error");
+        assertEquals(5, count("select count(*) from auth.reset_request where email = '" + email + "'"), "the sixth in the hour is ignored, with no error");
         for (int i = 0; i < 10; i++) {
             passwords.requestReset("x" + SEQ.incrementAndGet() + "@nowhere.test", "10.0.7.7");
         }

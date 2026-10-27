@@ -34,7 +34,7 @@ public final class RateLimits {
     /** Requests to send a reset link, per client address. */
     public static final Rule FORGOT_PER_ADDRESS = new Rule("forgot-address", 10, Duration.ofMinutes(15));
     /** Requests for one email address; past it the request is accepted and quietly ignored, so nothing is revealed. */
-    public static final Rule FORGOT_PER_EMAIL = new Rule("forgot-email", 3, Duration.ofHours(1));
+    public static final Rule FORGOT_PER_EMAIL = new Rule("forgot-email", 5, Duration.ofHours(1));
     /** Reset links that did not work, per client address: someone guessing tokens. */
     public static final Rule RESET_FAILURES_PER_ADDRESS = new Rule("reset-address", 20, Duration.ofMinutes(15));
     public static final Rule INVITE_ATTEMPTS_PER_ADDRESS = new Rule("invite-address", 30, Duration.ofMinutes(15));

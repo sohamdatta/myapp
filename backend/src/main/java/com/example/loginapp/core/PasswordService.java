@@ -22,7 +22,11 @@ public final class PasswordService {
     private final RateLimits limits;
     private final String publicUrl;
 
-    public PasswordService(Db db, MailOutbox outbox, RateLimits limits, String publicUrl) {
+    /** @param production true when the server is set up for production; links to localhost are then a mistake */
+    public PasswordService(Db db, MailOutbox outbox, RateLimits limits, String publicUrl, boolean production) {
+        if (production && publicUrl.matches("(?i)^https?://(localhost|127\\.0\\.0\\.1)([:/].*)?$")) {
+            throw new IllegalStateException("APP_PUBLIC_URL is not set: reset links in email would point at " + publicUrl);
+        }
         this.db = db;
         this.outbox = outbox;
         this.limits = limits;
@@ -63,8 +67,16 @@ public final class PasswordService {
                 String email = (String) r.get("email");
                 Map<String, Object> identity = Sql.one(c, "select id from auth.identity where email = ?::citext and status = 'active'", email);
                 if (identity != null) {
-                    String token = Secrets.newToken();
+                    AuthService.lockEmail(c, email);   // one reset change at a time per address, as sign-in and change-password do
                     UUID identityId = AuthService.uuid(identity.get("id"));
+                    if (Sql.one(c, "select 1 as x from auth.password_reset where identity_id = ? and used_at is null "
+                            + "and expires_at > now() + interval '25 minutes'", identityId) != null) {
+                        // a link went out in the last five minutes and is still good: the mail is on its way, so another
+                        // request neither mails again nor kills it (otherwise requests could keep a person's link dying)
+                        Sql.update(c, "update auth.reset_request set handled_at = now() where id = ?", id);
+                        continue;
+                    }
+                    String token = Secrets.newToken();
                     Sql.update(c, "update auth.password_reset set used_at = now() where identity_id = ? and used_at is null", identityId);
                     Sql.update(c, "insert into auth.password_reset (identity_id, token_hash, expires_at) "
                             + "values (?, ?, now() + interval '30 minutes')", identityId, Secrets.sha256(token));
@@ -91,15 +103,22 @@ public final class PasswordService {
         Secrets.checkPasswordPolicy(newPassword);
         String hash = Secrets.hashPassword(newPassword);
         String outcome = db.inAuth(c -> {
+            byte[] hashed = Secrets.sha256(token == null ? "" : token);
+            // the address first (no lock), then its lock, then the link's row: the order sign-in and change-password use
+            Map<String, Object> peek = Sql.one(c, "select i.email from auth.password_reset r join auth.identity i on i.id = r.identity_id "
+                    + "where r.token_hash = ?", hashed);
+            if (peek == null) {
+                return "invalid";
+            }
+            AuthService.lockEmail(c, (String) peek.get("email"));
             Map<String, Object> link = Sql.one(c, "select r.id, r.identity_id, i.email from auth.password_reset r "
                     + "join auth.identity i on i.id = r.identity_id where r.token_hash = ? and r.used_at is null and r.expires_at > now() "
-                    + "for update of r", Secrets.sha256(token == null ? "" : token));
+                    + "and i.status = 'active' for update of r", hashed);
             if (link == null) {
                 return "invalid";
             }
             UUID identityId = AuthService.uuid(link.get("identityId"));
             String email = (String) link.get("email");
-            AuthService.lockEmail(c, email);
             Sql.update(c, "update auth.password_reset set used_at = now() where identity_id = ? and used_at is null", identityId);
             Sql.update(c, "update auth.identity set password_hash = ? where id = ?", hash, identityId);
             AuthService.revokeAll(c, identityId, null);

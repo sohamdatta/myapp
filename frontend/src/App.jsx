@@ -202,7 +202,12 @@ export default function App() {
   const [me, setMe] = useState(null)
   const [loading, setLoading] = useState(true)
   const [inviteToken, setInviteToken] = useState(inviteTokenFromUrl)
-  const [resetToken, setResetToken] = useState(resetTokenFromUrl)
+  // A reset token is taken out of the address at once: it should not sit in the history while the page is open.
+  const [resetToken, setResetToken] = useState(() => {
+    const token = resetTokenFromUrl()
+    if (token) clearInviteFromUrl()
+    return token
+  })
   const [choosing, setChoosing] = useState(false)
 
   async function refresh() {
@@ -262,10 +267,10 @@ export default function App() {
         <ResetPassword
           token={resetToken}
           onDone={() => {
-            clearInviteFromUrl()
             setResetToken(null)
             setMe(null)   // a reset ends every session, this one too
           }}
+          onCancel={() => setResetToken(null)}
         />
       </main>
     )

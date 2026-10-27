@@ -117,8 +117,9 @@ public class AppConfig {
     }
 
     @Bean
-    public PasswordService passwordService(Db db, MailOutbox outbox, RateLimits limits, @Value("${app.public-url}") String publicUrl) {
-        return new PasswordService(db, outbox, limits, publicUrl);
+    public PasswordService passwordService(Db db, MailOutbox outbox, RateLimits limits, @Value("${app.public-url}") String publicUrl,
+                                         @Value("${app.data-key.required:false}") boolean production) {
+        return new PasswordService(db, outbox, limits, publicUrl, production);
     }
 
     @Bean

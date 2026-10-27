@@ -280,7 +280,7 @@ function ForgotPassword({ onBack }) {
 }
 
 /** The page behind a reset link: choose a new password. Nobody is signed in by it. */
-export function ResetPassword({ token, onDone }) {
+export function ResetPassword({ token, onDone, onCancel }) {
   const [password, setPassword] = useState('')
   const [confirm, setConfirm] = useState('')
   const [formError, setFormError] = useState('')
@@ -330,7 +330,7 @@ export function ResetPassword({ token, onDone }) {
       <button type="submit" className="primary" disabled={busy}>
         {busy ? 'Saving…' : 'Change password'}
       </button>
-      <button type="button" className="link" onClick={onDone}>
+      <button type="button" className="link" onClick={onCancel}>
         Back to sign in
       </button>
     </form>
