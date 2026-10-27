@@ -310,19 +310,48 @@ public final class AuthService {
             throw new ApiException(403, "permission.denied", "End the support session first");
         }
         String token = Secrets.newToken();
-        db.inAuth(c -> {
+        UUID member = db.inAuth(c -> {
             Map<String, Object> m = Sql.one(c,
                     "select membership_id from auth.memberships_for_identity(?) where tenant_id = ?",
                     ctx.identityId(), tenantId);
             if (m == null) {
                 throw new ApiException(403, "tenant.unavailable", "You do not have access to that Organization");
             }
+            return uuid(m.get("membershipId"));
+        });
+        requireMfaIfRequired(ctx, tenantId, member);
+        db.inAuth(c -> {
+            Map<String, Object> m = Map.of("membershipId", member.toString());
             insertSession(c, token, ctx.identityId(), "tenant", tenantId, uuid(m.get("membershipId")), null, "12 hours");
             carryMfa(c, ctx.sessionId(), token);
             revoke(c, ctx.sessionId());
             return null;
         });
         return token;
+    }
+
+    /**
+     * Refuses entry to an Organization whose setting requires two-step sign-in of this member's roles, until the session
+     * has passed a code (403 mfa.required) or the login has set it up (403 mfa.enrolment_required).
+     */
+    private void requireMfaIfRequired(SessionCtx ctx, UUID tenantId, UUID membershipId) {
+        boolean required = db.inTenant(tenantId, c -> MfaPolicy.applies(
+                Settings.get(c, Settings.MFA_REQUIRED_FOR).asString(),
+                Sql.query(c, "select r.code from app.membership_role mr join app.role r on r.id = mr.role_id where mr.membership_id = ?",
+                        membershipId).stream().map(r -> (String) r.get("code")).toList()));
+        if (!required) {
+            return;
+        }
+        Map<String, Object> state = db.inAuth(c -> Sql.one(c,
+                "select s.mfa_at is not null as passed, i.mfa_enrolled_at is not null as enrolled "
+                        + "from auth.session s join auth.identity i on i.id = s.identity_id where s.id = ?", ctx.sessionId()));
+        if (Boolean.TRUE.equals(state.get("passed"))) {
+            return;
+        }
+        if (Boolean.TRUE.equals(state.get("enrolled"))) {
+            throw new ApiException(403, "mfa.required", "Sign in again and enter your code to open this Organization");
+        }
+        throw new ApiException(403, "mfa.enrolment_required", "This Organization requires two-step sign-in. Set it up to continue");
     }
 
     /** Starts a console session, which carries no Organization at all. */

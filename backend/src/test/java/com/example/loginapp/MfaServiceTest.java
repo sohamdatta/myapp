@@ -366,4 +366,62 @@ class MfaServiceTest {
         String v = System.getenv(name);
         return v == null || v.isBlank() ? fallback : v;
     }
+
+    // ── required by role ────────────────────────────────────────────────
+
+    private java.util.UUID organizationOf(SessionCtx identity) {
+        return java.util.UUID.fromString(((Map<?, ?>) ((List<?>) auth.destinations(identity).get("organizations")).get(0)).get("tenantId").toString());
+    }
+
+    private void requireFor(String email, String choice) {
+        SessionCtx identity = auth.resolve(auth.login(email, PASSWORD));
+        SessionCtx inside = auth.resolve(auth.enterOrganization(identity, organizationOf(identity)));
+        new com.example.loginapp.core.SettingsService(db).change(inside, "auth.mfa.required_for",
+                new com.example.loginapp.core.SettingsService.ChangeInput("organization", null, null, choice, null, "test", PASSWORD));
+    }
+
+    @Test
+    void anAdminWithoutTwoStepIsToldToSetItUpBeforeEnteringAnOrganizationThatRequiresIt() throws Exception {
+        String email = owner();
+        requireFor(email, "admins");
+        SessionCtx identity = auth.resolve(auth.login(email, PASSWORD));
+        java.util.UUID tenant = organizationOf(identity);
+        assertEquals("mfa.enrolment_required", refusal(() -> auth.enterOrganization(identity, tenant)).code());
+        // setting it up works from this very session, and the next sign-in then ends in a code
+        MfaService.Enrolment e = mfa.start(identity);
+        mfa.confirm(identity, PASSWORD, codeNow(e.secret()));
+        advance(30);
+        SessionCtx again = auth.resolve(mfa.complete(auth.signIn(email, PASSWORD, null).token(), codeNow(e.secret()), null));
+        assertNotNull(auth.enterOrganization(again, tenant), "a session that passed a code gets in");
+    }
+
+    @Test
+    void anEnrolledAdminOnAPlainSessionIsToldToSignInWithACode() throws Exception {
+        String email = owner();
+        requireFor(email, "admins");
+        // enrolling ends other sessions, and a session made after has no code in it only if it came from a plain login
+        SessionCtx identity = auth.resolve(auth.login(email, PASSWORD));
+        MfaService.Enrolment e = mfa.start(identity);
+        mfa.confirm(identity, PASSWORD, codeNow(e.secret()));
+        // the session that enrolled counts as having passed; end that doubt by asking for a fresh one with no code
+        ownerExec("update auth.session set mfa_at = null where id = '" + identity.sessionId() + "'");
+        assertEquals("mfa.required", refusal(() -> auth.enterOrganization(identity, organizationOf(identity))).code());
+    }
+
+    @Test
+    void membersWhoseRolesAreNotCoveredEnterAsBefore() throws Exception {
+        String email = owner();
+        SessionCtx identity = auth.resolve(auth.login(email, PASSWORD));
+        assertNotNull(auth.enterOrganization(identity, organizationOf(identity)), "the default asks nobody");
+    }
+
+    @Test
+    void theChoiceDecidesWhichRolesMustUseIt() {
+        assertFalse(com.example.loginapp.core.MfaPolicy.applies("none", List.of("owner")));
+        assertTrue(com.example.loginapp.core.MfaPolicy.applies("admins", List.of("employee", "hr_admin")));
+        assertFalse(com.example.loginapp.core.MfaPolicy.applies("admins", List.of("payroll_operator")));
+        assertTrue(com.example.loginapp.core.MfaPolicy.applies("admins_payroll", List.of("payroll_approver")));
+        assertFalse(com.example.loginapp.core.MfaPolicy.applies("admins_payroll", List.of("employee", "manager")));
+        assertTrue(com.example.loginapp.core.MfaPolicy.applies("everyone", List.of("employee")));
+    }
 }

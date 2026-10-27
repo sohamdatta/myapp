@@ -1,8 +1,10 @@
-import { useEffect, useState } from 'react'
+import { lazy, Suspense, useEffect, useState } from 'react'
 import { acceptInvitation, completeMfa, enterConsole, enterOrganization, forgotPassword, login, previewInvitation, resetPassword } from '../api.js'
 import { useAction } from '../hooks.js'
 import { ErrorNote } from '../ui.jsx'
 import NexvanceLogo from '../brand/NexvanceLogo.jsx'
+
+const Security = lazy(() => import('./Security.jsx'))
 
 export function LoginForm({ onSignedIn }) {
   const [forgot, setForgot] = useState(false)
@@ -80,6 +82,8 @@ export function Chooser({ me, onEntered, onSignOut, onCancel }) {
   const { busy, error, run } = useAction()
   const nothing = me.organizations.length === 0 && !me.console
   const suspended = me.suspendedIn || []
+  const [settingUp, setSettingUp] = useState(false)
+  const refused = me.entryRefused
 
   async function enter(action) {
     const next = await run(action)
@@ -119,6 +123,17 @@ export function Chooser({ me, onEntered, onSignOut, onCancel }) {
       </div>
 
       <ErrorNote>{error}</ErrorNote>
+      {refused && !error && <ErrorNote>{refused.message}</ErrorNote>}
+      {(refused?.code === 'mfa.enrolment_required' || error?.includes?.('two-step')) && (
+        <button type="button" className="primary" onClick={() => setSettingUp(true)}>
+          Set up two-step sign-in
+        </button>
+      )}
+      {settingUp && (
+        <Suspense fallback={null}>
+          <Security onClose={() => setSettingUp(false)} />
+        </Suspense>
+      )}
 
       {onCancel && (
         <button type="button" className="quiet" onClick={onCancel}>

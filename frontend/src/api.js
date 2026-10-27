@@ -229,8 +229,9 @@ async function enterDefault(me) {
     if (last && organizationIds.includes(last)) return await enterOrganization(last)
     if (organizationIds.length > 0) return await enterOrganization(organizationIds[0])
     if (me.console) return await enterConsole()
-  } catch {
-    // Fall through to the screen that lists where this person can go.
+  } catch (err) {
+    // Fall through to the screen that lists where this person can go; a two-step requirement is explained there.
+    if (err.code && err.code.startsWith('mfa.')) return { ...me, entryRefused: { code: err.code, message: err.message } }
   }
   return me
 }
