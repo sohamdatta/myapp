@@ -170,3 +170,14 @@ invitation-link limits (30 failed accepts, 120 looks per address). **Those in-me
 restart**; move them to the database before running a second instance. **Accepted trade-off:** because the lock is per email,
 anyone who knows an address can keep it locked out by failing on purpose. Changing that means a CAPTCHA or per-address+email
 keys, which we have not done. `RateLimitsTest` and `SignInLimitsTest` cover all of this.
+
+## Email outbox
+
+Mail that has to arrive is written to `mail.outbox` in the same transaction as its cause (`MailOutbox.enqueue`), encrypted
+(`Crypto.seal("mail", ...)`) and emptied once sent. `MailWorker` sends every 5 s through `SmtpMailSender`, waiting 1 m, 5 m, 30 m,
+2 h, 6 h after failures, then `failed` (a person retries it on the platform Email page). A 5xx answer fails at once. Rows are
+claimed with `for update skip locked`, so two instances never send one message twice at the same moment; delivery is still
+at-least-once if a server stops mid-send. With no `APP_SMTP_HOST` there is no sender and mail waits. `MailOutboxTest` covers
+encryption at rest, dedupe, suppression, backoff, permanent failure, a dead worker's claim, four parallel workers and the
+tenant connection's inability to read the table. Settings come from the environment, not the database, so the password never
+sits in a table. The browser tests will read a real SMTP sink (Mailpit) from the password-reset PR onward.

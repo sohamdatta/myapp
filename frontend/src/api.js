@@ -593,6 +593,11 @@ export const platform = {
   grants: () => get('/platform/grants'),
   requestGrant: (body) => post('/platform/grants', body),
   decideGrant: (id, action) => post(`/platform/grants/${id}/${action}`),
+  email: () => get('/platform/email'),
+  retryEmail: (id) => post(`/platform/email/${id}/retry`),
+  suppressEmail: (email, reason) => post('/platform/email/suppressions', { email, reason }),
+  unsuppressEmail: (email) => del(`/platform/email/suppressions?email=${encodeURIComponent(email)}`),
+  sendTestEmail: (to) => post('/platform/email/test', { to }),
 }
 
 /** Starts a support session, keeping the console session to return to. */
