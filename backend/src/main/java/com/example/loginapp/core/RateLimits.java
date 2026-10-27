@@ -30,6 +30,10 @@ public final class RateLimits {
 
     /** Wrong passwords from one client address, over all the emails it tried. */
     public static final Rule LOGIN_FAILURES_PER_ADDRESS = new Rule("login-address", 100, Duration.ofMinutes(15));
+    /** Asks to change the sign-in address, per login. */
+    public static final Rule EMAIL_CHANGE_PER_LOGIN = new Rule("email-change-login", 5, Duration.ofHours(1));
+    /** Wrong or used-up links for changing or undoing a change of address, per client address. */
+    public static final Rule EMAIL_LINK_FAILURES_PER_ADDRESS = new Rule("email-link-address", 20, Duration.ofMinutes(15));
     /** Every attempt to accept an invitation from one client address. */
     /** Requests to send a reset link, per client address. */
     public static final Rule FORGOT_PER_ADDRESS = new Rule("forgot-address", 10, Duration.ofMinutes(15));

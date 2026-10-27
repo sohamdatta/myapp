@@ -17,6 +17,7 @@ import org.springframework.context.annotation.Configuration;
 import com.example.loginapp.core.AttendanceImportService;
 import com.example.loginapp.core.AttendanceService;
 import com.example.loginapp.core.AttendanceSettingsService;
+import com.example.loginapp.core.EmailChangeService;
 import com.example.loginapp.core.AuthService;
 import com.example.loginapp.core.Branding;
 import com.example.loginapp.core.Calibration;
@@ -115,6 +116,11 @@ public class AppConfig {
     @ConditionalOnProperty(name = "app.mail.worker", havingValue = "true", matchIfMissing = true)
     public MailWorker mailWorker(MailOutbox outbox, PasswordService passwords, java.util.Optional<MailSender> sender) {
         return new MailWorker(outbox, passwords, sender.orElse(null));
+    }
+
+    @Bean
+    public EmailChangeService emailChangeService(Db db, MailOutbox outbox, RateLimits limits, @Value("${app.public-url}") String publicUrl) {
+        return new EmailChangeService(db, outbox, limits, publicUrl);
     }
 
     @Bean

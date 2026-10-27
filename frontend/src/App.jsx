@@ -3,7 +3,7 @@ import { currentUser, endSupportSession, logout } from './api.js'
 import PageView from './PageView.jsx'
 import { preloadAll, preloadPage, rememberLanding } from './pageRegistry.js'
 import { isPlainClick, pathFor, resetLocation, usePage } from './router.js'
-import { AcceptInvitation, Chooser, LoginForm, ResetPassword } from './pages/SignIn.jsx'
+import { AcceptInvitation, Chooser, EmailLink, LoginForm, ResetPassword } from './pages/SignIn.jsx'
 import StepUpPrompt from './pages/StepUpPrompt.jsx'
 // loaded when opened: it carries the QR code library, which most visits never need
 const Security = lazy(() => import('./pages/Security.jsx'))
@@ -22,6 +22,13 @@ function inviteTokenFromUrl() {
 
 function resetTokenFromUrl() {
   return new URLSearchParams(window.location.search).get('reset')
+}
+
+function emailLinkFromUrl() {
+  const params = new URLSearchParams(window.location.search)
+  if (params.get('confirm-email')) return { kind: 'confirm', token: params.get('confirm-email') }
+  if (params.get('undo-email')) return { kind: 'undo', token: params.get('undo-email') }
+  return null
 }
 
 function clearInviteFromUrl() {
@@ -215,6 +222,12 @@ export default function App() {
     if (token) clearInviteFromUrl()
     return token
   })
+  // The same for the links that confirm or undo a change of sign-in address.
+  const [emailLink, setEmailLink] = useState(() => {
+    const link = emailLinkFromUrl()
+    if (link) clearInviteFromUrl()
+    return link
+  })
   const [choosing, setChoosing] = useState(false)
 
   async function refresh() {
@@ -264,6 +277,22 @@ export default function App() {
     return (
       <main className="centered" aria-busy="true">
         <p className="muted">Loading…</p>
+      </main>
+    )
+  }
+
+  if (emailLink) {
+    return (
+      <main className="centered">
+        <EmailLink
+          kind={emailLink.kind}
+          token={emailLink.token}
+          onDone={() => {
+            setEmailLink(null)
+            setMe(null)   // either one ends every session, this one too
+          }}
+          onCancel={() => setEmailLink(null)}
+        />
       </main>
     )
   }

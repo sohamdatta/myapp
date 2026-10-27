@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import QRCode from 'qrcode'
-import { changePassword, mfa } from '../api.js'
+import { changeEmail, changePassword, mfa } from '../api.js'
 import { useAction, useLoad } from '../hooks.js'
 import { ErrorNote } from '../ui.jsx'
 
@@ -17,11 +17,51 @@ export default function Security({ onClose }) {
       <h2 id="sec-title">Security</h2>
       <PasswordSection />
       <hr />
+      <EmailSection />
+      <hr />
       <TwoStepSection />
       <button type="button" className="quiet" onClick={onClose}>
         Close
       </button>
     </dialog>
+  )
+}
+
+function EmailSection() {
+  const [address, setAddress] = useState('')
+  const [password, setPassword] = useState('')
+  const [sentTo, setSentTo] = useState('')
+  const { busy, error, run } = useAction()
+
+  async function submit(event) {
+    event.preventDefault()
+    const ok = await run(async () => {
+      await changeEmail(address.trim(), password)
+      return true
+    })
+    if (ok) setSentTo(address.trim())
+  }
+
+  if (sentTo) {
+    return (
+      <p role="status">
+        If {sentTo} can be used, a confirmation link is on its way there. The address changes when you open it, and the old one gets a link
+        to undo it for 7 days.
+      </p>
+    )
+  }
+  return (
+    <form onSubmit={submit} noValidate aria-label="Change your sign-in address">
+      <h3>Change your sign-in address</h3>
+      <label htmlFor="ce-address">New email address</label>
+      <input id="ce-address" type="email" autoComplete="email" value={address} onChange={(e) => setAddress(e.target.value)} />
+      <label htmlFor="ce-password">Your password</label>
+      <input id="ce-password" type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} />
+      <ErrorNote>{error}</ErrorNote>
+      <button type="submit" className="primary" disabled={busy || !address.trim() || !password}>
+        Send confirmation link
+      </button>
+    </form>
   )
 }
 

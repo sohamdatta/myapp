@@ -75,6 +75,8 @@ export default defineConfig({
     { name: 'password', testMatch: /26-password-reset\.spec\.ts/, use: desktop },
     // Two-step sign-in with an authenticator app's codes worked out by the test: --project=two-step.
     { name: 'two-step', testMatch: /27-two-step\.spec\.ts/, use: desktop },
+    // Changing the sign-in address, with the emails read from the test mail server: --project=email-change.
+    { name: 'email-change', testMatch: /28-email-change\.spec\.ts/, use: desktop },
     // Tax declarations bring their own Organization, so they run on their own as well: --project=tax.
     { name: 'tax', testMatch: /21-tax-declarations\.spec\.ts/, use: desktop },
     // Settings, likewise in an Organization of their own: --project=settings.

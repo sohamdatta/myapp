@@ -125,6 +125,7 @@ public final class PasswordService {
             String email = (String) link.get("email");
             Sql.update(c, "update auth.password_reset set used_at = now() where identity_id = ? and used_at is null", identityId);
             Sql.update(c, "update auth.identity set password_hash = ? where id = ?", hash, identityId);
+            EmailChangeService.cancelPending(c, identityId);
             AuthService.revokeAll(c, identityId, null);
             MfaService.endChallenges(c, identityId);
             // a login with two-step sign-in keeps its run of failures: wrong codes are guesses at the second factor, and a
@@ -175,6 +176,7 @@ public final class PasswordService {
                 return "wrong";
             }
             Sql.update(c, "update auth.identity set password_hash = ? where id = ?", hash, ctx.identityId());
+            EmailChangeService.cancelPending(c, ctx.identityId());
             AuthService.revokeAll(c, ctx.identityId(), ctx.sessionId());
             MfaService.endChallenges(c, ctx.identityId());
             Sql.update(c, "update auth.password_reset set used_at = now() where identity_id = ? and used_at is null", ctx.identityId());
