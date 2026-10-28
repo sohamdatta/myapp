@@ -1,8 +1,9 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { invitationLink, org } from '../api.js'
-import { formatDate, formatDay, useAction, useLoad } from '../hooks.js'
+import { formatDate, formatDay, formatWhen, useAction, useLoad } from '../hooks.js'
 import { Badge, CopyLink, Empty, ErrorNote, StatusBadge, Tabs } from '../ui.jsx'
 import { useConfirm, useToast } from '../feedbackContext.js'
+import { USERS_TEXT, WIDE_ROLES } from './usersText.js'
 
 /** What each role is for, in plain words. The exact permissions are under User management → Roles. */
 const ROLE_SUMMARIES = {
@@ -52,6 +53,7 @@ function RolePicker({ me, roles, selected, onChange }) {
               </label>
               <p id={`role-about-${r.code}`} className="hint">
                 {ROLE_SUMMARIES[r.code]}
+                {!r.grantable && <span className="role-locked"> {USERS_TEXT.notGrantable}</span>}
               </p>
             </div>
           ))}
@@ -60,112 +62,182 @@ function RolePicker({ me, roles, selected, onChange }) {
   )
 }
 
-function UserRow({ user, me, roles, onChanged }) {
-  const [editing, setEditing] = useState(false)
+/** A user's roles as tags; roles that reach everyone's data stand out. */
+function RoleTags({ user }) {
+  if (!user.roleNames.length) return <span className="hint">{USERS_TEXT.noRoles}</span>
+  return user.roleNames.map((name, i) => {
+    const code = user.roleCodes[i]
+    const kind = code === 'owner' ? ' tag-owner' : WIDE_ROLES.includes(code) ? ' tag-wide' : ''
+    return (
+      <span key={name} className={`tag${kind}`}>
+        {name}
+      </span>
+    )
+  })
+}
+
+/** What the signed-in user may do to another user: change their roles, their access, both or neither. */
+function powers(me, user) {
+  const isSelf = user.id === me.membershipId
+  return {
+    isSelf,
+    canAssign: me.permissions.includes('role.assign') && !isSelf && user.status !== 'ended',
+    canManage: me.permissions.includes('user.manage') && !isSelf && user.status !== 'ended',
+  }
+}
+
+function UserRow({ user, me, current, onOpen }) {
+  const { isSelf, canAssign, canManage } = powers(me, user)
+  const t = USERS_TEXT
+  return (
+    <tr className={current ? 'row-current' : undefined}>
+      <td>
+        <div className="user-cell">
+          <span className="avatar" aria-hidden="true">
+            {user.email[0]}
+          </span>
+          <span>
+            {user.email}
+            {isSelf && <span className="you">{t.you}</span>}
+          </span>
+        </div>
+      </td>
+      <td>
+        <RoleTags user={user} />
+      </td>
+      <td>
+        <StatusBadge status={user.status} />
+      </td>
+      <td className={user.lastLoginAt ? 'when' : 'when never'}>{user.lastLoginAt ? formatWhen(user.lastLoginAt) : t.never}</td>
+      <td className="actions">
+        {isSelf && <span className="hint">{t.self}</span>}
+        {(canAssign || canManage) && (
+          <button
+            type="button"
+            className="outline"
+            aria-label={canAssign ? t.editLabel(user.email) : t.manageLabel(user.email)}
+            aria-expanded={current}
+            aria-controls="user-panel"
+            onClick={() => onOpen(user.id)}
+          >
+            {canAssign ? t.editRoles : t.manage}
+          </button>
+        )}
+      </td>
+    </tr>
+  )
+}
+
+/** Beside the list: one user's roles and access, changed in one place. */
+function UserPanel({ user, me, roles, onClose, onChanged }) {
+  const t = USERS_TEXT.panel
+  const { canAssign, canManage } = powers(me, user)
   const [selected, setSelected] = useState(user.roleCodes)
   const { busy, error, run } = useAction()
-  const isSelf = user.id === me.membershipId
-  const canAssign = me.permissions.includes('role.assign') && !isSelf && user.status !== 'ended'
-  const canManage = me.permissions.includes('user.manage') && !isSelf
   const confirm = useConfirm()
   const toast = useToast()
+  const heading = useRef(null)
 
-  async function act(action, done_, ask) {
+  // Opening the panel moves the focus to it, so keyboard and screen reader users land where the change is.
+  useEffect(() => {
+    heading.current?.focus()
+  }, [user.id])
+
+  const changed = [...selected].sort().join() !== [...user.roleCodes].sort().join()
+
+  async function act(action, done, ask) {
     if (ask && !(await confirm(ask))) return
-    const done = await run(async () => {
+    const ok = await run(async () => {
       await action()
       return true
     })
-    if (done) {
-      if (done_) toast(done_)
-      setEditing(false)
+    if (ok) {
+      toast(done)
       onChanged()
     }
   }
 
   return (
-    <>
-      <tr>
-        <td>
-          <div className="user-cell">
-            <span className="avatar" aria-hidden="true">
-              {user.email[0]}
-            </span>
-            <span>
-              {user.email}
-              {isSelf && <span className="you"> (you)</span>}
-            </span>
-          </div>
-        </td>
-        <td>
-          {user.roleNames.length
-            ? user.roleNames.map((name) => (
-                <span key={name} className="tag">
-                  {name}
-                </span>
-              ))
-            : '—'}
-        </td>
-        <td>
+    <aside id="user-panel" className="side-panel user-panel" aria-labelledby="user-panel-title">
+      <div className="side-panel-head">
+        <span className="avatar avatar-lg" aria-hidden="true">
+          {user.email[0]}
+        </span>
+        <div className="side-panel-who">
+          <h2 id="user-panel-title" ref={heading} tabIndex={-1}>
+            {user.email}
+          </h2>
           <StatusBadge status={user.status} />
-        </td>
-        <td>{formatDate(user.lastLoginAt)}</td>
-        <td className="actions">
-          {canAssign && (
-            <button type="button" className="quiet" onClick={() => setEditing((v) => !v)}>
-              {editing ? 'Cancel' : 'Edit roles'}
-            </button>
-          )}
-          {canManage && user.status !== 'ended' && (
-            <details className="menu">
-              <summary aria-label={`More actions for ${user.email}`}>⋯</summary>
-              <div className="menu-items">
-                {user.status === 'active' && (
-                  <button type="button" className="quiet" disabled={busy} onClick={() => act(() => org.changeStatus(user.id, 'suspend'), `${user.email} suspended`)}>
-                    Suspend
-                  </button>
-                )}
-                {user.status === 'suspended' && (
-                  <button type="button" className="quiet" disabled={busy} onClick={() => act(() => org.changeStatus(user.id, 'reactivate'), `${user.email} reactivated`)}>
-                    Reactivate
-                  </button>
-                )}
-                <button
-                  type="button"
-                  className="quiet danger"
-                  disabled={busy}
-                  onClick={() =>
-                    act(() => org.changeStatus(user.id, 'end'), `${user.email}'s membership ended`, {
-                      title: `End ${user.email}'s membership?`,
-                      body: 'Their roles are removed and they can no longer enter this Organization. This cannot be undone.',
-                      confirmLabel: 'End membership',
-                      danger: true,
-                    })
-                  }
-                >
-                  End membership
-                </button>
-              </div>
-            </details>
-          )}
-        </td>
-      </tr>
-      {(editing || error) && (
-        <tr className="detail-row">
-          <td colSpan={5}>
-            {editing && (
-              <div className="inline-form">
-                <RolePicker me={me} roles={roles} selected={selected} onChange={setSelected} />
-                <button type="button" className="secondary" disabled={busy} onClick={() => act(() => org.changeRoles(user.id, selected))}>
-                  {busy ? 'Saving…' : 'Save roles'}
-                </button>
-              </div>
+          <p className="hint">
+            {user.lastLoginAt ? t.lastSignIn(formatDate(user.lastLoginAt)) : t.neverSignedIn}
+            <br />
+            {user.mfaEnrolled ? t.twoStepOn : t.twoStepOff}
+            {user.joinedAt && (
+              <>
+                <br />
+                {t.joined(formatDate(user.joinedAt))}
+              </>
             )}
-            <ErrorNote>{error}</ErrorNote>
-          </td>
-        </tr>
+          </p>
+        </div>
+        <button type="button" className="quiet icon-button" aria-label={t.close} onClick={onClose}>
+          <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+            <path d="M18 6 6 18M6 6l12 12" />
+          </svg>
+        </button>
+      </div>
+
+      {canAssign && (
+        <div className="side-panel-section">
+          <RolePicker me={me} roles={roles} selected={selected} onChange={setSelected} />
+          <div className="form-actions">
+            <button
+              type="button"
+              className="primary"
+              disabled={busy || !changed}
+              onClick={() => act(() => org.changeRoles(user.id, selected), t.saved(user.email))}
+            >
+              {busy ? t.saving : t.save}
+            </button>
+            <button type="button" className="quiet" onClick={onClose}>
+              {t.cancel}
+            </button>
+          </div>
+        </div>
       )}
-    </>
+
+      <ErrorNote>{error}</ErrorNote>
+
+      {canManage && (
+        <div className="side-panel-section">
+          <h3>{t.access}</h3>
+          <div className="access-row">
+            <p className="hint">{user.status === 'suspended' ? t.reactivateHint : t.suspendHint}</p>
+            {user.status === 'active' && (
+              <button type="button" className="outline" disabled={busy} onClick={() => act(() => org.changeStatus(user.id, 'suspend'), t.suspended(user.email))}>
+                {t.suspend}
+              </button>
+            )}
+            {user.status === 'suspended' && (
+              <button type="button" className="outline" disabled={busy} onClick={() => act(() => org.changeStatus(user.id, 'reactivate'), t.reactivated(user.email))}>
+                {t.reactivate}
+              </button>
+            )}
+          </div>
+          <div className="access-row">
+            <p className="hint">{t.endHint}</p>
+            <button
+              type="button"
+              className="danger-outline"
+              disabled={busy}
+              onClick={() => act(() => org.changeStatus(user.id, 'end'), t.ended(user.email), t.endAsk(user.email))}
+            >
+              {t.end}
+            </button>
+          </div>
+        </div>
+      )}
+    </aside>
   )
 }
 
@@ -174,61 +246,74 @@ function UsersTab({ me, onInvite }) {
   const roles = useLoad(org.roles)
   const [filter, setFilter] = useState('active')
   const [search, setSearch] = useState('')
+  const [open, setOpen] = useState(null)
+  const t = USERS_TEXT
   const canInvite = me.permissions.includes('user.invite') && me.kind === 'tenant'
-
   if (users.loading || roles.loading) return <p className="muted">Loading…</p>
   if (users.error || roles.error) return <ErrorNote>{users.error || roles.error}</ErrorNote>
-
   const counts = { active: 0, suspended: 0, ended: 0 }
   users.data.forEach((u) => (counts[u.status] += 1))
   const wanted = search.trim().toLowerCase()
   const shown = users.data.filter((u) => u.status === filter && u.email.toLowerCase().includes(wanted))
-
+  // The panel follows the user even when a change moves them out of the list being shown.
+  const openUser = users.data.find((u) => u.id === open && u.status !== 'ended')
   return (
     <>
       <div className="filters">
         <label htmlFor="user-search" className="sr-only">
-          Search users
+          {t.search}
         </label>
-        <input id="user-search" type="search" placeholder="Search by email" value={search} onChange={(e) => setSearch(e.target.value)} />
-        {[
-          ['active', 'Active'],
-          ['suspended', 'Suspended'],
-          ['ended', 'Former'],
-        ].map(([id, label]) => (
-          <button key={id} type="button" className={filter === id ? 'chip chip-current' : 'chip'} onClick={() => setFilter(id)}>
-            {label} <span className="count">{counts[id]}</span>
-          </button>
-        ))}
+        <input id="user-search" type="search" placeholder={t.search} value={search} onChange={(e) => setSearch(e.target.value)} />
+        <div className="switcher" role="group" aria-label={t.statusGroup}>
+          {t.statuses.map(([id, label]) => (
+            <button key={id} type="button" aria-pressed={filter === id} className={filter === id ? 'switch-option switch-current' : 'switch-option'} onClick={() => setFilter(id)}>
+              {label} <span className="count">{counts[id]}</span>
+            </button>
+          ))}
+        </div>
         <span className="spacer" />
         {canInvite && (
-          <button type="button" className="secondary" onClick={onInvite}>
-            Invite user
+          <button type="button" className="primary" onClick={onInvite}>
+            {t.invite}
           </button>
         )}
       </div>
-      {shown.length === 0 ? (
-        <Empty>{wanted ? 'No users match that search.' : `No ${filter === 'ended' ? 'former' : filter} users.`}</Empty>
-      ) : (
-        <div className="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Email</th>
-                <th>Roles</th>
-                <th>Status</th>
-                <th>Last sign-in</th>
-                <th aria-label="Actions" />
-              </tr>
-            </thead>
-            <tbody>
-              {shown.map((u) => (
-                <UserRow key={u.id} user={u} me={me} roles={roles.data} onChanged={users.reload} />
-              ))}
-            </tbody>
-          </table>
+      <div className="with-panel">
+        <div className="with-panel-main">
+          {shown.length === 0 ? (
+            <Empty>{wanted ? t.noMatch : t.none(filter)}</Empty>
+          ) : (
+            <div className="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>{t.columns.user}</th>
+                    <th>{t.columns.roles}</th>
+                    <th>{t.columns.status}</th>
+                    <th>{t.columns.lastSignIn}</th>
+                    <th aria-label={t.columns.actions} />
+                  </tr>
+                </thead>
+                <tbody>
+                  {shown.map((u) => (
+                    <UserRow key={u.id} user={u} me={me} current={u.id === open} onOpen={setOpen} />
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
-      )}
+        {openUser && (
+          <UserPanel
+            key={`${openUser.id}-${openUser.roleCodes.join()}`}
+            user={openUser}
+            me={me}
+            roles={roles.data}
+            onClose={() => setOpen(null)}
+            onChanged={users.reload}
+          />
+        )}
+      </div>
     </>
   )
 }

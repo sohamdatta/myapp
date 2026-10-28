@@ -94,8 +94,8 @@ test.describe.serial('payroll', () => {
     await nav(owner, 'User management');
     const hrRow = owner.locator('tr', { hasText: HR });
     await hrRow.getByText('Edit roles').click();
-    await owner.check(".detail-row label:has-text('Payroll Operator') input");
-    await owner.click('text=Save roles');
+    await owner.check("#user-panel label:has-text('Payroll Operator') input");
+    await owner.locator('#user-panel').getByRole('button', { name: 'Save roles' }).click();
     await expect(hrRow.locator('td').nth(1)).toContainText('Payroll Operator');
 
     // Professional tax and the labour welfare fund follow the state of the work location.

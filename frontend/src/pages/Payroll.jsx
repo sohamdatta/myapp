@@ -140,21 +140,33 @@ function RunList({ onOpen, onSetup }) {
   )
 }
 
-/** The row of a run's steps, done ones ticked, as on an exit's page. */
-function RunSteps({ state }) {
+/** The steps of a run: done ones ticked and joined by a line, the one it is at marked, with who did each where known. */
+function RunSteps({ run: x }) {
+  const state = x.state
   const at = RUN_STEPS.findIndex(([s]) => s === state)
+  const finished = state === 'released'
+  const notes = {
+    calculated: x.calculatedByName && `by ${x.calculatedByName}`,
+    approved: x.approvedByName && `by ${x.approvedByName}`,
+    paid: x.paidOn && formatDay(x.paidOn),
+  }
   return (
-    <ol className="exit-progress" aria-label="Where the run is">
-      {RUN_STEPS.map(([s, label], i) => (
-        <li key={s} className={i < at || state === 'released' ? 'step step-done' : i === at ? 'step step-next' : 'step'}>
-          <span className="step-mark" aria-hidden="true">
-            {i < at || state === 'released' ? '✓' : i + 1}
-          </span>
-          <span>
-            <span className="step-label">{label}</span>
-          </span>
-        </li>
-      ))}
+    <ol className="run-steps" aria-label="Where the run is">
+      {RUN_STEPS.map(([s, label], i) => {
+        const done = i < at || finished
+        const current = i === at && !finished
+        return (
+          <li key={s} className={done ? 'run-step run-step-done' : current ? 'run-step run-step-current' : 'run-step'} aria-current={current ? 'step' : undefined}>
+            <span className="run-step-mark" aria-hidden="true">
+              {done ? '✓' : i + 1}
+            </span>
+            <span className="run-step-text">
+              <span className="run-step-label">{label}</span>
+              {(done || current) && notes[s] && <span className="run-step-note">{notes[s]}</span>}
+            </span>
+          </li>
+        )
+      })}
     </ol>
   )
 }
@@ -182,6 +194,8 @@ function RunPage({ id, me, onBack }) {
     return <RunEmployee run={x} employmentId={person} onBack={() => setPerson(null)} onChanged={r.reload} />
   }
   const open = x.exceptions.filter((e) => e.level === 'blocking' && !e.acceptedAt)
+  const showRegister = x.state !== 'draft' && x.state !== 'frozen'
+  const checks = x.exceptions.length > 0 && <Exceptions run={x} open={open} onChanged={r.reload} onOpen={setPerson} beside={showRegister} />
   return (
     <>
       <p>
@@ -252,7 +266,7 @@ function RunPage({ id, me, onBack }) {
           )}
         </div>
       </div>
-      <RunSteps state={x.state} />
+      <RunSteps run={x} />
       {x.note && x.state === 'draft' && <p className="notice">Reopened or sent back: {x.note}</p>}
       {Number(x.draftRules) > 0 && x.state !== 'released' && (
         <p className="hint">Statutory rules in use are drafts awaiting the consultant’s sign-off.</p>
@@ -295,8 +309,10 @@ function RunPage({ id, me, onBack }) {
       {x.state === 'draft' && <Inputs run={x} onChanged={r.reload} />}
       {x.state === 'frozen' && <p className="notice">Inputs are frozen for {x.people.length} people. Calculate to see the payslips.</p>}
 
-      {x.exceptions.length > 0 && <Exceptions run={x} open={open} onChanged={r.reload} onOpen={setPerson} />}
+      {!showRegister && checks}
 
+      <div className="with-panel">
+        <div className="with-panel-main">
       {['approved', 'paid', 'released', 'calculated'].includes(x.state) && (
         <section className="panel">
           <div className="toolbar">
@@ -324,7 +340,7 @@ function RunPage({ id, me, onBack }) {
         </section>
       )}
 
-      {x.state !== 'draft' && x.state !== 'frozen' && (
+      {showRegister && (
         <section className="panel">
           <h3>Register</h3>
           <div className="table-wrap">
@@ -362,6 +378,9 @@ function RunPage({ id, me, onBack }) {
           </div>
         </section>
       )}
+        </div>
+        {showRegister && checks}
+      </div>
       {x.attempts.length > 1 && (
         <details className="panel">
           <summary>Earlier calculations ({x.attempts.length - 1})</summary>
@@ -538,13 +557,13 @@ function Holds({ run: x, onChanged }) {
   )
 }
 
-function Exceptions({ run: x, open, onChanged, onOpen }) {
+function Exceptions({ run: x, open, onChanged, onOpen, beside }) {
   const [accepting, setAccepting] = useState(null)
   const { error, run } = useAction()
   const warnings = x.exceptions.filter((e) => e.level === 'warning')
   const blocking = x.exceptions.filter((e) => e.level === 'blocking')
   return (
-    <section className="panel" data-testid="exceptions">
+    <section className={beside ? 'side-panel run-checks' : 'panel run-checks'} data-testid="exceptions">
       <h3>
         Exceptions{' '}
         <span className="hint">
@@ -554,16 +573,17 @@ function Exceptions({ run: x, open, onChanged, onOpen }) {
       <ul className="exceptions">
         {[...blocking, ...warnings].map((e) => (
           <li key={e.id} className={e.level === 'blocking' && !e.acceptedAt ? 'exception blocking' : 'exception'} data-code={e.code}>
-            <div>
+            <div className="exception-head">
               <Badge tone={e.level === 'blocking' ? (e.acceptedAt ? 'neutral' : 'bad') : 'warn'}>
                 {e.level === 'blocking' ? (e.acceptedAt ? 'Accepted' : 'Blocking') : 'Warning'}
-              </Badge>{' '}
+              </Badge>
               {e.name && (
                 <button type="button" className="text-link" onClick={() => onOpen(e.employmentId)}>
                   {e.name}
                 </button>
               )}
-              {e.name ? ': ' : ''}
+            </div>
+            <p className="exception-text">
               {e.message}
               {e.acceptedAt && (
                 <span className="hint">
@@ -572,7 +592,7 @@ function Exceptions({ run: x, open, onChanged, onOpen }) {
                 </span>
               )}
               {e.level === 'blocking' && !e.acceptable && !e.acceptedAt && <span className="hint"> Must be fixed.</span>}
-            </div>
+            </p>
             {e.level === 'blocking' && e.acceptable && !e.acceptedAt && x.canAccept && x.state === 'calculated' && accepting !== e.id && (
               <button type="button" className="quiet" onClick={() => setAccepting(e.id)}>
                 Accept…
