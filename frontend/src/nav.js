@@ -58,6 +58,7 @@ export function navFor(me) {
     {
       label: 'Organization',
       items: [
+        me.permissions.includes('tenant.manage') && me.kind === 'tenant' && { id: 'getting-started', label: 'Getting started' },
         me.permissions.includes('orgchart.read') && { id: 'org-chart', label: 'Org chart' },
         seesPeople && { id: 'people', label: 'People' },
         hasAttendance && seesOthersAttendance && { id: 'attendance', label: 'Attendance' },
@@ -82,7 +83,11 @@ export function navFor(me) {
   ].filter((section) => section.items.length > 0)
 }
 
-/** The page a person lands on: their own work first, otherwise the first thing they can see. */
-export function firstPage(nav) {
+/**
+ * The page a person lands on: their own work first, otherwise the first thing they can see. An Org Admin
+ * of an Organization with no work location or shift yet starts on Getting started.
+ */
+export function firstPage(nav, me) {
+  if (me?.setupOpen && nav.some((section) => section.items.some((item) => item.id === 'getting-started'))) return 'getting-started'
   return nav.length ? nav[0].items[0].id : null
 }

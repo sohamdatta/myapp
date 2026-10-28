@@ -246,7 +246,7 @@ test.describe.serial('negative: signing in, invitations, access', () => {
 
     const meera = await signIn(browser, MEERA);
     const items = await meera.locator('a.nav-item').allInnerTexts();
-    for (const hidden of ['People', 'Payroll', 'User management', 'Audit log', 'Attendance', 'Leave']) {
+    for (const hidden of ['People', 'Payroll', 'User management', 'Audit log', 'Attendance', 'Leave', 'Getting started']) {
       expect(items, `menu shows ${hidden}`).not.toContain(hidden);
     }
     await shot(meera, 'neg-10-employee-menu');
@@ -259,6 +259,8 @@ test.describe.serial('negative: signing in, invitations, access', () => {
       ['GET', `/org/payroll/runs/${october}/outputs/bank`],
       ['GET', '/org/users'],
       ['GET', '/org/audit'],
+      ['GET', '/org/setup'],
+      ['POST', '/org/setup/starter', { starter: 'office', locationName: 'Head office', stateCode: 'KA' }],
       ['POST', '/org/invitations', { email: 'friend@globex.test', roles: ['owner'] }],
       ['POST', '/org/leave/types', { name: 'Free days' }],
       ['POST', '/org/attendance/locations', { name: 'Home' }],
