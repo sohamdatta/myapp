@@ -44,6 +44,7 @@ import com.example.loginapp.core.Goals;
 import com.example.loginapp.core.InvitationService;
 import com.example.loginapp.core.JoinerService;
 import com.example.loginapp.core.LeaveAdminService;
+import com.example.loginapp.core.SetupService;
 import com.example.loginapp.core.LeaveService;
 import com.example.loginapp.core.LetterService;
 import com.example.loginapp.core.Migrator;
@@ -152,6 +153,11 @@ public class AppConfig {
     @Bean
     public AttendanceService attendanceService(Db db) {
         return new AttendanceService(db);
+    }
+
+    @Bean
+    public SetupService setupService(Db db) {
+        return new SetupService(db);
     }
 
     @Bean

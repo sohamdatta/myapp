@@ -44,7 +44,7 @@ Which endpoints belong to which module:
 | Attendance | `/api/org/attendance/*` except the work calendar below, including saving attendance settings; `/api/org/attendance/devices/*`; `/iclock/*` |
 | Leave | `/api/org/leave/*` except reading leave types. Includes `PUT /api/org/leave/year`, which sets when the leave year starts (January or April) without touching any work-from-home setting |
 | Payroll | `/api/org/payroll/*` and the pay endpoints under `/api/org` served by `PayrollController` |
-| Core HR (always) | Work calendar: `locations`, `shifts`, `holidays`, `assignments`, employee codes, reading attendance settings. Leave types (read): exit settings name the leave a settlement encashes |
+| Core HR (always) | Work calendar: `locations`, `shifts`, `holidays`, `assignments`, employee codes, reading attendance settings. Leave types (read): exit settings name the leave a settlement encashes. `GET /api/org/setup` and `POST /api/org/setup/starter` (Getting started): they fill the work calendar whatever modules are on, and leave types only with Leave |
 
 The leave year is stored with the attendance settings (`app.attendance_settings.leave_year_start_month`), where it has been since V4; only the endpoint that changes it moved. Saving the attendance settings can still change it too, for an Organization with Attendance. Changing it through Leave is recorded as `leave.year_changed`, and is refused once a leave year has been closed, as before.
 

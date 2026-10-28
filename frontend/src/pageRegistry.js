@@ -25,6 +25,7 @@ const ORGANIZATION = {
   'my-profile': page(named(() => import('./pages/People.jsx'), 'MyProfile'), ({ me }) => ({ id: me.employment?.id })),
   'my-exit': page(() => import('./pages/MyExit.jsx'), ({ me }) => ({ me })),
   'my-onboarding': page(() => import('./pages/MyOnboarding.jsx'), ({ me }) => ({ me })),
+  'getting-started': page(() => import('./pages/GettingStarted.jsx'), ({ me, onNavigate, onRefresh }) => ({ me, onNavigate, onRefresh })),
   'org-chart': page(() => import('./pages/OrgChart.jsx'), ({ onNavigate }) => ({ onNavigate })),
   people: page(() => import('./pages/People.jsx'), ({ me, onNavigate }) => ({ me, onNavigate })),
   attendance: page(() => import('./pages/Attendance.jsx'), ({ me }) => ({ me })),

@@ -421,6 +421,13 @@ export const joiners = {
   addTask: (id, body) => post(`/org/people/joiners/${id}/tasks`, body),
 }
 
+// ── getting an Organization started ─────────────────────────────────
+
+export const gettingStarted = {
+  status: () => get('/org/setup'),
+  apply: (choice) => post('/org/setup/starter', choice),
+}
+
 // ── onboarding setup and the employee import ────────────────────────
 
 const S = '/org/people/setup'
