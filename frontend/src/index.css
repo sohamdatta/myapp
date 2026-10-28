@@ -1,60 +1,68 @@
 :root {
-  --bg: #f5f6f8;
+  --bg: #f8fafc;
   --card: #ffffff;
-  --text: #18202b;
-  --muted: #5b6676;
-  --border: #e3e6eb;
-  --border-strong: #cdd3db;
-  --row: #fafbfc;
-  --accent: #0e6b63;
-  --accent-hover: #0a4f49;
-  --accent-soft: #e4f2f0;
-  --accent-text: #0a4f49;
+  --text: #1e293b;
+  --muted: #475569;
+  --border: #e2e8f0;
+  --border-strong: #cbd5e1;
+  --row: #f8fafc;
+  --accent: #2563eb;
+  --accent-hover: #1d4ed8;
+  --accent-soft: #eff6ff;
+  --accent-text: #1d4ed8;
   --on-accent: #ffffff;
-  --error: #a3261e;
-  --error-bg: #fdecea;
-  --good: #17603a;
-  --good-bg: #e3f3ea;
-  --warn: #8a4b00;
-  --warn-bg: #fcefd9;
-  --neutral: #4a5567;
-  --neutral-bg: #eceff3;
-  --head: #f8f9fb;
-  --shadow-sm: 0 1px 2px rgb(16 24 40 / 0.05);
-  --shadow-md: 0 1px 3px rgb(16 24 40 / 0.06), 0 6px 16px -4px rgb(16 24 40 / 0.08);
-  --radius: 12px;
-  font-family: 'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  /* Orange draws the eye to what needs someone: counts of things to decide, late, blocking. */
+  --attention: #ea580c;
+  --attention-soft: #fdba74;
+  --on-attention: #000000;
+  --error: #b91c1c;
+  --error-bg: #fef2f2;
+  --good: #15803d;
+  --good-bg: #f0fdf4;
+  --warn: #c2410c;
+  --warn-bg: #fff7ed;
+  --neutral: #475569;
+  --neutral-bg: #f1f5f9;
+  --head: #f8fafc;
+  --shadow-sm: 0 1px 2px rgb(15 23 42 / 0.05);
+  --shadow-md: 0 1px 3px rgb(15 23 42 / 0.06), 0 8px 20px -6px rgb(15 23 42 / 0.1);
+  --radius: 10px;
+  --mono: 'Fira Code', ui-monospace, 'SFMono-Regular', Menlo, monospace;
+  font-family: 'Fira Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
   font-size: 87.5%;
-  line-height: 1.45;
+  line-height: 1.5;
   color: var(--text);
   background: var(--bg);
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #0f1419;
-    --card: #182028;
-    --text: #e7ebf0;
-    --muted: #9aa6b5;
-    --border: #2b3642;
-    --border-strong: #3c4957;
-    --row: #1c252e;
-    --accent: #58c2b6;
-    --accent-hover: #7ad3c9;
-    --accent-soft: #16332f;
-    --accent-text: #8fdcd2;
-    --on-accent: #06211e;
-    --error: #ffb4ab;
-    --error-bg: #3a1614;
-    --good: #8fd9aa;
-    --good-bg: #173524;
-    --warn: #f1c873;
-    --warn-bg: #3a2d10;
-    --neutral: #b3bdca;
-    --neutral-bg: #27313c;
-    --head: #1b242d;
-    --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.3);
-    --shadow-md: 0 1px 3px rgb(0 0 0 / 0.3), 0 8px 20px -6px rgb(0 0 0 / 0.45);
+    --bg: #0b1220;
+    --card: #111a2b;
+    --text: #e2e8f0;
+    --muted: #94a3b8;
+    --border: #1e293b;
+    --border-strong: #334155;
+    --row: #152036;
+    --accent: #60a5fa;
+    --accent-hover: #93c5fd;
+    --accent-soft: #172554;
+    --accent-text: #93c5fd;
+    --on-accent: #0b1220;
+    --attention: #fb923c;
+    --attention-soft: #fdba74;
+    --on-attention: #000000;
+    --error: #fca5a5;
+    --error-bg: #450a0a;
+    --good: #86efac;
+    --good-bg: #052e16;
+    --warn: #fdba74;
+    --warn-bg: #431407;
+    --neutral: #cbd5e1;
+    --neutral-bg: #1e293b;
+    --head: #131d30;
+    --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.35);
+    --shadow-md: 0 1px 3px rgb(0 0 0 / 0.35), 0 8px 20px -6px rgb(0 0 0 / 0.5);
   }
 }
 
@@ -70,12 +78,13 @@ body {
 h1 {
   margin: 0 0 4px;
   font-size: 1.55rem;
-  font-weight: 600;
+  font-weight: 700;
+  letter-spacing: -0.01em;
 }
 
 h2 {
-  margin: 28px 0 10px;
-  font-size: 1.12rem;
+  margin: 24px 0 10px;
+  font-size: 1.08rem;
   font-weight: 600;
 }
 
@@ -197,9 +206,6 @@ a:focus-visible,
   color: var(--on-accent);
   background: var(--accent);
   border: 1px solid var(--accent);
-  box-shadow:
-    var(--shadow-sm),
-    inset 0 1px 0 rgb(255 255 255 / 0.12);
 }
 
 .primary {
@@ -219,14 +225,14 @@ a:focus-visible,
 }
 
 .outline {
-  color: var(--accent-text);
+  font-weight: 500;
+  color: var(--text);
   background: var(--card);
-  border: 1px solid var(--accent);
-  box-shadow: var(--shadow-sm);
+  border: 1px solid var(--border-strong);
 }
 
 .outline:hover:not(:disabled) {
-  background: var(--accent-soft);
+  background: var(--neutral-bg);
 }
 
 .quiet {
@@ -238,7 +244,7 @@ a:focus-visible,
 }
 
 .quiet:hover:not(:disabled) {
-  border-color: var(--border-strong);
+  background: var(--neutral-bg);
 }
 
 .quiet.danger {
@@ -470,7 +476,7 @@ td .hint {
 }
 
 .sidebar {
-  flex: 1 0 248px;
+  flex: 1 0 240px;
   max-width: 100%;
   display: flex;
   flex-direction: column;
@@ -514,10 +520,8 @@ td .hint {
 
 .nav-label {
   padding: 0 10px 6px;
-  font-size: 0.74rem;
+  font-size: 0.86rem;
   font-weight: 600;
-  letter-spacing: 0.07em;
-  text-transform: uppercase;
   color: var(--muted);
 }
 
@@ -526,8 +530,8 @@ td .hint {
   display: flex;
   align-items: center;
   gap: 10px;
-  min-height: 36px;
-  padding: 7px 10px;
+  min-height: 40px;
+  padding: 8px 10px;
   text-decoration: none;
   font: inherit;
   font-weight: 500;
@@ -563,18 +567,6 @@ td .hint {
   opacity: 1;
 }
 
-/* A bar at the left edge marks the page you are on, beside the tint. */
-.nav-current::before {
-  content: '';
-  position: absolute;
-  top: 8px;
-  bottom: 8px;
-  left: -12px;
-  width: 3px;
-  background: var(--accent);
-  border-radius: 0 3px 3px 0;
-}
-
 .main {
   flex: 999 1 560px;
   min-width: 0;
@@ -593,16 +585,16 @@ td .hint {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  min-height: 65px;
-  padding: 10px 32px;
-  background: color-mix(in srgb, var(--card) 88%, transparent);
-  backdrop-filter: saturate(1.4) blur(10px);
+  min-height: 56px;
+  padding: 8px 24px;
+  background: var(--card);
   border-bottom: 1px solid var(--border);
 }
 
 .page-title {
   margin: 0;
-  font-size: 1.3rem;
+  font-size: 1.25rem;
+  font-weight: 700;
   letter-spacing: -0.01em;
 }
 
@@ -652,10 +644,10 @@ td .hint {
   align-items: center;
   gap: 8px;
   margin: 0 4px 0 2px;
-  padding: 4px 12px 4px 4px;
+  padding: 4px 8px 4px 4px;
   color: var(--text);
   font-weight: 500;
-  background: var(--neutral-bg);
+  background: none;
   border-radius: 999px;
 }
 
@@ -667,8 +659,8 @@ td .hint {
   justify-content: center;
   font-size: 0.78rem;
   font-weight: 600;
-  color: var(--on-accent);
-  background: linear-gradient(135deg, var(--accent), var(--accent-hover));
+  color: var(--accent-text);
+  background: var(--accent-soft);
   border-radius: 50%;
 }
 
@@ -683,7 +675,7 @@ td .hint {
 .content {
   width: 100%;
   max-width: 1440px;
-  padding: 28px 32px 64px;
+  padding: 20px 24px 48px;
 }
 
 .support-banner {
@@ -692,7 +684,7 @@ td .hint {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 10px 32px;
+  padding: 10px 24px;
   color: var(--warn);
   background: var(--warn-bg);
   border-bottom: 1px solid var(--border);
@@ -703,9 +695,9 @@ td .hint {
   position: relative;
   display: flex;
   flex-wrap: wrap;
-  gap: 0 28px;
-  margin: -28px -32px 28px;
-  padding: 0 32px;
+  gap: 0 4px;
+  margin: -20px -24px 20px;
+  padding: 0 20px;
   background: var(--card);
   border-bottom: 1px solid var(--border);
   /* The white band runs to the right edge of the window, past the content's maximum width. */
@@ -724,8 +716,8 @@ td .hint {
 }
 
 .tab {
-  min-height: 46px;
-  padding: 12px 2px;
+  min-height: 44px;
+  padding: 10px 12px;
   font: inherit;
   font-weight: 500;
   color: var(--muted);
@@ -746,15 +738,40 @@ td .hint {
   border-bottom-color: var(--accent);
 }
 
+/* A count beside a tab or heading. The attention one marks things waiting for someone. */
+.count-pill {
+  display: inline-block;
+  min-width: 20px;
+  margin-left: 6px;
+  padding: 0 6px;
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  font-weight: 600;
+  line-height: 1.6;
+  text-align: center;
+  color: var(--muted);
+  background: var(--neutral-bg);
+  border-radius: 999px;
+}
+
+.tab-current .count-pill {
+  color: var(--accent-text);
+  background: var(--accent-soft);
+}
+
+.count-pill.attention {
+  color: var(--on-attention);
+  background: var(--attention-soft);
+}
+
 /* ── surfaces ──────────────────────────────────────────────────────── */
 
 .panel {
-  padding: 20px;
-  margin-bottom: 20px;
+  padding: 16px;
+  margin-bottom: 16px;
   background: var(--card);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  box-shadow: var(--shadow-sm);
 }
 
 .panel h2 {
@@ -779,62 +796,61 @@ td .hint {
   margin: 0;
 }
 
-/* Stat tiles (KPI cards): a small label above a large number, with a coloured edge. */
+/* Stat tiles (KPI cards): a label with a small colour key, then the number in the data face. */
 .tiles {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-  gap: 16px;
-  margin-bottom: 20px;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 8px;
+  margin-bottom: 16px;
 }
 
 .tile {
-  position: relative;
-  overflow: hidden;
-  padding: 16px 20px 18px;
+  --tile-key: var(--accent);
+  padding: 12px 14px;
   background: var(--card);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  box-shadow: var(--shadow-sm);
 }
 
-.tile::before {
-  content: '';
-  position: absolute;
-  inset: 0 auto 0 0;
-  width: 3px;
-  background: var(--accent);
-  opacity: 0.85;
+.tile:nth-child(5n + 2) {
+  --tile-key: #16a34a;
 }
 
-.tile:nth-child(5n + 2)::before {
-  background: #3b82c4;
+.tile:nth-child(5n + 3) {
+  --tile-key: #ea580c;
 }
 
-.tile:nth-child(5n + 3)::before {
-  background: #d08a1e;
+.tile:nth-child(5n + 4) {
+  --tile-key: #7c3aed;
 }
 
-.tile:nth-child(5n + 4)::before {
-  background: #c2453b;
-}
-
-.tile:nth-child(5n + 5)::before {
-  background: #7a5cc4;
+.tile:nth-child(5n + 5) {
+  --tile-key: #dc2626;
 }
 
 .tile-label {
-  font-size: 0.8rem;
-  font-weight: 600;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.93rem;
   color: var(--muted);
 }
 
+.tile-label::before {
+  content: '';
+  flex: none;
+  width: 8px;
+  height: 8px;
+  background: var(--tile-key);
+  border-radius: 2px;
+}
+
 .tile-value {
-  margin-top: 6px;
-  font-size: 2rem;
+  margin-top: 4px;
+  font-family: var(--mono);
+  font-size: 1.85rem;
   font-weight: 600;
-  line-height: 1.1;
+  line-height: 1.15;
   letter-spacing: -0.02em;
   font-variant-numeric: tabular-nums;
 }
@@ -849,11 +865,11 @@ td .hint {
 }
 
 .notice {
-  padding: 14px 16px 14px 18px;
-  margin-bottom: 20px;
+  padding: 12px 16px;
+  margin-bottom: 16px;
+  color: var(--text);
   background: var(--accent-soft);
-  border: 1px solid var(--border);
-  border-left: 3px solid var(--accent);
+  border: 1px solid color-mix(in srgb, var(--accent) 25%, transparent);
   border-radius: var(--radius);
 }
 
@@ -883,7 +899,6 @@ td .hint {
   background: var(--card);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  box-shadow: var(--shadow-sm);
 }
 
 table {
@@ -894,18 +909,17 @@ table {
 
 th,
 td {
-  padding: 12px 16px;
+  padding: 10px 12px;
   text-align: left;
   vertical-align: middle;
   border-bottom: 1px solid var(--border);
 }
 
 th {
-  padding: 10px 16px;
-  font-size: 0.76rem;
+  height: 36px;
+  padding: 8px 12px;
+  font-size: 0.86rem;
   font-weight: 600;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
   color: var(--muted);
   white-space: nowrap;
   background: var(--head);
@@ -956,8 +970,8 @@ td input.cell-input {
 
 .avatar {
   flex: none;
-  width: 30px;
-  height: 30px;
+  width: 32px;
+  height: 32px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -972,19 +986,34 @@ td input.cell-input {
 .tag {
   display: inline-block;
   margin: 1px 4px 1px 0;
-  padding: 2px 8px;
+  padding: 1px 8px;
   font-size: 0.86rem;
   font-weight: 500;
+  color: var(--text);
   background: var(--neutral-bg);
+  border: 1px solid transparent;
   border-radius: 6px;
+  white-space: nowrap;
+}
+
+/* A role that reaches everyone's data, so it stands out in a list of roles. */
+.tag-wide {
+  color: var(--accent-text);
+  background: var(--accent-soft);
+  border-color: color-mix(in srgb, var(--accent) 30%, transparent);
+}
+
+.tag-owner {
+  color: var(--card);
+  background: var(--text);
 }
 
 /* A status pill with a dot in its own colour. The dot is a background, so the text keeps its capital. */
 .badge {
   display: inline-block;
-  padding: 2px 10px 2px 20px;
-  font-size: 0.82rem;
-  font-weight: 600;
+  padding: 1px 10px 1px 20px;
+  font-size: 0.86rem;
+  font-weight: 500;
   line-height: 1.5;
   background-image: radial-gradient(circle at 10px 50%, currentColor 3px, transparent 3.5px);
   background-repeat: no-repeat;
@@ -1054,7 +1083,7 @@ td input.cell-input {
   background: var(--card);
   border: 1px solid var(--border-strong);
   border-radius: 10px;
-  box-shadow: 0 8px 24px rgb(0 0 0 / 0.12);
+  box-shadow: var(--shadow-md);
 }
 
 .menu-items .quiet {
@@ -1095,14 +1124,13 @@ td input.cell-input {
 
 .chip {
   min-height: 36px;
-  padding: 6px 14px;
+  padding: 6px 12px;
   font: inherit;
   font-weight: 500;
   color: var(--muted);
   background: var(--card);
   border: 1px solid var(--border-strong);
-  border-radius: 999px;
-  box-shadow: var(--shadow-sm);
+  border-radius: 8px;
   cursor: pointer;
   transition:
     background-color 0.12s ease,
@@ -1117,19 +1145,222 @@ td input.cell-input {
 
 .chip-current {
   font-weight: 600;
-  color: var(--on-accent);
-  background: var(--accent);
+  color: var(--accent-text);
+  background: var(--accent-soft);
   border-color: var(--accent);
 }
 
 .count {
-  opacity: 0.85;
+  font-family: var(--mono);
+  font-size: 0.86em;
+  opacity: 0.9;
+}
+
+/* Numbers people compare down a column read best in the data face. */
+td.num,
+.mono {
+  font-family: var(--mono);
+  font-size: 0.93em;
 }
 
 .icon-button {
   width: 40px;
   min-height: 40px;
   padding: 0;
+}
+
+/* One choice among a few, shown on a grey track: the chosen one lifts out of it. */
+.switcher {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  padding: 3px;
+  background: var(--neutral-bg);
+  border-radius: 8px;
+}
+
+.switch-option {
+  min-height: 32px;
+  padding: 4px 10px;
+  font: inherit;
+  font-weight: 500;
+  color: var(--muted);
+  background: none;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition:
+    background-color 0.12s ease,
+    color 0.12s ease;
+}
+
+.switch-option:hover:not(.switch-current) {
+  color: var(--text);
+}
+
+.switch-current {
+  color: var(--accent-text);
+  background: var(--card);
+  box-shadow: var(--shadow-sm);
+}
+
+/* The row whose details are open in the side panel. */
+.table-wrap tbody tr.row-current > td,
+.table-wrap tbody tr.row-current:hover > td {
+  background: var(--accent-soft);
+}
+
+td.when {
+  white-space: nowrap;
+}
+
+td.never {
+  color: var(--warn);
+}
+
+.user-panel .icon-button {
+  color: var(--muted);
+}
+
+/* A list with a panel beside it for the chosen row. On a narrow screen the panel goes under the list. */
+.with-panel {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 16px;
+}
+
+.with-panel-main {
+  flex: 999 1 560px;
+  min-width: 0;
+}
+
+.side-panel {
+  flex: 1 1 340px;
+  min-width: 0;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+@media (min-width: 761px) {
+  .side-panel {
+    position: sticky;
+    top: 72px;
+  }
+}
+
+.side-panel-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.side-panel-who {
+  flex: 1;
+  min-width: 0;
+}
+
+.side-panel-who h2 {
+  margin: 0 0 6px;
+  font-size: 1.07rem;
+  overflow-wrap: anywhere;
+}
+
+.side-panel-who h2:focus {
+  outline: none;
+}
+
+.side-panel-who .hint {
+  margin: 8px 0 0;
+}
+
+.side-panel-section {
+  padding: 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.side-panel-section:last-child {
+  border-bottom: none;
+}
+
+.side-panel-section h3 {
+  margin: 0 0 8px;
+  font-size: 0.93rem;
+}
+
+.side-panel .error {
+  margin: 12px 16px 0;
+}
+
+.side-panel .role-picker {
+  display: block;
+  margin-bottom: 12px;
+}
+
+.side-panel .role-options {
+  grid-template-columns: 1fr;
+  gap: 2px;
+}
+
+.side-panel .role-option {
+  padding: 6px 8px;
+  border-radius: 8px;
+}
+
+.side-panel .role-option:has(input:checked) {
+  background: var(--row);
+}
+
+.role-locked {
+  color: var(--warn);
+}
+
+.avatar-lg {
+  width: 40px;
+  height: 40px;
+  font-size: 1rem;
+  color: var(--accent-text);
+  background: var(--accent-soft);
+}
+
+.access-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 0;
+}
+
+.access-row .hint {
+  margin: 0;
+}
+
+.access-row button {
+  flex: none;
+}
+
+.danger-outline {
+  min-height: 36px;
+  padding: 8px 14px;
+  font: inherit;
+  font-weight: 500;
+  color: var(--error);
+  background: var(--error-bg);
+  border: 1px solid color-mix(in srgb, var(--error) 30%, transparent);
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.danger-outline:hover:not(:disabled) {
+  border-color: var(--error);
+}
+
+.danger-outline:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 /* ── attendance ────────────────────────────────────────────────────── */
@@ -2750,7 +2981,7 @@ fieldset:not([class]) {
 
 .warn-notice {
   background: var(--warn-bg);
-  border-left-color: var(--warn);
+  border-color: color-mix(in srgb, var(--warn) 30%, transparent);
 }
 
 textarea.code {
@@ -2804,22 +3035,138 @@ textarea.code {
   list-style: none;
 }
 
+.run-checks {
+  padding: 16px;
+}
+
+.panel > .toolbar {
+  margin-bottom: 12px;
+}
+
+.panel > .toolbar h3 {
+  margin: 0;
+}
+
+.run-checks h3 {
+  margin: 0 0 12px;
+}
+
 .exception {
   display: flex;
-  flex-wrap: wrap;
-  gap: 8px 12px;
-  align-items: baseline;
-  padding: 10px 12px;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 12px;
   margin-bottom: 8px;
+  background: var(--card);
   border: 1px solid var(--border);
-  border-left: 4px solid var(--border-strong);
   border-radius: 8px;
-  background: var(--row);
 }
 
 .exception.blocking {
-  border-left-color: var(--error);
   background: var(--error-bg);
+  border-color: color-mix(in srgb, var(--error) 30%, transparent);
+}
+
+.exception-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  font-weight: 500;
+}
+
+.exception-text {
+  margin: 0;
+  color: var(--text);
+}
+
+.exception .inline-form {
+  align-self: stretch;
+}
+
+/* The steps of a payroll run, joined by a line that fills as they are done. */
+.run-steps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 4px;
+  margin: 0 0 16px;
+  padding: 12px 16px;
+  list-style: none;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.run-step {
+  position: relative;
+  flex: 1 1 130px;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  color: var(--muted);
+}
+
+.run-step:not(:last-child)::after {
+  content: '';
+  flex: 1 1 12px;
+  min-width: 12px;
+  height: 2px;
+  margin: 12px 8px 0 4px;
+  background: var(--border);
+}
+
+.run-step-done:not(:last-child)::after {
+  background: var(--accent);
+}
+
+.run-step-mark {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  font-size: 0.86rem;
+  font-weight: 600;
+  background: var(--neutral-bg);
+  border: 2px solid transparent;
+  border-radius: 50%;
+}
+
+.run-step-done .run-step-mark {
+  color: var(--on-accent);
+  background: var(--accent);
+}
+
+.run-step-current .run-step-mark {
+  color: var(--accent-text);
+  background: var(--card);
+  border-color: var(--accent);
+}
+
+.run-step-done,
+.run-step-current {
+  color: var(--text);
+}
+
+.run-step-text {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.25;
+}
+
+.run-step-label {
+  font-weight: 500;
+}
+
+.run-step-current .run-step-label {
+  font-weight: 700;
+}
+
+.run-step-note {
+  font-size: 0.86rem;
+  color: var(--muted);
 }
 
 .register td,
