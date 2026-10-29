@@ -55,6 +55,7 @@ import com.example.loginapp.core.Outcomes;
 import com.example.loginapp.core.PayrollConfig;
 import com.example.loginapp.core.PayrollPay;
 import com.example.loginapp.core.PayrollRuns;
+import com.example.loginapp.core.StatutoryFilings;
 import com.example.loginapp.core.PerformanceSetup;
 import com.example.loginapp.core.PerformanceTeam;
 import com.example.loginapp.core.Plans;
@@ -314,6 +315,11 @@ public class AppConfig {
     @Bean
     public PayrollRuns payrollRuns(Db db, Crypto crypto) {
         return new PayrollRuns(db, crypto);
+    }
+
+    @Bean
+    public StatutoryFilings statutoryFilings(Db db, Crypto crypto) {
+        return new StatutoryFilings(db, crypto);
     }
 
     @Bean

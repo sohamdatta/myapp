@@ -545,10 +545,17 @@ public final class PayrollEngine {
                 ? " (wages " + rupees(wages) + " plus " + rupees(addBack) + " added back so that wages are half of pay)" : "");
         t.put("working", wageWords + "; " + (base.compareTo(pfWage) < 0 ? "restricted to the " + rupees(ceiling) + " ceiling; " : "")
                 + "12% of " + rupees(base));
+        // The wage bases as numbers, for the PF return file (ECR), which must not be rebuilt from the words above.
+        t.put("pfWage", scale(pfWage));
+        t.put("epfWages", scale(base));
         addLine(out, map(components, "PF_EE"), ee, null, (String) map(rules, "ruleIds").get("pf:IN"), t, position);
         Map<String, Object> t2 = rule(rules, "pf", "IN");
         BigDecimal erRounded = round(er, "nearest");
         t2.put("working", "12% of " + rupees(base) + ": pension (EPS) " + rupees(eps) + ", provident fund " + rupees(erRounded.subtract(eps)));
+        boolean epsEligible = Boolean.TRUE.equals(profile.get("epsEligible"));
+        t2.put("epsEligible", epsEligible);
+        t2.put("epsWages", epsEligible ? scale(pfWage.min(ceiling)) : ZERO);
+        t2.put("eps", eps);
         addLine(out, map(components, "PF_ER"), er, null, (String) map(rules, "ruleIds").get("pf:IN"), t2, position + 1);
     }
 
@@ -576,9 +583,11 @@ public final class PayrollEngine {
         Map<String, Object> t = rule(rules, "esi", "IN");
         t.put("working", (lowWage ? "Average daily wage at or below " + rupees(dec(esi, "lowWageDaily")) + ": no employee share" : "0.75% of ESI wage "
                 + rupees(wage)) + (carried && !underNow ? "; covered for the whole contribution period" : "") + "; rounded up");
+        t.put("esiWages", scale(wage));   // as a number, for the ESI return file
         addLineRounded(out, map(components, "ESI_EE"), ee, "up", id, t, position);
         Map<String, Object> t2 = rule(rules, "esi", "IN");
         t2.put("working", "3.25% of ESI wage " + rupees(wage) + "; rounded up");
+        t2.put("esiWages", scale(wage));
         addLineRounded(out, map(components, "ESI_ER"), er, "up", id, t2, position + 1);
     }
 
