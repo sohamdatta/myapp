@@ -185,6 +185,27 @@ class WageCheckTest {
         assertEquals(0, new BigDecimal("19700").compareTo(view.summary().addedBack()));
         assertEquals(0, new BigDecimal("2400").compareTo(view.summary().pfExtra()));
 
+        // The month shows what was paid: changing the Organization's PF setting afterwards changes nothing.
+        db.inOwner(c -> Sql.update(c, "update app.payroll_settings set pf_restrict = false where tenant_id = ?", m.org.id));
+        WageCheck.View later = wageCheck.check(m.operator, null);
+        assertEquals(0, new BigDecimal("2400").compareTo(later.summary().pfExtra()), "figures come from the run, not today's settings");
+        assertEquals(0, new BigDecimal("19700").compareTo(later.summary().addedBack()));
+        assertEquals(1, later.rows().stream().filter(WageCheck.Row::toppedUp).count());
+        assertTrue(later.pending().isEmpty());
+        assertFalse(later.rows().getFirst().held());
+
+        // A pay group whose run for the month is not approved is named, not silently left out.
+        db.inOwner(c -> {
+            UUID g = UUID.fromString(String.valueOf(Sql.one(c, "insert into app.pay_group (tenant_id, name) values (?, 'Contractors') returning id", m.org.id).get("id")));
+            Sql.update(c, "insert into app.payroll_run (tenant_id, group_id, period, state) values (?, ?, ?, 'draft')", m.org.id, g, m.period);
+            return null;
+        });
+        WageCheck.View withPending = wageCheck.check(m.operator, null);
+        assertEquals(1, withPending.pending().size());
+        assertEquals("Contractors", withPending.pending().getFirst().group());
+        assertEquals("draft", withPending.pending().getFirst().state());
+        assertEquals(2, withPending.summary().people());
+
         // The same month named, a month without a run, and a bad month.
         assertEquals(2, wageCheck.check(m.operator, YearMonth.from(m.period).toString()).rows().size());
         assertEquals(0, wageCheck.check(m.operator, YearMonth.from(m.period).plusMonths(5).toString()).rows().size());

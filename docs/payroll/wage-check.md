@@ -1,6 +1,6 @@
 # Labour Codes wage check (release R5, first slice)
 
-`WageCheck` (Payroll → Wage check, `GET /api/org/payroll/wage-check?month=yyyy-mm`, default the latest approved month). Read-only: it reads the bases the engine recorded on each approved payslip (`wages`, `addedBack`) and shows per person the pay that counts, the wage share, the conditional allowances added back to reach half of pay, and the extra PF that caused (employee plus employer share, with the Organization's PF restriction and the person's full-wage setting). A summary gives the number topped up and the monthly totals. Needs `payroll.read` or `payroll.prepare`.
+`WageCheck` (Payroll → Wage check, `GET /api/org/payroll/wage-check?month=yyyy-mm`, default the latest approved month). Read-only, and read entirely from what the run recorded (the payslip bases, its earning lines, the run's frozen component settings and the PF lines' own wage bases), never from today's settings, so an old month stays as it was paid. It reads the bases the engine recorded on each approved payslip (`wages`, `addedBack`) and shows per person the pay that counts, the wage share, the conditional allowances added back to reach half of pay, and the extra PF that caused (employee plus employer share, with the Organization's PF restriction and the person's full-wage setting). A summary gives the number topped up and the monthly totals. Needs `payroll.read` or `payroll.prepare`.
 
 ## What is not built yet (rest of R5)
 - What-if simulator (move amounts between basic and allowances and see employer cost and take-home before saving a structure).
@@ -14,3 +14,8 @@
 ## Notes
 - The "half of pay" threshold is in the payroll engine (`PayrollEngine`), not in rule data, from before this slice. The check mirrors the engine; moving the share into rule data is part of the consultant's sign-off work.
 - A structure's balancing allowance sees employer PF before the add-back, so pay in the check can differ slightly from CTC minus final employer PF.
+
+## Review notes (Opus review)
+Fixed: the extra-PF figure and one-time flags now come from the run, not live settings; the extra PF is the PF actually deducted and paid in proportion to the add-back, so it matches the payslip; pay groups whose run is not approved are listed as pending; people are counted once; held pay is flagged; no more error for an Organization with no payroll settings row.
+
+Still open: a person moved between pay groups after one group was frozen can have two payslips in a month and the 50% test is applied to each (the engine does the same); payslips calculated before the PF wage bases were recorded show no PF figure (null).

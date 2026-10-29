@@ -2,46 +2,45 @@ package com.example.loginapp.core;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
-import java.time.Clock;
 import java.time.LocalDate;
 import java.time.YearMonth;
-import java.time.ZoneId;
 import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
 
 import static com.example.loginapp.core.PayrollRuns.parse;
 
 /**
  * The Labour Codes wage check (release R5): for a month of approved payroll, how much of each person's pay counts as
  * wages, how much of the conditional allowances the engine had to add back to bring wages up to half of pay, and what
- * that added to PF. Read-only: it reads the bases the engine already recorded on each payslip, so it shows what was
- * paid, not a second calculation.
+ * that added to employee and employer PF. Read-only, and read from what the run recorded: the bases on each payslip, its
+ * earning lines, the run's frozen component settings and the PF lines' own wage bases. Nothing is taken from today's
+ * settings, so a month shows what was paid even after setup has changed.
  *
  * Gratuity and leave encashment follow the same wage base but need their own rule data, which does not exist yet,
- * so they are not estimated here.
+ * so they are not estimated here. EDLI and admin charges are not computed anywhere in payroll, so they are not in the PF figure.
  */
 public final class WageCheck {
 
-    private static final ZoneId IST = ZoneId.of("Asia/Kolkata");
-
+    /** A person's pay in the month. {@code pfExtra} is null for a payslip calculated before the PF wage bases were recorded. */
     public record Row(String employmentId, String code, String name, BigDecimal remuneration, BigDecimal wages, BigDecimal addedBack,
-                      BigDecimal wageShare, boolean toppedUp, BigDecimal pfExtra) {}
+                      BigDecimal wageShare, boolean toppedUp, BigDecimal pfExtra, boolean held) {}
 
     public record Summary(int people, int toppedUp, BigDecimal remuneration, BigDecimal addedBack, BigDecimal pfExtra) {}
 
-    public record View(String period, List<Row> rows, Summary summary, boolean draftRules) {}
+    /** A pay group whose run for the month is not approved, so its people are not in the figures. */
+    public record Pending(String group, String state) {}
+
+    public record View(String period, List<Row> rows, Summary summary, boolean draftRules, List<Pending> pending) {}
 
     private final Db db;
-    private final Clock clock;
 
     public WageCheck(Db db) {
-        this(db, Clock.systemUTC());
-    }
-
-    public WageCheck(Db db, Clock clock) {
         this.db = db;
-        this.clock = clock;
     }
 
     /** The check for a month (yyyy-mm), or for the latest month with an approved run when none is given. */
@@ -57,7 +56,7 @@ public final class WageCheck {
             if (month == null || month.isBlank()) {
                 Map<String, Object> latest = Sql.one(c, "select max(period) as p from app.payroll_run where state in ('approved','paid','released')");
                 if (latest == null || latest.get("p") == null) {
-                    return new View(null, List.of(), new Summary(0, 0, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO), false);
+                    return new View(null, List.of(), new Summary(0, 0, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO), false, List.of());
                 }
                 period = LocalDate.parse(String.valueOf(latest.get("p")));
             } else {
@@ -67,56 +66,89 @@ public final class WageCheck {
                     throw ApiException.badRequest("Give the month as yyyy-mm");
                 }
             }
-            LocalDate end = period.plusMonths(1).minusDays(1);
-            Map<String, Object> rule = Sql.one(c, "select status, data from app.payroll_rule where statute = 'pf' and jurisdiction = 'IN' "
-                    + "and valid_from <= ? and (valid_to is null or valid_to > ?)", period, period);
-            Map<String, Object> pf = rule == null ? Map.of() : parse(rule.get("data"));
-            BigDecimal ceiling = PayrollEngine.dec(pf, "ceiling");
-            BigDecimal pfRate = PayrollEngine.dec(pf, "employeeRate").add(PayrollEngine.dec(pf, "employerRate"));
-            boolean restrict = Boolean.TRUE.equals(Sql.one(c, "select pf_restrict from app.payroll_settings").get("pfRestrict"));
-
             List<Row> rows = new ArrayList<>();
+            Set<String> people = new HashSet<>();
             BigDecimal totalPay = BigDecimal.ZERO;
             BigDecimal totalAdded = BigDecimal.ZERO;
             BigDecimal totalPf = BigDecimal.ZERO;
             int toppedUp = 0;
-            for (Map<String, Object> r : Sql.query(c, "select ps.employment_id, ps.info->>'code' as code, ps.info->>'name' as name, ps.info->'bases' as bases, "
-                    + "(select coalesce(sum(l.amount), 0) from app.payslip_line l where l.payslip_id = ps.id and l.kind = 'earning' and not coalesce("
-                    + "(select v.one_time from app.pay_component pc join app.pay_component_version v on v.component_id = pc.id where pc.code = l.code "
-                    + "and v.valid_from <= ? order by v.valid_from desc limit 1), false)) as remuneration, "
-                    + "exists (select 1 from app.payslip_line l where l.payslip_id = ps.id and l.code = 'PF_EE') as pf_member, "
-                    + "coalesce((select pp.pf_full_wages from app.pay_profile pp where pp.employment_id = ps.employment_id), false) as full "
-                    + "from app.payslip ps join app.payroll_run r on r.id = ps.run_id where r.period = ? and r.state in ('approved','paid','released') "
-                    + "order by lower(ps.info->>'name'), ps.id", end, period)) {
-                Map<String, Object> bases = parse(r.get("bases"));
-                BigDecimal wages = PayrollEngine.dec(bases, "wages");
-                BigDecimal added = PayrollEngine.dec(bases, "addedBack");
-                BigDecimal pay = PayrollEngine.dec(r, "remuneration");
-                BigDecimal share = pay.signum() == 0 ? BigDecimal.ZERO
-                        : wages.multiply(BigDecimal.valueOf(100)).divide(pay, 1, RoundingMode.HALF_UP);
-                BigDecimal pfExtra = BigDecimal.ZERO;
-                if (Boolean.TRUE.equals(r.get("pfMember")) && added.signum() > 0) {
-                    boolean full = Boolean.TRUE.equals(r.get("full")) || !restrict;
-                    BigDecimal with = full ? wages.add(added) : wages.add(added).min(ceiling);
-                    BigDecimal without = full ? wages : wages.min(ceiling);
-                    pfExtra = with.subtract(without).multiply(pfRate).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
+            boolean draft = false;
+            for (Map<String, Object> run : Sql.query(c, "select id, snapshot from app.payroll_run where period = ? and state in ('approved','paid','released') "
+                    + "order by created_at", period)) {
+                Map<String, Object> components = PayrollEngine.map(PayrollEngine.map(parse(run.get("snapshot")), "config"), "components");
+                Map<String, List<BigDecimal>> earnings = new LinkedHashMap<>();
+                for (Map<String, Object> l : Sql.query(c, "select l.payslip_id, l.code, l.amount from app.payslip_line l join app.payslip ps on ps.id = l.payslip_id "
+                        + "where ps.run_id = ?::uuid and l.kind = 'earning'", run.get("id"))) {
+                    boolean oneTime = Boolean.TRUE.equals(PayrollEngine.map(components, String.valueOf(l.get("code"))).get("oneTime"));
+                    if (!oneTime) {
+                        earnings.computeIfAbsent(String.valueOf(l.get("payslipId")), k -> new ArrayList<>()).add(PayrollEngine.dec(l, "amount"));
+                    }
                 }
-                boolean topped = added.signum() > 0;
-                if (topped) {
-                    toppedUp++;
+                Map<String, Map<String, Map<String, Object>>> pfLines = new LinkedHashMap<>();
+                for (Map<String, Object> l : Sql.query(c, "select l.payslip_id, l.code, l.amount, l.trace from app.payslip_line l join app.payslip ps on ps.id = l.payslip_id "
+                        + "where ps.run_id = ?::uuid and l.code in ('PF_EE', 'PF_ER')", run.get("id"))) {
+                    pfLines.computeIfAbsent(String.valueOf(l.get("payslipId")), k -> new LinkedHashMap<>()).put((String) l.get("code"), l);
                 }
-                totalPay = totalPay.add(pay);
-                totalAdded = totalAdded.add(added);
-                totalPf = totalPf.add(pfExtra);
-                rows.add(new Row(String.valueOf(r.get("employmentId")), (String) r.get("code"), (String) r.get("name"), pay, wages, added, share,
-                        topped, pfExtra));
+                for (Map<String, Object> r : Sql.query(c, "select ps.id, ps.employment_id, ps.held, ps.info->>'code' as code, ps.info->>'name' as name, "
+                        + "ps.info->'bases' as bases from app.payslip ps where ps.run_id = ?::uuid order by lower(ps.info->>'name'), ps.id", run.get("id"))) {
+                    String payslip = String.valueOf(r.get("id"));
+                    Map<String, Object> bases = parse(r.get("bases"));
+                    BigDecimal wages = PayrollEngine.dec(bases, "wages");
+                    BigDecimal added = PayrollEngine.dec(bases, "addedBack");
+                    BigDecimal pay = earnings.getOrDefault(payslip, List.of()).stream().reduce(BigDecimal.ZERO, BigDecimal::add);
+                    BigDecimal share = pay.signum() == 0 ? BigDecimal.ZERO
+                            : wages.multiply(BigDecimal.valueOf(100)).divide(pay, 1, RoundingMode.HALF_UP);
+                    BigDecimal pfExtra = pfExtra(pfLines.get(payslip), wages, added);
+                    draft |= pfLines.containsKey(payslip) && pfLines.get(payslip).values().stream()
+                            .anyMatch(l -> Boolean.TRUE.equals(parse(l.get("trace")).get("draft")));
+                    boolean topped = added.signum() > 0;
+                    if (topped) {
+                        toppedUp++;
+                    }
+                    people.add(String.valueOf(r.get("employmentId")));
+                    totalPay = totalPay.add(pay);
+                    totalAdded = totalAdded.add(added);
+                    totalPf = totalPf.add(pfExtra == null ? BigDecimal.ZERO : pfExtra);
+                    rows.add(new Row(String.valueOf(r.get("employmentId")), (String) r.get("code"), (String) r.get("name"), pay, wages, added, share,
+                            topped, pfExtra, Boolean.TRUE.equals(r.get("held"))));
+                }
             }
-            return new View(period.toString(), rows, new Summary(rows.size(), toppedUp, totalPay, totalAdded, totalPf),
-                    rule != null && "draft".equals(rule.get("status")));
+            List<Pending> pending = new ArrayList<>();
+            for (Map<String, Object> g : Sql.query(c, "select g.name, r.state from app.payroll_run r join app.pay_group g on g.id = r.group_id "
+                    + "where r.period = ? and r.state not in ('approved','paid','released') order by g.name", period)) {
+                pending.add(new Pending((String) g.get("name"), (String) g.get("state")));
+            }
+            return new View(period.toString(), rows, new Summary(people.size(), toppedUp, totalPay, totalAdded, totalPf), draft, pending);
         });
     }
 
-    LocalDate today() {
-        return LocalDate.now(clock.withZone(IST));
+    /**
+     * The PF that the add-back caused: what was actually deducted and paid in PF, in proportion to the part of the PF wage base
+     * that came from the add-back. The base without it is the wages, unless the ceiling cut the base (then the wages up to the same
+     * ceiling). Null when the lines predate the recorded wage bases.
+     */
+    private static BigDecimal pfExtra(Map<String, Map<String, Object>> lines, BigDecimal wages, BigDecimal added) {
+        if (lines == null || lines.isEmpty()) {
+            return BigDecimal.ZERO;
+        }
+        if (added.signum() == 0) {
+            return BigDecimal.ZERO;
+        }
+        Map<String, Object> first = lines.values().iterator().next();
+        Map<String, Object> trace = parse(first.get("trace"));
+        if (trace.get("epfWages") == null || trace.get("pfWage") == null) {
+            return null;
+        }
+        BigDecimal base = PayrollEngine.dec(trace, "epfWages");
+        BigDecimal pfWage = PayrollEngine.dec(trace, "pfWage");
+        if (base.signum() == 0) {
+            return BigDecimal.ZERO;
+        }
+        BigDecimal without = base.compareTo(pfWage) < 0 ? wages.min(base) : wages.min(pfWage);
+        BigDecimal paid = BigDecimal.ZERO;
+        for (Map<String, Object> l : lines.values()) {
+            paid = paid.add(PayrollEngine.dec(l, "amount"));
+        }
+        return paid.multiply(base.subtract(without)).divide(base, 2, RoundingMode.HALF_UP);
     }
 }
