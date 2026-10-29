@@ -20,3 +20,7 @@
 /backend/src/main/java/com/example/loginapp/core/Secrets.java       @sohamdatta
 /deploy/                                                            @sohamdatta
 /.github/workflows/                                                 @sohamdatta
+
+# Statutory returns and TDS filings (money and identifiers)
+/backend/src/main/java/com/example/loginapp/core/StatutoryFilings.java   @sohamdatta
+/backend/src/main/java/com/example/loginapp/core/Tds*.java               @sohamdatta
