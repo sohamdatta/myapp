@@ -342,8 +342,148 @@ class StatutoryFilingsTest {
         assertTrue(before.contains(new StatutoryFilings.ReasonRow("retirement", 3)), String.valueOf(before));
         List<StatutoryFilings.ReasonRow> after = filings.setReason(m.operator, "retirement", 4);
         assertTrue(after.contains(new StatutoryFilings.ReasonRow("retirement", 4)));
-        assertEquals(400, assertThrows(ApiException.class, () -> filings.setReason(m.operator, "retirement", 14)).status());
+        assertEquals(400, assertThrows(ApiException.class, () -> filings.setReason(m.operator, "retirement", 100)).status());
         assertTrue(filings.reasonMap(newOperator()).contains(new StatutoryFilings.ReasonRow("retirement", 3)), "another Organization keeps the default");
+    }
+
+    // ── what the first review found ─────────────────────────────────────
+
+    @Test
+    void aMonthCalculatedBeforeTheWageBasesWereRecordedIsBlockedNotFiledWithZeroWages() throws Exception {
+        assumeTrue(reachable, "PostgreSQL is not reachable");
+        Month m = approvedMonth(true, true);
+        ownerRun(m.org.id, "update app.payslip_line set trace = trace - 'epfWages' - 'epsWages' - 'eps' - 'esiWages' where tenant_id = '" + m.org.id + "'");
+        StatutoryFilings.BuildResult pf = filings.build(m.operator, "pf_ecr", YearMonth.from(m.period).toString());
+        assertTrue(pf.checks().stream().anyMatch(c -> c.code().equals("calculated_before_r4")), String.valueOf(pf.checks()));
+        assertTrue(pf.blocking() >= 3);
+        assertEquals(0, pf.totals().members(), "nobody is written with zero wages");
+        StatutoryFilings.BuildResult esi = filings.build(m.operator, "esi", YearMonth.from(m.period).toString());
+        assertTrue(esi.checks().stream().anyMatch(c -> c.code().equals("calculated_before_r4")));
+    }
+
+    @Test
+    void wagesThatDoNotGiveTheContributionsAreCaught() throws Exception {
+        assumeTrue(reachable, "PostgreSQL is not reachable");
+        Month m = approvedMonth(true, true);
+        ownerRun(m.org.id, "update app.payslip_line set trace = jsonb_set(trace, '{epfWages}', '20000') where tenant_id = '" + m.org.id
+                + "' and code = 'PF_EE' and trace ? 'epfWages'");
+        StatutoryFilings.BuildResult built = filings.build(m.operator, "pf_ecr", YearMonth.from(m.period).toString());
+        assertTrue(built.checks().stream().anyMatch(c -> c.code().equals("ee_mismatch") && c.level().equals("blocking")), String.valueOf(built.checks()));
+    }
+
+    @Test
+    void aRuleWithoutTheReturnKeysIsRefusedInsteadOfDefaulted() throws Exception {
+        assumeTrue(reachable, "PostgreSQL is not reachable");
+        Month m = approvedMonth(true, true);
+        String saved = db.inOwner(c -> String.valueOf(Sql.one(c, "select data from app.payroll_rule where statute = 'pf'").get("data")));
+        try {
+            ownerRun(null, "update app.payroll_rule set data = data - 'ecrSeparator' - 'dueDay' where statute = 'pf'");
+            ApiException e = assertThrows(ApiException.class, () -> filings.build(m.operator, "pf_ecr", YearMonth.from(m.period).toString()));
+            assertEquals("filing.rule_incomplete", e.code());
+            assertTrue(e.getMessage().contains("ecrSeparator"), e.getMessage());
+        } finally {
+            db.inOwner(c -> Sql.update(c, "update app.payroll_rule set data = ?::jsonb where statute = 'pf'", saved));
+        }
+    }
+
+    @Test
+    void aPayGroupWithPeopleButNoRunBlocksTheFile() throws Exception {
+        assumeTrue(reachable, "PostgreSQL is not reachable");
+        Month m = approvedMonth(true, true);
+        ownerRun(m.org.id, "with g as (insert into app.pay_group (tenant_id, name) values ('" + m.org.id + "', 'Contractors') returning id) "
+                + "insert into app.pay_group_member (tenant_id, employment_id, group_id, valid_from) select '" + m.org.id + "', '" + m.asha
+                + "', g.id, date '" + m.period + "' from g");
+        StatutoryFilings.BuildResult built = filings.build(m.operator, "pf_ecr", YearMonth.from(m.period).toString());
+        assertTrue(built.checks().stream().anyMatch(c -> c.code().equals("group_no_run") && "Contractors".equals(c.who())), String.valueOf(built.checks()));
+        assertTrue(built.blocking() > 0);
+    }
+
+    @Test
+    void theSameUanOrEsiNumberTwiceIsBlocked() throws Exception {
+        assumeTrue(reachable, "PostgreSQL is not reachable");
+        Month m = approvedMonth(true, true);
+        ownerRun(m.org.id, "update app.statutory_id set value_enc = (select value_enc from app.statutory_id where kind = 'uan' and tenant_id = '"
+                + m.org.id + "' order by created_at limit 1) where kind = 'uan' and tenant_id = '" + m.org.id + "'");
+        StatutoryFilings.BuildResult built = filings.build(m.operator, "pf_ecr", YearMonth.from(m.period).toString());
+        assertTrue(built.checks().stream().anyMatch(c -> c.code().equals("uan_duplicate")), String.valueOf(built.checks()));
+    }
+
+    @Test
+    void onlyTheNewestVersionCanBeDownloadedAndOnlyOneFilingPerMonthIsRecorded() throws Exception {
+        assumeTrue(reachable, "PostgreSQL is not reachable");
+        Month m = approvedMonth(true, true);
+        String month = YearMonth.from(m.period).toString();
+        UUID v1 = UUID.fromString(filings.build(m.operator, "pf_ecr", month).id());
+        UUID v2 = UUID.fromString(filings.build(m.operator, "pf_ecr", month).id());
+        assertEquals("filing.superseded", assertThrows(ApiException.class, () -> filings.download(m.operator, v1)).code());
+        filings.download(m.operator, v2);
+        filings.record(m.operator, v2, new StatutoryFilings.RecordInput("TRRN-2610001", TODAY.toString(), new BigDecimal("4250")));
+        filings.approve(m.org.admin, v2);
+
+        // A later build for the same month cannot be recorded as a second filing.
+        UUID v3 = UUID.fromString(filings.build(m.operator, "pf_ecr", month).id());
+        filings.download(m.operator, v3);
+        assertEquals("filing.already_filed", assertThrows(ApiException.class, () -> filings.record(m.operator, v3,
+                new StatutoryFilings.RecordInput("TRRN-2610002", TODAY.toString(), new BigDecimal("4250")))).code());
+        // Every step wrote an audit event, and none carries a UAN.
+        List<Map<String, Object>> audit = db.inTenant(m.org.id, c -> Sql.query(c, "select action, detail from app.audit_event where action like 'filing.%'"));
+        assertTrue(audit.stream().anyMatch(a -> "filing.built".equals(a.get("action"))));
+        assertTrue(audit.stream().anyMatch(a -> "filing.recorded".equals(a.get("action"))));
+        assertTrue(audit.stream().anyMatch(a -> "filing.approved".equals(a.get("action"))));
+        assertFalse(audit.toString().contains("100200300400"));
+    }
+
+    @Test
+    void twoPeopleBuildingAtOnceGetTwoVersionsNotAnError() throws Exception {
+        assumeTrue(reachable, "PostgreSQL is not reachable");
+        Month m = approvedMonth(true, true);
+        String month = YearMonth.from(m.period).toString();
+        var pool = java.util.concurrent.Executors.newFixedThreadPool(2);
+        try {
+            var start = new java.util.concurrent.CountDownLatch(1);
+            List<java.util.concurrent.Future<Integer>> results = new java.util.ArrayList<>();
+            for (int i = 0; i < 2; i++) {
+                results.add(pool.submit(() -> {
+                    start.await();
+                    return filings.build(m.operator, "pf_ecr", month).version();
+                }));
+            }
+            start.countDown();
+            java.util.Set<Integer> versions = new java.util.TreeSet<>();
+            for (var f : results) {
+                versions.add(f.get(60, java.util.concurrent.TimeUnit.SECONDS));
+            }
+            assertEquals(java.util.Set.of(1, 2), versions);
+        } finally {
+            pool.shutdownNow();
+        }
+    }
+
+    @Test
+    void theDatabaseKeepsABuiltReturnAsItWasAndMovesItOnlyForward() throws Exception {
+        assumeTrue(reachable, "PostgreSQL is not reachable");
+        Month m = approvedMonth(true, true);
+        UUID id = UUID.fromString(filings.build(m.operator, "pf_ecr", YearMonth.from(m.period).toString()).id());
+        assertCheck(() -> db.inOwner(c -> Sql.update(c, "update app.statutory_filing set checks = '[]'::jsonb where id = ?", id)), "cannot be changed");
+        assertCheck(() -> db.inOwner(c -> Sql.update(c, "update app.statutory_filing set totals = '{}'::jsonb where id = ?", id)), "cannot be changed");
+        assertCheck(() -> db.inOwner(c -> Sql.update(c, "update app.statutory_filing set status = 'filed' where id = ?", id)), "in that order");
+        assertCheck(() -> db.inOwner(c -> Sql.update(c, "delete from app.statutory_filing where id = ?", id)), "is kept");
+    }
+
+    /** The database refuses; its own wording is replaced by a generic message on the way out, so only the refusal is asserted. */
+    private static void assertCheck(org.junit.jupiter.api.function.Executable work, String why) {
+        assertThrows(Exception.class, work, why);
+    }
+
+    /** As the database owner, with triggers that protect approved payroll switched off for this one statement. */
+    private static void ownerRun(UUID tenantId, String sql) throws Exception {
+        db.inOwner(c -> {
+            try (Statement st = c.createStatement()) {
+                st.execute("set local session_replication_role = replica");
+                st.execute(sql);
+            }
+            return null;
+        });
     }
 
     private SessionCtx newOperator() {

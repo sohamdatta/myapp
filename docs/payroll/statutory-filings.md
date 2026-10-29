@@ -28,3 +28,13 @@ Built from an approved payroll month; see `docs/roadmap/next-releases.md` sectio
 - Arrear ECRs (needs revised pay for past months), and ECR refund of advances (always 0).
 - Golden ECR and ESI files for a fixed sample Organization; the tests check each field against the payslips instead.
 - Open questions for the consultant: the ECR separator and EPS rounding as the portal expects today, the ESIC reason codes, and whether a half day of loss of pay rounds up or down.
+
+## Review notes (Opus review of the first commit)
+
+Fixed: payslips calculated before the wage bases were recorded are blocked (not written with zero wages); each share is checked against the wages written in the file, as the portal will (a one-rupee difference is a warning, more is blocking); a rule row lacking the return keys is refused instead of defaulted; pay groups with people but no run block the file; a repeated UAN or ESI number blocks; builds take an advisory lock so two at once get two versions; only the newest version can be downloaded or recorded, and one recorded or filed return per registration and month; the database guards a built return (file, checks and totals fixed, status only forward, no delete).
+
+Open, for the consultant or the owner:
+- The engine applies the rate to the unrounded wage base while the file carries whole-rupee wages, so a prorated member can differ by one rupee from what the portal recomputes. Rounding the base in the engine would change payslip amounts, so it was not done; the difference shows as a warning.
+- A covered ESI member who leaves during the month is written with reason 0 and a last working day; ESIC may expect the leaving reason code. A member out of coverage is left out with a warning (ESIC has a code for it).
+- Whether ESIC accepts a CSV with a byte-order mark; the portal template is a spreadsheet.
+- A signed-off PF or ESI rule row from before this release has no return keys: the platform team must publish a new signed-off version with them.

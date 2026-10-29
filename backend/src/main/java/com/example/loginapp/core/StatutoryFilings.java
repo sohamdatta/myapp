@@ -127,7 +127,7 @@ public final class StatutoryFilings {
                 for (Map<String, Object> f : Sql.query(c, "select id, version, status, file_name, totals, checks, generated_at, downloaded_at, "
                         + "reference_number, paid_on, amount_paid, recorded_at, approved_at from app.statutory_filing "
                         + "where kind = ? and period = ? order by version desc", kind, period)) {
-                    Long late = f.get("paidOn") == null ? null
+                    Long late = f.get("paidOn") == null || due == null ? null
                             : Math.max(0, ChronoUnit.DAYS.between(due, LocalDate.parse(String.valueOf(f.get("paidOn")))));
                     versions.add(new Filing(String.valueOf(f.get("id")), ((Number) f.get("version")).intValue(), (String) f.get("status"),
                             (String) f.get("fileName"), Totals.of(parse(f.get("totals"))), checksOf(f.get("checks")), text(f.get("generatedAt")),
@@ -135,13 +135,17 @@ public final class StatutoryFilings {
                             f.get("amountPaid") == null ? null : new BigDecimal(String.valueOf(f.get("amountPaid"))),
                             text(f.get("recordedAt")), text(f.get("approvedAt")), late));
                 }
-                slots.add(new Slot(kind, reg == null ? null : (String) reg.get("number"), due.toString(), versions));
+                slots.add(new Slot(kind, reg == null ? null : (String) reg.get("number"), due == null ? null : due.toString(), versions));
             }
             return new MonthView(period.toString(), slots);
         });
     }
 
     // ── build and check ─────────────────────────────────────────────────
+
+    private static final Map<String, List<String>> REQUIRED = Map.of(
+            "pf", List.of("ecrSeparator", "epsCeiling", "edliCeiling", "employeeRate", "employerRate", "epsRate", "dueDay"),
+            "esi", List.of("threshold", "employeeRate", "employerRate", "dueDay", "exitReason", "reasonCodes"));
 
     /** Builds the next version of a return for the month from its approved runs. The checks are stored with it. */
     public BuildResult build(SessionCtx ctx, String kind, String month) {
@@ -156,10 +160,10 @@ public final class StatutoryFilings {
                         + " registration under payroll settings first");
             }
             String registration = (String) reg.get("number");
-            List<Map<String, Object>> approved = Sql.query(c, "select id, state from app.payroll_run where period = ? "
+            // Two people building at once would pick the same version number; the second waits for the first.
+            Sql.one(c, "select 1 from (select pg_advisory_xact_lock(hashtext(?))) locked", ctx.tenantId() + "|" + kind + "|" + registration + "|" + period);
+            List<Map<String, Object>> approved = Sql.query(c, "select id from app.payroll_run where period = ? "
                     + "and state in ('approved','paid','released') order by created_at", period);
-            List<Map<String, Object>> open = Sql.query(c, "select id from app.payroll_run where period = ? "
-                    + "and state not in ('approved','paid','released')", period);
             if (approved.isEmpty()) {
                 throw new ApiException(409, "filing.no_run", "There is no approved payroll run for that month");
             }
@@ -168,10 +172,19 @@ public final class StatutoryFilings {
             if (rule == null) {
                 throw new ApiException(409, "filing.no_rule", "There is no " + statute + " rule in force for that month");
             }
-            Draft built = kind.equals("pf_ecr") ? ecr(c, runIds, period, rule) : esi(c, runIds, period, rule, ctx.tenantId());
-            if (!open.isEmpty()) {
-                built.checks.add(check("run_open", "blocking", null, open.size() + " payroll run(s) for this month are not approved yet; "
-                        + "their people are missing from the file."));
+            requireRuleKeys(statute, rule);
+            Draft built = kind.equals("pf_ecr") ? ecr(c, runIds, period, rule, ctx.tenantId()) : esi(c, runIds, period, rule, ctx.tenantId());
+            for (Map<String, Object> g : Sql.query(c, "select g.name, (select count(*) from app.payroll_run r where r.group_id = g.id and r.period = ? "
+                    + "and r.state not in ('approved','paid','released')) as open from app.pay_group g where exists ("
+                    + "select 1 from app.pay_group_member m join app.employment e on e.id = m.employment_id where m.group_id = g.id "
+                    + "and m.valid_from = (select max(m2.valid_from) from app.pay_group_member m2 where m2.employment_id = m.employment_id and m2.valid_from <= ?) "
+                    + "and e.joining_date <= ? and (e.exit_date is null or e.exit_date >= ?)) "
+                    + "and not exists (select 1 from app.payroll_run r where r.group_id = g.id and r.period = ? and r.state in ('approved','paid','released'))",
+                    period, period.plusMonths(1).minusDays(1), period.plusMonths(1).minusDays(1), period, period)) {
+                boolean opened = ((Number) g.get("open")).intValue() > 0;
+                built.checks.add(check(opened ? "run_open" : "group_no_run", "blocking", (String) g.get("name"), opened
+                        ? "The payroll run of " + g.get("name") + " for this month is not approved yet; its people are missing from the file."
+                        : "The pay group " + g.get("name") + " has people but no payroll run for this month; they are missing from the file."));
             }
             if ("draft".equals(rule.get("status"))) {
                 built.checks.add(check("rules_draft", "warning", null,
@@ -185,11 +198,22 @@ public final class StatutoryFilings {
             UUID id = AuthService.uuid(Sql.one(c, "insert into app.statutory_filing (tenant_id, kind, registration, period, version, file_name, "
                             + "file_enc, totals, checks, run_ids, generated_by) values (?, ?, ?, ?, ?, ?, ?, ?::jsonb, ?::jsonb, ?, ?) returning id",
                     ctx.tenantId(), kind, registration, period, version, name, crypto.encrypt(ctx.tenantId(), built.file),
-                    Json.write(built.totals.toMap()), Json.write(built.checks.stream().map(Check::toMap).toList()), runIds.toArray(new UUID[0]), ctx.membershipId()).get("id"));
+                    Json.write(built.totals.toMap()), Json.write(built.checks.stream().map(Check::toMap).toList()),
+                    runIds.toArray(new UUID[0]), ctx.membershipId()).get("id"));
             UserService.audit(c, ctx, "filing.built", "statutory_filing", id,
                     Map.of("kind", kind, "period", period.toString(), "version", version, "blocking", blocking(built.checks)));
             return new BuildResult(id.toString(), version, built.totals, built.checks, blocking(built.checks));
         });
+    }
+
+    /** A rule row signed off before these keys existed cannot be used: refuse, rather than file with a default. */
+    private static void requireRuleKeys(String statute, Map<String, Object> rule) {
+        Map<String, Object> data = PayrollEngine.map(rule, "data");
+        List<String> missing = REQUIRED.get(statute).stream().filter(k -> data.get(k) == null).toList();
+        if (!missing.isEmpty()) {
+            throw new ApiException(409, "filing.rule_incomplete", "The " + statute + " rule in force lacks " + String.join(", ", missing)
+                    + ". Ask the platform team to publish a new rule version with them, signed off by the payroll consultant");
+        }
     }
 
     /** The file itself. Refused while a blocking check stands, and a fresh two-step code is needed: it holds full UANs and ESI numbers. */
@@ -201,6 +225,7 @@ public final class StatutoryFilings {
             if (f == null) {
                 throw ApiException.notFound("That filing");
             }
+            needLatest(c, id);
             if (blocking(checksOf(f.get("checks"))) > 0) {
                 throw new ApiException(409, "filing.blocked", "Fix the blocking checks and build the file again");
             }
@@ -212,6 +237,15 @@ public final class StatutoryFilings {
             boolean text = "pf_ecr".equals(f.get("kind"));
             return new DocumentService.Content(text ? "text/plain; charset=utf-8" : "text/csv; charset=utf-8", (String) f.get("fileName"), file);
         });
+    }
+
+    /** Only the newest version of a month's return can be downloaded, recorded or approved; earlier ones are superseded. */
+    private static void needLatest(Connection c, UUID id) throws SQLException {
+        Map<String, Object> r = Sql.one(c, "select f.version = (select max(x.version) from app.statutory_filing x where x.kind = f.kind "
+                + "and x.registration = f.registration and x.period = f.period) as latest from app.statutory_filing f where f.id = ?", id);
+        if (r == null || !Boolean.TRUE.equals(r.get("latest"))) {
+            throw new ApiException(409, "filing.superseded", "A newer version of this return exists; use that one");
+        }
     }
 
     // ── the filing log ──────────────────────────────────────────────────
@@ -232,8 +266,13 @@ public final class StatutoryFilings {
             if (f == null) {
                 throw ApiException.notFound("That filing");
             }
+            needLatest(c, id);
             if (!"downloaded".equals(f.get("status"))) {
                 throw new ApiException(409, "filing.state", "Only a downloaded file can be recorded as filed");
+            }
+            if (Sql.one(c, "select 1 from app.statutory_filing x join app.statutory_filing f on f.id = ? and x.kind = f.kind and x.registration = f.registration "
+                    + "and x.period = f.period where x.status in ('recorded','filed') limit 1", id) != null) {
+                throw new ApiException(409, "filing.already_filed", "That month already has a recorded filing");
             }
             Sql.update(c, "update app.statutory_filing set status = 'recorded', reference_number = ?, paid_on = ?, amount_paid = ?, "
                     + "recorded_by = ?, recorded_at = now() where id = ?", in.referenceNumber().trim(), paidOn,
@@ -247,6 +286,9 @@ public final class StatutoryFilings {
     /** Maker-checker: the person who recorded the filing cannot approve it. */
     public Status approve(SessionCtx ctx, UUID id) {
         PayrollConfig.need(ctx, "payroll.approve");
+        if (ctx.membershipId() == null) {
+            throw ApiException.denied("payroll.approve");
+        }
         return db.inTenant(ctx.tenantId(), c -> {
             Map<String, Object> f = Sql.one(c, "select status, recorded_by from app.statutory_filing where id = ? for update", id);
             if (f == null) {
@@ -255,7 +297,7 @@ public final class StatutoryFilings {
             if (!"recorded".equals(f.get("status"))) {
                 throw new ApiException(409, "filing.state", "Only a recorded filing can be approved");
             }
-            if (ctx.membershipId() != null && ctx.membershipId().toString().equals(String.valueOf(f.get("recordedBy")))) {
+            if (ctx.membershipId().toString().equals(String.valueOf(f.get("recordedBy")))) {
                 throw new ApiException(409, "filing.same_person", "Someone other than the person who recorded the filing must approve it");
             }
             Sql.update(c, "update app.statutory_filing set status = 'filed', approved_by = ?, approved_at = now() where id = ?",
@@ -284,8 +326,8 @@ public final class StatutoryFilings {
 
     public List<ReasonRow> setReason(SessionCtx ctx, String exitKind, int code) {
         PayrollConfig.need(ctx, "payroll.prepare");
-        if (code < 0 || code > 13) {
-            throw ApiException.badRequest("ESIC reason codes run from 0 to 13");
+        if (code < 0 || code > 99) {
+            throw ApiException.badRequest("An ESIC reason code is a number from 0 to 99");
         }
         db.inTenant(ctx.tenantId(), c -> {
             Sql.update(c, "insert into app.esi_reason_map (tenant_id, exit_kind, esic_code) values (?, ?, ?) "
@@ -300,22 +342,40 @@ public final class StatutoryFilings {
 
     private record Draft(byte[] file, Totals totals, List<Check> checks) {}
 
-    private Draft ecr(Connection c, List<UUID> runIds, LocalDate period, Map<String, Object> rule) throws SQLException {
+    private static final String BEFORE_R4 = "This payslip was calculated before the return files existed and lacks its wage bases; "
+            + "reopen the run and calculate it again.";
+
+    /** The difference, in rupees, between a figure in the file and what the portal will work out from the wages in the file. */
+    private static void tie(List<Check> checks, String code, String who, String what, BigDecimal inFile, BigDecimal portal) {
+        BigDecimal gap = inFile.subtract(portal).abs();
+        if (gap.compareTo(BigDecimal.ONE) > 0) {
+            checks.add(check(code, "blocking", who, who + ": " + what + " " + inFile + " does not follow from the wages in the file (the portal works out " + portal + ")."));
+        } else if (gap.signum() > 0) {
+            checks.add(check("rounding_difference", "warning", who, who + ": " + what + " " + inFile + " differs by one rupee from " + portal
+                    + ", worked out from the whole-rupee wages in the file."));
+        }
+    }
+
+    private Draft ecr(Connection c, List<UUID> runIds, LocalDate period, Map<String, Object> rule, UUID tenantId) throws SQLException {
         Map<String, Object> pf = PayrollEngine.map(rule, "data");
         String separator = String.valueOf(pf.get("ecrSeparator"));
         BigDecimal epsCeiling = PayrollEngine.dec(pf, "epsCeiling");
         BigDecimal edliCeiling = PayrollEngine.dec(pf, "edliCeiling");
+        BigDecimal eeRate = PayrollEngine.dec(pf, "employeeRate");
+        BigDecimal erRate = PayrollEngine.dec(pf, "employerRate");
+        BigDecimal epsRate = PayrollEngine.dec(pf, "epsRate");
         boolean ncpUp = !"down".equals(pf.get("ncpHalfDay"));
         LocalDate end = period.plusMonths(1).minusDays(1);
         List<Check> checks = new ArrayList<>();
         List<String> lines = new ArrayList<>();
+        java.util.Set<String> seen = new java.util.HashSet<>();
         BigDecimal ee = BigDecimal.ZERO;
         BigDecimal eps = BigDecimal.ZERO;
         BigDecimal er = BigDecimal.ZERO;
         BigDecimal runEe = BigDecimal.ZERO;
         BigDecimal runEr = BigDecimal.ZERO;
         int members = 0;
-        for (Slip s : slips(c, runIds, Set.of("PF_EE", "PF_ER"))) {
+        for (Slip s : slips(c, runIds, Set.of("PF_EE", "PF_ER"), Set.of("uan"), tenantId)) {
             Line lineEe = s.lines.get("PF_EE");
             Line lineEr = s.lines.get("PF_ER");
             if (lineEe == null && lineEr == null) {
@@ -326,10 +386,18 @@ public final class StatutoryFilings {
             runEe = runEe.add(amountEe);
             runEr = runEr.add(amountEr);
             String who = s.name;
-            String uan = secret(c, s.personId, "uan", s.tenantId);
+            Line basis = lineEe != null ? lineEe : lineEr;
+            if (!basis.has("epfWages") || (lineEr != null && !lineEr.has("epsWages"))) {
+                checks.add(check("calculated_before_r4", "blocking", who, who + ": " + BEFORE_R4));
+                continue;
+            }
+            String uan = s.ids.get("uan");
             boolean ok = true;
             if (uan == null || !UAN.matcher(uan).matches()) {
                 checks.add(check("uan_invalid", "blocking", who, who + " has no valid 12-digit UAN; PF is deducted and the line would be rejected."));
+                ok = false;
+            } else if (!seen.add(uan)) {
+                checks.add(check("uan_duplicate", "blocking", who, who + " appears twice in this month's runs with the same UAN; the portal rejects a repeated UAN."));
                 ok = false;
             }
             if (s.name == null || s.name.isBlank()) {
@@ -337,7 +405,7 @@ public final class StatutoryFilings {
                 ok = false;
             }
             BigDecimal gross = whole(s.gross);
-            BigDecimal epfWages = whole(lineEe != null ? lineEe.num("epfWages") : lineEr.num("epfWages"));
+            BigDecimal epfWages = whole(basis.num("epfWages"));
             BigDecimal epsWages = whole(lineEr == null ? BigDecimal.ZERO : lineEr.num("epsWages"));
             BigDecimal edliWages = epfWages.min(edliCeiling);
             BigDecimal memberEps = whole(lineEr == null ? BigDecimal.ZERO : lineEr.num("eps"));
@@ -364,6 +432,10 @@ public final class StatutoryFilings {
                 checks.add(check("left_before", "blocking", who, who + " left before this wage month."));
                 ok = false;
             }
+            // Each share must follow from the wages written in the file, as the portal will check it.
+            tie(checks, "ee_mismatch", who, "the employee share", memberEe, rate(epfWages, eeRate));
+            tie(checks, "er_mismatch", who, "the employer share with the pension share", memberEr.add(memberEps), rate(epfWages, erRate));
+            tie(checks, "eps_mismatch", who, "the pension share", memberEps, rate(epsWages, epsRate));
             if (!ok) {
                 continue;
             }
@@ -378,7 +450,7 @@ public final class StatutoryFilings {
         }
         BigDecimal fileTotal = ee.add(eps).add(er);
         BigDecimal runTotal = whole(runEe).add(whole(runEr));
-        if (fileTotal.compareTo(runTotal) != 0 && checks.stream().noneMatch(Check::blocking)) {
+        if (fileTotal.subtract(runTotal).abs().compareTo(BigDecimal.valueOf(Math.max(1, members))) > 0 && checks.stream().noneMatch(Check::blocking)) {
             checks.add(check("totals_differ", "blocking", null, "The file's contributions total " + fileTotal + " but the run's PF lines total "
                     + runTotal + "."));
         }
@@ -387,11 +459,21 @@ public final class StatutoryFilings {
         return new Draft(body.getBytes(StandardCharsets.UTF_8), totals, checks);
     }
 
+    private static BigDecimal rate(BigDecimal wages, BigDecimal pct) {
+        return wages.multiply(pct).divide(BigDecimal.valueOf(100), 0, RoundingMode.HALF_UP);
+    }
+
+    private static BigDecimal rateUp(BigDecimal wages, BigDecimal pct) {
+        return wages.multiply(pct).divide(BigDecimal.valueOf(100), 0, RoundingMode.CEILING);
+    }
+
     // ── the ESI contribution file ───────────────────────────────────────
 
     private Draft esi(Connection c, List<UUID> runIds, LocalDate period, Map<String, Object> rule, UUID tenantId) throws SQLException {
         Map<String, Object> data = PayrollEngine.map(rule, "data");
         BigDecimal threshold = PayrollEngine.dec(data, "threshold");
+        BigDecimal eeRate = PayrollEngine.dec(data, "employeeRate");
+        BigDecimal erRate = PayrollEngine.dec(data, "employerRate");
         Map<String, Object> defaultReason = PayrollEngine.map(data, "exitReason");
         Map<String, Object> reasonCodes = PayrollEngine.map(data, "reasonCodes");
         Map<String, Integer> orgReason = new HashMap<>();
@@ -402,16 +484,17 @@ public final class StatutoryFilings {
         List<List<String>> rows = new ArrayList<>();
         rows.add(List.of("IP Number", "IP Name", "No of days for which wages paid/payable during the month", "Total monthly wages",
                 "Reason code for zero working days", "Last working day"));
+        java.util.Set<String> seen = new java.util.HashSet<>();
         BigDecimal wagesTotal = BigDecimal.ZERO;
         BigDecimal fileEe = BigDecimal.ZERO;
         BigDecimal fileEr = BigDecimal.ZERO;
         BigDecimal runEe = BigDecimal.ZERO;
         BigDecimal runEr = BigDecimal.ZERO;
         int members = 0;
-        for (Slip s : slips(c, runIds, Set.of("ESI_EE", "ESI_ER"))) {
+        for (Slip s : slips(c, runIds, Set.of("ESI_EE", "ESI_ER"), Set.of("esi_ip"), tenantId)) {
             Line lineEe = s.lines.get("ESI_EE");
             Line lineEr = s.lines.get("ESI_ER");
-            String ip = secret(c, s.personId, "esi_ip", tenantId);
+            String ip = s.ids.get("esi_ip");
             boolean covered = lineEe != null || lineEr != null;
             BigDecimal amountEe = lineEe == null ? BigDecimal.ZERO : lineEe.amount;
             BigDecimal amountEr = lineEr == null ? BigDecimal.ZERO : lineEr.amount;
@@ -420,11 +503,24 @@ public final class StatutoryFilings {
             String lastDay = s.exitDate != null && !s.exitDate.isBefore(period) && s.exitDate.isBefore(period.plusMonths(1))
                     ? s.exitDate.format(DMY) : "";
             if (covered) {
+                Line basis = lineEr != null ? lineEr : lineEe;
+                if (!basis.has("esiWages")) {
+                    checks.add(check("calculated_before_r4", "blocking", s.name, s.name + ": " + BEFORE_R4));
+                    continue;
+                }
                 if (ip == null || !ESI_IP.matcher(ip).matches()) {
                     checks.add(check("ip_invalid", "blocking", s.name, s.name + " is covered by ESI but has no valid 10-digit ESI number."));
                     continue;
                 }
-                BigDecimal wages = whole((lineEr != null ? lineEr : lineEe).num("esiWages"));
+                if (!seen.add(ip)) {
+                    checks.add(check("ip_duplicate", "blocking", s.name, s.name + " appears twice in this month's runs with the same ESI number."));
+                    continue;
+                }
+                BigDecimal wages = whole(basis.num("esiWages"));
+                tie(checks, "er_mismatch", s.name, "the employer share", whole(amountEr), rateUp(wages, erRate));
+                if (amountEe.signum() > 0) {
+                    tie(checks, "ee_mismatch", s.name, "the employee share", whole(amountEe), rateUp(wages, eeRate));
+                }
                 rows.add(List.of(ip, s.name, s.daysPaid.setScale(0, RoundingMode.CEILING).toPlainString(), wages.toPlainString(), "0", lastDay));
                 wagesTotal = wagesTotal.add(wages);
                 fileEe = fileEe.add(amountEe);
@@ -438,6 +534,10 @@ public final class StatutoryFilings {
                     if (mapped == null) {
                         checks.add(check("reason_missing", "blocking", s.name, s.name + " has no wages and no ESIC reason code is set for how "
                                 + "they left."));
+                        continue;
+                    }
+                    if (!seen.add(ip)) {
+                        checks.add(check("ip_duplicate", "blocking", s.name, s.name + " appears twice in this month's runs with the same ESI number."));
                         continue;
                     }
                     rows.add(List.of(ip, s.name, "0", "0", String.valueOf(mapped), lastDay));
@@ -474,6 +574,10 @@ public final class StatutoryFilings {
             this.trace = trace;
         }
 
+        boolean has(String key) {
+            return trace.get(key) != null;
+        }
+
         BigDecimal num(String key) {
             Object v = trace.get(key);
             return v == null ? BigDecimal.ZERO : new BigDecimal(String.valueOf(v));
@@ -481,7 +585,6 @@ public final class StatutoryFilings {
     }
 
     private static final class Slip {
-        UUID tenantId;
         UUID personId;
         String name;
         BigDecimal gross;
@@ -491,18 +594,19 @@ public final class StatutoryFilings {
         LocalDate exitDate;
         String exitKind;
         final Map<String, Line> lines = new HashMap<>();
+        final Map<String, String> ids = new HashMap<>();
     }
 
-    private List<Slip> slips(Connection c, List<UUID> runIds, Set<String> codes) throws SQLException {
+    /** Every payslip of the runs with the lines asked for and the identifiers asked for opened, in a handful of queries per run. */
+    private List<Slip> slips(Connection c, List<UUID> runIds, Set<String> codes, Set<String> idKinds, UUID tenantId) throws SQLException {
         List<Slip> out = new ArrayList<>();
         for (UUID runId : runIds) {
-            for (Map<String, Object> r : Sql.query(c, "select ps.id, ps.tenant_id, ps.gross, ps.days_paid, ps.lop_days, ps.info->>'name' as name, "
-                    + "e.person_id, e.joining_date, e.exit_date, (select x.kind from app.exit_case x where x.employment_id = e.id "
-                    + "and x.status in ('accepted','closed') order by x.started_at desc limit 1) as exit_kind "
-                    + "from app.payslip ps join app.employment e on e.id = ps.employment_id where ps.run_id = ? order by lower(ps.info->>'name'), ps.id",
-                    runId)) {
+            Map<String, Slip> byPayslip = new LinkedHashMap<>();
+            for (Map<String, Object> r : Sql.query(c, "select ps.id, ps.gross, ps.days_paid, ps.lop_days, ps.info->>'name' as name, e.person_id, "
+                    + "e.joining_date, e.exit_date, x.kind as exit_kind from app.payslip ps join app.employment e on e.id = ps.employment_id "
+                    + "left join lateral (select kind from app.exit_case where employment_id = e.id and status in ('accepted','closed') "
+                    + "order by started_at desc limit 1) x on true where ps.run_id = ? order by lower(ps.info->>'name'), ps.id", runId)) {
                 Slip s = new Slip();
-                s.tenantId = AuthService.uuid(r.get("tenantId"));
                 s.personId = AuthService.uuid(r.get("personId"));
                 s.name = (String) r.get("name");
                 s.gross = PayrollEngine.dec(r, "gross");
@@ -511,38 +615,36 @@ public final class StatutoryFilings {
                 s.joiningDate = LocalDate.parse(String.valueOf(r.get("joiningDate")));
                 s.exitDate = r.get("exitDate") == null ? null : LocalDate.parse(String.valueOf(r.get("exitDate")));
                 s.exitKind = (String) r.get("exitKind");
-                for (Map<String, Object> l : Sql.query(c, "select code, amount, trace from app.payslip_line where payslip_id = ?::uuid "
-                        + "and code = any (string_to_array(?, ','))", r.get("id"), String.join(",", codes))) {
+                byPayslip.put(String.valueOf(r.get("id")), s);
+            }
+            for (Map<String, Object> l : Sql.query(c, "select l.payslip_id, l.code, l.amount, l.trace from app.payslip_line l join app.payslip ps on ps.id = l.payslip_id "
+                    + "where ps.run_id = ? and l.code = any (string_to_array(?, ','))", runId, String.join(",", codes))) {
+                Slip s = byPayslip.get(String.valueOf(l.get("payslipId")));
+                if (s != null) {
                     s.lines.put((String) l.get("code"), new Line(PayrollEngine.dec(l, "amount"), parse(l.get("trace"))));
                 }
-                out.add(s);
             }
-        }
-        return out;
-    }
-
-    /** A sealed identifier opened for the moment of writing the file; never logged. */
-    private String secret(Connection c, UUID personId, String kind, UUID tenantId) throws SQLException {
-        byte[] sealed;
-        try (var st = c.prepareStatement("select value_enc from app.statutory_id where person_id = ? and kind = ? and replaced_at is null")) {
-            st.setObject(1, personId);
-            st.setString(2, kind);
-            try (var rs = st.executeQuery()) {
-                sealed = rs.next() ? rs.getBytes(1) : null;
+            Map<UUID, List<Slip>> byPerson = new HashMap<>();
+            byPayslip.values().forEach(s -> byPerson.computeIfAbsent(s.personId, k -> new ArrayList<>()).add(s));
+            try (var st = c.prepareStatement("select i.person_id, i.kind, i.value_enc from app.statutory_id i where i.replaced_at is null "
+                    + "and i.kind = any (string_to_array(?, ',')) and i.person_id in (select e.person_id from app.payslip ps join app.employment e "
+                    + "on e.id = ps.employment_id where ps.run_id = ?)")) {
+                st.setString(1, String.join(",", idKinds));
+                st.setObject(2, runId);
+                try (var rs = st.executeQuery()) {
+                    while (rs.next()) {
+                        byte[] sealed = rs.getBytes(3);
+                        if (sealed == null) {
+                            continue;
+                        }
+                        String value = crypto.decryptText(tenantId, sealed);
+                        for (Slip s : byPerson.getOrDefault(rs.getObject(1, UUID.class), List.of())) {
+                            s.ids.put(rs.getString(2), value);
+                        }
+                    }
+                }
             }
-        }
-        return sealed == null ? null : crypto.decryptText(tenantId, sealed);
-    }
-
-    @SuppressWarnings("unchecked")
-    private static List<Check> checksOf(Object json) {
-        Object v = json == null ? null : Json.parse(String.valueOf(json));
-        List<Check> out = new ArrayList<>();
-        if (v instanceof List<?> items) {
-            for (Object o : items) {
-                Map<String, Object> m = (Map<String, Object>) o;
-                out.add(new Check((String) m.get("code"), (String) m.get("level"), (String) m.get("who"), (String) m.get("message")));
-            }
+            out.addAll(byPayslip.values());
         }
         return out;
     }
@@ -573,9 +675,10 @@ public final class StatutoryFilings {
         return out;
     }
 
+    /** When the return falls due, from the rule; null while the rule in force carries no due day. */
     private static LocalDate due(LocalDate period, Map<String, Object> rule) {
-        int day = rule == null ? 15 : (int) PayrollEngine.dec(PayrollEngine.map(rule, "data"), "dueDay").longValue();
-        return period.plusMonths(1).withDayOfMonth(Math.max(1, day));
+        Object day = rule == null ? null : PayrollEngine.map(rule, "data").get("dueDay");
+        return day == null ? null : period.plusMonths(1).withDayOfMonth(((Number) day).intValue());
     }
 
     private static Check check(String code, String level, String who, String message) {
@@ -588,6 +691,19 @@ public final class StatutoryFilings {
 
     private static int blocking(List<Check> checks) {
         return (int) checks.stream().filter(Check::blocking).count();
+    }
+
+    @SuppressWarnings("unchecked")
+    private static List<Check> checksOf(Object json) {
+        Object v = json == null ? null : Json.parse(String.valueOf(json));
+        List<Check> out = new ArrayList<>();
+        if (v instanceof List<?> items) {
+            for (Object o : items) {
+                Map<String, Object> m = (Map<String, Object>) o;
+                out.add(new Check((String) m.get("code"), (String) m.get("level"), (String) m.get("who"), (String) m.get("message")));
+            }
+        }
+        return out;
     }
 
     private static BigDecimal whole(BigDecimal v) {

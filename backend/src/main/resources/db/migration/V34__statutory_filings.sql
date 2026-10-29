@@ -2,6 +2,8 @@
 -- ESI monthly contribution file (release R4). Each file is a versioned row with the checks that were run on it,
 -- then a record of the filing on the EPFO or ESIC portal (reference, date, amount) that a second person approves.
 -- The file holds full UANs and ESI numbers, so it is stored encrypted like every other identifier.
+-- Additive only (new tables, and draft rule data gains keys), so an older build keeps running against it. By hand: drop the
+-- two tables; the extra rule keys are harmless.
 set lock_timeout = '5s';
 
 create table app.statutory_filing (
@@ -34,6 +36,43 @@ create table app.statutory_filing (
   check ((status = 'filed') = (approved_by is not null and approved_at is not null))
 );
 create index statutory_filing_period on app.statutory_filing (tenant_id, period desc, kind);
+-- One recorded or filed return per registration and month; a correction after filing is a separate, deliberate step.
+create unique index statutory_filing_one_filed on app.statutory_filing (tenant_id, kind, registration, period)
+  where status in ('recorded', 'filed');
+
+-- A built file, its checks and its totals never change afterwards, and a filing only moves forward:
+-- draft, downloaded, recorded, filed. Only the step being taken may write its own columns.
+create function app.statutory_filing_guard() returns trigger language plpgsql as $$
+begin
+  if (new.tenant_id, new.kind, new.registration, new.period, new.version, new.file_name, new.file_enc, new.totals, new.checks, new.run_ids,
+      new.generated_by, new.generated_at)
+     is distinct from
+     (old.tenant_id, old.kind, old.registration, old.period, old.version, old.file_name, old.file_enc, old.totals, old.checks, old.run_ids,
+      old.generated_by, old.generated_at) then
+    raise exception 'A built return cannot be changed' using errcode = 'check_violation';
+  end if;
+  if new.status is distinct from old.status
+     and not ((old.status, new.status) in (('draft', 'downloaded'), ('downloaded', 'recorded'), ('recorded', 'filed'))) then
+    raise exception 'A return moves from draft to downloaded to recorded to filed, in that order' using errcode = 'check_violation';
+  end if;
+  if old.status in ('recorded', 'filed')
+     and (new.reference_number, new.paid_on, new.amount_paid, new.recorded_by, new.recorded_at)
+         is distinct from (old.reference_number, old.paid_on, old.amount_paid, old.recorded_by, old.recorded_at) then
+    raise exception 'A recorded filing cannot be changed' using errcode = 'check_violation';
+  end if;
+  if old.status = 'filed' then
+    raise exception 'A filed return cannot be changed' using errcode = 'check_violation';
+  end if;
+  return new;
+end $$;
+create trigger statutory_filing_guard before update on app.statutory_filing
+  for each row execute function app.statutory_filing_guard();
+create function app.statutory_filing_no_delete() returns trigger language plpgsql as $$
+begin
+  raise exception 'A return, once built, is kept' using errcode = 'check_violation';
+end $$;
+create trigger statutory_filing_no_delete before delete on app.statutory_filing
+  for each row execute function app.statutory_filing_no_delete();
 
 alter table app.statutory_filing enable row level security;
 alter table app.statutory_filing force row level security;
@@ -47,7 +86,7 @@ grant select, insert, update, delete on app.statutory_filing to app_definer;
 create table app.esi_reason_map (
   tenant_id  uuid not null references platform.tenant(id),
   exit_kind  text not null check (exit_kind in ('resignation', 'termination', 'end_of_contract', 'retirement', 'death', 'absconding')),
-  esic_code  smallint not null check (esic_code between 0 and 13),
+  esic_code  smallint not null check (esic_code between 0 and 99),
   primary key (tenant_id, exit_kind)
 );
 alter table app.esi_reason_map enable row level security;
