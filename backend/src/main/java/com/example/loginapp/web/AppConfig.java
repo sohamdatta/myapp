@@ -59,6 +59,7 @@ import com.example.loginapp.core.PayrollRuns;
 import com.example.loginapp.core.StatutoryFilings;
 import com.example.loginapp.core.TdsChallans;
 import com.example.loginapp.core.TdsStatements;
+import com.example.loginapp.core.WageCheck;
 import com.example.loginapp.core.PerformanceSetup;
 import com.example.loginapp.core.PerformanceTeam;
 import com.example.loginapp.core.Plans;
@@ -328,6 +329,11 @@ public class AppConfig {
     @Bean
     public OtherEmployerIncome otherEmployerIncome(Db db) {
         return new OtherEmployerIncome(db);
+    }
+
+    @Bean
+    public WageCheck wageCheck(Db db) {
+        return new WageCheck(db);
     }
 
     @Bean
