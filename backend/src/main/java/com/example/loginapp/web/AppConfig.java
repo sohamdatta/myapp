@@ -56,6 +56,8 @@ import com.example.loginapp.core.PayrollConfig;
 import com.example.loginapp.core.PayrollPay;
 import com.example.loginapp.core.PayrollRuns;
 import com.example.loginapp.core.StatutoryFilings;
+import com.example.loginapp.core.TdsChallans;
+import com.example.loginapp.core.TdsStatements;
 import com.example.loginapp.core.PerformanceSetup;
 import com.example.loginapp.core.PerformanceTeam;
 import com.example.loginapp.core.Plans;
@@ -320,6 +322,16 @@ public class AppConfig {
     @Bean
     public StatutoryFilings statutoryFilings(Db db, Crypto crypto) {
         return new StatutoryFilings(db, crypto);
+    }
+
+    @Bean
+    public TdsChallans tdsChallans(Db db) {
+        return new TdsChallans(db);
+    }
+
+    @Bean
+    public TdsStatements tdsStatements(Db db, Crypto crypto) {
+        return new TdsStatements(db, crypto);
     }
 
     @Bean
