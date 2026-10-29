@@ -19,3 +19,13 @@ Proof files are not attached to these entries yet (the existing proof storage ha
 - The text file in the return preparation utility's layout (layout and version are an open question for the consultant), and Q4 annual salary detail.
 - Form 122 Part C (house-property loss, other income), proof files for Part B, Form 130 Part B and Part A matching.
 - Screens and browser tests.
+
+## Review notes (Opus review of the first two commits)
+
+Fixed: March's deposit date was a year late; due dates now come only from the rule (an absent date shows as unknown, no Java fallback); HR cannot review their own Form 122 entry (service and database), reviews only a `declared` entry and only the figures they read; Form 122 entries are checked (tax cannot exceed salary, one entry per employer TAN and year); a challan can be removed even after a draft statement was built (draft lines only point at approved challans); a missing-PAN check is identified by employment, not by name; a changed PAN shows as a correction line; lines are kept per employee, month and challan; builds and filings of a quarter take turns and a statement built against an older filed version cannot be filed; challan approval and filing ask for a fresh two-step code where the Organization requires it.
+
+Still open:
+- Before the tax window's cut-over month a *declared* Form 122 entry counts without HR review (the same rule as Form 124 claims). An employee can therefore lower their own TDS until HR looks; the owner may prefer to count declared tax only after review.
+- "Taxable salary" for a previous employer needs a definition from the consultant (before or after the standard deduction); entering the post-deduction figure applies the deduction twice.
+- A correction build re-raises the missing-PAN check for unchanged lines, and correction totals mix changed lines with the quarter's challan total.
+- Per-payslip queries in a few loops (year view, statement build) are fine for hundreds of people but should be batched before thousands.

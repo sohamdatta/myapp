@@ -116,7 +116,7 @@ public final class TdsStatements {
             for (Map<String, Object> r : Sql.query(c, "select id from app.tds_statement where tax_year = ? and quarter = ? order by version desc", ty, quarter)) {
                 out.add(statement(c, AuthService.uuid(r.get("id")), due));
             }
-            return new QuarterView(ty, quarter, due.toString(), out);
+            return new QuarterView(ty, quarter, due == null ? null : due.toString(), out);
         });
     }
 
@@ -128,6 +128,7 @@ public final class TdsStatements {
         quarter(quarter);
         LocalDate first = TaxYears.quarterStart(ty, quarter);
         return db.inTenant(ctx.tenantId(), c -> {
+            lock(c, ctx.tenantId(), ty, quarter);
             Map<String, Object> settings = Sql.one(c, "select entity_name, pan, tan, address from app.payroll_settings");
             List<Check> checks = new ArrayList<>();
             String tan = settings == null ? null : (String) settings.get("tan");
@@ -166,7 +167,7 @@ public final class TdsStatements {
                         checks.add(new Check("challan_unapproved", "blocking", false, label, "The challan for " + label
                                 + " is recorded but not yet approved."));
                     }
-                    UUID challanId = challan == null ? null : AuthService.uuid(challan.get("id"));
+                    UUID challanId = challan == null || !"approved".equals(challan.get("status")) ? null : AuthService.uuid(challan.get("id"));
                     if (challanId != null && seenChallans.putIfAbsent(challanId, BigDecimal.ZERO) == null) {
                         Map<String, Object> t = Sql.one(c, "select ch.tax + ch.surcharge + ch.cess as paid, (select coalesce(sum(l.amount), 0) from app.tds_challan_run cr "
                                 + "join app.payslip ps on ps.run_id = cr.run_id join app.payslip_line l on l.payslip_id = ps.id and l.code = 'TDS' "
@@ -190,11 +191,11 @@ public final class TdsStatements {
                         boolean valid = pan != null && PAN.matcher(pan).matches();
                         String name = (String) p.get("name");
                         if (!valid) {
-                            checks.add(new Check("pan_invalid", "blocking", true, name, name + " has no valid PAN, so tax at the higher rate may apply "
+                            checks.add(new Check("pan_invalid", "blocking", true, employment.toString(), name + " has no valid PAN, so tax at the higher rate may apply "
                                     + "and the department can reject the line."));
                         }
                         Row row = new Row(employment, (String) p.get("code"), name, valid ? pan : null, month, challanId, PayrollEngine.dec(p, "gross"), tax, !valid, false);
-                        rows.merge(employment + "|" + month, row, (a, b) -> a.plus(b));
+                        rows.merge(key(employment, month, challanId), row, (a, b) -> a.plus(b));
                     }
                 }
             }
@@ -209,7 +210,7 @@ public final class TdsStatements {
             }
 
             // A correction holds only what differs from what was filed before.
-            Map<String, Row> filed = effective(c, ty, quarter);
+            Map<String, Row> filed = effective(c, ty, quarter, ctx.tenantId());
             UUID correctionOf = latestFiled(c, ty, quarter);
             List<Row> lines = new ArrayList<>();
             List<String> changes = new ArrayList<>();
@@ -257,8 +258,8 @@ public final class TdsStatements {
                     Json.write(checks.stream().map(Check::toMap).toList()), ctx.membershipId()).get("id"));
             for (Row r : lines) {
                 Sql.update(c, "insert into app.tds_statement_row (tenant_id, statement_id, employment_id, month, challan_id, amount_paid, tax_deducted, "
-                        + "higher_rate, removed) values (?, ?, ?, ?, ?, ?, ?, ?, ?)", ctx.tenantId(), id, r.employment, r.month, r.challan,
-                        r.amountPaid, r.tax, r.higherRate, r.removed);
+                        + "higher_rate, removed, pan_enc) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", ctx.tenantId(), id, r.employment, r.month, r.challan,
+                        r.amountPaid, r.tax, r.higherRate, r.removed, r.pan == null ? null : crypto.encrypt(ctx.tenantId(), r.pan));
             }
             int unresolved = (int) checks.stream().filter(Check::blocking).count();
             UserService.audit(c, ctx, "tds.statement_built", "tds_statement", id,
@@ -335,6 +336,7 @@ public final class TdsStatements {
     /** After filing with the department's own tools: the token number and date. The statement is final from here. */
     public Status filed(SessionCtx ctx, UUID id, FiledInput in) {
         PayrollConfig.need(ctx, "payroll.prepare");
+        StepUp.require(db, ctx);
         if (in == null || in.tokenNumber() == null || in.tokenNumber().trim().length() < 6 || in.filedOn() == null) {
             throw ApiException.badRequest("Give the token number from the department's receipt and the date filed");
         }
@@ -348,7 +350,12 @@ public final class TdsStatements {
             throw ApiException.badRequest("The date filed cannot be in the future");
         }
         return db.inTenant(ctx.tenantId(), c -> {
-            Map<String, Object> s = Sql.one(c, "select status, tax_year, quarter, version, checks, accepted from app.tds_statement where id = ? for update", id);
+            Map<String, Object> pre = Sql.one(c, "select tax_year, quarter from app.tds_statement where id = ?", id);
+            if (pre == null) {
+                throw ApiException.notFound("That statement");
+            }
+            lock(c, ctx.tenantId(), (String) pre.get("taxYear"), ((Number) pre.get("quarter")).intValue());
+            Map<String, Object> s = Sql.one(c, "select status, tax_year, quarter, version, correction_of, checks, accepted from app.tds_statement where id = ? for update", id);
             if (s == null) {
                 throw ApiException.notFound("That statement");
             }
@@ -361,6 +368,10 @@ public final class TdsStatements {
             }
             if (unresolved(checksOf(s.get("checks")), acceptedOf(s.get("accepted"))) > 0) {
                 throw new ApiException(409, "statement.blocked", "Fix the blocking checks, or have an approver accept those that allow it");
+            }
+            UUID current = latestFiled(c, (String) s.get("taxYear"), ((Number) s.get("quarter")).intValue());
+            if (!java.util.Objects.equals(current == null ? null : current.toString(), s.get("correctionOf") == null ? null : String.valueOf(s.get("correctionOf")))) {
+                throw new ApiException(409, "statement.stale", "Another statement was filed since this one was built; build it again");
             }
             Sql.update(c, "update app.tds_statement set status = 'filed', token_number = ?, filed_on = ?, filed_by = ? where id = ?",
                     in.tokenNumber().trim(), on, ctx.membershipId(), id);
@@ -379,7 +390,7 @@ public final class TdsStatements {
 
         boolean sameAs(Row other) {
             return amountPaid.compareTo(other.amountPaid) == 0 && tax.compareTo(other.tax) == 0 && java.util.Objects.equals(challan, other.challan)
-                    && higherRate == other.higherRate;
+                    && higherRate == other.higherRate && java.util.Objects.equals(pan, other.pan);
         }
 
         Row withdrawn() {
@@ -388,7 +399,7 @@ public final class TdsStatements {
     }
 
     /** What the filed statements of a quarter add up to: version 1, then each later filed version's changes applied over it. */
-    private Map<String, Row> effective(Connection c, String ty, int quarter) throws SQLException {
+    private Map<String, Row> effective(Connection c, String ty, int quarter, UUID tenantId) throws SQLException {
         Map<String, Row> out = new LinkedHashMap<>();
         for (Map<String, Object> s : Sql.query(c, "select id from app.tds_statement where tax_year = ? and quarter = ? and status = 'filed' order by version", ty, quarter)) {
             for (Map<String, Object> r : Sql.query(c, "select r.employment_id, r.month, r.challan_id, r.amount_paid, r.tax_deducted, r.higher_rate, r.removed, "
@@ -396,17 +407,42 @@ public final class TdsStatements {
                     + "join app.person p on p.id = e.person_id where e.id = r.employment_id) ps on true where r.statement_id = ?::uuid", s.get("id"))) {
                 UUID employment = AuthService.uuid(r.get("employmentId"));
                 LocalDate month = LocalDate.parse(String.valueOf(r.get("month")));
-                String key = employment + "|" + month;
+                UUID challan = r.get("challanId") == null ? null : AuthService.uuid(r.get("challanId"));
+                String key = key(employment, month, challan);
                 if (Boolean.TRUE.equals(r.get("removed"))) {
                     out.remove(key);
                 } else {
-                    out.put(key, new Row(employment, (String) r.get("code"), (String) r.get("name"), null, month,
+                    out.put(key, new Row(employment, (String) r.get("code"), (String) r.get("name"), filedPan(c, s.get("id"), employment, month, challan, tenantId), month,
                             r.get("challanId") == null ? null : AuthService.uuid(r.get("challanId")), PayrollEngine.dec(r, "amountPaid"),
                             PayrollEngine.dec(r, "taxDeducted"), Boolean.TRUE.equals(r.get("higherRate")), false));
                 }
             }
         }
         return out;
+    }
+
+    private static String key(UUID employment, LocalDate month, UUID challan) {
+        return employment + "|" + month + "|" + challan;
+    }
+
+    private String filedPan(Connection c, Object statementId, UUID employment, LocalDate month, UUID challan, UUID tenantId) throws SQLException {
+        byte[] sealed;
+        try (var st = c.prepareStatement("select pan_enc from app.tds_statement_row where statement_id = ?::uuid and employment_id = ? and month = ? "
+                + "and challan_id is not distinct from ? order by removed limit 1")) {
+            st.setString(1, String.valueOf(statementId));
+            st.setObject(2, employment);
+            st.setObject(3, month);
+            st.setObject(4, challan);
+            try (var rs = st.executeQuery()) {
+                sealed = rs.next() ? rs.getBytes(1) : null;
+            }
+        }
+        return sealed == null ? null : crypto.decryptText(tenantId, sealed);
+    }
+
+    /** Builds and filings of one quarter take turns, so version numbers and "latest filed" cannot be read half-way through another's work. */
+    private static void lock(Connection c, UUID tenantId, String ty, int quarter) throws SQLException {
+        Sql.one(c, "select 1 from (select pg_advisory_xact_lock(hashtext(?))) locked", tenantId + "|tds|" + ty + "|" + quarter);
     }
 
     private static UUID latestFiled(Connection c, String ty, int quarter) throws SQLException {
@@ -448,7 +484,7 @@ public final class TdsStatements {
                 + "filed_on from app.tds_statement where id = ?", id);
         List<Check> checks = checksOf(s.get("checks"));
         List<Accepted> accepted = acceptedOf(s.get("accepted"));
-        Long late = s.get("filedOn") == null ? null : Math.max(0, ChronoUnit.DAYS.between(due, LocalDate.parse(String.valueOf(s.get("filedOn")))));
+        Long late = s.get("filedOn") == null || due == null ? null : Math.max(0, ChronoUnit.DAYS.between(due, LocalDate.parse(String.valueOf(s.get("filedOn")))));
         return new Statement(String.valueOf(s.get("id")), ((Number) s.get("version")).intValue(),
                 s.get("correctionOf") == null ? null : String.valueOf(s.get("correctionOf")), (String) s.get("tan"), (String) s.get("status"),
                 (String) s.get("fileName"), Totals.of(parse(s.get("totals"))), checks, accepted, unresolved(checks, accepted),
@@ -487,22 +523,14 @@ public final class TdsStatements {
         return out;
     }
 
-    /** When a quarter's statement falls due, from the rule: quarters 3 and 4 fall in the next calendar year. */
+    /** When a quarter's statement falls due, from the rule (quarters 3 and 4 in the next calendar year); null while the rule has none. */
     private static LocalDate due(Connection c, String ty, int quarter) throws SQLException {
         LocalDate start = TaxYears.start(ty);
         Map<String, Object> rule = Sql.one(c, "select data from app.payroll_rule where statute = 'income_tax' and jurisdiction = 'IN' and valid_from <= ? "
-                + "and (valid_to is null or valid_to > ?)", start, start);
+                + "and (valid_to is null or valid_to > ?) order by valid_from desc limit 1", start, start);
         Map<String, Object> dues = rule == null ? Map.of() : PayrollEngine.map(parse(rule.get("data")), "statementDue");
-        String text = dues.get(String.valueOf(quarter)) == null ? null : String.valueOf(dues.get(String.valueOf(quarter)));
-        if (text == null) {
-            text = switch (quarter) {
-                case 1 -> "07-31";
-                case 2 -> "10-31";
-                case 3 -> "01-31";
-                default -> "05-31";
-            };
-        }
-        return MonthDay.parse("--" + text).atYear(quarter >= 3 ? start.getYear() + 1 : start.getYear());
+        Object text = dues.get(String.valueOf(quarter));
+        return text == null ? null : MonthDay.parse("--" + text).atYear(quarter >= 3 ? start.getYear() + 1 : start.getYear());
     }
 
     private static void quarter(int quarter) {

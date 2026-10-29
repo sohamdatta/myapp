@@ -248,14 +248,14 @@ class TdsFilingsTest {
         assertEquals(0, deducted.compareTo(second.totals().taxDeducted()));
         assertEquals(0, deducted.compareTo(second.totals().challanTotal()));
         TdsStatements.Check noPan = second.checks().stream().filter(c -> c.code().equals("pan_invalid")).findFirst().orElseThrow();
-        assertEquals("Vikram Nair", noPan.who());
+        assertEquals(m.vikram.toString(), noPan.who(), "identified by employment, not by a name that two people can share");
         assertTrue(noPan.acceptable());
         UUID id = UUID.fromString(second.id());
         assertEquals(1, second.unresolved());
         assertEquals("statement.blocked", assertThrows(ApiException.class, () -> st.download(m.operator, id)).code());
 
         // The operator cannot accept (no approve permission); the approver can, with a reason.
-        TdsStatements.AcceptInput accept = new TdsStatements.AcceptInput("pan_invalid", "Vikram Nair", "PAN applied for, Form 60 on file");
+        TdsStatements.AcceptInput accept = new TdsStatements.AcceptInput("pan_invalid", m.vikram.toString(), "PAN applied for, Form 60 on file");
         assertEquals(403, assertThrows(ApiException.class, () -> st.accept(m.operator, id, accept)).status());
         st.accept(m.org.admin, id, accept);
         String csv = new String(st.download(m.operator, id).bytes(), StandardCharsets.UTF_8);
@@ -289,7 +289,7 @@ class TdsFilingsTest {
         int q = quarter(m.period);
         tds.approve(m.org.admin, UUID.fromString(tds.record(m.operator, input(m, challanDue(m.period).toString(), deducted(m), "00001")).id()));
         TdsStatements.BuildResult v1 = st.build(m.operator, ty, q);
-        st.accept(m.org.admin, UUID.fromString(v1.id()), new TdsStatements.AcceptInput("pan_invalid", "Vikram Nair", "PAN applied for"));
+        st.accept(m.org.admin, UUID.fromString(v1.id()), new TdsStatements.AcceptInput("pan_invalid", m.vikram.toString(), "PAN applied for"));
         st.filed(m.operator, UUID.fromString(v1.id()), new TdsStatements.FiledInput("TOKEN000001", m.today.toString()));
 
         // Nothing has changed: a correction would be empty.
@@ -322,7 +322,6 @@ class TdsFilingsTest {
         TdsChallans.Challan c = tds.record(m.operator, input(m, challanDue(m.period).toString(), deducted(m), "00001"));
         assertEquals(404, assertThrows(ApiException.class, () -> tds.approve(other.org.admin, UUID.fromString(c.id()))).status());
         assertEquals(0, db.inTenant(other.org.id, x -> Sql.query(x, "select 1 from app.tds_challan")).size());
-        assertEquals("deducted", "deducted");
         // A run of another Organization cannot be put on this Organization's challan.
         TdsChallans.ChallanInput foreign = new TdsChallans.ChallanInput(m.period.toString().substring(0, 7), "company", "200", "6360001", "00009",
                 challanDue(m.period).toString(), deducted(m), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, List.of(other.run.toString()));
@@ -357,14 +356,14 @@ class TdsFilingsTest {
         assumeTrue(reachable, "PostgreSQL is not reachable");
         Month returned = approvedMonth((org, a, v, ashaId, vikramId) -> {
             OtherEmployerIncome.Entry e = other.add(a, previous());
-            other.returnEntry(org.admin, UUID.fromString(e.id()), "Attach the Form 16 from Old Co");
+            other.returnEntry(org.admin, UUID.fromString(e.id()), "Attach the Form 16 from Old Co", e.updatedAt());
         });
         assertEquals(0, lineAmount(runs.employee(returned.operator, returned.run, returned.asha), "TDS")
                 .compareTo(lineAmount(runs.employee(returned.operator, returned.run, returned.vikram), "TDS")));
 
         Month accepted = approvedMonth((org, a, v, ashaId, vikramId) -> {
             OtherEmployerIncome.Entry e = other.add(a, previous());
-            other.accept(org.admin, UUID.fromString(e.id()));
+            other.accept(org.admin, UUID.fromString(e.id()), e.updatedAt());
         });
         assertTrue(lineAmount(runs.employee(accepted.operator, accepted.run, accepted.asha), "TDS")
                 .compareTo(lineAmount(runs.employee(accepted.operator, accepted.run, accepted.vikram), "TDS")) > 0);
@@ -385,7 +384,7 @@ class TdsFilingsTest {
         assertEquals(0, other.mine(b, null).size(), "another employee sees none of it");
         assertEquals(404, assertThrows(ApiException.class, () -> other.update(b, UUID.fromString(entry.id()), previous())).status());
         assertEquals(404, assertThrows(ApiException.class, () -> other.remove(b, UUID.fromString(entry.id()))).status());
-        assertEquals(403, assertThrows(ApiException.class, () -> other.accept(a, UUID.fromString(entry.id()))).status(), "employees do not review");
+        assertEquals(403, assertThrows(ApiException.class, () -> other.accept(a, UUID.fromString(entry.id()), entry.updatedAt())).status(), "employees do not review");
         assertEquals(1, other.employee(org.admin, ashaEmployment, null).size());
         assertEquals(403, assertThrows(ApiException.class, () -> other.employee(b, ashaEmployment, null)).status());
 
@@ -399,17 +398,148 @@ class TdsFilingsTest {
                 new BigDecimal("-1"), null, null, null))).status());
 
         // Returned, the employee changes it and it goes back for review; once accepted it is fixed until HR returns it.
-        other.returnEntry(org.admin, UUID.fromString(entry.id()), "The tax deducted looks too high");
+        other.returnEntry(org.admin, UUID.fromString(entry.id()), "The tax deducted looks too high", entry.updatedAt());
         assertEquals("returned", other.mine(a, null).getFirst().status());
         OtherEmployerIncome.Entry changed = other.update(a, UUID.fromString(entry.id()), previous());
         assertEquals("declared", changed.status());
         assertEquals(null, changed.reviewNote());
-        other.accept(org.admin, UUID.fromString(entry.id()));
+        other.accept(org.admin, UUID.fromString(entry.id()), changed.updatedAt());
         assertEquals("tax.entry_accepted", assertThrows(ApiException.class, () -> other.update(a, UUID.fromString(entry.id()), previous())).code());
         assertEquals("tax.entry_accepted", assertThrows(ApiException.class, () -> other.remove(a, UUID.fromString(entry.id()))).code());
         // The audit trail has each step.
         List<Map<String, Object>> audit = db.inTenant(org.id, c -> Sql.query(c, "select action from app.audit_event where action like 'tax.other_employer_%'"));
         assertTrue(audit.size() >= 4, String.valueOf(audit));
+    }
+
+
+    // ── what the second review found ────────────────────────────────────
+
+    @Test
+    void dueDatesComeFromTheRuleIncludingMarchInAprilOfTheSameYear() throws Exception {
+        assumeTrue(reachable, "PostgreSQL is not reachable");
+        Org org = newOrg();
+        SessionCtx operator = join(org, "payroll", List.of("payroll_operator"));
+        TdsChallans tds = new TdsChallans(db, clockOn(LocalDate.of(2026, 10, 29)));
+        List<TdsChallans.MonthRow> months = tds.year(operator, "2026-27").months();
+        assertEquals("2026-05-07", months.get(0).dueOn(), "April's tax is due on 7 May");
+        assertEquals("2027-01-07", months.get(8).dueOn(), "December's tax is due on 7 January");
+        assertEquals("2027-04-30", months.get(11).dueOn(), "March's tax is due on 30 April of that year, not a year later");
+        TdsStatements st = new TdsStatements(db, Crypto.withKey(Crypto.DEVELOPMENT_KEY), clockOn(LocalDate.of(2026, 10, 29)));
+        assertEquals("2026-07-31", st.quarter(operator, "2026-27", 1).dueOn());
+        assertEquals("2026-10-31", st.quarter(operator, "2026-27", 2).dueOn());
+        assertEquals("2027-01-31", st.quarter(operator, "2026-27", 3).dueOn());
+        assertEquals("2027-05-31", st.quarter(operator, "2026-27", 4).dueOn());
+
+        // A rule without the dates is not guessed at: the due date is simply unknown.
+        String saved = db.inOwner(c -> String.valueOf(Sql.one(c, "select data from app.payroll_rule where statute = 'income_tax'").get("data")));
+        try {
+            db.inOwner(c -> Sql.update(c, "update app.payroll_rule set data = data - 'tdsDueDay' - 'tdsDueMarch' - 'statementDue' where statute = 'income_tax'"));
+            assertEquals(null, tds.year(operator, "2026-27").months().get(0).dueOn());
+            assertEquals(null, tds.year(operator, "2026-27").months().get(11).dueOn());
+            assertEquals(null, st.quarter(operator, "2026-27", 3).dueOn());
+        } finally {
+            db.inOwner(c -> Sql.update(c, "update app.payroll_rule set data = ?::jsonb where statute = 'income_tax'", saved));
+        }
+    }
+
+    @Test
+    void aMistypedChallanCanBeRemovedEvenAfterAStatementWasBuilt() throws Exception {
+        assumeTrue(reachable, "PostgreSQL is not reachable");
+        Month m = approvedMonth();
+        Clock clock = clockOn(m.today);
+        TdsChallans tds = new TdsChallans(db, clock);
+        TdsStatements st = new TdsStatements(db, Crypto.withKey(Crypto.DEVELOPMENT_KEY), clock);
+        TdsChallans.Challan wrongSerial = tds.record(m.operator, input(m, challanDue(m.period).toString(), deducted(m), "12345"));
+        TdsStatements.BuildResult draft = st.build(m.operator, taxYear(m.period), quarter(m.period));
+        assertTrue(draft.checks().stream().anyMatch(c -> c.code().equals("challan_unapproved")), String.valueOf(draft.checks()));
+        tds.remove(m.operator, UUID.fromString(wrongSerial.id()));
+        TdsChallans.Challan right = tds.record(m.operator, input(m, challanDue(m.period).toString(), deducted(m), "54321"));
+        tds.approve(m.org.admin, UUID.fromString(right.id()));
+        assertTrue(st.build(m.operator, taxYear(m.period), quarter(m.period)).checks().stream().noneMatch(c -> c.code().startsWith("challan")));
+    }
+
+    @Test
+    void aChangedPanIsACorrectionLine() throws Exception {
+        assumeTrue(reachable, "PostgreSQL is not reachable");
+        Month m = approvedMonth();
+        Clock clock = clockOn(m.today);
+        TdsChallans tds = new TdsChallans(db, clock);
+        TdsStatements st = new TdsStatements(db, Crypto.withKey(Crypto.DEVELOPMENT_KEY), clock);
+        String ty = taxYear(m.period);
+        int q = quarter(m.period);
+        tds.approve(m.org.admin, UUID.fromString(tds.record(m.operator, input(m, challanDue(m.period).toString(), deducted(m), "00001")).id()));
+        TdsStatements.BuildResult v1 = st.build(m.operator, ty, q);
+        st.accept(m.org.admin, UUID.fromString(v1.id()), new TdsStatements.AcceptInput("pan_invalid", m.vikram.toString(), "PAN applied for"));
+        st.filed(m.operator, UUID.fromString(v1.id()), new TdsStatements.FiledInput("TOKEN000001", m.today.toString()));
+
+        employees.setIdentifier(m.org.admin, m.asha, "pan", "ABCPR9999F", null);   // Asha's PAN was wrong on the filed statement
+        TdsStatements.BuildResult fix = st.build(m.operator, ty, q);
+        assertTrue(fix.correction());
+        assertEquals(1, fix.totals().lines(), "only Asha's line changes");
+        UUID fixId = UUID.fromString(fix.id());
+        st.accept(m.org.admin, fixId, new TdsStatements.AcceptInput("pan_invalid", m.vikram.toString(), "PAN applied for"));
+        String csv = new String(st.download(m.operator, fixId).bytes(), StandardCharsets.UTF_8);
+        assertTrue(csv.contains("ABCPR9999F") && csv.contains("Asha Rao"), csv);
+        assertFalse(csv.contains("ABCPR1234F"));
+    }
+
+    @Test
+    void twoBuildsOfOneQuarterAtOnceBothSucceed() throws Exception {
+        assumeTrue(reachable, "PostgreSQL is not reachable");
+        Month m = approvedMonth();
+        TdsStatements st = new TdsStatements(db, Crypto.withKey(Crypto.DEVELOPMENT_KEY), clockOn(m.today));
+        var pool = java.util.concurrent.Executors.newFixedThreadPool(2);
+        try {
+            var start = new java.util.concurrent.CountDownLatch(1);
+            List<java.util.concurrent.Future<Integer>> results = new java.util.ArrayList<>();
+            for (int i = 0; i < 2; i++) {
+                results.add(pool.submit(() -> {
+                    start.await();
+                    return st.build(m.operator, taxYear(m.period), quarter(m.period)).version();
+                }));
+            }
+            start.countDown();
+            java.util.Set<Integer> versions = new java.util.TreeSet<>();
+            for (var f : results) {
+                versions.add(f.get(60, java.util.concurrent.TimeUnit.SECONDS));
+            }
+            assertEquals(java.util.Set.of(1, 2), versions);
+        } finally {
+            pool.shutdownNow();
+        }
+    }
+
+    @Test
+    void nobodyReviewsTheirOwnPreviousEmployerFiguresAndReviewMeansTheFiguresThatWereRead() throws Exception {
+        assumeTrue(reachable, "PostgreSQL is not reachable");
+        Org org = newOrg();
+        SessionCtx a = join(org, "asha", List.of("employee"));
+        employees.add(org.admin, person("Admin Self", "ABCPS1234F", "100200300402", "333333333333", org.admin));
+        employees.add(org.admin, person("Asha Rao", "ABCPR1234F", "100200300400", "111111111111", a));
+
+        // An administrator who is also an employee cannot accept or return their own declaration.
+        OtherEmployerIncome.Entry own = other.add(org.admin, previous());
+        assertEquals("tax.own_entry", assertThrows(ApiException.class, () -> other.accept(org.admin, UUID.fromString(own.id()), own.updatedAt())).code());
+        assertEquals("tax.own_entry", assertThrows(ApiException.class, () -> other.returnEntry(org.admin, UUID.fromString(own.id()), "Not accepted", own.updatedAt())).code());
+        // The database says the same, whatever the service does.
+        assertThrows(Exception.class, () -> db.inOwner(c -> Sql.update(c, "update app.tax_other_employer set status = 'accepted', reviewed_by = declared_by "
+                + "where id = ?", UUID.fromString(own.id()))));
+
+        // The figures HR read are the figures HR accepts.
+        OtherEmployerIncome.Entry entry = other.add(a, new OtherEmployerIncome.Input(null, "Old Co", "ABCD12345E", 6, new BigDecimal("100000"), null, null, new BigDecimal("1000")));
+        other.update(a, UUID.fromString(entry.id()), new OtherEmployerIncome.Input(null, "Old Co", "ABCD12345E", 6, new BigDecimal("100000"), null, null, new BigDecimal("99000")));
+        assertEquals("tax.entry_changed", assertThrows(ApiException.class, () -> other.accept(org.admin, UUID.fromString(entry.id()), entry.updatedAt())).code());
+        OtherEmployerIncome.Entry now = other.mine(a, null).getFirst();
+        other.returnEntry(org.admin, UUID.fromString(entry.id()), "The tax deducted looks too high", now.updatedAt());
+        // A returned entry is not accepted until the employee has corrected it.
+        OtherEmployerIncome.Entry returned = other.mine(a, null).getFirst();
+        assertEquals("tax.entry_state", assertThrows(ApiException.class, () -> other.accept(org.admin, UUID.fromString(entry.id()), returned.updatedAt())).code());
+
+        // Implausible or repeated figures are refused.
+        assertEquals(400, assertThrows(ApiException.class, () -> other.add(a, new OtherEmployerIncome.Input(null, "Other Co", "WXYZ12345K", 3,
+                new BigDecimal("1000"), null, null, new BigDecimal("5000")))).status(), "tax cannot exceed the salary it was taken from");
+        assertEquals("tax.entry_duplicate", assertThrows(ApiException.class, () -> other.add(a, new OtherEmployerIncome.Input(null, "Old Co again",
+                "ABCD12345E", 2, new BigDecimal("1000"), null, null, null))).code());
     }
 
     // ── helpers ─────────────────────────────────────────────────────────

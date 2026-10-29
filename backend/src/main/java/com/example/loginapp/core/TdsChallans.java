@@ -31,7 +31,7 @@ public final class TdsChallans {
 
     public record Challan(String id, String month, String deductorType, String minorHead, String bsrCode, String serial, String depositedOn,
                           BigDecimal tax, BigDecimal surcharge, BigDecimal cess, BigDecimal interest, BigDecimal fee, BigDecimal total,
-                          String status, List<String> runIds, long daysLate) {}
+                          String status, List<String> runIds, Long daysLate) {}
 
     /** One month of deducted tax against deposited tax. Status: none, part, deposited or over. */
     public record MonthRow(String month, BigDecimal deducted, BigDecimal deposited, String status, String dueOn, boolean overdue,
@@ -86,8 +86,8 @@ public final class TdsChallans {
                 : deposited.compareTo(deducted) < 0 ? "part"
                 : deposited.compareTo(deducted) == 0 ? "deposited" : "over";
         LocalDate due = due(c, month);
-        boolean overdue = deducted.signum() > 0 && !"deposited".equals(status) && !"over".equals(status) && today().isAfter(due);
-        return new MonthRow(month.toString(), deducted, deposited, status, due.toString(), overdue, challans);
+        boolean overdue = due != null && deducted.signum() > 0 && !"deposited".equals(status) && !"over".equals(status) && today().isAfter(due);
+        return new MonthRow(month.toString(), deducted, deposited, status, due == null ? null : due.toString(), overdue, challans);
     }
 
     // ── record and approve ──────────────────────────────────────────────
@@ -167,6 +167,7 @@ public final class TdsChallans {
     /** Maker-checker: whoever recorded the challan cannot approve it. */
     public Status approve(SessionCtx ctx, UUID id) {
         PayrollConfig.need(ctx, "payroll.approve");
+        StepUp.require(db, ctx);
         return db.inTenant(ctx.tenantId(), c -> {
             Map<String, Object> ch = Sql.one(c, "select status, recorded_by from app.tds_challan where id = ? for update", id);
             if (ch == null) {
@@ -235,24 +236,26 @@ public final class TdsChallans {
         }
         LocalDate month = LocalDate.parse(String.valueOf(r.get("period")));
         LocalDate deposited = LocalDate.parse(String.valueOf(r.get("depositedOn")));
-        long late = Math.max(0, ChronoUnit.DAYS.between(due(c, month), deposited));
+        LocalDate due = due(c, month);
+        Long late = due == null ? null : Math.max(0, ChronoUnit.DAYS.between(due, deposited));
         return new Challan(String.valueOf(r.get("id")), month.toString(), (String) r.get("deductorType"), (String) r.get("minorHead"),
                 (String) r.get("bsrCode"), (String) r.get("serial"), deposited.toString(), PayrollEngine.dec(r, "tax"),
                 PayrollEngine.dec(r, "surcharge"), PayrollEngine.dec(r, "cess"), PayrollEngine.dec(r, "interest"), PayrollEngine.dec(r, "fee"),
                 PayrollEngine.dec(r, "total"), (String) r.get("status"), runs, late);
     }
 
-    /** When the tax deducted in a month falls due: the rule's day of the next month, or its March date in April. */
+    /**
+     * When the tax deducted in a month falls due: the rule's day of the next month, or its March date in April of the
+     * same calendar year as that March. Null while the rule in force carries no due dates, so nothing is guessed.
+     */
     static LocalDate due(Connection c, LocalDate month) throws SQLException {
         Map<String, Object> rule = Sql.one(c, "select data from app.payroll_rule where statute = 'income_tax' and jurisdiction = 'IN' "
-                + "and valid_from <= ? and (valid_to is null or valid_to > ?)", month, month);
+                + "and valid_from <= ? and (valid_to is null or valid_to > ?) order by valid_from desc limit 1", month, month);
         Map<String, Object> data = rule == null ? Map.of() : parse(rule.get("data"));
-        if (month.getMonthValue() == 3 && data.get("tdsDueMarch") != null) {
-            MonthDay md = MonthDay.parse("--" + data.get("tdsDueMarch"));
-            return md.atYear(month.getYear() + 1);
+        if (month.getMonthValue() == 3) {
+            return data.get("tdsDueMarch") == null ? null : MonthDay.parse("--" + data.get("tdsDueMarch")).atYear(month.getYear());
         }
-        int day = data.get("tdsDueDay") == null ? 7 : ((Number) data.get("tdsDueDay")).intValue();
-        return month.plusMonths(1).withDayOfMonth(day);
+        return data.get("tdsDueDay") == null ? null : month.plusMonths(1).withDayOfMonth(((Number) data.get("tdsDueDay")).intValue());
     }
 
     // ── small helpers ───────────────────────────────────────────────────
@@ -275,8 +278,8 @@ public final class TdsChallans {
         return v.setScale(2);
     }
 
-    private static String taxYear(String value) {
-        return TaxYears.check(value, TaxYears.of(LocalDate.now(IST)));
+    private String taxYear(String value) {
+        return TaxYears.check(value, TaxYears.of(today()));
     }
 
     private static LocalDate month(String value) {

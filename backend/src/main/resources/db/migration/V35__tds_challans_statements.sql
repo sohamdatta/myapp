@@ -13,6 +13,7 @@ create table app.tax_other_employer (
   id              uuid primary key default gen_random_uuid(),
   tenant_id       uuid not null,
   employment_id   uuid not null,
+  declared_by     uuid references app.membership(id),                      -- the employee who entered it
   tax_year        text not null check (tax_year ~ '^[0-9]{4}-[0-9]{2}$'),
   employer_name   text not null check (length(btrim(employer_name)) between 2 and 160),
   employer_tan    text check (employer_tan is null or employer_tan ~ '^[A-Z]{4}[0-9]{5}[A-Z]$'),
@@ -29,9 +30,12 @@ create table app.tax_other_employer (
   updated_at      timestamptz not null default now(),
   unique (tenant_id, id),
   foreign key (tenant_id, employment_id) references app.employment (tenant_id, id),
-  check ((status = 'returned') = (review_note is not null))
+  check ((status = 'returned') = (review_note is not null)),
+  constraint tax_other_employer_not_own check (reviewed_by is null or reviewed_by is distinct from declared_by),
+  check (tds <= taxable_salary)
 );
 create index tax_other_employer_person on app.tax_other_employer (employment_id, tax_year);
+create unique index tax_other_employer_once on app.tax_other_employer (employment_id, tax_year, employer_tan) where employer_tan is not null;
 
 -- ── TDS deposits (challans) ──────────────────────────────────────────
 
@@ -111,12 +115,15 @@ create table app.tds_statement_row (
   amount_paid   numeric(12, 2) not null,
   tax_deducted  numeric(12, 2) not null,
   higher_rate   boolean not null default false,                          -- no valid PAN
+  pan_enc       bytea,                                                   -- the PAN as sent, to see a correction of it
   removed       boolean not null default false,                          -- in a correction: this line is withdrawn
   foreign key (tenant_id, statement_id) references app.tds_statement (tenant_id, id),
   foreign key (tenant_id, employment_id) references app.employment (tenant_id, id),
   foreign key (tenant_id, challan_id) references app.tds_challan (tenant_id, id)
 );
 create index tds_statement_row_statement on app.tds_statement_row (statement_id);
+create index tds_statement_row_challan on app.tds_statement_row (challan_id);
+create index tds_challan_period on app.tds_challan (tenant_id, period);
 
 -- A filed statement and its lines are final.
 create function app.tds_statement_final() returns trigger language plpgsql as $$
@@ -157,7 +164,6 @@ begin
 end $$;
 
 grant delete on app.tax_other_employer, app.tds_challan, app.tds_challan_run, app.tds_statement_row to app_tenant;
-grant delete on app.tds_statement to app_tenant;
 
 -- ── the deposit and statement rules, as draft rule data ──────────────
 

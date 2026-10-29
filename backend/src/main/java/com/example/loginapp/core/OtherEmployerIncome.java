@@ -26,9 +26,11 @@ public final class OtherEmployerIncome {
                         BigDecimal pf, BigDecimal professionalTax, BigDecimal tds) {}
 
     public record Entry(String id, String taxYear, String employerName, String employerTan, int monthsWorked, BigDecimal taxableSalary,
-                        BigDecimal pf, BigDecimal professionalTax, BigDecimal tds, String status, String reviewNote) {}
+                        BigDecimal pf, BigDecimal professionalTax, BigDecimal tds, String status, String reviewNote, String updatedAt) {}
 
-    public record NoteInput(String note) {}
+    public record ReviewInput(String updatedAt) {}
+
+    public record NoteInput(String note, String updatedAt) {}
 
     /** What payroll adds to the year so far for an employment. */
     record Counted(BigDecimal taxable, BigDecimal pf, BigDecimal professionalTax, BigDecimal tds, int employers, String basis) {
@@ -62,9 +64,13 @@ public final class OtherEmployerIncome {
         Clean v = clean(in, today());
         return db.inTenant(ctx.tenantId(), c -> {
             UUID employment = me(c, ctx);
+            if (v.tan != null && Sql.one(c, "select 1 from app.tax_other_employer where employment_id = ? and tax_year = ? and employer_tan = ?",
+                    employment, v.taxYear, v.tan) != null) {
+                throw new ApiException(409, "tax.entry_duplicate", "That employer is already declared for this tax year; change that entry instead");
+            }
             UUID id = AuthService.uuid(Sql.one(c, "insert into app.tax_other_employer (tenant_id, employment_id, tax_year, employer_name, employer_tan, months_worked, "
-                    + "taxable_salary, pf, professional_tax, tds) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) returning id", ctx.tenantId(), employment, v.taxYear,
-                    v.name, v.tan, v.months, v.taxable, v.pf, v.pt, v.tds).get("id"));
+                    + "taxable_salary, pf, professional_tax, tds, declared_by) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) returning id", ctx.tenantId(), employment,
+                    v.taxYear, v.name, v.tan, v.months, v.taxable, v.pf, v.pt, v.tds, ctx.membershipId()).get("id"));
             UserService.audit(c, ctx, "tax.other_employer_declared", "employment", employment, Map.of("taxYear", v.taxYear, "employer", v.name,
                     "taxable", v.taxable, "tds", v.tds));
             return one(c, id);
@@ -115,36 +121,52 @@ public final class OtherEmployerIncome {
         return db.inTenant(ctx.tenantId(), c -> list(c, employmentId, ty));
     }
 
-    public Entry accept(SessionCtx ctx, UUID id) {
+    /** HR accepts the figures as they stood when they looked (updatedAt), never an employee's own entry. */
+    public Entry accept(SessionCtx ctx, UUID id, String updatedAt) {
         needManage(ctx);
         return db.inTenant(ctx.tenantId(), c -> {
-            Map<String, Object> e = Sql.one(c, "select employment_id from app.tax_other_employer where id = ? for update", id);
-            if (e == null) {
-                throw ApiException.notFound("That entry");
-            }
+            Map<String, Object> e = reviewable(c, ctx, id, updatedAt);
             Sql.update(c, "update app.tax_other_employer set status = 'accepted', review_note = null, reviewed_by = ?, reviewed_at = now() where id = ?",
                     ctx.membershipId(), id);
-            UserService.audit(c, ctx, "tax.other_employer_accepted", "employment", AuthService.uuid(e.get("employmentId")), Map.of());
-            return one(c, id);
+            Entry done = one(c, id);
+            UserService.audit(c, ctx, "tax.other_employer_accepted", "employment", AuthService.uuid(e.get("employmentId")),
+                    Map.of("employer", done.employerName(), "taxable", done.taxableSalary(), "tds", done.tds(), "pf", done.pf(), "pt", done.professionalTax()));
+            return done;
         });
     }
 
-    public Entry returnEntry(SessionCtx ctx, UUID id, String note) {
+    public Entry returnEntry(SessionCtx ctx, UUID id, String note, String updatedAt) {
         needManage(ctx);
         String n = note == null ? "" : note.trim();
         if (n.length() < 3 || n.length() > 400) {
             throw ApiException.badRequest("Say what is wrong with the entry, in a few words");
         }
         return db.inTenant(ctx.tenantId(), c -> {
-            Map<String, Object> e = Sql.one(c, "select employment_id from app.tax_other_employer where id = ? for update", id);
-            if (e == null) {
-                throw ApiException.notFound("That entry");
-            }
+            Map<String, Object> e = reviewable(c, ctx, id, updatedAt);
             Sql.update(c, "update app.tax_other_employer set status = 'returned', review_note = ?, reviewed_by = ?, reviewed_at = now() where id = ?",
                     n, ctx.membershipId(), id);
             UserService.audit(c, ctx, "tax.other_employer_returned", "employment", AuthService.uuid(e.get("employmentId")), Map.of("note", n));
             return one(c, id);
         });
+    }
+
+    /** An entry waiting for review, as it was when the reviewer read it, and not the reviewer's own. */
+    private Map<String, Object> reviewable(Connection c, SessionCtx ctx, UUID id, String updatedAt) throws SQLException {
+        Map<String, Object> e = Sql.one(c, "select t.employment_id, t.status, t.updated_at, e.membership_id from app.tax_other_employer t "
+                + "join app.employment e on e.id = t.employment_id where t.id = ? for update of t", id);
+        if (e == null) {
+            throw ApiException.notFound("That entry");
+        }
+        if (ctx.membershipId().toString().equals(String.valueOf(e.get("membershipId")))) {
+            throw new ApiException(403, "tax.own_entry", "Someone else in HR must review your own declaration");
+        }
+        if (!"declared".equals(e.get("status"))) {
+            throw new ApiException(409, "tax.entry_state", "Only a declared entry can be reviewed");
+        }
+        if (updatedAt == null || !updatedAt.equals(String.valueOf(e.get("updatedAt")))) {
+            throw new ApiException(409, "tax.entry_changed", "The employee changed this entry; read it again before reviewing");
+        }
+        return e;
     }
 
     // ── what payroll reads ──────────────────────────────────────────────
@@ -180,6 +202,9 @@ public final class OtherEmployerIncome {
         if (in.monthsWorked() == null || in.monthsWorked() < 1 || in.monthsWorked() > 12) {
             throw ApiException.badRequest("Months worked there is 1 to 12");
         }
+        if (in.tds() != null && in.taxableSalary() != null && in.tds().compareTo(in.taxableSalary()) > 0) {
+            throw ApiException.badRequest("The tax deducted cannot be more than the taxable salary");
+        }
         return new Clean(TaxYears.check(in.taxYear(), TaxYears.of(today)), in.employerName().trim(), tan, in.monthsWorked(),
                 money(in.taxableSalary(), "taxable salary"), money(in.pf(), "PF"), money(in.professionalTax(), "professional tax"), money(in.tds(), "tax deducted"));
     }
@@ -204,10 +229,11 @@ public final class OtherEmployerIncome {
 
     private Entry one(Connection c, UUID id) throws SQLException {
         Map<String, Object> r = Sql.one(c, "select id, tax_year, employer_name, employer_tan, months_worked, taxable_salary, pf, professional_tax, tds, status, "
-                + "review_note from app.tax_other_employer where id = ?", id);
+                + "review_note, updated_at from app.tax_other_employer where id = ?", id);
         return new Entry(String.valueOf(r.get("id")), (String) r.get("taxYear"), (String) r.get("employerName"), (String) r.get("employerTan"),
                 ((Number) r.get("monthsWorked")).intValue(), PayrollEngine.dec(r, "taxableSalary"), PayrollEngine.dec(r, "pf"),
-                PayrollEngine.dec(r, "professionalTax"), PayrollEngine.dec(r, "tds"), (String) r.get("status"), (String) r.get("reviewNote"));
+                PayrollEngine.dec(r, "professionalTax"), PayrollEngine.dec(r, "tds"), (String) r.get("status"), (String) r.get("reviewNote"),
+                String.valueOf(r.get("updatedAt")));
     }
 
     private static UUID me(Connection c, SessionCtx ctx) throws SQLException {

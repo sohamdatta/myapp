@@ -55,12 +55,12 @@ public class OtherEmployerController {
     }
 
     @PostMapping("/tax/other-employers/{id}/accept")
-    public OtherEmployerIncome.Entry accept(SessionCtx ctx, @PathVariable("id") String id) {
-        return income.accept(ctx, Requests.id(id));
+    public OtherEmployerIncome.Entry accept(SessionCtx ctx, @PathVariable("id") String id, @RequestBody OtherEmployerIncome.ReviewInput request) {
+        return income.accept(ctx, Requests.id(id), request.updatedAt());
     }
 
     @PostMapping("/tax/other-employers/{id}/return")
     public OtherEmployerIncome.Entry returnEntry(SessionCtx ctx, @PathVariable("id") String id, @RequestBody OtherEmployerIncome.NoteInput request) {
-        return income.returnEntry(ctx, Requests.id(id), request.note());
+        return income.returnEntry(ctx, Requests.id(id), request.note(), request.updatedAt());
     }
 }
