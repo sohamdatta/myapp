@@ -2,23 +2,37 @@
 
 Oct 24, 2026 · Markdown export of the [live document](https://claude.ai/artifact/RkLD2g8gjmfVprQ5pxRwUq); edit there and export again.
 
+**Where each release stands, 29 Oct 2026** (checked against the code on `main` at 46f4f57 and the GitHub Actions runs; nothing was run for this check):
+
+- **1 Green CI: built, not yet done.** Ordinary CI is green on `main` in both time zones, and the guards exist. The "done when" is not met: the daily fixed-date run failed on all three dates on 29 Oct and 27 Oct, in `27-two-step` › "an Organization owner sets it up from the key on screen and is given ten recovery codes".
+- **2 Sign-in security: built, with four differences from the design** (below).
+- **Email before go-live: half built.** The outbox, worker and SMTP sender exist and carry security mail. Invitations and notices are still not emailed.
+- **Domain and HTTPS: production done 25 Oct** (see that section); UAT's name is still open.
+- **3 Income tax, 4 PF and ESI, 5 Installable app: not started.** No migration, tables, file builders, service worker or web manifest for any of them.
+
 ## Summary
 
 Build these five in order: green CI first (half a day), then sign-in security, then income tax filings, then PF and ESI returns, then the installable app. The first two are what a buyer tests in a demo; the middle two finish Indian payroll compliance; the app is the employee-facing differentiator and is easier once the rest is stable.
 
-| # | Release | What it delivers | Effort (estimate) | Depends on | Migration |
-| --- | --- | --- | --- | --- | --- |
-| 1 | Green CI | The two fragile browser tests fixed; date and timezone guards so they cannot creep back | 0.5 day | — | none |
-| 2 | Sign-in security | Email sending, password reset, email change, TOTP MFA with recovery codes, lockout and rate limits | 2–3 weeks | 1 | V27 |
-| 3 | Income tax completion | Previous employer's income and TDS, challans, quarterly Form 138 return file, Form 130 Part B | 3–4 weeks | 1; uses tax declarations (V17) | V28 |
-| 4 | PF and ESI returns | Monthly PF ECR text file, ESI contribution file, with pre-checks and a filing log | 1.5–2 weeks | 1 | V29 |
-| 5 | Installable app (PWA) | Home-screen install, offline punch queue, web push, camera upload for proofs and documents | 3 weeks | 2 (push uses the outbox) | V30 |
-| — | Email (before go-live) | Invitations and the app's notices sent by email instead of copied links: the outbox, Amazon SES from the product's domain, an email beside each in-app notice, switches per event | 1–1.5 weeks | Domain and HTTPS; built as the first part of release 2 | With release 2's schema |
-| — | Domain and HTTPS (before go-live) | The product's own domain: addresses for production and UAT, their HTTPS certificates, and the sending domain release 2's email needs | 1 hour, plus DNS propagation and email DNS records | Buying the domain | none |
+| # | Release | What it delivers | Effort (estimate) | Depends on | Migration | Status |
+| --- | --- | --- | --- | --- | --- | --- |
+| 1 | Green CI | The two fragile browser tests fixed; date and timezone guards so they cannot creep back | 0.5 day | — | none | Built; fixed-date run failing |
+| 2 | Sign-in security | Email sending, password reset, email change, TOTP MFA with recovery codes, lockout and rate limits | 2–3 weeks | 1 | V28 to V33 (built) | Built, with differences |
+| 3 | Income tax completion | Previous employer's income and TDS, challans, quarterly Form 138 return file, Form 130 Part B | 3–4 weeks | 1; uses tax declarations (V17) | V34 | Not started |
+| 4 | PF and ESI returns | Monthly PF ECR text file, ESI contribution file, with pre-checks and a filing log | 1.5–2 weeks | 1 | V35 | Not started |
+| 5 | Installable app (PWA) | Home-screen install, offline punch queue, web push, camera upload for proofs and documents | 3 weeks | 2 (push uses the outbox) | V36 | Not started |
+| — | Email (before go-live) | Invitations and the app's notices sent by email instead of copied links: the outbox, Amazon SES from the product's domain, an email beside each in-app notice, switches per event | 1–1.5 weeks | Domain and HTTPS; built as the first part of release 2 | With release 2's schema | Outbox built; invitations and notices not emailed |
+| — | Domain and HTTPS (before go-live) | The product's own domain: addresses for production and UAT, their HTTPS certificates, and the sending domain release 2's email needs | 1 hour, plus DNS propagation and email DNS records | Buying the domain | none | Production done 25 Oct |
 
-Migration numbers below follow the schema on `main` (V19 is the Leave module; V20 to V26 are performance management and branding), so these releases start at V27. Estimates assume one developer working with Claude and the current test discipline (JUnit against PostgreSQL plus a Playwright suite per release). Every release keeps the existing rules: maker-checker where money moves, row-level security per Organization, an audit event for every change, and statutory figures as rule data awaiting the payroll consultant's sign-off.
+Migration numbers below follow the schema on `main` (V19 is the Leave module; V20 to V26 are performance management and branding; V27 reports browser errors; V28 to V33 are release 2), so what is left starts at V34. They change if another migration lands first. Estimates assume one developer working with Claude and the current test discipline (JUnit against PostgreSQL plus a Playwright suite per release). Every release keeps the existing rules: maker-checker where money moves, row-level security per Organization, an audit event for every change, and statutory figures as rule data awaiting the payroll consultant's sign-off.
 
 ## 1. Green CI
+
+**Status, 29 Oct 2026: built, not yet done.**
+
+- Built: the two test fixes (`07-onboarding` expects the person's name; `12-payroll` handles a last day that falls in next month); the UTC and India-time matrix (pull requests run UTC only, `main` and manual runs both); `e2e/check-dates.mjs` as the date lint; and a daily fixed-date workflow (`fixed-date.yml`, libfaketime on 28 Mar, 30 Dec and 26 Feb), which differs from the design's weekly `APP_TEST_TODAY` run.
+- Not met: the fixed-date run. It succeeded on 26 Oct and has failed since, on all three dates, on `27-two-step` (the recovery-codes test), so "a fixed-date run on 28 March passes" is not true today. The cause is not established.
+- Not found: the CI summary that lists skipped suites by name (guard 4).
 
 `main` has been red since 24 Oct because two browser tests assume things about today's date and the server's clock; the app is right in both cases. Because the browser suites run as one chain, the first failure skips everything after it (68 to 100 of 135 tests), so a real regression would go unseen.
 
@@ -37,6 +51,12 @@ Migration numbers below follow the schema on `main` (V19 is the Leave module; V2
 **Done when** the full chain of 141 tests (135 plus the 6 tax tests) passes in both time zones, and a fixed-date run on 28 March passes.
 
 ## 2. Sign-in security: email, password reset, MFA, rate limits
+
+**Status, 29 Oct 2026: built, with differences from this design.**
+
+- Built: the email outbox with a worker that claims rows with `skip locked`, an SMTP sender, a suppression list, and a platform Email page (list, retry, suppress, test mail); forgot and reset password and change password (`/auth/forgot`, `/auth/reset`, `/auth/password`); email change with an undo link (`/auth/email-change`); two-step sign-in with an authenticator app, recovery codes and disabling it (`/auth/mfa/*`); step-up for the sensitive actions (`/auth/step-up`); the sign-in lockout (V28 to V33; browser tests 26, 27 and 28).
+- Different: the rate limits (`RateLimits`) are kept in memory per server, with their own numbers (for example 100 failed sign-ins per address in 15 minutes, 10 forgot-password requests per address in 15 minutes and 5 per email an hour), not in an `auth.rate_counter` table. They reset on a restart, and each server counts alone. The Organization's two-step policy is one setting, `auth.mfa.required_for` (none, admins, admins and payroll, everyone; default none), not a list of roles. Migrations are V28 to V33, not V27.
+- Not found in the code: an Org Admin resetting a member's two-step sign-in, the SES bounce webhook (suppressions are added by hand from the Email page), an email to the person when their account is locked, and invitations by email (see Email before go-live).
 
 Add a durable email outbox, then build password reset, email change and TOTP MFA on it, and widen the existing lockout with per-address rate limits. Much of the groundwork exists: V1 already has `auth.password_reset`, `auth.mfa_recovery_code`, `identity.mfa_secret_enc` and `session.mfa_at`, and sign-in already locks an identity for 15 minutes after repeated failures. What is missing is every flow that uses them, and any way to send mail.
 
@@ -101,7 +121,7 @@ Keep the per-identity lockout and add limits per IP address and per email addres
 
 Counters live in `auth.rate_counter` (key, window start, count), pruned hourly. That suits one server today and keeps working with several. Lockout also sends the identity an email ("Several failed sign-ins, locked for 15 minutes"), throttled to one an hour.
 
-### Schema (V27)
+### Schema (built as V28 to V33)
 
 `platform.email_outbox`, `platform.email_suppression`, `auth.rate_counter`, `auth.email_change` (identity, new email, token hash, expires, verified_at, undo token hash, undo expires), `auth.identity.mfa_last_step` (bigint), `app.mfa_policy` (tenant, role code) with defaults inserted for existing Organizations, and email rows in `app.message_template` for the events that send mail.
 
@@ -128,6 +148,8 @@ Sign-in gets *Forgot password?* and a code step; a new Profile → Security tab 
 - Browser: forgot and reset end to end (the test reads the link from the outbox through a test-only endpoint), MFA enrolment with a code computed in the test from the secret, sign-in with MFA, a lost device reset by the Org Admin, lockout message.
 
 ## 3. Income tax completion: Form 122, challans, Form 138, Form 130
+
+**Status, 29 Oct 2026: not started.**
 
 Finish the year's tax in four pieces that build on each other: take in other employers' salary (Form 122), record each month's tax deposit (challan), produce the quarterly statement (Form 138), and give employees their certificate (Form 130). Under the Income-tax Rules 2026, [Form 122](https://www.incometaxindia.gov.in/documents/d/guest/form-122-faqs) replaces Forms 12B and 12BAA, and [Form 138](https://www.incometaxindia.gov.in/documents/d/guest/form-138-faqs) replaces Form 24Q; tax year 2025-26 still files on the old forms until its last return in May 2026.
 
@@ -172,7 +194,7 @@ Part A comes from TRACES as PDFs; the employer generates Part B, the salary comp
 3. Part A and Part B are joined into one PDF, stored as an encrypted document, and released to the employee in My pay, including people who left in the year (their former-employee access already covers My exit; add a *Tax certificates* link there).
 4. Release is by the payroll approver; every view is audited.
 
-### Schema (V28)
+### Schema (V34)
 
 `app.tax_other_income` (declaration, part B or C, details, amounts, proof status, as V17 items), `app.tds_challan` and `app.tds_challan_run`, `app.tds_statement` (TAN, tax year, quarter, version, status, token number, filed on), `app.tds_statement_row` (frozen per employee and challan), and `app.tax_certificate` (employment, tax year, part A document, combined document, released at). The `income_tax` rule gains the deposit due day, interest rates and the higher no-PAN rate, as draft data.
 
@@ -189,6 +211,8 @@ Part A comes from TRACES as PDFs; the employer generates Part B, the salary comp
 - Golden files: the statement text file for a fixed sample Organization, compared byte for byte, so a format change is a reviewed diff.
 
 ## 4. PF ECR and ESI return files
+
+**Status, 29 Oct 2026: not started.**
 
 Generate both monthly files from the approved run, check them before download, and keep a filing log; the data is already in the app (UAN and ESI IP numbers are stored per person, contributions are payslip lines). Both are due by the 15th of the following month.
 
@@ -224,7 +248,7 @@ One spreadsheet per ESI code per month, in the columns ESIC's monthly contributi
 
 After uploading on the EPFO and ESIC portals, the operator records the TRRN or challan number, the date and the amount paid, and attaches the portal's receipt PDF. The month then shows as filed; a late filing shows the days late. Recording is maker-checker like challans.
 
-### Schema (V29)
+### Schema (V35)
 
 `app.statutory_filing` (kind `pf_ecr` or `esi`, registration, period, version, status `draft`, `downloaded`, `filed`, the file document, totals, reference number, paid on, receipt document, filed by, approved by), `app.esi_reason_map` (exit reason → ESIC code), and the PF rule gains `ecrSeparator` and the EPS and EDLI ceilings as data.
 
@@ -237,6 +261,8 @@ Payroll → **Statutory filing** tab: a month grid with a row per registration (
 Golden ECR and ESI files for the sample Organization; each pre-check firing on a crafted payslip; ceilings and EPS-ineligible members; an employee who left mid-month with the right reason code and last day; totals tying to the run; re-generation after a reopened run creating a new version.
 
 ## 5. Installable app (PWA)
+
+**Status, 29 Oct 2026: not started.** The frontend has no service worker or web manifest; its `public` folder holds only the favicon.
 
 Make the existing React app installable on Android and iPhone home screens, with an offline punch queue, push notifications and camera upload, instead of building separate native apps. Employees get an app icon and alerts; the team keeps one codebase, one release and the same tests. A native app can come later if a customer needs biometric punch on the phone itself.
 
@@ -265,7 +291,7 @@ Make the existing React app installable on Android and iPhone home screens, with
 
 Tokens stay in session storage as today, so an installed app signs in again after it is closed; *Keep me signed in on this phone* (30 days, a separate refresh token bound to the device, revocable from Profile → Security) is offered only when the Organization allows it and the person has MFA. No personal data in caches; notification text carries no amounts or PAN ("Your payslip for October is ready").
 
-### Schema (V30)
+### Schema (V36)
 
 `app.push_subscription`; the outbox gains `channel`; `app.punch` gains `taken_at`, `received_at` and source `offline`; `app.work_location` gains `allow_offline_punch`; per-membership notification preferences (`app.notification_preference`: event, channel, on).
 
@@ -275,6 +301,8 @@ Tokens stay in session storage as today, so an installed app signs in again afte
 - JUnit: offline punch rules (age, location, clock skew flag); push subscriptions pruned on 410; notification preferences honoured by the outbox.
 
 ## Email (before go-live)
+
+**Status, 29 Oct 2026: half built.** The outbox, worker, SMTP sender and Email page are built (release 2) and carry the security mail: password reset, email change and two-step. Nothing else sends mail: no invitation (the console still says "No email is sent yet, so copy this link"), no notice, and no per-event switches. Everything under *What it delivers* below is still to do.
 
 Today the app sends no email. Every invitation (an Organization's first Org Admin, each user,
 each new joiner) shows a link that someone copies and sends by hand, and every notice (a task
@@ -368,10 +396,10 @@ Each release is one migration, one design page in `docs/`, its own JUnit test cl
 
 | Release | Migration | New permissions | New settings |
 | --- | --- | --- | --- |
-| 2 Sign-in security | V27 | `org.security` (MFA policy, MFA reset) for Org Admin | `APP_SMTP_*`, `APP_MAIL_FROM`, `APP_PUBLIC_URL` (for links in mail) |
-| 3 Income tax | V28 | `statutory.file` (exists, on payroll operator) to prepare; `payroll.approve` to approve challans and release certificates | none |
-| 4 PF and ESI | V29 | `statutory.file` | none |
-| 5 App | V30 | none | `APP_VAPID_PUBLIC`, `APP_VAPID_PRIVATE` |
+| 2 Sign-in security | V28 to V33 | `org.security` (MFA policy, MFA reset) for Org Admin | `APP_SMTP_*`, `APP_MAIL_FROM`, `APP_PUBLIC_URL` (for links in mail) |
+| 3 Income tax | V34 | `statutory.file` (exists, on payroll operator) to prepare; `payroll.approve` to approve challans and release certificates | none |
+| 4 PF and ESI | V35 | `statutory.file` | none |
+| 5 App | V36 | none | `APP_VAPID_PUBLIC`, `APP_VAPID_PRIVATE` |
 
 - **Migrations**: added to `Migrator`'s list (the list is explicit; V17 showed a file outside it is silently skipped, so add a test that every file in the folder is listed).
 - **Rule data**: new statutory figures (deposit dates, interest, ECR separator, ceilings) go into draft rule rows with a source note, never code, and show the existing "drafts awaiting sign-off" banner.
