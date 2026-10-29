@@ -43,6 +43,7 @@ import com.example.loginapp.core.PayrollRuns;
 import com.example.loginapp.core.PlatformService;
 import com.example.loginapp.core.SessionCtx;
 import com.example.loginapp.core.Sql;
+import com.example.loginapp.core.OtherEmployerIncome;
 import com.example.loginapp.core.TdsChallans;
 import com.example.loginapp.core.TdsStatements;
 import com.example.loginapp.core.UserService;
@@ -72,6 +73,7 @@ class TdsFilingsTest {
     private static PayrollPay pay;
     private static PayrollRuns runs;
     private static TdsChallans challans;
+    private static OtherEmployerIncome other;
     private static TdsStatements statements;
     private static SessionCtx superAdmin;
     private static boolean reachable;
@@ -111,6 +113,7 @@ class TdsFilingsTest {
         pay = new PayrollPay(db);
         runs = new PayrollRuns(db, crypto);
         challans = new TdsChallans(db);
+        other = new OtherEmployerIncome(db);
         statements = new TdsStatements(db, crypto);
         platform.ensureFirstSuperAdmin("root@platform.test", PASSWORD);
         superAdmin = auth.resolve(auth.enterConsole(auth.resolve(auth.login("root@platform.test", PASSWORD))));
@@ -119,7 +122,15 @@ class TdsFilingsTest {
     /** Two very high earners (so there is tax to deduct in any month of the year): Asha with a PAN, Vikram without. */
     private record Month(Org org, SessionCtx operator, LocalDate period, UUID run, UUID asha, UUID vikram, LocalDate today) {}
 
+    private interface Hook {
+        void before(Org org, SessionCtx asha, SessionCtx vikram, UUID ashaId, UUID vikramId) throws Exception;
+    }
+
     private Month approvedMonth() throws Exception {
+        return approvedMonth(null);
+    }
+
+    private Month approvedMonth(Hook hook) throws Exception {
         Org org = newOrg();
         SessionCtx operator = join(org, "payroll", List.of("payroll_operator"));
         SessionCtx a = join(org, "asha", List.of("employee"));
@@ -143,6 +154,9 @@ class TdsFilingsTest {
         pay.revise(org.admin, asha, new PayrollPay.ReviseInput(from, staff, new BigDecimal("24000000"), "Joining salary"));
         pay.revise(org.admin, vikram, new PayrollPay.ReviseInput(from, staff, new BigDecimal("24000000"), "Joining salary"));
 
+        if (hook != null) {
+            hook.before(org, a, v, asha, vikram);
+        }
         LocalDate period = TODAY.withDayOfMonth(1).plusMonths(1);
         String group = (String) ((Map<?, ?>) ((List<?>) runs.list(operator).get("groups")).get(0)).get("id");
         UUID run = UUID.fromString((String) runs.open(operator, UUID.fromString(group), period.toString()).get("id"));
@@ -313,6 +327,89 @@ class TdsFilingsTest {
         TdsChallans.ChallanInput foreign = new TdsChallans.ChallanInput(m.period.toString().substring(0, 7), "company", "200", "6360001", "00009",
                 challanDue(m.period).toString(), deducted(m), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, List.of(other.run.toString()));
         assertEquals(404, assertThrows(ApiException.class, () -> tds.record(m.operator, foreign)).status());
+    }
+
+
+    // ── other employers (Form 122, Part B) ──────────────────────────────
+
+    private static OtherEmployerIncome.Input previous() {
+        return new OtherEmployerIncome.Input(null, "Old Co Pvt Ltd", "ABCD12345E", 6, new BigDecimal("6000000"), new BigDecimal("80000"),
+                new BigDecimal("2400"), new BigDecimal("500000"));
+    }
+
+    @Test
+    void salaryFromAPreviousEmployerRaisesTheTaxLeftToDeductAndUsesUpTheProfessionalTaxCeiling() throws Exception {
+        assumeTrue(reachable, "PostgreSQL is not reachable");
+        Month m = approvedMonth((org, a, v, ashaId, vikramId) -> other.add(a, previous()));
+        BigDecimal withOther = lineAmount(runs.employee(m.operator, m.run, m.asha), "TDS");
+        BigDecimal without = lineAmount(runs.employee(m.operator, m.run, m.vikram), "TDS");
+        assertTrue(withOther.compareTo(without) != 0, "the earlier salary must change the tax left: " + withOther + " vs " + without);
+        // 6,000,000 more income at the top rate, less the 500,000 already deducted, spread over the months left: more tax each month.
+        assertTrue(withOther.compareTo(without) > 0);
+        BigDecimal ptWith = lineAmount(runs.employee(m.operator, m.run, m.asha), "PT");
+        BigDecimal ptWithout = lineAmount(runs.employee(m.operator, m.run, m.vikram), "PT");
+        assertEquals(0, new BigDecimal("100").compareTo(ptWith), "2,400 already paid leaves 100 of the 2,500 yearly ceiling");
+        assertTrue(ptWithout.compareTo(new BigDecimal("100")) > 0);
+    }
+
+    @Test
+    void aReturnedEntryCountsForNothingAndAnAcceptedOneCounts() throws Exception {
+        assumeTrue(reachable, "PostgreSQL is not reachable");
+        Month returned = approvedMonth((org, a, v, ashaId, vikramId) -> {
+            OtherEmployerIncome.Entry e = other.add(a, previous());
+            other.returnEntry(org.admin, UUID.fromString(e.id()), "Attach the Form 16 from Old Co");
+        });
+        assertEquals(0, lineAmount(runs.employee(returned.operator, returned.run, returned.asha), "TDS")
+                .compareTo(lineAmount(runs.employee(returned.operator, returned.run, returned.vikram), "TDS")));
+
+        Month accepted = approvedMonth((org, a, v, ashaId, vikramId) -> {
+            OtherEmployerIncome.Entry e = other.add(a, previous());
+            other.accept(org.admin, UUID.fromString(e.id()));
+        });
+        assertTrue(lineAmount(runs.employee(accepted.operator, accepted.run, accepted.asha), "TDS")
+                .compareTo(lineAmount(runs.employee(accepted.operator, accepted.run, accepted.vikram), "TDS")) > 0);
+    }
+
+    @Test
+    void anEntryBelongsToTheEmployeeAndHrReviewsIt() throws Exception {
+        assumeTrue(reachable, "PostgreSQL is not reachable");
+        Org org = newOrg();
+        SessionCtx a = join(org, "asha", List.of("employee"));
+        SessionCtx b = join(org, "bela", List.of("employee"));
+        UUID ashaEmployment = UUID.fromString((String) employees.add(org.admin, person("Asha Rao", "ABCPR1234F", "100200300400", "111111111111", a)).get("id"));
+        employees.add(org.admin, person("Bela Das", "ABCPD1234F", "100200300401", "222222222222", b));
+
+        OtherEmployerIncome.Entry entry = other.add(a, previous());
+        assertEquals("declared", entry.status());
+        assertEquals(1, other.mine(a, null).size());
+        assertEquals(0, other.mine(b, null).size(), "another employee sees none of it");
+        assertEquals(404, assertThrows(ApiException.class, () -> other.update(b, UUID.fromString(entry.id()), previous())).status());
+        assertEquals(404, assertThrows(ApiException.class, () -> other.remove(b, UUID.fromString(entry.id()))).status());
+        assertEquals(403, assertThrows(ApiException.class, () -> other.accept(a, UUID.fromString(entry.id()))).status(), "employees do not review");
+        assertEquals(1, other.employee(org.admin, ashaEmployment, null).size());
+        assertEquals(403, assertThrows(ApiException.class, () -> other.employee(b, ashaEmployment, null)).status());
+
+        assertEquals(400, assertThrows(ApiException.class, () -> other.add(a, new OtherEmployerIncome.Input(null, "X", null, 6, BigDecimal.TEN,
+                null, null, null))).status());
+        assertEquals(400, assertThrows(ApiException.class, () -> other.add(a, new OtherEmployerIncome.Input(null, "Old Co", "bad", 6, BigDecimal.TEN,
+                null, null, null))).status());
+        assertEquals(400, assertThrows(ApiException.class, () -> other.add(a, new OtherEmployerIncome.Input(null, "Old Co", null, 13, BigDecimal.TEN,
+                null, null, null))).status());
+        assertEquals(400, assertThrows(ApiException.class, () -> other.add(a, new OtherEmployerIncome.Input(null, "Old Co", null, 6,
+                new BigDecimal("-1"), null, null, null))).status());
+
+        // Returned, the employee changes it and it goes back for review; once accepted it is fixed until HR returns it.
+        other.returnEntry(org.admin, UUID.fromString(entry.id()), "The tax deducted looks too high");
+        assertEquals("returned", other.mine(a, null).getFirst().status());
+        OtherEmployerIncome.Entry changed = other.update(a, UUID.fromString(entry.id()), previous());
+        assertEquals("declared", changed.status());
+        assertEquals(null, changed.reviewNote());
+        other.accept(org.admin, UUID.fromString(entry.id()));
+        assertEquals("tax.entry_accepted", assertThrows(ApiException.class, () -> other.update(a, UUID.fromString(entry.id()), previous())).code());
+        assertEquals("tax.entry_accepted", assertThrows(ApiException.class, () -> other.remove(a, UUID.fromString(entry.id()))).code());
+        // The audit trail has each step.
+        List<Map<String, Object>> audit = db.inTenant(org.id, c -> Sql.query(c, "select action from app.audit_event where action like 'tax.other_employer_%'"));
+        assertTrue(audit.size() >= 4, String.valueOf(audit));
     }
 
     // ── helpers ─────────────────────────────────────────────────────────

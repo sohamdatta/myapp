@@ -180,6 +180,20 @@ final class PayrollSnapshot {
         ytd.put("tds", byCode.getOrDefault("TDS", BigDecimal.ZERO));
         ytd.put("pt", byCode.getOrDefault("PT", BigDecimal.ZERO));
         ytd.put("pfEe", byCode.getOrDefault("PF_EE", BigDecimal.ZERO));
+        // Salary from a previous employer this tax year (Form 122, Part B) is income so far, and tax, PF and professional tax already paid.
+        OtherEmployerIncome.Counted other = OtherEmployerIncome.forPayroll(c, employmentId, period);
+        if (other.employers() > 0) {
+            ytd.put("taxable", PayrollEngine.dec(ytd, "taxable").add(other.taxable()));
+            ytd.put("tds", PayrollEngine.dec(ytd, "tds").add(other.tds()));
+            ytd.put("pt", PayrollEngine.dec(ytd, "pt").add(other.professionalTax()));
+            ytd.put("pfEe", PayrollEngine.dec(ytd, "pfEe").add(other.pf()));
+            Map<String, Object> otherInfo = new LinkedHashMap<>();
+            otherInfo.put("employers", other.employers());
+            otherInfo.put("basis", other.basis());
+            otherInfo.put("taxable", other.taxable());
+            otherInfo.put("tds", other.tds());
+            ytd.put("otherEmployers", otherInfo);
+        }
         out.put("ytd", ytd);
 
         // ESI coverage carries to the end of the contribution period (April to September, October to March).
