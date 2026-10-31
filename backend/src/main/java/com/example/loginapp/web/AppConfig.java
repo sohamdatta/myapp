@@ -60,6 +60,7 @@ import com.example.loginapp.core.StatutoryFilings;
 import com.example.loginapp.core.TdsChallans;
 import com.example.loginapp.core.TdsStatements;
 import com.example.loginapp.core.WageCheck;
+import com.example.loginapp.core.WageSimulator;
 import com.example.loginapp.core.PerformanceSetup;
 import com.example.loginapp.core.PerformanceTeam;
 import com.example.loginapp.core.Plans;
@@ -334,6 +335,11 @@ public class AppConfig {
     @Bean
     public WageCheck wageCheck(Db db) {
         return new WageCheck(db);
+    }
+
+    @Bean
+    public WageSimulator wageSimulator(Db db, PayrollPay payrollPay) {
+        return new WageSimulator(db, payrollPay);
     }
 
     @Bean
