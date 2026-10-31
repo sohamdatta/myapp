@@ -57,6 +57,7 @@ import com.example.loginapp.core.PayrollConfig;
 import com.example.loginapp.core.PayrollPay;
 import com.example.loginapp.core.PayrollRuns;
 import com.example.loginapp.core.StatutoryFilings;
+import com.example.loginapp.core.TaxCertificates;
 import com.example.loginapp.core.TdsChallans;
 import com.example.loginapp.core.TdsStatements;
 import com.example.loginapp.core.WageCheck;
@@ -329,6 +330,11 @@ public class AppConfig {
     @Bean
     public OtherEmployerIncome otherEmployerIncome(Db db) {
         return new OtherEmployerIncome(db);
+    }
+
+    @Bean
+    public TaxCertificates taxCertificates(Db db, Crypto crypto) {
+        return new TaxCertificates(db, crypto);
     }
 
     @Bean
