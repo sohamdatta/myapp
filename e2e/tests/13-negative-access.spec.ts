@@ -202,12 +202,12 @@ test.describe.serial('negative: signing in, invitations, access', () => {
     await nav(owner, 'User management');
     await tab(owner, 'Users');
     const row = owner.locator('tr', { hasText: 'suspend.me@globex.test' });
-    await row.locator('summary').click();
+    await row.getByText('Edit roles').click();
     // Wait for the suspension to be saved: a click returns before its request has finished, and a
     // probe sent in that gap sees the session still working (seen on the slower fixed-date runners).
     await Promise.all([
       owner.waitForResponse((res) => /\/org\/users\/[^/]+\/suspend$/.test(res.url()) && res.request().method() === 'POST' && res.ok()),
-      row.getByRole('button', { name: 'Suspend', exact: true }).click(),
+      owner.locator('#user-panel').getByRole('button', { name: 'Suspend', exact: true }).click(),
     ]);
     // The open session stops working at once.
     const r = await api(victim, 'GET', '/org/leave/me/balances', undefined, token);
@@ -246,7 +246,7 @@ test.describe.serial('negative: signing in, invitations, access', () => {
 
     const meera = await signIn(browser, MEERA);
     const items = await meera.locator('a.nav-item').allInnerTexts();
-    for (const hidden of ['People', 'Payroll', 'User management', 'Audit log', 'Attendance', 'Leave']) {
+    for (const hidden of ['People', 'Payroll', 'User management', 'Audit log', 'Attendance', 'Leave', 'Getting started']) {
       expect(items, `menu shows ${hidden}`).not.toContain(hidden);
     }
     await shot(meera, 'neg-10-employee-menu');
@@ -259,6 +259,8 @@ test.describe.serial('negative: signing in, invitations, access', () => {
       ['GET', `/org/payroll/runs/${october}/outputs/bank`],
       ['GET', '/org/users'],
       ['GET', '/org/audit'],
+      ['GET', '/org/setup'],
+      ['POST', '/org/setup/starter', { starter: 'office', locationName: 'Head office', stateCode: 'KA' }],
       ['POST', '/org/invitations', { email: 'friend@globex.test', roles: ['owner'] }],
       ['POST', '/org/leave/types', { name: 'Free days' }],
       ['POST', '/org/attendance/locations', { name: 'Home' }],

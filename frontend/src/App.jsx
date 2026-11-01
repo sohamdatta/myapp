@@ -200,7 +200,7 @@ function Shell({ me, nav, page, onNavigate, onSwitch, onSignOut, onEndSupport, c
 function Workspace({ me, onSwitch, onSignOut, onEndSupport, onEnteredSupport, onRefresh }) {
   const nav = navFor(me)
   const allowed = nav.flatMap((section) => section.items.map((item) => item.id))
-  const landing = firstPage(nav)
+  const landing = firstPage(nav, me)
   const [page, navigate] = usePage(allowed, landing)
   useEffect(() => {
     if (landing) rememberLanding(me, landing)

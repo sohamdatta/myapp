@@ -97,22 +97,23 @@ test.describe.serial('users and access', () => {
     // An HR Admin may not suspend the Org Admin.
     await tab(hr, 'Users');
     const ownerRow = hr.locator('tr', { hasText: OWNER });
-    await ownerRow.locator('summary').click();
-    await ownerRow.getByText('Suspend').click();
-    await expect(hr.locator('.error')).toBeVisible();
+    await ownerRow.getByText('Edit roles').click();
+    await hr.locator('#user-panel').getByRole('button', { name: 'Suspend', exact: true }).click();
+    await expect(hr.locator('#user-panel .error')).toBeVisible();
   });
 
   test('the Org Admin changes roles, suspends and reactivates the HR Admin', async () => {
     await tab(owner, 'Users');
     const hrRow = owner.locator('tr', { hasText: HR });
     await hrRow.getByText('Edit roles').click();
-    await owner.check(".detail-row label:has-text('Manager') input");
+    const panel = owner.locator('#user-panel');
+    await panel.locator("label:has-text('Manager') input").check();
     await shot(owner, '07-edit-roles');
-    await owner.click('text=Save roles');
+    await panel.getByRole('button', { name: 'Save roles' }).click();
     await expect(hrRow.locator('td').nth(1)).toContainText('Manager');
 
-    await hrRow.locator('summary').click();
-    await hrRow.getByText('Suspend').click();
+    // The panel stays open on the same person for the change of access.
+    await panel.getByRole('button', { name: 'Suspend', exact: true }).click();
     await expect(owner.getByText('Suspended 1')).toBeVisible();
 
     // The suspended HR Admin is signed out on their next request.
@@ -120,8 +121,7 @@ test.describe.serial('users and access', () => {
     await expect(hr.locator('#email')).toBeVisible();
 
     await owner.click('text=Suspended 1');
-    await hrRow.locator('summary').click();
-    await hrRow.getByText('Reactivate').click();
+    await panel.getByRole('button', { name: 'Reactivate' }).click();
     await expect(owner.getByText('Suspended 0')).toBeVisible();
 
     await tab(owner, 'Roles');

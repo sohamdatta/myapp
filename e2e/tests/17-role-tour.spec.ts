@@ -70,8 +70,8 @@ test.describe.serial('role tour', () => {
     await tab(owner, 'Users');
     const row = owner.locator('tr', { hasText: PRIYA });
     await row.getByText('Edit roles').click();
-    await owner.check(".detail-row label:has-text('Manager') input");
-    await owner.click('text=Save roles');
+    await owner.check("#user-panel label:has-text('Manager') input");
+    await owner.locator('#user-panel').getByRole('button', { name: 'Save roles' }).click();
     await expect(row.locator('td').nth(1)).toContainText('Manager');
   });
 

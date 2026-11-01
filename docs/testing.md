@@ -5,7 +5,7 @@ Two automated suites run on every pull request and every push to main.
 | Suite | Where | What it checks | Count |
 | --- | --- | --- | --- |
 | Backend | `backend/src/test` (JUnit, real PostgreSQL) | Services, rules and database security per module | 282 tests |
-| Browser | `e2e/tests` (Playwright, Chromium) | The app end to end, screens and API, in India time and in UTC | 188 tests in 25 files |
+| Browser | `e2e/tests` (Playwright, Chromium) | The app end to end, screens and API, in India time and in UTC | 209 tests in 31 files |
 
 Negative cases have files of their own: `13-negative-access` to `16-negative-payroll` for the main story, and `23-negative-tax-settings` for tax declarations, settings, devices and setup lists. Together with refusals inside the other tests, the browser suite asserts more than 230 refused requests; the backend tests assert several hundred more.
 

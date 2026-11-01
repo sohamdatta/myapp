@@ -67,6 +67,16 @@ export function formatDate(iso) {
   })
 }
 
+/** A moment in a narrow column: "Today, 10:02", "28 Oct, 09:56", or "3 Mar 2025" from another year. */
+export function formatWhen(iso, now = new Date()) {
+  if (!iso) return '—'
+  const d = new Date(iso)
+  const time = d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
+  if (d.toDateString() === now.toDateString()) return `Today, ${time}`
+  if (d.getFullYear() === now.getFullYear()) return `${d.toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}, ${time}`
+  return d.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })
+}
+
 /** A time of day, in the given time zone when one is known, otherwise the browser's. */
 export function formatTime(iso, timeZone) {
   if (!iso) return '—'
