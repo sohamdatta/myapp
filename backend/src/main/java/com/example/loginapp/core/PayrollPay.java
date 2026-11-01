@@ -54,8 +54,12 @@ public final class PayrollPay {
         p.put("epsEligible", pf);
         p.put("esiExempt", !pf);
         p.put("taxRegime", "new");
-        p.put("ptExempt", false);
-        p.put("lwfExempt", false);
+        // A consultant is engaged under a contract for services, not employed: professional tax and labour welfare fund are charged on
+        // employees. The default for everyone else is that they apply. HR can change either for a person; the payroll consultant
+        // confirms the position for interns and for each state.
+        boolean contractor = "consultant".equals(employmentType);
+        p.put("ptExempt", contractor);
+        p.put("lwfExempt", contractor);
         return p;
     }
 
