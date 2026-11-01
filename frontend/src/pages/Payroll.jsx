@@ -562,7 +562,11 @@ function Holds({ run: x, onChanged }) {
 
 function Exceptions({ run: x, open, onChanged, onOpen, beside }) {
   const [accepting, setAccepting] = useState(null)
+  const [picked, setPicked] = useState([])
+  const [many, setMany] = useState(false)
   const { error, run } = useAction()
+  const canAcceptHere = x.canAccept && x.state === 'calculated'
+  const acceptable = open.filter((e) => e.acceptable)
   const warnings = x.exceptions.filter((e) => e.level === 'warning')
   const blocking = x.exceptions.filter((e) => e.level === 'blocking')
   return (
@@ -573,10 +577,44 @@ function Exceptions({ run: x, open, onChanged, onOpen, beside }) {
           {open.length} blocking open · {warnings.length} warning{warnings.length === 1 ? '' : 's'}
         </span>
       </h3>
+      {canAcceptHere && acceptable.length > 1 && (
+        <div className="form-actions">
+          <button type="button" className="secondary" onClick={() => setPicked(picked.length === acceptable.length ? [] : acceptable.map((e) => e.id))}>
+            {picked.length === acceptable.length ? 'Clear the selection' : `Select all ${acceptable.length} that can be accepted`}
+          </button>
+          {picked.length > 0 && (
+            <button type="button" className="primary" onClick={() => setMany(true)}>
+              Accept {picked.length} selected…
+            </button>
+          )}
+        </div>
+      )}
+      {many && (
+        <ReasonForm
+          label={`Why accept these ${picked.length}`}
+          action="Accept selected"
+          onCancel={() => setMany(false)}
+          onSubmit={async (reason) => {
+            if (await run(() => payroll.acceptMany(x.id, picked, reason))) {
+              setMany(false)
+              setPicked([])
+              onChanged()
+            }
+          }}
+        />
+      )}
       <ul className="exceptions">
         {[...blocking, ...warnings].map((e) => (
           <li key={e.id} className={e.level === 'blocking' && !e.acceptedAt ? 'exception blocking' : 'exception'} data-code={e.code}>
             <div className="exception-head">
+              {canAcceptHere && e.level === 'blocking' && e.acceptable && !e.acceptedAt && acceptable.length > 1 && (
+                <input
+                  type="checkbox"
+                  checked={picked.includes(e.id)}
+                  aria-label={`Select ${e.name || e.code}: ${e.code}`}
+                  onChange={(ev) => setPicked(ev.target.checked ? [...picked, e.id] : picked.filter((id) => id !== e.id))}
+                />
+              )}
               <Badge tone={e.level === 'blocking' ? (e.acceptedAt ? 'neutral' : 'bad') : 'warn'}>
                 {e.level === 'blocking' ? (e.acceptedAt ? 'Accepted' : 'Blocking') : 'Warning'}
               </Badge>
@@ -633,8 +671,8 @@ function ReasonForm({ label, action, onSubmit, onCancel }) {
       }}
     >
       <div>
-        <label htmlFor={`reason-${action}`}>{label}</label>
-        <input id={`reason-${action}`} value={reason} onChange={(e) => setReason(e.target.value)} />
+        <label htmlFor={`reason-${action.replace(/\W+/g, '-')}`}>{label}</label>
+        <input id={`reason-${action.replace(/\W+/g, '-')}`} value={reason} onChange={(e) => setReason(e.target.value)} />
       </div>
       <div className="form-actions">
         <button type="submit" className="secondary" disabled={reason.trim().length < 3}>

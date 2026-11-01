@@ -115,7 +115,13 @@ public final class PayrollEngine {
         }
 
         void exception(String code, String level, boolean acceptable, String message, String link) {
+            exception(code, level, acceptable, message, link, null);
+        }
+
+        /** {@code detailKey} says what the exception is about, so an acceptance carries over to a recalculation only while it is still true. */
+        void exception(String code, String level, boolean acceptable, String message, String link, String detailKey) {
             Map<String, Object> e = new LinkedHashMap<>();
+            e.put("detailKey", detailKey);
             e.put("code", code);
             e.put("level", level);
             e.put("acceptable", acceptable);
@@ -352,19 +358,64 @@ public final class PayrollEngine {
             out.exception("uan_missing", "warning", false, "PF is deducted but there is no UAN; the PF return line would be rejected.",
                     "people");
         }
+        if (out.net.signum() == 0) {
+            out.exception("net_zero", "blocking", true, "Net pay is ₹0. Accept it if that is right (pay held elsewhere, or a month fully without pay).",
+                    "payroll", "zero");
+        }
+        variance(out, emp, settings);
+        return out;
+    }
+
+    /**
+     * Net pay against the last approved month. Flagged when it moves by more than the percentage or by more than the rupee amount
+     * (0 switches the rupee test off), and says why, from the two payslips. A joiner, or someone with no earlier month, has nothing to
+     * compare with and is not flagged.
+     */
+    private static void variance(Calc out, Map<String, Object> emp, Map<String, Object> settings) {
         Map<String, Object> previous = map(emp, "previous");
-        if (previous.get("net") != null) {
-            BigDecimal before = dec(previous, "net");
-            if (before.signum() > 0) {
-                BigDecimal change = out.net.subtract(before).multiply(HUNDRED).divide(before, 1, RoundingMode.HALF_UP);
-                if (change.abs().compareTo(dec(settings, "variancePct")) > 0) {
-                    out.exception("variance", "warning", false, "Net pay is " + change.abs().stripTrailingZeros().toPlainString() + "% "
-                            + (change.signum() > 0 ? "higher" : "lower") + " than last month (threshold "
-                            + dec(settings, "variancePct").stripTrailingZeros().toPlainString() + "%).", null);
-                }
+        if (previous.get("net") == null) {
+            return;
+        }
+        BigDecimal before = dec(previous, "net");
+        BigDecimal difference = out.net.subtract(before);
+        BigDecimal pct = dec(settings, "variancePct");
+        BigDecimal amount = settings.get("varianceAmount") == null ? ZERO : dec(settings, "varianceAmount");
+        boolean overPct = before.signum() > 0 && difference.abs().multiply(HUNDRED).compareTo(before.multiply(pct)) > 0;
+        boolean overAmount = amount.signum() > 0 && difference.abs().compareTo(amount) > 0;
+        if (!overPct && !overAmount) {
+            return;
+        }
+        List<PayChange.Line> was = new ArrayList<>();
+        for (Object o : (List<?>) previous.getOrDefault("lines", List.of())) {
+            Map<String, Object> l = castLine(o);
+            was.add(new PayChange.Line((String) l.get("code"), (String) l.get("name"), dec(l, "signed"), false));
+        }
+        List<PayChange.Line> now = new ArrayList<>();
+        for (Map<String, Object> l : out.lines) {
+            if (Set.of("earning", "deduction").contains(l.get("kind"))) {
+                BigDecimal a = dec(l, "amount");
+                now.add(new PayChange.Line((String) l.get("code"), (String) l.get("name"), "deduction".equals(l.get("kind")) ? a.negate() : a,
+                        "Entered for this month".equals(map(l, "trace").get("source"))));
             }
         }
-        return out;
+        PayChange.Slip slipBefore = new PayChange.Slip(dec(previous, "daysPaid"), dec(previous, "daysInPeriod"), dec(previous, "annual"),
+                String.valueOf(previous.get("compensationFrom")), was);
+        PayChange.Slip slipNow = new PayChange.Slip(out.daysPaid, out.daysInPeriod, dec(emp, "annual"),
+                String.valueOf(emp.get("compensationFrom")), now);
+        List<PayChange.Cause> causes = PayChange.diff(slipBefore, slipNow);
+        StringBuilder why = new StringBuilder();
+        for (int i = 0; i < Math.min(2, causes.size()); i++) {
+            why.append(i == 0 ? ": " : "; ").append(causes.get(i).text()).append(" (").append(causes.get(i).amount().signum() > 0 ? "+" : "-")
+                    .append(rupees(causes.get(i).amount().abs())).append(")");
+        }
+        String pctText = before.signum() > 0 ? " (" + difference.abs().multiply(HUNDRED).divide(before, 1, RoundingMode.HALF_UP).stripTrailingZeros().toPlainString() + "%)" : "";
+        out.exception("variance", "blocking", true, "Net pay is " + rupees(difference.abs()) + (difference.signum() > 0 ? " higher" : " lower")
+                + " than last month" + pctText + why, "payroll", before.toPlainString() + ">" + out.net.toPlainString());
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> castLine(Object o) {
+        return (Map<String, Object>) o;
     }
 
     // ── steps ───────────────────────────────────────────────────────────

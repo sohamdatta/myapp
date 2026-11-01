@@ -203,9 +203,33 @@ final class PayrollSnapshot {
                 + "join app.payroll_run r on r.id = ps.run_id where ps.employment_id = ? and r.state in ('approved','paid','released') "
                 + "and r.period >= ? and r.period < ? and l.code in ('ESI_EE','ESI_ER') and l.amount > 0 limit 1", employmentId, esiStart, period) != null);
 
-        Map<String, Object> previous = Sql.one(c, "select ps.net from app.payslip ps join app.payroll_run r on r.id = ps.run_id "
-                + "where ps.employment_id = ? and r.state in ('approved','paid','released') and r.period < ? order by r.period desc limit 1", employmentId, period);
-        out.put("previous", previous == null ? Map.of() : previous);
+        // The last approved month, for the variance check: what was paid, and the lines and days that explain it.
+        Map<String, Object> previous = Sql.one(c, "select ps.id, ps.net, ps.days_paid, ps.days_in_period, ps.info, r.period from app.payslip ps "
+                + "join app.payroll_run r on r.id = ps.run_id where ps.employment_id = ? and r.state in ('approved','paid','released') "
+                + "and r.period < ? order by r.period desc limit 1", employmentId, period);
+        if (previous == null) {
+            out.put("previous", Map.of());
+        } else {
+            Map<String, Object> was = new LinkedHashMap<>();
+            was.put("net", previous.get("net"));
+            was.put("period", previous.get("period"));
+            was.put("daysPaid", previous.get("daysPaid"));
+            was.put("daysInPeriod", previous.get("daysInPeriod"));
+            Map<String, Object> before = parse(previous.get("info"));
+            was.put("annual", before.get("annual"));
+            was.put("compensationFrom", before.get("compensationFrom"));
+            List<Map<String, Object>> lines = new ArrayList<>();
+            for (Map<String, Object> l : Sql.query(c, "select code, name, kind, amount from app.payslip_line where payslip_id = ? "
+                    + "and kind in ('earning','deduction') order by position", previous.get("id"))) {
+                Map<String, Object> m = new LinkedHashMap<>();
+                m.put("code", l.get("code"));
+                m.put("name", l.get("name"));
+                m.put("signed", "deduction".equals(l.get("kind")) ? PayrollEngine.dec(l, "amount").negate() : PayrollEngine.dec(l, "amount"));
+                lines.add(m);
+            }
+            was.put("lines", lines);
+            out.put("previous", was);
+        }
         // Income tax claims the employee declared for this tax year (Form 124): declared or verified amounts.
         out.put("declarations", TaxDeclarations.forPayroll(c, employmentId, period));
         return out;

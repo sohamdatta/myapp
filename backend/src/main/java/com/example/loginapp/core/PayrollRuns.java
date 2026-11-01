@@ -43,6 +43,8 @@ public final class PayrollRuns {
 
     public record InputInput(String employmentId, String componentCode, BigDecimal amount, String note) {}
 
+    public record AcceptManyInput(List<String> ids, String reason) {}
+
     public record ReasonInput(String reason) {}
 
     public record PaidInput(String paidOn, String reference) {}
@@ -327,7 +329,7 @@ public final class PayrollRuns {
             Map<String, Object> config = PayrollEngine.map(snapshot, "config");
             // Keep accepted exceptions when the same one comes back.
             Map<String, Map<String, Object>> accepted = new HashMap<>();
-            for (Map<String, Object> x : Sql.query(c, "select employment_id, code, accepted_by, accepted_reason, accepted_at from app.run_exception "
+            for (Map<String, Object> x : Sql.query(c, "select employment_id, code, detail_key, accepted_by, accepted_reason, accepted_at from app.run_exception "
                     + "where run_id = ? and accepted_at is not null", runId)) {
                 accepted.put(x.get("employmentId") + "|" + x.get("code"), x);
             }
@@ -352,9 +354,11 @@ public final class PayrollRuns {
             List<Object[]> payslipRows = new ArrayList<>();
             List<Object[]> lineRows = new ArrayList<>();
             List<Object[]> exceptionRows = new ArrayList<>();
+            Map<UUID, LocalDate> lastDays = currentLastDays(c, PayrollEngine.list(snapshot, "employees"));
             for (Map<String, Object> emp : PayrollEngine.list(snapshot, "employees")) {
                 PayrollEngine.Calc calc = PayrollEngine.calculate(config, emp, period);
                 UUID employment = AuthService.uuid(emp.get("employmentId"));
+                lastDayCheck(calc, emp, lastDays.get(employment), period);
                 boolean heldPay = onHold.contains(employment);
                 if (calc.calculated()) {
                     boolean held = heldPay;
@@ -393,8 +397,14 @@ public final class PayrollRuns {
                         continue;
                     }
                     Map<String, Object> was = accepted.get((who == null ? "null" : who.toString()) + "|" + code);
+                    // An acceptance stands only while the same thing is still wrong: a net pay change accepted at one figure is
+                    // looked at again when the figure moves.
+                    if (was != null && !java.util.Objects.equals(was.get("detailKey"), x.get("detailKey"))) {
+                        was = null;
+                    }
                     exceptionRows.add(new Object[] {ctx.tenantId(), runId, who, code.contains(":") ? code.substring(0, code.indexOf(':')) : code,
-                            x.get("level"), x.get("acceptable"), x.get("message"), x.get("link"), was == null ? null : was.get("acceptedBy"),
+                            x.get("level"), x.get("acceptable"), x.get("message"), x.get("link"), x.get("detailKey"),
+                            was == null ? null : was.get("acceptedBy"),
                             was == null ? null : was.get("acceptedReason"), was == null ? null : was.get("acceptedAt")});
                     if ("blocking".equals(x.get("level"))) {
                         blocking++;
@@ -407,8 +417,8 @@ public final class PayrollRuns {
                     + "gross, deductions, net, employer_cost, held, info) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb)", payslipRows);
             Sql.batch(c, "insert into app.payslip_line (tenant_id, payslip_id, position, code, name, kind, amount, unrounded, full_month, "
                     + "rule_id, trace) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?::uuid, ?::jsonb)", lineRows);
-            Sql.batch(c, "insert into app.run_exception (tenant_id, run_id, employment_id, code, level, acceptable, message, link, "
-                    + "accepted_by, accepted_reason, accepted_at) values (?, ?, ?, ?, ?, ?, ?, ?, ?::uuid, ?, ?::timestamptz)", exceptionRows);
+            Sql.batch(c, "insert into app.run_exception (tenant_id, run_id, employment_id, code, level, acceptable, message, link, detail_key, "
+                    + "accepted_by, accepted_reason, accepted_at) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?::uuid, ?, ?::timestamptz)", exceptionRows);
             int attempt = ((Number) r.get("attempt")).intValue() + 1;
             Map<String, Object> totals = new LinkedHashMap<>();
             totals.put("people", people);
@@ -424,6 +434,82 @@ public final class PayrollRuns {
                     attempt, ctx.membershipId(), Json.write(totals));
             UserService.audit(c, ctx, "payroll.run_calculated", "payroll_run", runId, Map.of("attempt", attempt, "people", people, "net", net));
             return totals;
+        });
+    }
+
+    /**
+     * Each person's last day as it stands now, read when the run is calculated: the exit date, or the last working day of an accepted
+     * exit. The run froze its own copy of it; the two can differ if the exit changed since.
+     */
+    private static Map<UUID, LocalDate> currentLastDays(Connection c, List<Map<String, Object>> employees) throws SQLException {
+        List<UUID> ids = new ArrayList<>();
+        for (Map<String, Object> e : employees) {
+            ids.add(AuthService.uuid(e.get("employmentId")));
+        }
+        Map<UUID, LocalDate> out = new HashMap<>();
+        if (ids.isEmpty()) {
+            return out;
+        }
+        for (Map<String, Object> r : Sql.query(c, "select e.id, coalesce(e.exit_date, (select ec.last_working_day from app.exit_case ec "
+                + "where ec.employment_id = e.id and ec.status = 'accepted' and ec.last_working_day is not null order by ec.accepted_at desc limit 1)) as leaving "
+                + "from app.employment e where e.id = any(?)", (Object) ids.toArray(UUID[]::new))) {
+            if (r.get("leaving") != null) {
+                out.put(AuthService.uuid(r.get("id")), LocalDate.parse(String.valueOf(r.get("leaving"))));
+            }
+        }
+        return out;
+    }
+
+    /** Pay must stop on someone's last day. If it was moved earlier after the inputs were frozen, the frozen figures pay too many days. */
+    private static void lastDayCheck(PayrollEngine.Calc calc, Map<String, Object> emp, LocalDate now, LocalDate period) {
+        if (!calc.calculated() || now == null || !now.isBefore(period.plusMonths(1))) {
+            return;
+        }
+        LocalDate frozen = emp.get("leavingOn") == null ? null : LocalDate.parse((String) emp.get("leavingOn"));
+        if (frozen == null || now.isBefore(frozen)) {
+            calc.exceptions().add(new LinkedHashMap<>(Map.of("code", "after_last_day", "level", "blocking", "acceptable", false,
+                    "message", "Their last day is now " + now + ", after the inputs were frozen, so this pays days after it. Reopen the run and freeze it again.",
+                    "link", "payroll")));
+        }
+    }
+
+    /** Accepts several exceptions at once, each with the same reason, each recorded in the audit as its own event. */
+    public int acceptMany(SessionCtx ctx, UUID runId, List<UUID> ids, String reason) {
+        PayrollConfig.need(ctx, "payroll.approve");
+        String why = PayrollConfig.blank(reason);
+        if (why == null || why.length() < 3) {
+            throw ApiException.badRequest("Say why these are accepted");
+        }
+        if (ids == null || ids.isEmpty() || ids.size() > 500) {
+            throw ApiException.badRequest("Choose between 1 and 500 exceptions");
+        }
+        return db.inTenant(ctx.tenantId(), c -> {
+            if (!"calculated".equals(run(c, runId).get("state"))) {
+                throw new ApiException(409, "payroll.state", "Exceptions are accepted on a calculated run");
+            }
+            int done = 0;
+            for (UUID id : new java.util.LinkedHashSet<>(ids)) {
+                Map<String, Object> x = Sql.one(c, "select level, acceptable, code, employment_id, accepted_at from app.run_exception where id = ? and run_id = ?", id, runId);
+                if (x == null) {
+                    throw ApiException.notFound("The exception");
+                }
+                if (!"blocking".equals(x.get("level")) || !Boolean.TRUE.equals(x.get("acceptable"))) {
+                    throw new ApiException(409, "payroll.not_acceptable", "One of these cannot be accepted; it has to be fixed");
+                }
+                if (x.get("acceptedAt") != null) {
+                    continue;
+                }
+                Sql.update(c, "update app.run_exception set accepted_by = ?, accepted_reason = ?, accepted_at = now() where id = ?", ctx.membershipId(), why, id);
+                Map<String, Object> detail = new LinkedHashMap<>();
+                detail.put("code", x.get("code"));
+                detail.put("reason", why);
+                if (x.get("employmentId") != null) {
+                    detail.put("employmentId", x.get("employmentId"));
+                }
+                UserService.audit(c, ctx, "payroll.exception_accepted", "payroll_run", runId, detail);
+                done++;
+            }
+            return done;
         });
     }
 

@@ -450,12 +450,22 @@ class PayrollTest {
         // Maker-checker: whoever calculated cannot approve; the operator has no approve permission at all.
         assertError(403, "permission.denied", () -> runs.approve(operator, run));
         assertError(409, "payroll.blocked", () -> runs.approve(org.admin, run));
+        // Several at once, with one reason: each is its own audit event, and what cannot be accepted is refused.
+        List<UUID> acceptable = new java.util.ArrayList<>();
         for (Object o : exceptions) {
             Map<?, ?> x = (Map<?, ?>) o;
             if ("blocking".equals(x.get("level")) && Boolean.TRUE.equals(x.get("acceptable"))) {
-                runs.accept(org.admin, run, UUID.fromString((String) x.get("id")), "Paid by cheque this month");
+                acceptable.add(UUID.fromString((String) x.get("id")));
             }
         }
+        assertTrue(acceptable.size() >= 2, "no bank account and no PAN");
+        assertError(400, "request.invalid", () -> runs.acceptMany(org.admin, run, List.of(), "Paid by cheque this month"));
+        assertError(400, "request.invalid", () -> runs.acceptMany(org.admin, run, acceptable, "x"));
+        assertError(403, "permission.denied", () -> runs.acceptMany(operator, run, acceptable, "Paid by cheque this month"));
+        assertEquals(acceptable.size(), runs.acceptMany(org.admin, run, acceptable, "Paid by cheque this month"));
+        assertEquals(0, runs.acceptMany(org.admin, run, acceptable, "Paid by cheque this month"), "already accepted: nothing more to do");
+        long audited = db.inTenant(org.id, c -> Sql.query(c, "select 1 from app.audit_event where action = 'payroll.exception_accepted' and target_id = ?", run)).size();
+        assertEquals(acceptable.size(), audited);
         runs.approve(org.admin, run);
         assertError(409, "payroll.not_draft", () -> runs.addInput(operator, run, new PayrollRuns.InputInput(ashaId.toString(), "BONUS",
                 BigDecimal.ONE, null)));
@@ -587,6 +597,84 @@ class PayrollTest {
         assertEquals("warning", x.get("level"));
         assertTrue(String.valueOf(x.get("message")).startsWith("Pay held."), String.valueOf(x.get("message")));
         assertEquals(1, ((List<?>) after.get("holds")).size());
+    }
+
+    // ── pre-run variance checks (R9) ────────────────────────────────────
+
+    /** What the snapshot carries about the last approved month, made from that month's own calculation. */
+    private static Map<String, Object> lastMonth(PayrollEngine.Calc calc, int daysInPeriod, int paid) {
+        Map<String, Object> was = new LinkedHashMap<>();
+        was.put("net", calc.net());
+        was.put("daysPaid", new BigDecimal(paid));
+        was.put("daysInPeriod", new BigDecimal(daysInPeriod));
+        was.put("annual", new BigDecimal("900000"));
+        was.put("compensationFrom", "2025-04-01");
+        List<Map<String, Object>> lines = new java.util.ArrayList<>();
+        for (Map<String, Object> l : calc.lines()) {
+            if (Set.of("earning", "deduction").contains(l.get("kind"))) {
+                Map<String, Object> m = new LinkedHashMap<>();
+                m.put("code", l.get("code"));
+                m.put("name", l.get("name"));
+                BigDecimal a = (BigDecimal) l.get("amount");
+                m.put("signed", "deduction".equals(l.get("kind")) ? a.negate() : a);
+                lines.add(m);
+            }
+        }
+        was.put("lines", lines);
+        return was;
+    }
+
+    private static Map<String, Object> exception(PayrollEngine.Calc calc, String code) {
+        return calc.exceptions().stream().filter(x -> code.equals(x.get("code"))).findFirst().orElse(null);
+    }
+
+    @Test
+    void aBigNetPayChangeIsBlockingAcceptableAndSaysWhy() {
+        Map<String, Object> cfg = baseConfig();
+        LocalDate oct = LocalDate.of(2026, 10, 1);
+        PayrollEngine.Calc full = PayrollEngine.calculate(cfg, asha(31, 0, "KA"), oct);
+        Map<String, Object> emp = asha(21, 10, "KA");   // ten days without pay
+        emp.put("previous", lastMonth(full, 31, 31));
+        PayrollEngine.Calc now = PayrollEngine.calculate(cfg, emp, oct.plusMonths(1));
+        Map<String, Object> x = exception(now, "variance");
+        assertTrue(x != null, "a third of the pay lost is flagged");
+        assertEquals("blocking", x.get("level"));
+        assertEquals(true, x.get("acceptable"));
+        String message = String.valueOf(x.get("message"));
+        assertTrue(message.contains("lower than last month"), message);
+        assertTrue(message.contains("days paid"), "the cause is named: " + message);
+        assertEquals(full.net().toPlainString() + ">" + now.net().toPlainString(), x.get("detailKey"));
+    }
+
+    @Test
+    void theRupeeThresholdCatchesWhatThePercentageMisses() {
+        Map<String, Object> cfg = baseConfig();
+        LocalDate oct = LocalDate.of(2026, 10, 1);
+        PayrollEngine.Calc full = PayrollEngine.calculate(cfg, asha(31, 0, "KA"), oct);
+        Map<String, Object> emp = asha(29, 2, "KA");   // about 6% lower, ₹4,000 or so
+        emp.put("previous", lastMonth(full, 31, 31));
+        Map<String, Object> settings = PayrollEngine.map(cfg, "settings");
+        settings.put("variancePct", new BigDecimal("10"));
+        settings.put("varianceAmount", new BigDecimal("5000"));
+        assertEquals(null, exception(PayrollEngine.calculate(cfg, emp, oct.plusMonths(1)), "variance"), "under both thresholds");
+        settings.put("varianceAmount", new BigDecimal("1000"));
+        assertTrue(exception(PayrollEngine.calculate(cfg, emp, oct.plusMonths(1)), "variance") != null, "over the rupee amount");
+        settings.put("varianceAmount", BigDecimal.ZERO);
+        assertEquals(null, exception(PayrollEngine.calculate(cfg, emp, oct.plusMonths(1)), "variance"), "0 switches the rupee test off");
+        settings.put("variancePct", new BigDecimal("1"));
+        assertTrue(exception(PayrollEngine.calculate(cfg, emp, oct.plusMonths(1)), "variance") != null, "over the percentage");
+    }
+
+    @Test
+    void aFirstMonthHasNothingToCompareWithAndNoPayIsZeroNet() {
+        Map<String, Object> cfg = baseConfig();
+        LocalDate oct = LocalDate.of(2026, 10, 1);
+        assertEquals(null, exception(PayrollEngine.calculate(cfg, asha(31, 0, "KA"), oct), "variance"));
+        PayrollEngine.Calc nothing = PayrollEngine.calculate(cfg, asha(0, 31, "KA"), oct);
+        Map<String, Object> zero = exception(nothing, "net_zero");
+        assertTrue(zero != null, "a month with no pay says so");
+        assertEquals("blocking", zero.get("level"));
+        assertEquals(true, zero.get("acceptable"));
     }
 
     // ── helpers ─────────────────────────────────────────────────────────

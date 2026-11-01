@@ -733,6 +733,7 @@ const payrollCalls = {
   freeze: (id) => post(`/org/payroll/runs/${id}/freeze`),
   calculate: (id) => post(`/org/payroll/runs/${id}/calculate`),
   reopen: (id, reason) => post(`/org/payroll/runs/${id}/reopen`, { reason }),
+  acceptMany: (id, ids, reason) => post(`/org/payroll/runs/${id}/exceptions/accept`, { ids, reason }),
   accept: (id, exceptionId, reason) => post(`/org/payroll/runs/${id}/exceptions/${exceptionId}/accept`, { reason }),
   approve: (id) => post(`/org/payroll/runs/${id}/approve`),
   sendBack: (id, reason) => post(`/org/payroll/runs/${id}/send-back`, { reason }),
