@@ -44,7 +44,8 @@ const ORGANIZATION = {
 
 const consolePage = page(() => import('./pages/Console.jsx'), (ctx) => ({ me: ctx.me, page: ctx.page, onEnteredSupport: ctx.onEnteredSupport }))
 const usagePage = page(() => import('./pages/Usage.jsx'), (ctx) => ({ me: ctx.me }))
-const CONSOLE = { organizations: consolePage, usage: usagePage, users: consolePage, support: consolePage, email: consolePage }
+const rulesPage = page(() => import('./pages/PayrollRules.jsx'), (ctx) => ({ me: ctx.me }))
+const CONSOLE = { organizations: consolePage, usage: usagePage, 'payroll-rules': rulesPage, users: consolePage, support: consolePage, email: consolePage }
 
 export const registry = (me) => (me.kind === 'platform' ? CONSOLE : ORGANIZATION)
 

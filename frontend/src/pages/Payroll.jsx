@@ -3,6 +3,7 @@ import { payroll } from '../api.js'
 import { formatDate, formatDay, localToday, useAction, useLoad, numeric } from '../hooks.js'
 import { Badge, Empty, ErrorNote, Tabs } from '../ui.jsx'
 import { useConfirm, useToast } from '../feedbackContext.js'
+import WageCheck from './WageCheck.jsx'
 import PayrollSetup from './PayrollSetup.jsx'
 import PayslipView from './PayslipView.jsx'
 import { RUN_STATES, RUN_STEPS, rupees } from './payrollText.js'
@@ -20,12 +21,14 @@ export default function Payroll({ me }) {
       <Tabs
         tabs={[
           { id: 'runs', label: 'Runs' },
+          { id: 'wages', label: 'Wages' },
           { id: 'setup', label: 'Setup' },
         ]}
         current={tab}
         onChange={setTab}
       />
       {tab === 'runs' && <RunList onOpen={setOpen} onSetup={() => setTab('setup')} />}
+      {tab === 'wages' && <WageCheck me={me} />}
       {tab === 'setup' && <PayrollSetup />}
     </>
   )

@@ -69,6 +69,8 @@ export default defineConfig({
     { name: 'branding', testMatch: /25-branding\.spec\.ts/, use: desktop, dependencies: ['performance'] },
     // How each Organization uses what it bought, for the platform team, after the story has run: --project=usage (needs the story first).
     { name: 'usage', testMatch: /33-usage\.spec\.ts/, use: desktop, dependencies: ['branding'] },
+    // The wage check and the state rules screens, on the payroll the story approved.
+    { name: 'wages', testMatch: /34-wages-and-rules\.spec\.ts/, use: desktop, dependencies: ['usage'] },
     // A page that crashes stays inside its region and is reported: --project=boundary.
     { name: 'boundary', testMatch: /31-error-boundary\.spec\.ts/, use: desktop },
     // An axe scan of every page each role reaches, in an Organization of its own: --project=a11y.
