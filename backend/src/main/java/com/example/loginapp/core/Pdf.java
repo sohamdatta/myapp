@@ -77,7 +77,14 @@ public final class Pdf {
 
     /** A single A4 page of placed text and rules, for forms such as a payslip. */
     public static byte[] page(String title, List<Item> items) {
+        return writePage(title, items, null);
+    }
+
+    private static byte[] writePage(String title, List<Item> items, Image image) {
         ByteArrayOutputStream c = new ByteArrayOutputStream();
+        if (image != null) {
+            put(c, "q " + num(image.w()) + " 0 0 " + num(image.h()) + " " + num(image.x()) + " " + num(HEIGHT - image.y() - image.h()) + " cm /Im1 Do Q\n");
+        }
         for (Item it : items) {
             float y = HEIGHT - it.y();
             if (it.text() == null && it.fill()) {
@@ -93,7 +100,62 @@ public final class Pdf {
                 put(c, " Tj ET\n");
             }
         }
-        return writeContents(title, List.of(c.toByteArray()));
+        return writeContents(title, List.of(c.toByteArray()), image);
+    }
+
+    /**
+     * A picture placed on the page: pixels as RGB with an optional alpha mask, drawn in the box {@code w} by {@code h} points
+     * whose top left corner is at ({@code x}, {@code y} from the top of the page).
+     */
+    public record Image(byte[] rgb, byte[] alpha, int width, int height, float x, float y, float w, float h) {}
+
+    /**
+     * A PNG or JPEG scaled to fit inside {@code maxW} by {@code maxH} points with its top left corner at (x, y from the top),
+     * or null when the bytes are not an image the runtime can read: a page without its picture beats no page.
+     */
+    public static Image image(byte[] file, float x, float y, float maxW, float maxH) {
+        try {
+            java.awt.image.BufferedImage src = javax.imageio.ImageIO.read(new java.io.ByteArrayInputStream(file));
+            if (src == null || src.getWidth() < 1 || src.getHeight() < 1) {
+                return null;
+            }
+            float scale = Math.min(maxW / src.getWidth(), maxH / src.getHeight());
+            float drawW = src.getWidth() * scale;
+            float drawH = src.getHeight() * scale;
+            // Enough pixels for about 288 dpi at the size it is drawn, and no more: a 1200 pixel logo drawn 120 points wide would otherwise
+            // add megabytes to every certificate. Always redrawn as plain ARGB so palette, grey and 16-bit files come out right.
+            int w = Math.max(1, Math.min(src.getWidth(), Math.round(drawW * 4)));
+            int h = Math.max(1, Math.min(src.getHeight(), Math.round(drawH * 4)));
+            java.awt.image.BufferedImage argb = new java.awt.image.BufferedImage(w, h, java.awt.image.BufferedImage.TYPE_INT_ARGB);
+            java.awt.Graphics2D g = argb.createGraphics();
+            g.setRenderingHint(java.awt.RenderingHints.KEY_INTERPOLATION, java.awt.RenderingHints.VALUE_INTERPOLATION_BICUBIC);
+            g.setRenderingHint(java.awt.RenderingHints.KEY_RENDERING, java.awt.RenderingHints.VALUE_RENDER_QUALITY);
+            g.drawImage(src, 0, 0, w, h, null);
+            g.dispose();
+            byte[] rgb = new byte[w * h * 3];
+            byte[] alpha = new byte[w * h];
+            boolean transparent = false;
+            for (int j = 0; j < h; j++) {
+                for (int i = 0; i < w; i++) {
+                    int p = argb.getRGB(i, j);
+                    int k = j * w + i;
+                    int a = p >>> 24;
+                    transparent |= a != 255;
+                    alpha[k] = (byte) a;
+                    rgb[3 * k] = (byte) (p >> 16);
+                    rgb[3 * k + 1] = (byte) (p >> 8);
+                    rgb[3 * k + 2] = (byte) p;
+                }
+            }
+            return new Image(rgb, transparent ? alpha : null, w, h, x, y, drawW, drawH);
+        } catch (java.io.IOException | RuntimeException e) {
+            return null;
+        }
+    }
+
+    /** A single A4 page of placed text and rules, and a picture, for forms with a logo. */
+    public static byte[] page(String title, List<Item> items, Image image) {
+        return image == null ? page(title, items) : writePage(title, items, image);
     }
 
     // ── layout ──────────────────────────────────────────────────────────
@@ -202,14 +264,15 @@ public final class Pdf {
         for (int i = 0; i < pages.size(); i++) {
             contents.add(content(pages.get(i), i + 1, pages.size()));
         }
-        return writeContents(title, contents);
+        return writeContents(title, contents, null);
     }
 
-    private static byte[] writeContents(String title, List<byte[]> pages) {
+    private static byte[] writeContents(String title, List<byte[]> pages, Image image) {
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         List<Integer> offsets = new ArrayList<>();
         int pageCount = pages.size();
         int firstPage = 6;   // 1 catalog, 2 pages, 3 regular font, 4 bold font, 5 info; then a page and its content each
+        int imageObj = firstPage + 2 * pageCount;   // then the picture, and its transparency mask when it has one
         put(out, "%PDF-1.4\n%âãÏÓ\n");
 
         StringBuilder kids = new StringBuilder();
@@ -228,12 +291,20 @@ public final class Pdf {
         for (int i = 0; i < pageCount; i++) {
             int pageObj = firstPage + 2 * i;
             object(out, offsets, pageObj, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 " + num(WIDTH) + " " + num(HEIGHT) + "] "
-                    + "/Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents " + (pageObj + 1) + " 0 R >>");
+                    + "/Resources << /Font << /F1 3 0 R /F2 4 0 R >>" + (image == null ? "" : " /XObject << /Im1 " + imageObj + " 0 R >>")
+                    + " >> /Contents " + (pageObj + 1) + " 0 R >>");
             byte[] content = pages.get(i);
             offsets.add(out.size());
             put(out, (pageObj + 1) + " 0 obj\n<< /Length " + content.length + " >>\nstream\n");
             out.writeBytes(content);
             put(out, "\nendstream\nendobj\n");
+        }
+
+        if (image != null) {
+            imageObject(out, offsets, imageObj, image.width(), image.height(), "/DeviceRGB", image.rgb(), image.alpha() == null ? 0 : imageObj + 1);
+            if (image.alpha() != null) {
+                imageObject(out, offsets, imageObj + 1, image.width(), image.height(), "/DeviceGray", image.alpha(), 0);
+            }
         }
 
         int xref = out.size();
@@ -286,6 +357,24 @@ public final class Pdf {
         }
         b.write(')');
         return b.toByteArray();
+    }
+
+    /** An image object: the samples deflated, with the object that masks it where it has transparency. */
+    private static void imageObject(ByteArrayOutputStream out, List<Integer> offsets, int number, int width, int height, String colorSpace,
+                                    byte[] samples, int mask) {
+        ByteArrayOutputStream z = new ByteArrayOutputStream();
+        try (java.util.zip.DeflaterOutputStream d = new java.util.zip.DeflaterOutputStream(z)) {
+            d.write(samples);
+        } catch (java.io.IOException e) {
+            throw new IllegalStateException(e);   // writing to memory cannot fail
+        }
+        byte[] data = z.toByteArray();
+        offsets.add(out.size());
+        put(out, number + " 0 obj\n<< /Type /XObject /Subtype /Image /Width " + width + " /Height " + height + " /ColorSpace " + colorSpace
+                + " /BitsPerComponent 8 /Filter /FlateDecode " + (mask == 0 ? "" : "/SMask " + mask + " 0 R ") + "/Length " + data.length
+                + " >>\nstream\n");
+        out.writeBytes(data);
+        put(out, "\nendstream\nendobj\n");
     }
 
     private static void object(ByteArrayOutputStream out, List<Integer> offsets, int number, String body) {

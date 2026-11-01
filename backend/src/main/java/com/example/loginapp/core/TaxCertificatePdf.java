@@ -9,6 +9,9 @@ import java.util.Map;
  * Form 130 Part B as one A4 page: the deductor, the employee, and the year's salary computation line by line. Rupees are
  * written "Rs." because the standard PDF fonts have no rupee sign. A certificate built on tax rules that are not yet signed
  * off says so across the top and in the footer.
+ *
+ * The Organization's layout adds a logo, a header line, a signatory block and footer text around the figures. It cannot
+ * remove or reword any figure or the statutory notes, which are not part of the layout.
  */
 final class TaxCertificatePdf {
 
@@ -17,21 +20,46 @@ final class TaxCertificatePdf {
 
     private TaxCertificatePdf() {}
 
-    static byte[] render(Map<String, Object> b, boolean draftRules) {
+    /** The logo scaled into its box at the top left, or null when there is none or the layout hides it. Done once and reused for every certificate. */
+    static Pdf.Image logo(byte[] file, CertificateLayout.Layout layout) {
+        return layout.showLogo() && file != null ? Pdf.image(file, LEFT, 38f, 120f, 46f) : null;
+    }
+
+    static byte[] render(Map<String, Object> b, boolean draftRules, CertificateLayout.Layout layout, Pdf.Image logo) {
         List<Pdf.Item> items = new ArrayList<>();
-        float y = 56;
-        items.add(Pdf.Item.text(LEFT, y, PayrollEngine.str(b.get("employer")), 15, true));
-        items.add(Pdf.Item.right(RIGHT, y, "Form 130 Part B", 12, true));
-        y += 16;
-        if (b.get("employerAddress") != null) {
-            items.add(Pdf.Item.text(LEFT, y, PayrollEngine.str(b.get("employerAddress")).replace('\n', ','), 9, false));
+        float textX = logo == null ? LEFT : LEFT + logo.w() + 14;
+        if (layout.headerLine() != null) {
+            items.add(Pdf.Item.text(LEFT, 28, layout.headerLine(), 8, false));
         }
-        items.add(Pdf.Item.right(RIGHT, y, "Salary computation, tax year " + b.get("taxYear"), 9, false));
-        y += 14;
-        items.add(Pdf.Item.text(LEFT, y, "TAN " + PayrollEngine.str(b.get("tan")) + (b.get("employerPan") == null ? "" : "   PAN " + b.get("employerPan")), 9, false));
+        // The employer block is kept clear of the form's title and subtitle on the right (about 160 points), wrapping long names and addresses.
+        float room = RIGHT - 160 - textX;
+        List<String> nameLines = wrap(PayrollEngine.str(b.get("employer")), room, 15, true);
+        for (int i = 0; i < nameLines.size(); i++) {
+            items.add(Pdf.Item.text(textX, 56 + 17 * i, nameLines.get(i), 15, true));
+        }
+        items.add(Pdf.Item.right(RIGHT, 56, "Form 130 Part B", 12, true));
+        float y = 72 + 17 * (nameLines.size() - 1);
+        items.add(Pdf.Item.right(RIGHT, 72, "Salary computation, tax year " + b.get("taxYear"), 9, false));
+        if (b.get("employerAddress") != null) {
+            for (String line : wrap(PayrollEngine.str(b.get("employerAddress")).replace('\n', ','), room, 9, false)) {
+                items.add(Pdf.Item.text(textX, y, line, 9, false));
+                y += 11;
+            }
+            y += 3;
+        } else {
+            y += 14;
+        }
+        items.add(Pdf.Item.text(textX, y, "TAN " + PayrollEngine.str(b.get("tan")) + (b.get("employerPan") == null ? "" : "   PAN " + b.get("employerPan")), 9, false));
+        if (Boolean.TRUE.equals(b.get("sample"))) {
+            y += 14;
+            items.add(Pdf.Item.text(LEFT, y, "SAMPLE: the figures are made up to show the layout.", 9, true));
+        }
         if (draftRules) {
             y += 14;
             items.add(Pdf.Item.text(LEFT, y, "PROVISIONAL: the income tax rules used are not yet signed off by the payroll consultant.", 9, true));
+        }
+        if (logo != null) {
+            y = Math.max(y, logo.y() + logo.h() + 4);
         }
         y += 12;
         items.add(Pdf.Item.rule(LEFT, y, RIGHT));
@@ -66,13 +94,68 @@ final class TaxCertificatePdf {
         y = line(items, y, balance.signum() > 0 ? "Tax still to be paid" : balance.signum() < 0 ? "Tax deducted in excess" : "Balance",
                 balance.abs(), true);
 
+        if (layout.signatoryName() != null || layout.signatoryDesignation() != null) {
+            y += 12;
+            items.add(Pdf.Item.text(LEFT, y, "For " + PayrollEngine.str(b.get("employer")), 9, false));
+            y += 40;
+            items.add(Pdf.Item.rule(LEFT, y, LEFT + 170));
+            y += 12;
+            if (layout.signatoryName() != null) {
+                items.add(Pdf.Item.text(LEFT, y, layout.signatoryName(), 10, true));
+                y += 12;
+            }
+            if (layout.signatoryDesignation() != null) {
+                items.add(Pdf.Item.text(LEFT, y, layout.signatoryDesignation(), 9, false));
+                y += 12;
+            }
+        }
+
         y += 18;
         items.add(Pdf.Item.rule(LEFT, y, RIGHT));
         y += 14;
         items.add(Pdf.Item.text(LEFT, y, "Part A, the quarterly record of tax deposited, comes from TRACES and is not part of this document.", 8, false));
         y += 11;
         items.add(Pdf.Item.text(LEFT, y, "Income and tax are the projection on the last payslip of the year; tax deducted is what the payslips took, with other employers' tax.", 8, false));
-        return Pdf.page("Form 130 Part B " + b.get("taxYear") + " " + b.get("code"), items);
+
+        if (layout.footerText() != null) {
+            List<String> lines = wrap(layout.footerText(), RIGHT - LEFT, 8, false);
+            float top = 812 - 10 * (lines.size() - 1);
+            for (int i = 0; i < lines.size(); i++) {
+                items.add(Pdf.Item.text(LEFT, top + 10 * i, lines.get(i), 8, false));
+            }
+        }
+        return Pdf.page("Form 130 Part B " + b.get("taxYear") + " " + b.get("code"), items, logo);
+    }
+
+    /** Words packed into lines no wider than {@code width} points; a word wider than a line is broken where it must be. */
+    private static List<String> wrap(String text, float width, float size, boolean bold) {
+        List<String> lines = new ArrayList<>();
+        StringBuilder current = new StringBuilder();
+        for (String word : text.split(" +")) {
+            while (Pdf.width(word, size, bold) > width && word.length() > 1) {
+                int cut = word.length() - 1;
+                while (cut > 1 && Pdf.width(word.substring(0, cut), size, bold) > width) {
+                    cut--;
+                }
+                if (current.length() > 0) {
+                    lines.add(current.toString());
+                    current = new StringBuilder();
+                }
+                lines.add(word.substring(0, cut));
+                word = word.substring(cut);
+            }
+            String attempt = current.length() == 0 ? word : current + " " + word;
+            if (current.length() > 0 && Pdf.width(attempt, size, bold) > width) {
+                lines.add(current.toString());
+                current = new StringBuilder(word);
+            } else {
+                current = new StringBuilder(attempt);
+            }
+        }
+        if (current.length() > 0) {
+            lines.add(current.toString());
+        }
+        return lines;
     }
 
     private static float line(List<Pdf.Item> items, float y, String label, Object amount, boolean bold) {

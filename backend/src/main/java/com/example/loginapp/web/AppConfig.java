@@ -23,6 +23,7 @@ import com.example.loginapp.core.Branding;
 import com.example.loginapp.core.Calibration;
 import com.example.loginapp.core.ClientErrors;
 import com.example.loginapp.core.ChecklistService;
+import com.example.loginapp.core.CertificateLayout;
 import com.example.loginapp.core.Crypto;
 import com.example.loginapp.core.MailOutbox;
 import com.example.loginapp.core.MailSender;
@@ -332,6 +333,11 @@ public class AppConfig {
     @Bean
     public OtherEmployerIncome otherEmployerIncome(Db db) {
         return new OtherEmployerIncome(db);
+    }
+
+    @Bean
+    public CertificateLayout certificateLayout(Db db) {
+        return new CertificateLayout(db);
     }
 
     @Bean

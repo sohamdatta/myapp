@@ -29,6 +29,8 @@ import com.example.loginapp.core.AttendanceSettingsService;
 import com.example.loginapp.core.AttendanceSettingsService.LocationInput;
 import com.example.loginapp.core.AttendanceSettingsService.ShiftInput;
 import com.example.loginapp.core.AuthService;
+import com.example.loginapp.core.Branding;
+import com.example.loginapp.core.CertificateLayout;
 import com.example.loginapp.core.Crypto;
 import com.example.loginapp.core.Db;
 import com.example.loginapp.core.DocumentService;
@@ -71,6 +73,8 @@ class TaxCertificatesTest {
     private static PayrollPay pay;
     private static PayrollRuns runs;
     private static TaxCertificates certificates;
+    private static CertificateLayout layouts;
+    private static Branding branding;
     private static SessionCtx superAdmin;
     private static boolean reachable;
 
@@ -109,6 +113,8 @@ class TaxCertificatesTest {
         pay = new PayrollPay(db);
         runs = new PayrollRuns(db, crypto);
         certificates = new TaxCertificates(db, crypto);
+        layouts = new CertificateLayout(db);
+        branding = new Branding(db);
         platform.ensureFirstSuperAdmin("root@platform.test", PASSWORD);
         superAdmin = auth.resolve(auth.enterConsole(auth.resolve(auth.login("root@platform.test", PASSWORD))));
     }
@@ -318,6 +324,171 @@ class TaxCertificatesTest {
         // The other quarters have no such section.
         com.example.loginapp.core.TdsStatements.BuildResult q3 = statements.build(k.operator, YEAR, 3);
         assertTrue(q3.checks().stream().noneMatch(c -> c.code().startsWith("annexure")));
+    }
+
+    private static CertificateLayout.Input layout(String header, String footer, String name, String designation, Boolean logo) {
+        return new CertificateLayout.Input(header, footer, name, designation, logo);
+    }
+
+    /** The text of a generated PDF as the page stream holds it (uncompressed), for finding what was printed. */
+    private static String printed(DocumentService.Content pdf) {
+        return new String(pdf.bytes(), java.nio.charset.StandardCharsets.ISO_8859_1);
+    }
+
+    @Test
+    void theLayoutIsCheckedKeptAsVersionsAndOnlyAnAdminChangesIt() throws Exception {
+        assumeTrue(reachable, "PostgreSQL is not reachable");
+        Case k = organization();
+        Case other = organization();
+        CertificateLayout.View none = layouts.get(k.org.admin);
+        assertEquals(0, none.current().version(), "never saved: the plain layout");
+        assertTrue(none.current().showLogo());
+        assertEquals(0, none.history().size());
+        assertFalse(none.hasLogo());
+
+        // Payroll may look, only the Org Admin may change; an employee may do neither.
+        assertEquals(0, layouts.get(k.operator).current().version());
+        assertEquals(403, assertThrows(ApiException.class, () -> layouts.save(k.operator, layout("x", null, null, null, true))).status());
+        assertEquals(403, assertThrows(ApiException.class, () -> layouts.get(k.asha)).status());
+        assertEquals(403, assertThrows(ApiException.class, () -> layouts.preview(k.asha, null)).status());
+
+        // Each change is the next version; saving what is already in force adds none; blank fields are left out.
+        CertificateLayout.View v1 = layouts.save(k.org.admin, layout("  Strictly confidential  ", "Registered office: 1 MG Road", "R. Menon", "Head of HR", true));
+        assertEquals(1, v1.current().version());
+        assertEquals("Strictly confidential", v1.current().headerLine(), "trimmed");
+        assertEquals(1, layouts.save(k.org.admin, layout("Strictly confidential", "Registered office: 1 MG Road", "R. Menon", "Head of HR", null)).current().version());
+        CertificateLayout.View v2 = layouts.save(k.org.admin, layout("", null, "R. Menon", "  ", false));
+        assertEquals(2, v2.current().version());
+        assertEquals(null, v2.current().headerLine());
+        assertEquals(null, v2.current().signatoryDesignation());
+        assertFalse(v2.current().showLogo());
+        assertEquals(List.of(1), v2.history().stream().map(CertificateLayout.Layout::version).toList());
+        assertEquals("Head of HR", v2.history().getFirst().signatoryDesignation(), "an earlier version is kept as it was");
+
+        // What the certificate's font cannot print, too much, and anything but one line are refused when saved.
+        for (CertificateLayout.Input bad : List.of(
+                layout("x".repeat(121), null, null, null, true),
+                layout(null, "x".repeat(301), null, null, true),
+                layout(null, null, "n".repeat(81), null, true),
+                layout("Line one\nline two", null, null, null, true),
+                layout("ab\u0001cd", null, null, null, true),
+                layout("W".repeat(120), null, null, null, true),                         // 120 capital W's are wider than the page
+                layout(null, null, "W".repeat(80), null, true),                           // and a signatory name wider than its block
+                layout(null, "x".repeat(250), null, null, true),                         // one word wider than a footer line cannot wrap
+                layout("\u092a\u094d\u0930\u092e\u093e\u0923\u092a\u0924\u094d\u0930", null, null, null, true))) {   // Devanagari: no glyphs in the standard font
+            assertEquals(400, assertThrows(ApiException.class, () -> layouts.save(k.org.admin, bad)).status());
+        }
+        assertEquals(400, assertThrows(ApiException.class, () -> layouts.save(k.org.admin, null)).status());
+        assertEquals(2, layouts.get(k.org.admin).current().version(), "nothing half-saved");
+
+        // Versions are never changed or deleted, even by the database owner, and each Organization has its own.
+        assertThrows(Exception.class, () -> db.inOwner(c -> Sql.update(c, "update app.certificate_layout set header_line = 'changed' where tenant_id = ?", k.org.id)));
+        assertThrows(Exception.class, () -> db.inOwner(c -> Sql.update(c, "delete from app.certificate_layout where tenant_id = ?", k.org.id)));
+        assertEquals(0, layouts.get(other.org.admin).current().version());
+        Map<String, Object> audit = db.inOwner(c -> Sql.one(c, "select detail->>'version' as v, (detail->>'before')::jsonb->>'headerLine' as b, (detail->>'after')::jsonb->>'headerLine' as a "
+                + "from app.audit_event where action = 'organization.certificate_layout_changed' and tenant_id = ? and detail->>'version' = '1'", k.org.id));
+        assertEquals("Strictly confidential", audit.get("a"), "the audit trail has what it was and what it became");
+    }
+
+    @Test
+    void aCertificateCarriesTheLayoutItWasBuiltWithAndAReleasedOneNeverChanges() throws Exception {
+        assumeTrue(reachable, "PostgreSQL is not reachable");
+        Case k = organization();
+        if (!TODAY.withDayOfMonth(1).equals(MARCH)) {
+            approve(k, TODAY.withDayOfMonth(1), true);
+        }
+        approve(k, MARCH, false);
+
+        // A logo with transparency, as the Organization settings page would store it, and a full layout.
+        java.awt.image.BufferedImage img = new java.awt.image.BufferedImage(60, 30, java.awt.image.BufferedImage.TYPE_INT_ARGB);
+        for (int x = 0; x < 60; x++) {
+            for (int y = 0; y < 30; y++) {
+                img.setRGB(x, y, x < 30 ? 0xFF1E5AA8 : 0x00FFFFFF);
+            }
+        }
+        java.io.ByteArrayOutputStream png = new java.io.ByteArrayOutputStream();
+        javax.imageio.ImageIO.write(img, "png", png);
+        branding.saveLogo(k.org.admin, png.toByteArray());
+        assertTrue(layouts.get(k.org.admin).hasLogo());
+        layouts.save(k.org.admin, layout("HEADER-ONE confidential", "FOOTER-ONE registered office, Bengaluru", "SIGNER-ONE", "DESIGNATION-ONE", true));
+
+        // A preview is a sample in the typed layout, with made-up figures, and stores nothing.
+        String sample = printed(layouts.preview(k.org.admin, layout("HEADER-PREVIEW", null, null, null, false)));
+        assertTrue(sample.startsWith("%PDF") && sample.contains("HEADER-PREVIEW") && sample.contains("SAMPLE"), "a sample in the typed layout");
+        assertFalse(sample.contains("/Subtype /Image"), "the logo is hidden in that layout");
+        assertEquals(1, layouts.get(k.org.admin).current().version(), "previewing saves nothing");
+
+        TaxCertificates.BuildResult built = certificates.build(k.org.admin, YEAR);
+        assertEquals(2, built.built());
+        TaxCertificates.Year year = certificates.year(k.org.admin, YEAR);
+        assertEquals(1, year.layoutVersion());
+        TaxCertificates.Row asha = year.certificates().stream().filter(r -> r.name().equals("Asha Rao")).findFirst().orElseThrow();
+        TaxCertificates.Row ravi = year.certificates().stream().filter(r -> r.name().equals("Ravi Kumar")).findFirst().orElseThrow();
+        assertEquals(1, asha.layoutVersion());
+
+        String one = printed(certificates.file(k.operator, UUID.fromString(asha.id())));
+        for (String text : List.of("HEADER-ONE confidential", "FOOTER-ONE registered office, Bengaluru", "SIGNER-ONE", "DESIGNATION-ONE", "For Acme Pvt Ltd")) {
+            assertTrue(one.contains(text), "printed: " + text);
+        }
+        assertTrue(one.contains("/Subtype /Image") && one.contains("/SMask"), "the logo, with its transparency, is on the page");
+        for (String mandatory : List.of("Total income", "Taxable income", "Tax deducted", "comes from TRACES")) {
+            assertTrue(one.contains(mandatory), "the layout never removes: " + mandatory);
+        }
+
+        // Release one; then change the layout and build again.
+        SessionCtx approver = join(k.org, "approver", List.of("payroll_approver"));
+        certificates.release(approver, UUID.fromString(asha.id()), true);
+        byte[] before = certificates.mine(k.asha, UUID.fromString(asha.id())).bytes();
+        layouts.save(k.org.admin, layout("HEADER-TWO", null, null, null, false));
+        TaxCertificates.BuildResult again = certificates.build(k.org.admin, YEAR);
+        assertEquals(1, again.built(), "the draft is rebuilt");
+        assertEquals(1, again.alreadyReleased());
+
+        TaxCertificates.Year after = certificates.year(k.org.admin, YEAR);
+        assertEquals(2, after.layoutVersion());
+        assertEquals(1, after.certificates().stream().filter(r -> r.id().equals(asha.id())).findFirst().orElseThrow().layoutVersion(), "released: still built with version 1");
+        assertEquals(2, after.certificates().stream().filter(r -> r.id().equals(ravi.id())).findFirst().orElseThrow().layoutVersion(), "the draft picked up version 2");
+        assertTrue(java.util.Arrays.equals(before, certificates.mine(k.asha, UUID.fromString(asha.id())).bytes()), "a released certificate is byte for byte the same");
+        String two = printed(certificates.file(k.operator, UUID.fromString(ravi.id())));
+        assertTrue(two.contains("HEADER-TWO") && !two.contains("HEADER-ONE") && !two.contains("SIGNER-ONE") && !two.contains("/Subtype /Image"), "the rebuilt draft has the new layout only");
+    }
+
+    @Test
+    void aLongEmployerNameAndAnOversizedGreyLogoStillFitAndStaySmall() throws Exception {
+        assumeTrue(reachable, "PostgreSQL is not reachable");
+        Case k = organization();
+        if (!TODAY.withDayOfMonth(1).equals(MARCH)) {
+            approve(k, TODAY.withDayOfMonth(1), true);
+        }
+        approve(k, MARCH, false);
+        String name = "Nexvance Technologies and Allied Services Private Limited Formerly Known As Globex";
+        db.inOwner(c -> Sql.update(c, "update app.payroll_settings set entity_name = ?, address = ? where tenant_id = ?", name,
+                "Unit 4B, Prestige Tech Park, Outer Ring Road, Marathahalli, Bengaluru, Karnataka 560103, India", k.org.id));
+
+        // 1200 x 400 grey noise: the largest logo the app takes, and the worst to compress.
+        java.awt.image.BufferedImage grey = new java.awt.image.BufferedImage(1200, 400, java.awt.image.BufferedImage.TYPE_BYTE_GRAY);
+        java.util.Random random = new java.util.Random(7);
+        for (int x = 0; x < 1200; x++) {
+            for (int y = 0; y < 400; y++) {
+                grey.getRaster().setSample(x, y, 0, random.nextInt(256));
+            }
+        }
+        java.io.ByteArrayOutputStream png = new java.io.ByteArrayOutputStream();
+        javax.imageio.ImageIO.write(grey, "png", png);
+        branding.saveLogo(k.org.admin, png.toByteArray());
+        layouts.save(k.org.admin, layout("HEADER", "FOOTER", "SIGNER", "DESIGNATION", true));
+        assertEquals(2, certificates.build(k.org.admin, YEAR).built());
+        TaxCertificates.Row asha = certificates.year(k.org.admin, YEAR).certificates().getFirst();
+        DocumentService.Content pdf = certificates.file(k.operator, UUID.fromString(asha.id()));
+        String text = printed(pdf);
+        assertTrue(text.contains("/Subtype /Image"), "the logo is on the page");
+        assertTrue(pdf.bytes().length < 400_000, "a 1200 x 400 logo is scaled to what the page can show, not carried whole: " + pdf.bytes().length + " bytes");
+        // The long name and the address are split over lines, so every word is there and no line is one long run.
+        for (String word : List.of("Nexvance", "Allied", "Globex", "Marathahalli", "560103")) {
+            assertTrue(text.contains(word), "printed: " + word);
+        }
+        assertFalse(text.contains("(Nexvance Technologies and Allied Services Private Limited Formerly"), "the heading wraps rather than running on (a line starts with a parenthesis in the page stream)");
+        assertTrue(text.contains("(Nexvance Technologies"), "and its first line starts the heading");
     }
 
     @Test

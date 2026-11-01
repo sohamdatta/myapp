@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { branding } from '../api.js'
+import { branding, certificateLayout } from '../api.js'
 import { formatDate, useAction, useLoad } from '../hooks.js'
 import { ErrorNote } from '../ui.jsx'
 import { PRODUCT, logoUrl } from '../brand/brand.js'
@@ -24,6 +24,7 @@ export default function OrgSettings({ me, onRefresh }) {
     }
   }
   return (
+    <>
     <section className="panel" data-testid="branding">
       <h3>Logo</h3>
       <p className="hint">
@@ -64,6 +65,120 @@ export default function OrgSettings({ me, onRefresh }) {
           )}
         </div>
       )}
+    </section>
+    {(me.modules || []).includes('payroll') && b.canChange && <CertificateLayoutPanel hasLogo={Boolean(current)} />}
+    </>
+  )
+}
+
+const fromLayout = (l) => ({
+  headerLine: l.headerLine || '',
+  footerText: l.footerText || '',
+  signatoryName: l.signatoryName || '',
+  signatoryDesignation: l.signatoryDesignation || '',
+  showLogo: l.showLogo,
+})
+
+/**
+ * How the Form 130 Part B certificate looks: a header line, footer text, a signatory block and whether the logo shows.
+ * The figures and the statutory wording are not part of it. Each save is a new version; a draft certificate picks it up when
+ * built again, and a released one never changes.
+ */
+function CertificateLayoutPanel({ hasLogo }) {
+  const loaded = useLoad(certificateLayout.get)
+  const [form, setForm] = useState(null)
+  const [view, setView] = useState(null)
+  const [saved, setSaved] = useState('')
+  const { busy, error, run } = useAction()
+  const v = view || loaded.data
+  if (loaded.loading && !v) return <p className="muted">Loading…</p>
+  if (loaded.error) return <ErrorNote>{loaded.error}</ErrorNote>
+  const start = fromLayout(v.current)
+  const f = form || start
+  const set = (key) => (e) => {
+    setSaved('')
+    setForm({ ...f, [key]: e.target.type === 'checkbox' ? e.target.checked : e.target.value })
+  }
+  const changed = JSON.stringify(f) !== JSON.stringify(start)
+  const typed = { ...f }
+  return (
+    <section className="panel" data-testid="certificate-layout">
+      <h3>Tax certificate layout</h3>
+      <p className="hint">
+        Shapes the Form 130 Part B certificate your employees receive: a line above the title, text at the foot of the page, who signs, and
+        whether your logo shows. The figures and the statutory wording cannot be changed here. Use Western European letters, digits and
+        punctuation: the certificate&apos;s font cannot print other scripts. A saved change applies to certificates built afterwards; drafts pick
+        it up when built again, and a released certificate never changes.
+      </p>
+      <p className="hint" data-testid="layout-version">
+        {v.current.version === 0 ? 'Not set yet: certificates use the plain layout.' : `Version ${v.current.version}, saved ${formatDate(v.current.savedAt)}.`}
+      </p>
+      <ErrorNote>{error}</ErrorNote>
+      {saved && <p className="notice">{saved}</p>}
+      <div className="form-grid">
+        <label htmlFor="cl-header">Header line</label>
+        <input id="cl-header" maxLength={120} value={f.headerLine} onChange={set('headerLine')} />
+        <label htmlFor="cl-footer">Footer text</label>
+        <textarea id="cl-footer" maxLength={300} rows={3} value={f.footerText} onChange={set('footerText')} />
+        <label htmlFor="cl-name">Signatory&apos;s name</label>
+        <input id="cl-name" maxLength={80} value={f.signatoryName} onChange={set('signatoryName')} />
+        <label htmlFor="cl-designation">Signatory&apos;s designation</label>
+        <input id="cl-designation" maxLength={80} value={f.signatoryDesignation} onChange={set('signatoryDesignation')} />
+        <label htmlFor="cl-logo">Show the logo</label>
+        <span>
+          <input id="cl-logo" type="checkbox" checked={f.showLogo} onChange={set('showLogo')} disabled={!hasLogo} />{' '}
+          <span className="hint">{hasLogo ? 'Your logo, set above, at the top left.' : 'Upload a logo above to show it here.'}</span>
+        </span>
+      </div>
+      <div className="form-actions">
+        <button
+          type="button"
+          className="secondary"
+          disabled={busy}
+          onClick={async () => {
+            // Opened first, while the click still counts, so a pop-up blocker does not swallow it; pointed at the sample once it is made.
+            const tab = window.open('', '_blank')
+            if (!tab) {
+              setSaved('')
+              await run(async () => {
+                throw new Error('Your browser blocked the sample from opening. Allow pop-ups for this site and try again.')
+              })
+              return
+            }
+            const blob = await run(() => certificateLayout.preview(typed))
+            if (blob) {
+              const url = URL.createObjectURL(blob)
+              tab.location.href = url
+              setTimeout(() => URL.revokeObjectURL(url), 60000)
+            } else {
+              tab.close()
+            }
+          }}
+        >
+          Preview a sample
+        </button>
+        <button
+          type="button"
+          className="primary"
+          disabled={busy || !changed}
+          onClick={async () => {
+            setSaved('')
+            const next = await run(() => certificateLayout.save(typed))
+            if (next) {
+              setView(next)
+              setForm(null)
+              setSaved(next.current.version === v.current.version ? 'Nothing changed.' : `Saved as version ${next.current.version}. Build the certificates again to use it on drafts.`)
+            }
+          }}
+        >
+          Save the layout
+        </button>
+        {changed && (
+          <button type="button" className="secondary" disabled={busy} onClick={() => setForm(null)}>
+            Discard changes
+          </button>
+        )}
+      </div>
     </section>
   )
 }
