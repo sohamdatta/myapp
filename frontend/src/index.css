@@ -4254,3 +4254,34 @@ textarea.code {
 
 .recovery-codes { columns: 2; list-style: none; padding: 0; margin: 8px 0 16px; font-size: 1.05em; }
 .recovery-codes li { padding: 2px 0; }
+
+/* ── usage statistics (platform console) ───────────────────────────── */
+
+.usage-key {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 20px;
+  list-style: none;
+  margin: 0 0 16px;
+  padding: 0;
+}
+
+.usage-area {
+  margin-top: 20px;
+}
+
+.usage-area h4 {
+  margin: 0 0 8px;
+}
+
+.usage-spark {
+  display: block;
+}
+
+.usage-spark .spark-bar {
+  fill: var(--accent, #2563eb);
+}
+
+.usage-spark .spark-none {
+  fill: var(--border, #cbd5e1);
+}

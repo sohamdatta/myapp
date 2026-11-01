@@ -782,6 +782,17 @@ export const orgSettings = {
 
 // ── the Organization's own brand ────────────────────────────────────
 
+/** How each Organization uses each feature, as counts only (platform console). */
+export const usage = {
+  grid: () => get('/platform/usage'),
+  trend: (id) => get(`/platform/usage/organizations/${id}`),
+  metric: (code) => get(`/platform/usage/metrics/${code}`),
+  refresh: () => post('/platform/usage/refresh'),
+  gridCsv: () => downloadFile('/platform/usage/grid.csv', 'usage-organizations.csv'),
+  trendCsv: (id) => downloadFile(`/platform/usage/organizations/${id}/csv`, 'usage-organization.csv'),
+  metricCsv: (code) => downloadFile(`/platform/usage/metrics/${code}/csv`, `usage-${code}.csv`),
+}
+
 /** How the Form 130 Part B certificate looks: header line, footer, signatory and logo. */
 export const certificateLayout = {
   get: () => get('/org/payroll/certificate-layout'),
