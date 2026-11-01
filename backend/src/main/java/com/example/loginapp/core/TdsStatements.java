@@ -25,8 +25,10 @@ import static com.example.loginapp.core.PayrollRuns.parse;
  * After the employer files with the department's own tools, the token number is recorded and the statement is
  * locked; a later build is a correction and holds only the lines that changed.
  *
- * Not built here: the text file in the layout of the department's return preparation utility (its exact layout
- * and version are an open question for the payroll consultant), and the fourth quarter's annual salary detail.
+ * The fourth quarter's review file also carries each employee's salary detail for the year (the same figures as Form 130 Part B;
+ * anyone who cannot be included is a check an approver must accept). It is the whole year in every Q4 version, a correction
+ * included: only the quarter's lines are compared against what was filed, so an annexure-only change is not detected as a correction. Not built here: the text file in the layout of the department's
+ * return preparation utility (its exact layout and version are an open question for the payroll consultant).
  */
 public final class TdsStatements {
 
@@ -199,9 +201,31 @@ public final class TdsStatements {
                     }
                 }
             }
+            List<List<String>> annexure = new ArrayList<>();
             if (quarter == 4) {
-                checks.add(new Check("annexure_pending", "warning", false, null,
-                        "The fourth quarter also carries each employee's salary detail for the year; that part is not in this build."));
+                // The fourth quarter also states each employee's salary and tax for the year, from the same figures as Form 130 Part B.
+                AnnualTax.Result year = AnnualTax.compute(c, ty, settings);
+                for (AnnualTax.Person p : year.people()) {
+                    Map<String, Object> b = p.partB;
+                    String pan = pan(c, AuthService.uuid(p.personId), ctx.tenantId());
+                    annexure.add(List.of(String.valueOf(p.code), p.name, pan == null ? "" : pan, "old".equals(b.get("regime")) ? "Old" : "New",
+                            PayrollRuns.money(PayrollEngine.dec(b, "salaryThisEmployer")), PayrollRuns.money(PayrollEngine.dec(b, "incomeOtherEmployers")),
+                            PayrollRuns.money(PayrollEngine.dec(b, "totalIncome")), PayrollRuns.money(PayrollEngine.dec(b, "deductions")),
+                            PayrollRuns.money(PayrollEngine.dec(b, "taxableIncome")), PayrollRuns.money(PayrollEngine.dec(b, "annualTax")),
+                            PayrollRuns.money(PayrollEngine.dec(b, "taxDeducted")), PayrollRuns.money(PayrollEngine.dec(b, "balance"))));
+                }
+                // The year not being final yet (March not approved) is one thing to fix, not a problem per employee, and cannot be accepted away.
+                long notFinal = year.skipped().stream().filter(AnnualTax.Skip::notFinal).count();
+                if (notFinal > 0) {
+                    checks.add(new Check("annexure_not_final", "blocking", false, null, notFinal + " employees' tax for the year is not final: approve the "
+                            + "year's last payroll month (March, or the month each person left), then build again."));
+                }
+                for (AnnualTax.Skip k : year.skipped()) {
+                    if (!k.notFinal()) {
+                        checks.add(new Check("annexure_missing", "blocking", true, k.employmentId(),
+                                k.name() + " is not in the salary detail: " + k.reason() + "."));
+                    }
+                }
             }
             Map<String, Object> rule = Sql.one(c, "select status from app.payroll_rule where statute = 'income_tax' and jurisdiction = 'IN' and valid_from <= ? "
                     + "and (valid_to is null or valid_to > ?)", first, first);
@@ -251,7 +275,7 @@ public final class TdsStatements {
             Map<String, Object> last = Sql.one(c, "select coalesce(max(version), 0) as v from app.tds_statement where tax_year = ? and quarter = ?", ty, quarter);
             int version = ((Number) last.get("v")).intValue() + 1;
             String name = "TDS statement " + ty + " Q" + quarter + " v" + version + ".csv";
-            byte[] file = review(settings, ty, quarter, version, lines, changes, totals);
+            byte[] file = review(settings, ty, quarter, version, lines, changes, totals, annexure);
             UUID id = AuthService.uuid(Sql.one(c, "insert into app.tds_statement (tenant_id, tax_year, quarter, version, correction_of, tan, file_name, file_enc, "
                     + "totals, checks, generated_by) values (?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb, ?::jsonb, ?) returning id", ctx.tenantId(), ty, quarter, version,
                     correctionOf, tan, name, crypto.encrypt(ctx.tenantId(), file), Json.write(totals.toMap()),
@@ -450,7 +474,8 @@ public final class TdsStatements {
         return r == null ? null : AuthService.uuid(r.get("id"));
     }
 
-    private byte[] review(Map<String, Object> settings, String ty, int quarter, int version, List<Row> lines, List<String> changes, Totals totals) {
+    private byte[] review(Map<String, Object> settings, String ty, int quarter, int version, List<Row> lines, List<String> changes, Totals totals,
+                          List<List<String>> annexure) {
         List<List<String>> rows = new ArrayList<>();
         rows.add(List.of("Deductor", String.valueOf(settings.get("entityName")), "TAN", String.valueOf(settings.get("tan")), "PAN", String.valueOf(settings.get("pan"))));
         rows.add(List.of("Tax year", ty, "Quarter", "Q" + quarter, "Version", String.valueOf(version)));
@@ -462,6 +487,13 @@ public final class TdsStatements {
                     PayrollRuns.money(r.amountPaid), PayrollRuns.money(r.tax), r.higherRate ? "Yes" : "", changes.get(i), r.challan == null ? "" : r.challan.toString()));
         }
         rows.add(List.of("Total", "", "", "", PayrollRuns.money(totals.amountPaid()), PayrollRuns.money(totals.taxDeducted()), "", "", ""));
+        if (quarter == 4) {
+            rows.add(List.of());
+            rows.add(List.of("Salary detail for the year " + ty));
+            rows.add(List.of("Employee code", "Name", "PAN", "Regime", "Salary from this employer", "Income from other employers", "Total income",
+                    "Deductions", "Taxable income", "Tax for the year", "Tax deducted", "Balance (+ short, - excess)"));
+            rows.addAll(annexure);
+        }
         return PayrollOutputs.csv("", rows).bytes();
     }
 

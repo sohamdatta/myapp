@@ -5,10 +5,8 @@ import java.sql.Connection;
 import java.sql.SQLException;
 import java.time.Clock;
 import java.time.LocalDate;
-import java.time.YearMonth;
 import java.time.ZoneId;
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -87,68 +85,41 @@ public final class TaxCertificates {
     public BuildResult build(SessionCtx ctx, String taxYear) {
         PayrollConfig.need(ctx, "payroll.prepare");
         String year = TaxYears.check(taxYear, TaxYears.of(LocalDate.now(clock)));
-        LocalDate from = TaxYears.start(year);
-        LocalDate to = from.plusYears(1);
         return db.inTenant(ctx.tenantId(), c -> {
             Map<String, Object> settings = Sql.one(c, "select entity_name, pan, tan, address from app.payroll_settings");
             if (settings == null || settings.get("tan") == null || settings.get("entityName") == null) {
                 throw new ApiException(409, "certificate.no_deductor", "Add the Organization's name and TAN under payroll settings first");
             }
-            Map<String, List<Map<String, Object>>> slips = new LinkedHashMap<>();
-            for (Map<String, Object> p : Sql.query(c, "select ps.id, ps.employment_id, ps.membership_id, r.period, ps.info, "
-                    + "coalesce((r.snapshot->'config'->'rules'->'drafts'->>'income_tax:IN')::boolean, true) as draft_rules from app.payslip ps "
-                    + "join app.payroll_run r on r.id = ps.run_id where r.state in ('approved','paid','released') and r.period >= ? and r.period < ? "
-                    + "order by ps.employment_id, r.period", from, to)) {
-                slips.computeIfAbsent(String.valueOf(p.get("employmentId")), k -> new ArrayList<>()).add(p);
-            }
-            Map<String, Map<String, Object>> tds = tdsLines(c, from, to);
+            AnnualTax.Result year0 = AnnualTax.compute(c, year, settings);
             List<Skipped> skipped = new ArrayList<>();
+            for (AnnualTax.Skip k : year0.skipped()) {
+                skipped.add(new Skipped(k.code(), k.name(), k.reason()));
+            }
             int built = 0;
             int kept = 0;
-            for (Map.Entry<String, List<Map<String, Object>>> e : slips.entrySet()) {
-                List<Map<String, Object>> list = e.getValue();
-                Map<String, Object> last = list.getLast();
-                Map<String, Object> info = parse(last.get("info"));
-                String name = String.valueOf(info.get("name"));
-                String code = (String) info.get("code");
-                String problem = problem(info, LocalDate.parse(String.valueOf(last.get("period"))));
-                if (problem == null) {
-                    problem = unsupported(c, e.getKey(), list);
-                }
-                if (problem != null) {
-                    skipped.add(new Skipped(code, name, problem));
-                    continue;
-                }
-                Map<String, Object> t = tds.get(String.valueOf(last.get("id")));
-                BigDecimal taxable = BigDecimal.ZERO;
-                for (Map<String, Object> p : list) {
-                    taxable = taxable.add(PayrollEngine.dec(PayrollEngine.map(parse(p.get("info")), "bases"), "taxable"));
-                }
-                Map<String, Object> partB = partB(info, settings, year, taxable, t == null ? BigDecimal.ZERO : PayrollEngine.dec(t, "amount"));
-                boolean draft = Boolean.TRUE.equals(last.get("draftRules"));   // the rules the last payslip's run was frozen with
-                byte[] pdf = TaxCertificatePdf.render(partB, draft);
-                String file = "Form 130 Part B " + year + " " + code + ".pdf";
-                UUID employment = AuthService.uuid(e.getKey());
+            for (AnnualTax.Person p : year0.people()) {
+                byte[] pdf = TaxCertificatePdf.render(p.partB, p.draftRules);
+                String file = "Form 130 Part B " + year + " " + p.code + ".pdf";
+                UUID employment = AuthService.uuid(p.employmentId);
                 Map<String, Object> existing = Sql.one(c, "select status from app.tax_certificate where employment_id = ? and tax_year = ? for update",
                         employment, year);
                 if (existing != null && "released".equals(existing.get("status"))) {
                     kept++;
                     continue;
                 }
-                Object membership = last.get("membershipId");
                 if (existing == null) {
                     Sql.update(c, "insert into app.tax_certificate (tenant_id, employment_id, membership_id, tax_year, part_b, draft_rules, file_name, "
                             + "pdf_enc, generated_by) values (?, ?, ?, ?, ?::jsonb, ?, ?, ?, ?)", ctx.tenantId(), employment,
-                            membership == null ? null : AuthService.uuid(membership), year, Json.write(partB), draft, file,
+                            p.membershipId == null ? null : AuthService.uuid(p.membershipId), year, Json.write(p.partB), p.draftRules, file,
                             crypto.encrypt(ctx.tenantId(), pdf), ctx.membershipId());
                 } else {
                     Sql.update(c, "update app.tax_certificate set part_b = ?::jsonb, draft_rules = ?, file_name = ?, pdf_enc = ?, generated_by = ?, "
-                            + "generated_at = now() where employment_id = ? and tax_year = ?", Json.write(partB), draft, file,
+                            + "generated_at = now() where employment_id = ? and tax_year = ?", Json.write(p.partB), p.draftRules, file,
                             crypto.encrypt(ctx.tenantId(), pdf), ctx.membershipId(), employment, year);
                 }
                 built++;
                 UUID certificate = AuthService.uuid(Sql.one(c, "select id from app.tax_certificate where employment_id = ? and tax_year = ?", employment, year).get("id"));
-                UserService.audit(c, ctx, "tax_certificate.built", "tax_certificate", certificate, Map.of("taxYear", year, "code", String.valueOf(code)));
+                UserService.audit(c, ctx, "tax_certificate.built", "tax_certificate", certificate, Map.of("taxYear", year, "code", String.valueOf(p.code)));
             }
             UserService.audit(c, ctx, "tax_certificate.build_run", "tax_year", ctx.tenantId(), Map.of("taxYear", year, "built", built, "skipped", skipped.size()));
             return new BuildResult(year, built, kept, skipped);
@@ -243,86 +214,5 @@ public final class TaxCertificates {
                 (String) t.get("taxYear"), (String) t.get("status"), Boolean.TRUE.equals(t.get("draftRules")), PayrollEngine.dec(b, "taxableIncome"),
                 PayrollEngine.dec(b, "annualTax"), PayrollEngine.dec(b, "taxDeducted"), String.valueOf(t.get("generatedAt")),
                 t.get("releasedAt") == null ? null : String.valueOf(t.get("releasedAt")));
-    }
-
-    /** The TDS line of every payslip in the year, by payslip id. A month with no tax to deduct has no line. */
-    private static Map<String, Map<String, Object>> tdsLines(Connection c, LocalDate from, LocalDate to) throws SQLException {
-        Map<String, Map<String, Object>> out = new LinkedHashMap<>();
-        for (Map<String, Object> l : Sql.query(c, "select l.payslip_id, l.amount from app.payslip_line l join app.payslip ps on ps.id = l.payslip_id "
-                + "join app.payroll_run r on r.id = ps.run_id where l.code = 'TDS' and r.state in ('approved','paid','released') "
-                + "and r.period >= ? and r.period < ?", from, to)) {
-            out.put(String.valueOf(l.get("payslipId")), l);
-        }
-        return out;
-    }
-
-    /**
-     * Pay that Part B cannot state correctly yet, so no certificate is made rather than a wrong one: two payslips in one month
-     * (each projection ignores the other), and a final settlement, whose tax and encashment lines are typed on the exit and are
-     * not payslip lines.
-     */
-    private static String unsupported(Connection c, String employment, List<Map<String, Object>> slips) throws SQLException {
-        java.util.Set<Object> months = new java.util.HashSet<>();
-        for (Map<String, Object> p : slips) {
-            if (!months.add(p.get("period"))) {
-                return "They have more than one payslip in a month, which Part B cannot combine yet";
-            }
-        }
-        if (Sql.one(c, "select 1 from app.exit_settlement_line l join app.exit_case x on x.id = l.exit_case_id where x.employment_id = ?::uuid limit 1",
-                employment) != null) {
-            return "They have a final settlement, whose tax and pay lines Part B does not carry yet: prepare theirs by hand";
-        }
-        return null;
-    }
-
-    /**
-     * Why this person cannot have a certificate yet, or null. The year is final when payroll's own projection has one month
-     * left to run: March, or the month the person left. Any other last payslip leaves months the projection still guesses at.
-     */
-    static String problem(Map<String, Object> info, LocalDate lastPeriod) {
-        if (info.get("panLast4") == null) {
-            return "No PAN on record: add it under People, then build again";
-        }
-        Map<String, Object> tax = PayrollEngine.map(info, "tax");
-        if (tax.isEmpty()) {
-            return "Payroll computed no income tax for them, so there is nothing to certify";
-        }
-        int left = PayrollEngine.intOf(tax.get("monthsLeft"));
-        if (left != 1) {
-            return "The year is not final: their last payslip is for " + YearMonth.from(lastPeriod) + " and the tax projection still has "
-                    + left + " months to run";
-        }
-        return null;
-    }
-
-    private static Map<String, Object> partB(Map<String, Object> info, Map<String, Object> settings, String year, BigDecimal thisEmployer,
-                                             BigDecimal lastTds) {
-        Map<String, Object> tax = PayrollEngine.map(info, "tax");
-        BigDecimal income = PayrollEngine.dec(tax, "income");
-        BigDecimal annualTax = PayrollEngine.dec(tax, "annualTax");
-        BigDecimal deducted = PayrollEngine.dec(tax, "paidSoFar").add(lastTds);
-        Map<String, Object> b = new LinkedHashMap<>();
-        b.put("taxYear", year);
-        b.put("employer", settings.get("entityName"));
-        b.put("employerAddress", settings.get("address"));
-        b.put("tan", settings.get("tan"));
-        b.put("employerPan", settings.get("pan"));
-        b.put("name", info.get("name"));
-        b.put("code", info.get("code"));
-        b.put("designation", info.get("designation"));
-        b.put("panLast4", info.get("panLast4"));
-        b.put("joinedOn", info.get("joinedOn"));
-        b.put("leavingOn", info.get("leavingOn"));
-        b.put("regime", tax.get("regime"));
-        b.put("salaryThisEmployer", PayrollEngine.scale(thisEmployer));
-        b.put("incomeOtherEmployers", PayrollEngine.scale(income.subtract(thisEmployer).max(BigDecimal.ZERO)));
-        b.put("totalIncome", PayrollEngine.scale(income));
-        b.put("deductions", PayrollEngine.scale(PayrollEngine.dec(tax, "deductions")));
-        b.put("claims", tax.get("claims"));
-        b.put("taxableIncome", PayrollEngine.scale(PayrollEngine.dec(tax, "taxableIncome")));
-        b.put("annualTax", PayrollEngine.scale(annualTax));
-        b.put("taxDeducted", PayrollEngine.scale(deducted));
-        b.put("balance", PayrollEngine.scale(annualTax.subtract(deducted)));
-        return b;
     }
 }

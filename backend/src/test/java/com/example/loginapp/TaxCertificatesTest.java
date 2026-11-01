@@ -151,7 +151,7 @@ class TaxCertificatesTest {
     }
 
     /** Calculates and approves a month; with {@code finish} it is also paid and released, which the next month's run waits for. */
-    private void approve(Case k, LocalDate period, boolean finish) throws Exception {
+    private UUID approve(Case k, LocalDate period, boolean finish) throws Exception {
         String group = (String) ((Map<?, ?>) ((List<?>) runs.list(k.operator).get("groups")).get(0)).get("id");
         UUID run = UUID.fromString((String) runs.open(k.operator, UUID.fromString(group), period.toString()).get("id"));
         runs.freeze(k.operator, run);
@@ -170,6 +170,7 @@ class TaxCertificatesTest {
                 runs.release(k.org.admin, run);
             }
         }
+        return run;
     }
 
     /** The last tax projection on a person's payslips for the year, and the sum of their taxable pay and TDS. */
@@ -270,6 +271,56 @@ class TaxCertificatesTest {
     }
 
     @Test
+    void theFourthQuarterStatementCarriesTheYearsSalaryDetailFromTheSameFiguresAsPartB() throws Exception {
+        assumeTrue(reachable, "PostgreSQL is not reachable");
+        Case k = organization();
+        if (!TODAY.withDayOfMonth(1).equals(MARCH)) {
+            approve(k, TODAY.withDayOfMonth(1), true);
+        }
+        UUID march = approve(k, MARCH, false);
+        BigDecimal deducted = db.inOwner(c -> new BigDecimal(String.valueOf(Sql.one(c, "select coalesce(sum(l.amount), 0) as t from app.payslip_line l "
+                + "join app.payslip ps on ps.id = l.payslip_id where ps.run_id = ? and l.code = 'TDS'", march).get("t"))));
+        assertTrue(deducted.signum() > 0, "the fixture should deduct tax in March");
+
+        java.time.Clock after = java.time.Clock.fixed(MARCH.plusMonths(1).plusDays(10).atTime(java.time.LocalTime.NOON)
+                .toInstant(java.time.ZoneOffset.ofHoursMinutes(5, 30)), IST);
+        com.example.loginapp.core.TdsChallans challans = new com.example.loginapp.core.TdsChallans(db, after);
+        com.example.loginapp.core.TdsStatements statements = new com.example.loginapp.core.TdsStatements(db, Crypto.withKey(Crypto.DEVELOPMENT_KEY), after);
+        com.example.loginapp.core.TdsChallans.Challan challan = challans.record(k.operator, new com.example.loginapp.core.TdsChallans.ChallanInput(
+                MARCH.toString().substring(0, 7), "company", "200", "6360001", "00001", MARCH.plusMonths(1).plusDays(3).toString(), deducted,
+                null, null, null, null, List.of(march.toString())));
+        challans.approve(k.org.admin, UUID.fromString(challan.id()));
+
+        com.example.loginapp.core.TdsStatements.BuildResult built = statements.build(k.operator, YEAR, 4);
+        assertTrue(built.checks().stream().noneMatch(c -> c.code().equals("annexure_pending")), "the placeholder warning is gone");
+        com.example.loginapp.core.TdsStatements.Check noPan = built.checks().stream().filter(c -> c.code().equals("pan_invalid")).findFirst().orElseThrow();
+        statements.accept(k.org.admin, UUID.fromString(built.id()), new com.example.loginapp.core.TdsStatements.AcceptInput("pan_invalid", noPan.who(), "Form 60 on file"));
+        // The same person is also missing from the salary detail (no PAN), and that must be accepted on its own, by employment.
+        com.example.loginapp.core.TdsStatements.Check missing = built.checks().stream().filter(c -> c.code().equals("annexure_missing")).findFirst().orElseThrow();
+        assertEquals(1, built.checks().stream().filter(c -> c.code().equals("annexure_missing")).count(), built.checks().toString());
+        assertEquals(noPan.who(), missing.who(), "identified by employment");
+        statements.accept(k.org.admin, UUID.fromString(built.id()), new com.example.loginapp.core.TdsStatements.AcceptInput("annexure_missing", missing.who(), "Salary detail to be added by hand"));
+
+        String csv = new String(statements.download(k.operator, UUID.fromString(built.id())).bytes(), java.nio.charset.StandardCharsets.UTF_8);
+        int annexure = csv.indexOf("Salary detail for the year " + YEAR);
+        assertTrue(annexure > 0, csv);
+        String detail = csv.substring(annexure);
+        assertTrue(detail.contains("Asha Rao") && detail.contains("ABCPR1234F") && detail.contains("Ravi Kumar"), detail);
+        assertFalse(detail.contains("Nita Das"), "no PAN, no salary detail (the missing PAN is a check of its own)");
+
+        // The statement and Part B state the same tax for the year.
+        certificates.build(k.org.admin, YEAR);
+        TaxCertificates.Row asha = certificates.year(k.org.admin, YEAR).certificates().stream().filter(r -> r.name().equals("Asha Rao")).findFirst().orElseThrow();
+        String ashaLine = detail.lines().filter(l -> l.contains("Asha Rao")).findFirst().orElseThrow();
+        assertTrue(ashaLine.contains(asha.annualTax().setScale(2, java.math.RoundingMode.HALF_UP).toPlainString()), ashaLine + " vs " + asha.annualTax());
+        assertTrue(ashaLine.contains(asha.taxDeducted().setScale(2, java.math.RoundingMode.HALF_UP).toPlainString()), ashaLine + " vs " + asha.taxDeducted());
+
+        // The other quarters have no such section.
+        com.example.loginapp.core.TdsStatements.BuildResult q3 = statements.build(k.operator, YEAR, 3);
+        assertTrue(q3.checks().stream().noneMatch(c -> c.code().startsWith("annexure")));
+    }
+
+    @Test
     void aYearThatIsNotFinalYetGetsNoCertificateAndEachOrganizationSeesItsOwn() throws Exception {
         assumeTrue(reachable, "PostgreSQL is not reachable");
         Case k = organization();
@@ -284,6 +335,13 @@ class TaxCertificatesTest {
         assertEquals(0, certificates.year(k.org.admin, YEAR).certificates().size());
         assertEquals(0, certificates.year(other.org.admin, YEAR).certificates().size());
         assertEquals(403, assertThrows(ApiException.class, () -> certificates.year(k.asha, YEAR)).status());
+
+        // A fourth-quarter statement built before the year's last month is approved says so once, and it cannot be accepted away.
+        com.example.loginapp.core.TdsStatements.BuildResult early = new com.example.loginapp.core.TdsStatements(db,
+                Crypto.withKey(Crypto.DEVELOPMENT_KEY)).build(k.operator, YEAR, 4);
+        assertEquals(1, early.checks().stream().filter(c -> c.code().equals("annexure_not_final")).count(), early.checks().toString());
+        assertEquals(1, early.checks().stream().filter(c -> c.code().equals("annexure_missing")).count(), "only the person with no PAN, not one check per employee");
+        assertFalse(early.checks().stream().filter(c -> c.code().equals("annexure_not_final")).findFirst().orElseThrow().acceptable());
         assertEquals(400, assertThrows(ApiException.class, () -> certificates.year(k.org.admin, "26-27")).status());
     }
 
