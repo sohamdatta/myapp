@@ -1,0 +1,36 @@
+{
+  "name": "21-pf-september-transition",
+  "why": "September 2026, the month the ceiling rose from 15,000 to 25,000 on 17 Sep: the rule applies 25,000 to the whole month (the reading that cannot under-contribute), and the pay run warns that the consultant has not confirmed it. (Starts this month, so there is no income earlier in the tax year and the new-regime rebate covers the six months projected: no TDS.)",
+  "status": "provisional",
+  "period": "2026-09-01",
+  "configPatch": {
+    "rules": {
+      "pf": {"previousCeiling": 15000, "notifiedFrom": "2026-09-17", "transitionMonth": "2026-09", "transitionBasis": "whole_month"}
+    }
+  },
+  "employee": {
+    "annual": 1800000,
+    "days": {
+      "base": 30,
+      "paid": 30,
+      "lop": 0
+    }
+  },
+  "expected": {
+    "gross": "147000",
+    "deductions": "3200.00",
+    "net": "143800.00",
+    "employerCost": "3000",
+    "lines": [
+      {"code": "BASIC", "kind": "earning", "amount": "75000"},
+      {"code": "HRA", "kind": "earning", "amount": "30000"},
+      {"code": "SPECIAL", "kind": "earning", "amount": "42000"},
+      {"code": "PF_EE", "kind": "deduction", "amount": "3000"},
+      {"code": "PF_ER", "kind": "employer", "amount": "3000"},
+      {"code": "PT", "kind": "deduction", "amount": "200.00"}
+    ],
+    "exceptions": [
+      {"level": "warning", "code": "pf_ceiling_transition"}
+    ]
+  }
+}
