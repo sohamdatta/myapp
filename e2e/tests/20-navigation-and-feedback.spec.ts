@@ -156,8 +156,8 @@ test.describe('confirmations and notes', () => {
     const owner = await signIn(browser, OWNER);
     await nav(owner, 'User management');
     const row = owner.locator('tr', { hasText: HR });
-    await row.locator('summary').click();
-    await row.getByRole('button', { name: 'End membership' }).click();
+    await row.getByText('Edit roles').click();
+    await owner.locator('#user-panel').getByRole('button', { name: 'End membership' }).click();
     const dialog = owner.getByRole('dialog');
     await expect(dialog).toContainText(`End ${HR}'s membership?`);
     await dialog.getByRole('button', { name: 'Keep it' }).click();

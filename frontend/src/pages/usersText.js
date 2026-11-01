@@ -1,0 +1,55 @@
+/** Words on the Users tab of User management, ready for translation. */
+
+/** Roles that reach everyone's data are marked in a list of roles, so wide access is easy to spot. */
+export const WIDE_ROLES = ['hr_admin', 'payroll_operator', 'payroll_approver', 'auditor']
+
+export const USERS_TEXT = {
+  search: 'Search by email',
+  statusGroup: 'Show users who are',
+  statuses: [
+    ['active', 'Active'],
+    ['suspended', 'Suspended'],
+    ['ended', 'Former'],
+  ],
+  invite: 'Invite user',
+  noMatch: 'No users match that search.',
+  none: (status) => `No ${status === 'ended' ? 'former' : status} users.`,
+  columns: { user: 'User', roles: 'Roles', status: 'Status', lastSignIn: 'Last sign-in', actions: 'Actions' },
+  noRoles: 'No roles',
+  notGrantable: 'You can’t give this role.',
+  you: ' (you)',
+  self: 'Your account',
+  editRoles: 'Edit roles',
+  manage: 'Manage access',
+  editLabel: (email) => `Edit roles for ${email}`,
+  manageLabel: (email) => `Manage access for ${email}`,
+  never: 'Never',
+  panel: {
+    close: 'Close',
+    lastSignIn: (when) => `Last signed in ${when}`,
+    neverSignedIn: 'Has never signed in',
+    joined: (when) => `Joined ${when}`,
+    twoStepOn: 'Two-step sign-in is on',
+    twoStepOff: 'Two-step sign-in is off',
+    save: 'Save roles',
+    saving: 'Saving…',
+    cancel: 'Cancel',
+    saved: (email) => `Roles saved for ${email}`,
+    access: 'Access',
+    suspend: 'Suspend',
+    suspendHint: 'Stops them signing in for now. Their roles are kept.',
+    reactivate: 'Reactivate',
+    reactivateHint: 'They can’t sign in. Reactivating gives back the roles they had.',
+    suspended: (email) => `${email} suspended`,
+    reactivated: (email) => `${email} reactivated`,
+    end: 'End membership',
+    endHint: 'Removes every role, and they can’t sign in here again. This can’t be undone.',
+    ended: (email) => `${email}'s membership ended`,
+    endAsk: (email) => ({
+      title: `End ${email}'s membership?`,
+      body: 'Their roles are removed and they can no longer enter this Organization. This cannot be undone.',
+      confirmLabel: 'End membership',
+      danger: true,
+    }),
+  },
+}
