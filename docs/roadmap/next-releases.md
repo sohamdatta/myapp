@@ -2,13 +2,16 @@
 
 Oct 24, 2026 · Markdown export of the [live document](https://claude.ai/artifact/RkLD2g8gjmfVprQ5pxRwUq); edit there and export again.
 
-**Where each release stands, 29 Oct 2026** (checked against the code on `main` at 46f4f57 and the GitHub Actions runs; nothing was run for this check):
+**Where each release stands, 1 Nov 2026.** The first four bullets were checked on 29 Oct against `main` at 46f4f57 and the GitHub Actions runs; releases 3 and 4 were brought up to date on 1 Nov against `main` after the pull requests of that day (#70 to #75). Nothing was run for the 29 Oct check. The release numbers in this document are not the ones in the live roadmap: there R3 is income tax, R4 PF and ESI, R5 the Labour Codes work, and the installable app is R6.
 
 - **1 Green CI: built, not yet done.** Ordinary CI is green on `main` in both time zones, and the guards exist. The "done when" is not met: the daily fixed-date run failed on all three dates on 29 Oct and 27 Oct, in `27-two-step` › "an Organization owner sets it up from the key on screen and is given ten recovery codes".
 - **2 Sign-in security: built, with four differences from the design** (below).
 - **Email before go-live: half built.** The outbox, worker and SMTP sender exist and carry security mail. Invitations and notices are still not emailed.
 - **Domain and HTTPS: production done 25 Oct** (see that section); UAT's name is still open.
-- **3 Income tax, 4 PF and ESI, 5 Installable app: not started.** No migration, tables, file builders, service worker or web manifest for any of them.
+- **3 Income tax: built except Form 130 Part A.** Form 122, challans, quarterly Form 138 statements (a review spreadsheet, with the fourth quarter's salary detail), and Form 130 Part B with a per-Organization layout (V35, V36, V38). Not built: Part A (TRACES upload, match by PAN, join into one PDF) and the department utility's text file layout.
+- **4 PF and ESI returns: built** (V34): the ECR and ESI files, pre-checks and the filing log, with a second person approving. The layouts and ceilings are draft data awaiting the consultant.
+- **5 Installable app: not started.** No service worker or web manifest.
+- **All of it runs on draft tax and statutory rules** until the payroll consultant signs them off, so certificates and statements say provisional.
 
 ## Summary
 
@@ -18,13 +21,13 @@ Build these five in order: green CI first (half a day), then sign-in security, t
 | --- | --- | --- | --- | --- | --- | --- |
 | 1 | Green CI | The two fragile browser tests fixed; date and timezone guards so they cannot creep back | 0.5 day | — | none | Built; fixed-date run failing |
 | 2 | Sign-in security | Email sending, password reset, email change, TOTP MFA with recovery codes, lockout and rate limits | 2–3 weeks | 1 | V28 to V33 (built) | Built, with differences |
-| 3 | Income tax completion | Previous employer's income and TDS, challans, quarterly Form 138 return file, Form 130 Part B | 3–4 weeks | 1; uses tax declarations (V17) | V34 | Not started |
-| 4 | PF and ESI returns | Monthly PF ECR text file, ESI contribution file, with pre-checks and a filing log | 1.5–2 weeks | 1 | V35 | Not started |
-| 5 | Installable app (PWA) | Home-screen install, offline punch queue, web push, camera upload for proofs and documents | 3 weeks | 2 (push uses the outbox) | V36 | Not started |
+| 3 | Income tax completion | Previous employer's income and TDS, challans, quarterly Form 138 return file, Form 130 Part B | 3–4 weeks | 1; uses tax declarations (V17) | V35, V36, V38 (built) | Built, except Form 130 Part A |
+| 4 | PF and ESI returns | Monthly PF ECR text file, ESI contribution file, with pre-checks and a filing log | 1.5–2 weeks | 1 | V34 (built) | Built |
+| 5 | Installable app (PWA) | Home-screen install, offline punch queue, web push, camera upload for proofs and documents | 3 weeks | 2 (push uses the outbox) | V39 | Not started |
 | — | Email (before go-live) | Invitations and the app's notices sent by email instead of copied links: the outbox, Amazon SES from the product's domain, an email beside each in-app notice, switches per event | 1–1.5 weeks | Domain and HTTPS; built as the first part of release 2 | With release 2's schema | Outbox built; invitations and notices not emailed |
 | — | Domain and HTTPS (before go-live) | The product's own domain: addresses for production and UAT, their HTTPS certificates, and the sending domain release 2's email needs | 1 hour, plus DNS propagation and email DNS records | Buying the domain | none | Production done 25 Oct |
 
-Migration numbers below follow the schema on `main` (V19 is the Leave module; V20 to V26 are performance management and branding; V27 reports browser errors; V28 to V33 are release 2), so what is left starts at V34. They change if another migration lands first. Estimates assume one developer working with Claude and the current test discipline (JUnit against PostgreSQL plus a Playwright suite per release). Every release keeps the existing rules: maker-checker where money moves, row-level security per Organization, an audit event for every change, and statutory figures as rule data awaiting the payroll consultant's sign-off.
+Migration numbers below follow the schema on `main` (V19 is the Leave module; V20 to V26 are performance management and branding; V27 reports browser errors; V28 to V33 are release 2; V34 to V38 are releases 3 and 4, the state tax rule console and the certificate layout), so what is left starts at V39. They change if another migration lands first. Estimates assume one developer working with Claude and the current test discipline (JUnit against PostgreSQL plus a Playwright suite per release). Every release keeps the existing rules: maker-checker where money moves, row-level security per Organization, an audit event for every change, and statutory figures as rule data awaiting the payroll consultant's sign-off.
 
 ## 1. Green CI
 
@@ -149,7 +152,7 @@ Sign-in gets *Forgot password?* and a code step; a new Profile → Security tab 
 
 ## 3. Income tax completion: Form 122, challans, Form 138, Form 130
 
-**Status, 29 Oct 2026: not started.**
+**Status, 1 Nov 2026: built, except Form 130 Part A.** Built: Form 122 other-employer income, challans (a second person approves), quarterly Form 138 statements as an encrypted review spreadsheet with the fourth quarter's salary detail, and Form 130 Part B, released by a second person, with a per-Organization layout (logo, header line, footer, signatory). Not built: Part A (a PDF-reading library is needed), the department utility's text file, and screens for the tax filing tabs. People with a final settlement or two payslips in a month are left out of Part B and the salary detail, and are listed with the reason.
 
 Finish the year's tax in four pieces that build on each other: take in other employers' salary (Form 122), record each month's tax deposit (challan), produce the quarterly statement (Form 138), and give employees their certificate (Form 130). Under the Income-tax Rules 2026, [Form 122](https://www.incometaxindia.gov.in/documents/d/guest/form-122-faqs) replaces Forms 12B and 12BAA, and [Form 138](https://www.incometaxindia.gov.in/documents/d/guest/form-138-faqs) replaces Form 24Q; tax year 2025-26 still files on the old forms until its last return in May 2026.
 
@@ -194,7 +197,7 @@ Part A comes from TRACES as PDFs; the employer generates Part B, the salary comp
 3. Part A and Part B are joined into one PDF, stored as an encrypted document, and released to the employee in My pay, including people who left in the year (their former-employee access already covers My exit; add a *Tax certificates* link there).
 4. Release is by the payroll approver; every view is audited.
 
-### Schema (V34)
+### Schema (built as V35, V36 and V38)
 
 `app.tax_other_income` (declaration, part B or C, details, amounts, proof status, as V17 items), `app.tds_challan` and `app.tds_challan_run`, `app.tds_statement` (TAN, tax year, quarter, version, status, token number, filed on), `app.tds_statement_row` (frozen per employee and challan), and `app.tax_certificate` (employment, tax year, part A document, combined document, released at). The `income_tax` rule gains the deposit due day, interest rates and the higher no-PAN rate, as draft data.
 
@@ -212,7 +215,7 @@ Part A comes from TRACES as PDFs; the employer generates Part B, the salary comp
 
 ## 4. PF ECR and ESI return files
 
-**Status, 29 Oct 2026: not started.**
+**Status, 1 Nov 2026: built.** The ECR and ESI files are built from the approved run, checked, stored encrypted as numbered versions, and recorded in a filing log with a second person approving. The ECR separator, the ceilings and the ESIC reason codes are draft data awaiting the consultant.
 
 Generate both monthly files from the approved run, check them before download, and keep a filing log; the data is already in the app (UAN and ESI IP numbers are stored per person, contributions are payslip lines). Both are due by the 15th of the following month.
 
@@ -248,7 +251,7 @@ One spreadsheet per ESI code per month, in the columns ESIC's monthly contributi
 
 After uploading on the EPFO and ESIC portals, the operator records the TRRN or challan number, the date and the amount paid, and attaches the portal's receipt PDF. The month then shows as filed; a late filing shows the days late. Recording is maker-checker like challans.
 
-### Schema (V35)
+### Schema (built as V34)
 
 `app.statutory_filing` (kind `pf_ecr` or `esi`, registration, period, version, status `draft`, `downloaded`, `filed`, the file document, totals, reference number, paid on, receipt document, filed by, approved by), `app.esi_reason_map` (exit reason → ESIC code), and the PF rule gains `ecrSeparator` and the EPS and EDLI ceilings as data.
 
@@ -291,7 +294,7 @@ Make the existing React app installable on Android and iPhone home screens, with
 
 Tokens stay in session storage as today, so an installed app signs in again after it is closed; *Keep me signed in on this phone* (30 days, a separate refresh token bound to the device, revocable from Profile → Security) is offered only when the Organization allows it and the person has MFA. No personal data in caches; notification text carries no amounts or PAN ("Your payslip for October is ready").
 
-### Schema (V36)
+### Schema (V39)
 
 `app.push_subscription`; the outbox gains `channel`; `app.punch` gains `taken_at`, `received_at` and source `offline`; `app.work_location` gains `allow_offline_punch`; per-membership notification preferences (`app.notification_preference`: event, channel, on).
 
@@ -397,9 +400,9 @@ Each release is one migration, one design page in `docs/`, its own JUnit test cl
 | Release | Migration | New permissions | New settings |
 | --- | --- | --- | --- |
 | 2 Sign-in security | V28 to V33 | `org.security` (MFA policy, MFA reset) for Org Admin | `APP_SMTP_*`, `APP_MAIL_FROM`, `APP_PUBLIC_URL` (for links in mail) |
-| 3 Income tax | V34 | `statutory.file` (exists, on payroll operator) to prepare; `payroll.approve` to approve challans and release certificates | none |
-| 4 PF and ESI | V35 | `statutory.file` | none |
-| 5 App | V36 | none | `APP_VAPID_PUBLIC`, `APP_VAPID_PRIVATE` |
+| 3 Income tax | V35, V36, V38 | `statutory.file` (exists, on payroll operator) to prepare; `payroll.approve` to approve challans and release certificates | none |
+| 4 PF and ESI | V34 | `statutory.file` | none |
+| 5 App | V39 | none | `APP_VAPID_PUBLIC`, `APP_VAPID_PRIVATE` |
 
 - **Migrations**: added to `Migrator`'s list (the list is explicit; V17 showed a file outside it is silently skipped, so add a test that every file in the folder is listed).
 - **Rule data**: new statutory figures (deposit dates, interest, ECR separator, ceilings) go into draft rule rows with a source note, never code, and show the existing "drafts awaiting sign-off" banner.
