@@ -59,7 +59,7 @@ public final class PayrollPay {
         return p;
     }
 
-    private static void canRead(SessionCtx ctx) {
+    static void canRead(SessionCtx ctx) {
         if (!ctx.inOrganization() || !(ctx.reachesEveryone("compensation.read") || ctx.reachesEveryone("payroll.prepare"))) {
             throw ApiException.denied("compensation.read");
         }
@@ -71,7 +71,7 @@ public final class PayrollPay {
         }
     }
 
-    private static void notOwn(Connection c, SessionCtx ctx, UUID employmentId) throws SQLException {
+    static void notOwn(Connection c, SessionCtx ctx, UUID employmentId) throws SQLException {
         Map<String, Object> e = Sql.one(c, "select membership_id from app.employment where id = ?", employmentId);
         if (e == null) {
             throw ApiException.notFound("The employee");
@@ -118,20 +118,43 @@ public final class PayrollPay {
         });
     }
 
+    /** The Organization's pay setup and one employee's facts for a month, taken as a full month. */
+    static final class FullMonth {
+        final Map<String, Object> config;
+        final Map<String, Object> emp;
+
+        FullMonth(Map<String, Object> config, Map<String, Object> emp) {
+            this.config = config;
+            this.emp = emp;
+        }
+    }
+
+    /**
+     * What the engine needs to work out a month for one employee as things stand: joining and leaving dates, loss of pay
+     * and one-off inputs matter only in a run, so the month is taken as fully paid. Null when the employee does not exist.
+     */
+    static FullMonth fullMonth(Connection c, UUID employmentId, LocalDate period, LocalDate today) throws SQLException {
+        Map<String, Object> config = PayrollConfig.load(c, period.plusMonths(1).minusDays(1));
+        Map<String, Object> emp = PayrollSnapshot.employee(c, config, employmentId, period, today, null, true);
+        if (emp == null) {
+            return null;
+        }
+        Map<String, Object> days = PayrollEngine.map(emp, "days");
+        days.put("paid", days.get("base"));
+        days.put("lop", BigDecimal.ZERO);
+        return new FullMonth(config, emp);
+    }
+
     /** A full month's lines for the employee as things stand, or with a proposed revision. */
     static Map<String, Object> breakup(Connection c, UUID employmentId, LocalDate period, LocalDate today, ReviseInput proposed) throws SQLException {
-        LocalDate end = period.plusMonths(1).minusDays(1);
-        Map<String, Object> config = PayrollConfig.load(c, end);
-        Map<String, Object> emp = PayrollSnapshot.employee(c, config, employmentId, period, today, null, true);
+        FullMonth month = fullMonth(c, employmentId, period, today);
+        Map<String, Object> config = month.config;
+        Map<String, Object> emp = month.emp;
         if (proposed != null) {
             emp.put("structureId", proposed.structureId());
             emp.put("annual", proposed.annualAmount());
             emp.put("compensationFrom", proposed.validFrom());
         }
-        // A month's breakup is a full month: joining and leaving dates matter only in a run.
-        Map<String, Object> days = PayrollEngine.map(emp, "days");
-        days.put("paid", days.get("base"));
-        days.put("lop", BigDecimal.ZERO);
         PayrollEngine.Calc calc = PayrollEngine.calculate(config, emp, period);
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("lines", calc.lines());
