@@ -57,4 +57,30 @@ test.describe.serial('branding', () => {
     await expect(branding).toContainText('the Nexvance logo shows again');
     await expect(owner.getByRole('navigation', { name: 'Main' }).getByRole('img', { name: 'Nexvance Solutions' })).toBeVisible();
   });
+
+  test('the Org Admin sets how the tax certificate looks; it is kept as a version, and text the certificate cannot print is refused', async () => {
+    await nav(owner, 'Organization settings');
+    const panel = owner.getByTestId('certificate-layout');
+    await expect(panel).toContainText('Not set yet');
+    await expect(owner.locator('#cl-logo')).toBeDisabled();   // the logo was removed above, so there is none to show
+    await owner.fill('#cl-header', 'Strictly confidential');
+    await owner.fill('#cl-name', 'R. Menon');
+    await owner.fill('#cl-designation', 'Head of Human Resources');
+
+    // A sample opens in a new tab with the typed layout, and nothing is saved by looking.
+    const [sample] = await Promise.all([owner.context().waitForEvent('page'), panel.getByRole('button', { name: 'Preview a sample' }).click()]);
+    await sample.close();
+    await expect(owner.getByTestId('layout-version')).toContainText('Not set yet');
+
+    await panel.getByRole('button', { name: 'Save the layout' }).click();
+    await expect(panel).toContainText('Saved as version 1');
+    await expect(owner.getByTestId('layout-version')).toContainText('Version 1');
+    await expect(panel.getByRole('button', { name: 'Save the layout' })).toBeDisabled();   // nothing left to save
+
+    await owner.fill('#cl-header', 'प्रमाणपत्र');   // Devanagari: the certificate's standard font has no glyphs for it
+    await panel.getByRole('button', { name: 'Save the layout' }).click();
+    await expect(panel.getByRole('alert')).toContainText('cannot print');
+    await expect(owner.getByTestId('layout-version')).toContainText('Version 1');
+    await shot(owner, 'brand-03-certificate-layout', true);
+  });
 });

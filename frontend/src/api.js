@@ -156,6 +156,27 @@ export async function fetchFile(path, retried = false) {
   return response.blob()
 }
 
+/** POSTs JSON and returns the file the server answers with (a sample PDF to look at). */
+export async function postFile(path, body, retried = false) {
+  const headers = { 'Content-Type': 'application/json' }
+  const token = getToken()
+  if (token) headers.Authorization = `Bearer ${token}`
+  const response = await fetch(`/api${path}`, { method: 'POST', headers, body: JSON.stringify(body) })
+  if (!response.ok) {
+    let data = {}
+    try {
+      data = await response.json()
+    } catch {
+      // not JSON
+    }
+    if (data.code === 'stepup.required' && askForCode && !retried && (await askForCode())) {
+      return postFile(path, body, true)
+    }
+    throw new ApiError(data.message || 'The file could not be made.', response.status, data.code || 'error')
+  }
+  return response.blob()
+}
+
 /** Saves a document the server holds, such as a letter, to the person's device. */
 export async function downloadDocument(documentId, name) {
   const blob = await fetchFile(`/org/people/documents/${documentId}/content`)
@@ -753,6 +774,13 @@ export const orgSettings = {
 }
 
 // ── the Organization's own brand ────────────────────────────────────
+
+/** How the Form 130 Part B certificate looks: header line, footer, signatory and logo. */
+export const certificateLayout = {
+  get: () => get('/org/payroll/certificate-layout'),
+  save: (layout) => put('/org/payroll/certificate-layout', layout),
+  preview: (layout) => postFile('/org/payroll/certificate-layout/preview', layout),
+}
 
 export const branding = {
   get: () => get('/org/setup/branding'),

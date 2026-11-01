@@ -5,12 +5,14 @@ import java.util.List;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.example.loginapp.core.CertificateLayout;
 import com.example.loginapp.core.Modules;
 import com.example.loginapp.core.SessionCtx;
 import com.example.loginapp.core.TaxCertificates;
@@ -25,9 +27,29 @@ public class TaxCertificateController {
     public record ReleaseRequest(boolean acknowledgeDraftRules) {}
 
     private final TaxCertificates certificates;
+    private final CertificateLayout layout;
 
-    public TaxCertificateController(TaxCertificates certificates) {
+    public TaxCertificateController(TaxCertificates certificates, CertificateLayout layout) {
         this.certificates = certificates;
+        this.layout = layout;
+    }
+
+    /** How this Organization's certificate looks: the version in force and the ones before it. */
+    @GetMapping("/payroll/certificate-layout")
+    public CertificateLayout.View layout(SessionCtx ctx) {
+        return layout.get(ctx);
+    }
+
+    /** Saves the layout as the next version (an Org Admin). Drafts pick it up when built again; released certificates never change. */
+    @PutMapping("/payroll/certificate-layout")
+    public CertificateLayout.View saveLayout(SessionCtx ctx, @RequestBody CertificateLayout.Input request) {
+        return layout.save(ctx, request);
+    }
+
+    /** A sample certificate with made-up figures in the layout typed in the body (or the one in force when empty). Nothing is stored. */
+    @PostMapping("/payroll/certificate-layout/preview")
+    public ResponseEntity<byte[]> previewLayout(SessionCtx ctx, @RequestBody(required = false) CertificateLayout.Input request) {
+        return DocumentController.file(layout.preview(ctx, request));
     }
 
     @GetMapping("/payroll/tax-certificates")

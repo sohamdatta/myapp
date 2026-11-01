@@ -33,11 +33,13 @@ public final class TaxCertificates {
 
     /** A certificate in the list for a tax year. */
     public record Row(String id, String employmentId, String code, String name, String taxYear, String status, boolean draftRules,
-                      BigDecimal taxableIncome, BigDecimal annualTax, BigDecimal taxDeducted, String generatedAt, String releasedAt) {}
+                      BigDecimal taxableIncome, BigDecimal annualTax, BigDecimal taxDeducted, String generatedAt, String releasedAt,
+                      Integer layoutVersion) {}
 
     public record Skipped(String code, String name, String reason) {}
 
-    public record Year(String taxYear, List<Row> certificates, int released, boolean canRelease) {}
+    /** {@code layoutVersion} is the layout in force; a draft built with an older one is rebuilt to pick the new one up. */
+    public record Year(String taxYear, List<Row> certificates, int released, boolean canRelease, int layoutVersion) {}
 
     public record BuildResult(String taxYear, int built, int alreadyReleased, List<Skipped> skipped) {}
 
@@ -67,7 +69,7 @@ public final class TaxCertificates {
             List<Row> rows = new ArrayList<>();
             int released = 0;
             for (Map<String, Object> t : Sql.query(c, "select t.id, t.employment_id, t.status, t.draft_rules, t.part_b, t.generated_at, t.released_at, "
-                    + "e.employee_code from app.tax_certificate t join app.employment e on e.id = t.employment_id where t.tax_year = ? "
+                    + "t.layout_version, e.employee_code from app.tax_certificate t join app.employment e on e.id = t.employment_id where t.tax_year = ? "
                     + "order by lower(t.part_b->>'name')", year)) {
                 Map<String, Object> b = parse(t.get("partB"));
                 boolean done = "released".equals(t.get("status"));
@@ -75,9 +77,10 @@ public final class TaxCertificates {
                 rows.add(new Row(String.valueOf(t.get("id")), String.valueOf(t.get("employmentId")), (String) t.get("employeeCode"),
                         String.valueOf(b.get("name")), year, (String) t.get("status"), Boolean.TRUE.equals(t.get("draftRules")),
                         PayrollEngine.dec(b, "taxableIncome"), PayrollEngine.dec(b, "annualTax"), PayrollEngine.dec(b, "taxDeducted"),
-                        String.valueOf(t.get("generatedAt")), t.get("releasedAt") == null ? null : String.valueOf(t.get("releasedAt"))));
+                        String.valueOf(t.get("generatedAt")), t.get("releasedAt") == null ? null : String.valueOf(t.get("releasedAt")),
+                        t.get("layoutVersion") == null ? null : ((Number) t.get("layoutVersion")).intValue()));
             }
-            return new Year(year, rows, released, ctx.reachesEveryone("payroll.approve"));
+            return new Year(year, rows, released, ctx.reachesEveryone("payroll.approve"), CertificateLayout.current(c).version());
         });
     }
 
@@ -97,8 +100,12 @@ public final class TaxCertificates {
             }
             int built = 0;
             int kept = 0;
+            // The layout in force now; a certificate keeps the version it was built with, and a released one never changes.
+            CertificateLayout.Layout layout = CertificateLayout.current(c);
+            Pdf.Image logo = TaxCertificatePdf.logo(CertificateLayout.logo(c), layout);   // decoded once, not once per employee
+            Integer layoutVersion = layout.version() == 0 ? null : layout.version();
             for (AnnualTax.Person p : year0.people()) {
-                byte[] pdf = TaxCertificatePdf.render(p.partB, p.draftRules);
+                byte[] pdf = TaxCertificatePdf.render(p.partB, p.draftRules, layout, logo);
                 String file = "Form 130 Part B " + year + " " + p.code + ".pdf";
                 UUID employment = AuthService.uuid(p.employmentId);
                 Map<String, Object> existing = Sql.one(c, "select status from app.tax_certificate where employment_id = ? and tax_year = ? for update",
@@ -109,13 +116,13 @@ public final class TaxCertificates {
                 }
                 if (existing == null) {
                     Sql.update(c, "insert into app.tax_certificate (tenant_id, employment_id, membership_id, tax_year, part_b, draft_rules, file_name, "
-                            + "pdf_enc, generated_by) values (?, ?, ?, ?, ?::jsonb, ?, ?, ?, ?)", ctx.tenantId(), employment,
+                            + "pdf_enc, generated_by, layout_version) values (?, ?, ?, ?, ?::jsonb, ?, ?, ?, ?, ?)", ctx.tenantId(), employment,
                             p.membershipId == null ? null : AuthService.uuid(p.membershipId), year, Json.write(p.partB), p.draftRules, file,
-                            crypto.encrypt(ctx.tenantId(), pdf), ctx.membershipId());
+                            crypto.encrypt(ctx.tenantId(), pdf), ctx.membershipId(), layoutVersion);
                 } else {
                     Sql.update(c, "update app.tax_certificate set part_b = ?::jsonb, draft_rules = ?, file_name = ?, pdf_enc = ?, generated_by = ?, "
-                            + "generated_at = now() where employment_id = ? and tax_year = ?", Json.write(p.partB), p.draftRules, file,
-                            crypto.encrypt(ctx.tenantId(), pdf), ctx.membershipId(), employment, year);
+                            + "layout_version = ?, generated_at = now() where employment_id = ? and tax_year = ?", Json.write(p.partB), p.draftRules, file,
+                            crypto.encrypt(ctx.tenantId(), pdf), ctx.membershipId(), layoutVersion, employment, year);
                 }
                 built++;
                 UUID certificate = AuthService.uuid(Sql.one(c, "select id from app.tax_certificate where employment_id = ? and tax_year = ?", employment, year).get("id"));
@@ -207,12 +214,13 @@ public final class TaxCertificates {
     }
 
     private Row row(Connection c, UUID id) throws SQLException {
-        Map<String, Object> t = Sql.one(c, "select t.id, t.employment_id, t.tax_year, t.status, t.draft_rules, t.part_b, t.generated_at, t.released_at, "
+        Map<String, Object> t = Sql.one(c, "select t.id, t.employment_id, t.tax_year, t.status, t.draft_rules, t.part_b, t.generated_at, t.released_at, t.layout_version, "
                 + "e.employee_code from app.tax_certificate t join app.employment e on e.id = t.employment_id where t.id = ?", id);
         Map<String, Object> b = parse(t.get("partB"));
         return new Row(String.valueOf(t.get("id")), String.valueOf(t.get("employmentId")), (String) t.get("employeeCode"), String.valueOf(b.get("name")),
                 (String) t.get("taxYear"), (String) t.get("status"), Boolean.TRUE.equals(t.get("draftRules")), PayrollEngine.dec(b, "taxableIncome"),
                 PayrollEngine.dec(b, "annualTax"), PayrollEngine.dec(b, "taxDeducted"), String.valueOf(t.get("generatedAt")),
-                t.get("releasedAt") == null ? null : String.valueOf(t.get("releasedAt")));
+                t.get("releasedAt") == null ? null : String.valueOf(t.get("releasedAt")),
+                t.get("layoutVersion") == null ? null : ((Number) t.get("layoutVersion")).intValue());
     }
 }
