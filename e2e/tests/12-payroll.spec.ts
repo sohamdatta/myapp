@@ -26,7 +26,7 @@ const firstOfMonth = (offset = 0) => {
 /**
  * Whether Meera is still employed when next month starts. Her last day is the one the manager recommended in 10-exit,
  * twenty days from today (her notice is thirty). Late in a month that falls in next month, so she is in next month's run;
- * in roughly the first ten days it falls before it, and she is rightly not. A test that always expected her there failed
+ * in the first days of a month (1 to 11 in a 31-day month, 1 to 8 in February) it falls before it, and she is rightly not. A test that always expected her there failed
  * on every first of the month, which no fixed-date run covers.
  */
 const meeraInNextMonth = () => isoDay(20) >= firstOfMonth(1); // date-safe: Meera's last day is today + 20 (10-exit); the comparison with next month is the point
