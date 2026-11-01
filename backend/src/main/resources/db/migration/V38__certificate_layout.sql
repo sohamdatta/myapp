@@ -37,4 +37,4 @@ grant select, insert, update, delete on app.certificate_layout to app_definer;
 alter table app.tax_certificate add column layout_version integer;
 alter table app.tax_certificate add constraint tax_certificate_layout_fk foreign key (tenant_id, layout_version)
   references app.certificate_layout (tenant_id, version) not valid;
-alter table app.tax_certificate validate constraint tax_certificate_layout_fk;   -- every existing row has none, so this checks nothing
+-- Left NOT VALID on purpose: validating in the same transaction blocks reads, and every existing row has no layout version, so there is nothing to check.
