@@ -11,9 +11,11 @@ import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.temporal.TemporalAdjusters;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 import com.example.loginapp.core.UsageMetrics.Metric;
@@ -123,11 +125,27 @@ public final class UsageStats {
             if (from.isBefore(floor)) {
                 from = floor;
             }
-            for (LocalDate day = from; !day.isAfter(last); day = day.plusDays(1)) {
-                Map<String, BigDecimal> counted = countDay(tenant.id(), day, failures);
-                store(tenant.id(), day, counted);
-                days++;
-                values += counted.size();
+            try {
+                for (LocalDate day = from; !day.isAfter(last); day = day.plusDays(1)) {
+                    List<String> dayFailures = new ArrayList<>();
+                    Map<String, BigDecimal> counted = countDay(tenant.id(), day, dayFailures);
+                    // A metric whose query failed keeps the number it had; it is not deleted as if there were nothing to report.
+                    Set<String> failed = new HashSet<>();
+                    dayFailures.forEach(f -> failed.add(f.substring(0, f.indexOf(':'))));
+                    store(tenant.id(), day, counted, failed);
+                    days++;
+                    values += counted.size();
+                    for (String f : dayFailures) {
+                        if (failures.size() < MAX_FAILURES) {
+                            failures.add(f);
+                        }
+                    }
+                }
+            } catch (RuntimeException e) {
+                // One Organization failing (a lost connection, say) must not stop the others being counted.
+                if (failures.size() < MAX_FAILURES) {
+                    failures.add("organization " + tenant.id() + ": " + e.getClass().getSimpleName());
+                }
             }
         }
         LocalDate keepFrom = today().minusYears(2);
@@ -160,21 +178,23 @@ public final class UsageStats {
             } catch (SQLException e) {
                 c.rollback(sp);
                 if (failures.size() < MAX_FAILURES) {
-                    failures.add(m.code() + ": " + e.getMessage());
+                    failures.add(m.code() + ": SQLSTATE " + e.getSQLState());
                 }
             }
         }
         return null;
     }
 
-    private void store(UUID tenant, LocalDate day, Map<String, BigDecimal> counted) {
+    private void store(UUID tenant, LocalDate day, Map<String, BigDecimal> counted, Set<String> failed) {
         db.inPlatform(c -> {
             // Upserted, so a repeat or an overlapping run only rewrites the same numbers; a metric that now has nothing leaves no stale one.
             List<Object[]> rows = new ArrayList<>();
             counted.forEach((metric, value) -> rows.add(new Object[] {tenant, day, metric, value}));
             Sql.batch(c, "insert into platform.usage_daily (tenant_id, day, metric, value) values (?, ?, ?, ?) "
                     + "on conflict (tenant_id, day, metric) do update set value = excluded.value, computed_at = now()", rows);
-            Sql.update(c, "delete from platform.usage_daily where tenant_id = ? and day = ? and metric <> all(?)", tenant, day, counted.keySet().toArray(new String[0]));
+            Set<String> keep = new HashSet<>(counted.keySet());
+            keep.addAll(failed);
+            Sql.update(c, "delete from platform.usage_daily where tenant_id = ? and day = ? and metric <> all(?)", tenant, day, keep.toArray(new String[0]));
             return null;
         });
     }
@@ -220,7 +240,7 @@ public final class UsageStats {
             for (Map<String, Object> r : Sql.query(c, "select d.tenant_id, m.module, "
                     + "coalesce(sum(d.value) filter (where d.day >= ?), 0) as u7, sum(d.value) as u30 "
                     + "from platform.usage_daily d join platform.usage_metric m on m.code = d.metric "
-                    + "where m.is_use and m.kind = 'count' and d.day >= ? group by d.tenant_id, m.module", today.minusDays(7), today.minusDays(30))) {
+                    + "where m.is_use and m.kind = 'count' and d.day >= ? and m.code = any(?) group by d.tenant_id, m.module", today.minusDays(7), today.minusDays(30), UsageMetrics.ALL.stream().map(UsageMetrics.Metric::code).toArray(String[]::new))) {
                 uses.computeIfAbsent(String.valueOf(r.get("tenantId")), k -> new LinkedHashMap<>())
                         .put((String) r.get("module"), new BigDecimal[] {new BigDecimal(String.valueOf(r.get("u7"))), new BigDecimal(String.valueOf(r.get("u30")))});
             }
@@ -296,7 +316,8 @@ public final class UsageStats {
                 BigDecimal total = BigDecimal.ZERO;
                 for (LocalDate w : weeks) {
                     values.add(by.get(w));
-                    total = total.add(by.getOrDefault(w, BigDecimal.ZERO));
+                    // A count adds up over the weeks; a headcount, median or share does not, so those show the latest week.
+                    total = "count".equals(m.kind()) ? total.add(by.getOrDefault(w, BigDecimal.ZERO)) : by.getOrDefault(w, total);
                 }
                 rows.add(new OrganizationSeries(id, (String) t.get("name"), values, total));
             }
@@ -345,7 +366,7 @@ public final class UsageStats {
         List<List<String>> rows = new ArrayList<>();
         List<String> head = new ArrayList<>(List.of("Organization"));
         head.addAll(v.weekStarts());
-        head.add("Total");
+        head.add("count".equals(v.kind()) ? "Total" : "Latest week");
         rows.add(head);
         for (OrganizationSeries o : v.organizations()) {
             List<String> line = new ArrayList<>(List.of(o.name()));

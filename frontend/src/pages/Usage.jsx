@@ -35,8 +35,8 @@ function Spark({ values, label }) {
 /** Platform console → Usage: how each Organization uses each feature, as counts only. Nothing here comes from inside an Organization. */
 export default function Usage({ me }) {
   const [view, setView] = useState({ name: 'grid' })
-  if (view.name === 'organization') return <OrganizationTrend id={view.id} onBack={() => setView({ name: 'grid' })} onMetric={(code) => setView({ name: 'metric', code, from: view })} />
-  if (view.name === 'metric') return <MetricAcross code={view.code} onBack={() => setView(view.from || { name: 'grid' })} onOrganization={(id) => setView({ name: 'organization', id })} />
+  if (view.name === 'organization') return <OrganizationTrend id={view.id} onBack={() => setView(view.from || { name: 'grid' })} onMetric={(code) => setView({ name: 'metric', code, from: view })} />
+  if (view.name === 'metric') return <MetricAcross code={view.code} onBack={() => setView(view.from || { name: 'grid' })} onOrganization={(id) => setView({ name: 'organization', id, from: view })} />
   return <Grid me={me} onOrganization={(id) => setView({ name: 'organization', id })} />
 }
 
@@ -236,7 +236,7 @@ function MetricAcross({ code, onBack, onOrganization }) {
             <tr>
               <th>Organization</th>
               <th>12 weeks</th>
-              <th>Total</th>
+              <th>{m.kind === 'count' ? 'Total' : 'Latest week'}</th>
             </tr>
           </thead>
           <tbody>
