@@ -77,63 +77,26 @@ final class Payslips {
         }
         Map<String, Object> infoBefore = parse(before.get("info"));
         Map<String, Object> infoNow = PayrollEngine.map(ps, "info");
-        Map<String, BigDecimal> was = new HashMap<>();
-        Map<String, String> names = new HashMap<>();
+        List<PayChange.Line> was = new ArrayList<>();
         for (Map<String, Object> l : Sql.query(c, "select code, name, kind, amount from app.payslip_line where payslip_id = ?::uuid and kind in "
                 + "('earning','deduction')", before.get("id"))) {
-            was.put((String) l.get("code"), signed(l));
-            names.put((String) l.get("code"), (String) l.get("name"));
+            was.add(new PayChange.Line((String) l.get("code"), (String) l.get("name"), signed(l), false));
         }
-        Map<String, BigDecimal> now = new HashMap<>();
-        Map<String, Boolean> oneTime = new HashMap<>();
+        List<PayChange.Line> now = new ArrayList<>();
         for (Map<String, Object> l : lines) {
             if (Set.of("earning", "deduction").contains(l.get("kind"))) {
-                now.put((String) l.get("code"), signed(l));
-                names.put((String) l.get("code"), (String) l.get("name"));
-                oneTime.put((String) l.get("code"), "Entered for this month".equals(PayrollEngine.map(l, "trace").get("source")));
+                now.add(new PayChange.Line((String) l.get("code"), (String) l.get("name"), signed(l),
+                        "Entered for this month".equals(PayrollEngine.map(l, "trace").get("source"))));
             }
         }
-        boolean daysChanged = PayrollEngine.dec(ps, "daysPaid").compareTo(PayrollEngine.dec(before, "daysPaid")) != 0
-                || PayrollEngine.dec(ps, "daysInPeriod").compareTo(PayrollEngine.dec(before, "daysInPeriod")) != 0;
-        boolean revised = PayrollEngine.dec(infoNow, "annual").compareTo(PayrollEngine.dec(infoBefore, "annual")) != 0;
-        Map<String, BigDecimal> causes = new LinkedHashMap<>();
-        Set<String> codes = new HashSet<>(was.keySet());
-        codes.addAll(now.keySet());
-        for (String code : codes) {
-            BigDecimal d = now.getOrDefault(code, BigDecimal.ZERO).subtract(was.getOrDefault(code, BigDecimal.ZERO));
-            if (d.signum() == 0) {
-                continue;
-            }
-            String cause;
-            if (Boolean.TRUE.equals(oneTime.get(code)) || (!now.containsKey(code) && was.containsKey(code) && !Set.of("PT", "LWF_EE", "TDS", "PF_EE", "ESI_EE")
-                    .contains(code))) {
-                cause = names.get(code) + (now.containsKey(code) ? " this month" : " last month, not this month");
-            } else if (code.equals("TDS")) {
-                cause = "Income tax re-worked for the year";
-            } else if (code.equals("PT")) {
-                cause = "Professional tax";
-            } else if (code.equals("LWF_EE")) {
-                cause = "Labour welfare fund, due in some months only";
-            } else if (Set.of("PF_EE", "ESI_EE").contains(code)) {
-                cause = "PF and ESI follow the wages";
-            } else if (revised) {
-                cause = "Pay revised from " + infoNow.get("compensationFrom");
-            } else if (daysChanged) {
-                cause = PayrollEngine.plain(PayrollEngine.dec(ps, "daysPaid")) + " of " + PayrollEngine.plain(PayrollEngine.dec(ps, "daysInPeriod"))
-                        + " days paid (last month " + PayrollEngine.plain(PayrollEngine.dec(before, "daysPaid")) + " of "
-                        + PayrollEngine.plain(PayrollEngine.dec(before, "daysInPeriod")) + ")";
-            } else {
-                cause = names.get(code) + " changed";
-            }
-            causes.merge(cause, d, BigDecimal::add);
-        }
+        PayChange.Slip slipBefore = new PayChange.Slip(PayrollEngine.dec(before, "daysPaid"), PayrollEngine.dec(before, "daysInPeriod"),
+                PayrollEngine.dec(infoBefore, "annual"), String.valueOf(infoBefore.get("compensationFrom")), was);
+        PayChange.Slip slipNow = new PayChange.Slip(PayrollEngine.dec(ps, "daysPaid"), PayrollEngine.dec(ps, "daysInPeriod"),
+                PayrollEngine.dec(infoNow, "annual"), String.valueOf(infoNow.get("compensationFrom")), now);
         List<Map<String, Object>> items = new ArrayList<>();
-        for (Map.Entry<String, BigDecimal> e : causes.entrySet()) {
-            if (e.getValue().signum() != 0) {
-                items.add(Map.of("cause", e.getKey(), "amount", e.getValue()));
-            }
+        for (PayChange.Cause cause : PayChange.diff(slipBefore, slipNow)) {
+            items.add(Map.of("cause", cause.text(), "amount", cause.amount()));
         }
-        items.sort((a, b) -> ((BigDecimal) b.get("amount")).abs().compareTo(((BigDecimal) a.get("amount")).abs()));
         out.put("previousLabel", monthWords(LocalDate.parse((String) before.get("period"))));
         out.put("previousNet", before.get("net"));
         out.put("difference", PayrollEngine.dec(ps, "net").subtract(PayrollEngine.dec(before, "net")));

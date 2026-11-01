@@ -148,7 +148,7 @@ class TdsFilingsTest {
             config.addRegistration(operator, new PayrollConfig.RegistrationInput(reg[0], reg[1], reg[2]));
         }
         config.saveSettings(operator, new PayrollConfig.SettingsInput("Test Co Pvt Ltd", "AAACT1234F", "BLRT12345A", "1 MG Road, Bengaluru",
-                null, null, null, null, null, null, null, null, null));
+                null, null, null, null, null, null, null, null, null, null));
         String staff = (String) ((Map<?, ?>) ((List<?>) setup.get("structures")).get(0)).get("id");
         String from = TODAY.withDayOfMonth(1).toString();
         pay.revise(org.admin, asha, new PayrollPay.ReviseInput(from, staff, new BigDecimal("24000000"), "Joining salary"));

@@ -223,6 +223,19 @@ public class PayrollController {
         return ResponseEntity.noContent().build();
     }
 
+    public record Accepted(int accepted) {}
+
+    /** Accepts several exceptions together with one reason; each is its own audit event. Answers how many were accepted. */
+    @PostMapping("/payroll/runs/{id}/exceptions/accept")
+    public Accepted acceptMany(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                                      @PathVariable("id") String id, @RequestBody PayrollRuns.AcceptManyInput request) {
+        java.util.List<java.util.UUID> ids = new java.util.ArrayList<>();
+        for (String x : request.ids() == null ? java.util.List.<String>of() : request.ids()) {
+            ids.add(Requests.id(x));
+        }
+        return new Accepted(runs.acceptMany(Requests.session(auth, authorization, Modules.PAYROLL), Requests.id(id), ids, request.reason()));
+    }
+
     @PostMapping("/payroll/runs/{id}/approve")
     public ResponseEntity<Void> approve(@RequestHeader(value = "Authorization", required = false) String authorization,
                                         @PathVariable("id") String id) {

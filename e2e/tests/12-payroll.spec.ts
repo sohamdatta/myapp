@@ -72,9 +72,18 @@ async function runs(page: Page) {
 }
 
 /** Accepts, as the approver, every open blocking exception that may be accepted. */
-async function acceptAll(page: Page, reasons: Record<string, string>) {
+async function acceptAll(page: Page, reasons: Record<string, string>, bulk = false) {
   const exceptions = page.getByTestId('exceptions');
   await expect(exceptions).toBeVisible();
+  if (bulk) {
+    // Several at once with one reason, as the approver does with a run full of the same kind of thing.
+    await exceptions.getByRole('button', { name: /^Select all \d+ that can be accepted$/ }).click();
+    await exceptions.getByRole('button', { name: /^Accept \d+ selected…$/ }).click();
+    await page.fill('#reason-Accept-selected', 'Paid by cheque this month; bank details follow');
+    await page.locator('form:has(#reason-Accept-selected)').getByRole('button', { name: 'Accept selected', exact: true }).click();
+    await expect(page.locator('#reason-Accept-selected')).toHaveCount(0);
+    await expect(exceptions.getByRole('button', { name: 'Accept…' })).toHaveCount(0);
+  }
   const buttons = exceptions.getByRole('button', { name: 'Accept…' });
   for (let left = await buttons.count(); left > 0; left--) {
     const row = exceptions.locator('li.exception.blocking').filter({ has: page.getByRole('button', { name: 'Accept…' }) }).first();
@@ -309,10 +318,8 @@ test.describe.serial('payroll', () => {
     await nav(owner, 'Payroll');
     await owner.getByRole('button', { name: `Open ${monthLabel()}` }).click();
     await expect(owner.getByRole('button', { name: 'Approve' })).toHaveCount(0); // blocking exceptions first
-    await acceptAll(owner, {
-      missing_bank: 'Paid by cheque this month; account details to follow',
-      missing_pan: 'PAN applied for; acknowledgement on file',
-    });
+    await acceptAll(owner, {}, true);
+    await expect(owner.getByTestId('exceptions')).toContainText('Paid by cheque this month; bank details follow');
     await shot(owner, 'payroll-15-exceptions-accepted', true);
     await owner.getByRole('button', { name: 'Approve' }).click();
     await owner.getByRole('dialog').getByRole('button', { name: 'Approve payroll' }).click();

@@ -64,6 +64,7 @@ function Entity({ s, onChanged }) {
     pfRestrict: st.pfRestrict,
     metroLocations: st.metroLocations || [],
     variancePct: st.variancePct,
+    varianceAmount: st.varianceAmount,
     largeOneTime: st.largeOneTime,
     releaseAuto: st.releaseAuto,
   })
@@ -79,7 +80,7 @@ function Entity({ s, onChanged }) {
         className="panel"
         onSubmit={async (e) => {
           e.preventDefault()
-          if (await run(() => payroll.saveSettings({ ...v, variancePct: numeric(v.variancePct, 'The net pay change'), largeOneTime: numeric(v.largeOneTime, 'The one-time amount') }))) {
+          if (await run(() => payroll.saveSettings({ ...v, variancePct: numeric(v.variancePct, 'The net pay change'), varianceAmount: numeric(v.varianceAmount, 'The net pay change in rupees'), largeOneTime: numeric(v.largeOneTime, 'The one-time amount') }))) {
             setSaved('Saved.')
             onChanged()
           }
@@ -153,6 +154,10 @@ function Entity({ s, onChanged }) {
             <div>
               <label htmlFor="pe-variance">Flag a change in net pay above (%)</label>
               <input id="pe-variance" inputMode="decimal" value={v.variancePct} onChange={(e) => set({ variancePct: e.target.value })} />
+            </div>
+            <div>
+              <label htmlFor="pe-variance-amount">or by more than (₹; 0 turns this off)</label>
+              <input id="pe-variance-amount" inputMode="decimal" value={v.varianceAmount} onChange={(e) => set({ varianceAmount: e.target.value })} />
             </div>
             <div>
               <label htmlFor="pe-large">Flag a one-time payment above (₹)</label>

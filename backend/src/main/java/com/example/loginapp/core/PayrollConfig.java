@@ -28,7 +28,7 @@ public final class PayrollConfig {
 
     public record SettingsInput(String entityName, String pan, String tan, String address, String debitAccount, String debitIfsc,
                                 String proration, Boolean absenceIsLop, Boolean pfRestrict, List<String> metroLocations,
-                                BigDecimal variancePct, BigDecimal largeOneTime, Boolean releaseAuto) {}
+                                BigDecimal variancePct, BigDecimal largeOneTime, Boolean releaseAuto, BigDecimal varianceAmount) {}
 
     public record RegistrationInput(String statute, String state, String number) {}
 
@@ -83,7 +83,7 @@ public final class PayrollConfig {
             PayrollDefaults.ensure(c, ctx.tenantId());
             Map<String, Object> out = new LinkedHashMap<>();
             out.put("settings", Sql.one(c, "select entity_name, pan, tan, address, debit_account, debit_ifsc, proration, absence_is_lop, "
-                    + "pf_restrict, metro_locations, variance_pct, large_one_time, release_auto, updated_at, "
+                    + "pf_restrict, metro_locations, variance_pct, variance_amount, large_one_time, release_auto, updated_at, "
                     + Names.of("updated_by") + " as updated_by_name from app.payroll_settings"));
             out.put("registrations", Sql.query(c, "select id, statute, state, number from app.payroll_registration order by statute, state"));
             out.put("components", components(c, today));
@@ -130,12 +130,20 @@ public final class PayrollConfig {
             for (String id : in.metroLocations() == null ? List.<String>of() : in.metroLocations()) {
                 metro.add(id(id, "work location"));
             }
+            BigDecimal varianceAmount = in.varianceAmount() == null ? BigDecimal.valueOf(5000) : in.varianceAmount();
+            if (varianceAmount.signum() < 0 || varianceAmount.compareTo(BigDecimal.valueOf(10_000_000)) > 0) {
+                throw ApiException.badRequest("The net pay change in rupees is between 0 and 1,00,00,000; 0 turns it off");
+            }
+            if (in.variancePct() != null && (in.variancePct().signum() < 0 || in.variancePct().compareTo(BigDecimal.valueOf(100)) > 0)) {
+                throw ApiException.badRequest("The net pay change in percent is between 0 and 100");
+            }
             Sql.update(c, "update app.payroll_settings set entity_name = ?, pan = ?, tan = ?, address = ?, debit_account = ?, debit_ifsc = ?, "
-                            + "proration = ?, absence_is_lop = ?, pf_restrict = ?, metro_locations = ?, variance_pct = ?, large_one_time = ?, "
+                            + "proration = ?, absence_is_lop = ?, pf_restrict = ?, metro_locations = ?, variance_pct = ?, variance_amount = ?, large_one_time = ?, "
                             + "release_auto = ?, updated_by = ?, updated_at = now()",
                     blank(in.entityName()), pan, tan, blank(in.address()), account, ifsc, proration,
                     Boolean.TRUE.equals(in.absenceIsLop()), in.pfRestrict() == null || in.pfRestrict(), metro.toArray(UUID[]::new),
                     in.variancePct() == null ? BigDecimal.TEN : in.variancePct(),
+                    varianceAmount,
                     in.largeOneTime() == null ? BigDecimal.valueOf(25000) : in.largeOneTime(), Boolean.TRUE.equals(in.releaseAuto()),
                     ctx.membershipId());
             UserService.audit(c, ctx, "payroll.settings_changed", "payroll", null, Map.of("proration", proration));
@@ -628,7 +636,7 @@ public final class PayrollConfig {
     /** Everything a calculation needs about the Organization's setup, as in force on the date. */
     static Map<String, Object> load(Connection c, LocalDate asOf) throws SQLException {
         Map<String, Object> config = new LinkedHashMap<>();
-        Map<String, Object> s = Sql.one(c, "select proration, absence_is_lop, pf_restrict, metro_locations, variance_pct, large_one_time "
+        Map<String, Object> s = Sql.one(c, "select proration, absence_is_lop, pf_restrict, metro_locations, variance_pct, variance_amount, large_one_time "
                 + "from app.payroll_settings");
         config.put("settings", s);
         Map<String, Object> components = new LinkedHashMap<>();
