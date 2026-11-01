@@ -46,7 +46,7 @@ checksum lock, Squawk and schema diff, the fixed-date workflow repaired (and a r
 ## What only a person can do
 
 - [ ] Payroll consultant: compare the 18 golden payslips with their spreadsheet; change `status` to `signed-off`.
-- [ ] Add the repository secret `NVD_API_KEY`, run the Dependency check workflow once, triage the findings.
+- [x] Add the repository secret `NVD_API_KEY`, run the Dependency check workflow once, triage the findings.
 - [ ] Run the Scale check workflow once; paste the numbers into the table in `docs/testing.md`; then turn *enforce* on.
 - [ ] CERT-In: everything in [security/cert-in.md](../security/cert-in.md) (bucket in an Indian region with a 180-day rule, chrony,
       the Point of Contact registration, the rehearsal).
