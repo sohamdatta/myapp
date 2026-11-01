@@ -15,6 +15,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.example.loginapp.core.ApiException;
 import com.example.loginapp.core.AuthService;
+import com.example.loginapp.core.PayrollRules;
 import com.example.loginapp.core.PlatformService;
 
 /** The platform console. Every call needs a console session, which carries no Organization. */
@@ -35,10 +36,38 @@ public class PlatformController {
 
     private final AuthService auth;
     private final PlatformService platform;
+    private final PayrollRules rules;
 
-    public PlatformController(AuthService auth, PlatformService platform) {
+    public PlatformController(AuthService auth, PlatformService platform, PayrollRules rules) {
         this.auth = auth;
         this.platform = platform;
+        this.rules = rules;
+    }
+
+    /** State professional tax and labour welfare fund rules: every version, newest first. */
+    @GetMapping("/payroll-rules")
+    public List<PayrollRules.Rule> rules(@RequestHeader(value = "Authorization", required = false) String authorization) {
+        return rules.list(Requests.session(auth, authorization));
+    }
+
+    /** Adds a draft version, closing the one in force on its start date. */
+    @PostMapping("/payroll-rules")
+    public PayrollRules.Rule addRule(@RequestHeader(value = "Authorization", required = false) String authorization, @RequestBody PayrollRules.Input request) {
+        return rules.add(Requests.session(auth, authorization), request);
+    }
+
+    /** Changes the figures of a draft. */
+    @org.springframework.web.bind.annotation.PutMapping("/payroll-rules/{id}")
+    public PayrollRules.Rule editRule(@RequestHeader(value = "Authorization", required = false) String authorization, @PathVariable("id") String id,
+                                      @RequestBody PayrollRules.Input request) {
+        return rules.edit(Requests.session(auth, authorization), Requests.id(id), request);
+    }
+
+    /** Records the payroll consultant's sign-off of a draft. */
+    @PostMapping("/payroll-rules/{id}/sign-off")
+    public PayrollRules.Rule signOffRule(@RequestHeader(value = "Authorization", required = false) String authorization, @PathVariable("id") String id,
+                                         @RequestBody PayrollRules.SignOff request) {
+        return rules.signOff(Requests.session(auth, authorization), Requests.id(id), request);
     }
 
     @GetMapping("/organizations")

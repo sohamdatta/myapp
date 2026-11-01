@@ -599,7 +599,7 @@ public final class PayrollEngine {
         Map<String, Object> pack = map(map(rules, "pt"), state);
         if (pack.isEmpty()) {
             out.exception("missing_state_pack", "blocking", false, "No professional tax rules for " + IdChecks.STATES.getOrDefault(state, state)
-                    + " yet. Payroll covers Goa, Karnataka and Maharashtra.", null);
+                    + " yet. They are added from the platform console, with the payroll consultant's sign-off.", null);
             return;
         }
         boolean woman = "female".equalsIgnoreCase(str(emp.get("gender"))) && pack.containsKey("women");
