@@ -4,40 +4,49 @@ import { useAction, useLoad } from '../hooks.js'
 import { Badge, Empty, ErrorNote } from '../ui.jsx'
 import { monthLabel, rupees } from './payrollText.js'
 
-const percent = (v) => (v === null || v === undefined ? '—' : `${(Number(v) * 100).toFixed(1)}%`)
+const percent = (v) => (v === null || v === undefined ? '—' : `${Number(v).toFixed(1)}%`)
+/** A month the server can read: yyyy-mm with a sensible year (a half-typed year is not sent). */
+const validMonth = (m) => /^\d{4}-(0[1-9]|1[0-2])$/.test(m) && Number(m.slice(0, 4)) >= 2000
 
 /**
  * Payroll → Wages: the wage test of the Labour Codes for each person in a month (are wages at least half of the remuneration, or is the
  * difference added back for PF), and a what-if for one person. Nothing here is saved.
  */
-export default function WageCheck() {
+export default function WageCheck({ me }) {
   const [month, setMonth] = useState('')
-  return <Check key={month} month={month} onMonth={setMonth} />
-}
-
-function Check({ month, onMonth }) {
   const [open, setOpen] = useState(null)
-  const check = useLoad(() => payroll.wageCheck(month || undefined))
-  const v = check.data
-
-  if (open) return <WhatIf person={open} period={v?.period} onBack={() => setOpen(null)} />
+  const applied = validMonth(month) ? month : ''
+  // The month box stays mounted; only the result below it is loaded again when a complete month is chosen.
+  if (open) return <WhatIf person={open.person} period={open.period} onBack={() => setOpen(null)} />
   return (
     <section className="panel">
       <div className="section-head">
         <h3>Wages under the Labour Codes</h3>
         <label className="muted">
           Month
-          <input type="month" value={month} onChange={(e) => onMonth(e.target.value)} aria-label="Month to check" />
+          <input type="month" value={month} onChange={(e) => setMonth(e.target.value)} aria-label="Month to check" />
         </label>
       </div>
+      <Check key={applied} month={applied} me={me} onOpen={(person, period) => setOpen({ person, period })} />
+    </section>
+  )
+}
+
+function Check({ month, me, onOpen }) {
+  const check = useLoad(() => payroll.wageCheck(month || undefined))
+  const v = check.data
+  const canTry = me && (me.permissions.includes('compensation.read') || me.permissions.includes('payroll.prepare'))
+
+  return (
+    <>
       <ErrorNote>{check.error}</ErrorNote>
       {v?.draftRules && <p className="hint">Some figures use rules still awaiting the payroll consultant’s sign-off.</p>}
       {v && !v.period && <Empty>No payroll has been approved yet, so there is nothing to check. Choose a month once a run exists.</Empty>}
       {v?.period && (
         <>
           <p className="hint">
-            {monthLabel(v.period)}: {v.summary.people} {v.summary.people === 1 ? 'person' : 'people'}, {v.summary.toppedUp} with PF wages topped up to half
-            of their pay (₹{Number(v.summary.pfExtra).toLocaleString('en-IN')} a month added to PF wages).
+            {monthLabel(v.period)}: {v.summary.people} {v.summary.people === 1 ? 'person' : 'people'}, {v.summary.toppedUp} with wages added back to reach half
+            of their pay for PF ({rupees(v.summary.addedBack)} added back, {rupees(v.summary.pfExtra)} more PF a month).
           </p>
           {v.pending.length > 0 && (
             <p className="hint">Not counted yet, because the run is not approved: {v.pending.map((p) => `${p.group} (${p.state})`).join(', ')}.</p>
@@ -52,7 +61,8 @@ function Check({ month, onMonth }) {
                   <th>Pay</th>
                   <th>Wages</th>
                   <th>Wage share</th>
-                  <th>PF top-up</th>
+                  <th>Added back</th>
+                  <th>Extra PF</th>
                   <th />
                 </tr>
               </thead>
@@ -60,16 +70,19 @@ function Check({ month, onMonth }) {
                 {v.rows.map((r) => (
                   <tr key={r.employmentId} data-person={r.name}>
                     <td>
-                      {r.name} <code className="hint">{r.code}</code>
+                      {r.name} <code className="hint">{r.code}</code> {r.held && <Badge tone="warn">Held</Badge>}
                     </td>
                     <td>{rupees(r.remuneration)}</td>
                     <td>{rupees(r.wages)}</td>
                     <td>{percent(r.wageShare)}</td>
+                    <td>{r.toppedUp ? rupees(r.addedBack) : <span className="hint">None</span>}</td>
                     <td>{r.toppedUp ? <Badge tone="warn">{r.pfExtra === null ? 'Yes' : rupees(r.pfExtra)}</Badge> : <span className="hint">None</span>}</td>
                     <td>
-                      <button type="button" className="secondary" onClick={() => setOpen(r)}>
-                        What if
-                      </button>
+                      {canTry && (
+                        <button type="button" className="secondary" onClick={() => onOpen(r, v.period)}>
+                          What if
+                        </button>
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -79,7 +92,7 @@ function Check({ month, onMonth }) {
           )}
         </>
       )}
-    </section>
+    </>
   )
 }
 
@@ -89,9 +102,13 @@ function WhatIf({ person, period, onBack }) {
   const [rows, setRows] = useState([{ code: '', amount: '' }])
   const [result, setResult] = useState(null)
   const { busy, error, run } = useAction()
-  const components = (setup.data?.components || []).filter((c) => !c.retiredAt && c.kind === 'earning')
+  const components = (setup.data?.components || []).filter((c) => !c.retiredAt && c.kind === 'earning' && !c.statutory && !c.oneTime && c.amountType !== 'input')
 
-  const setRow = (i, patch) => setRows(rows.map((r, j) => (j === i ? { ...r, ...patch } : r)))
+  const change = (next) => {
+    setRows(next)
+    setResult(null)   // the figures shown belong to the amounts that were tried
+  }
+  const setRow = (i, patch) => change(rows.map((r, j) => (j === i ? { ...r, ...patch } : r)))
   const ready = rows.length > 0 && rows.every((r) => r.code && r.amount !== '' && Number(r.amount) >= 0)
 
   async function tryIt(e) {
@@ -134,7 +151,7 @@ function WhatIf({ person, period, onBack }) {
               <select value={r.code} onChange={(e) => setRow(i, { code: e.target.value })} aria-label={`Earning ${i + 1}`}>
                 <option value="">Choose…</option>
                 {components.map((c) => (
-                  <option key={c.id} value={c.code}>
+                  <option key={c.id} value={c.code} disabled={rows.some((x, j) => j !== i && x.code === c.code)}>
                     {c.name}
                   </option>
                 ))}
@@ -145,14 +162,14 @@ function WhatIf({ person, period, onBack }) {
               <input type="number" min="0" step="1" inputMode="numeric" value={r.amount} onChange={(e) => setRow(i, { amount: e.target.value })} aria-label={`Amount ${i + 1}`} />
             </label>
             {rows.length > 1 && (
-              <button type="button" className="secondary" onClick={() => setRows(rows.filter((_, j) => j !== i))}>
+              <button type="button" className="secondary" onClick={() => change(rows.filter((_, j) => j !== i))}>
                 Remove
               </button>
             )}
           </div>
         ))}
         <div className="form-actions">
-          <button type="button" className="secondary" onClick={() => setRows([...rows, { code: '', amount: '' }])} disabled={rows.length >= 10}>
+          <button type="button" className="secondary" onClick={() => change([...rows, { code: '', amount: '' }])} disabled={rows.length >= 10}>
             Add another earning
           </button>
           <button type="submit" className="primary" disabled={busy || !ready}>
@@ -176,7 +193,7 @@ function WhatIf({ person, period, onBack }) {
               <thead>
                 <tr>
                   <th />
-                  <th>Today</th>
+                  <th>Current</th>
                   <th>With the change</th>
                 </tr>
               </thead>

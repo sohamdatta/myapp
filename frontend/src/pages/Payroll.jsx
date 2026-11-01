@@ -28,7 +28,7 @@ export default function Payroll({ me }) {
         onChange={setTab}
       />
       {tab === 'runs' && <RunList onOpen={setOpen} onSetup={() => setTab('setup')} />}
-      {tab === 'wages' && <WageCheck />}
+      {tab === 'wages' && <WageCheck me={me} />}
       {tab === 'setup' && <PayrollSetup />}
     </>
   )

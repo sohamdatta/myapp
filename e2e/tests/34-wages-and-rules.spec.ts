@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { SUPER_ADMIN, OWNER, newPage, signIn, nav, tab, expectRefused, expectNoConsoleErrors, expectNoSidewaysScroll, shot } from './helpers';
+import { SUPER_ADMIN, OWNER, signIn, nav, tab, expectRefused, expectNoConsoleErrors, expectNoSidewaysScroll, shot } from './helpers';
 
 // The wage check and its what-if, and the state payroll rules, after the story has run. The Org Admin reads the Labour Codes wage
 // test for the latest approved month and tries other amounts for one person (nothing is saved). The Super Admin reads the state
@@ -18,7 +18,14 @@ test.describe.serial('wages and payroll rules', () => {
     await expect(owner.getByRole('heading', { name: 'Wages under the Labour Codes' })).toBeVisible();
     const rows = owner.locator('tr[data-person]');
     await expect(rows.first()).toBeVisible();
-    await expect(owner.getByText(/with PF wages topped up/)).toBeVisible();
+    await expect(owner.getByText(/added back to reach half/)).toBeVisible();
+    // The share is a percentage of pay, between 0 and 100.
+    for (const text of await rows.locator('td:nth-child(4)').allTextContents()) {
+      const n = Number(text.replace('%', ''));
+      expect(n, `wage share ${text}`).toBeGreaterThan(0);
+      expect(n, `wage share ${text}`).toBeLessThanOrEqual(100);
+    }
+    const payBefore = await rows.filter({ hasNotText: 'Ananya Sen' }).first().locator('td:nth-child(2)').innerText();
     await expectNoSidewaysScroll(owner);
     await shot(owner, 'wages-01-check', true);
 
@@ -46,7 +53,7 @@ test.describe.serial('wages and payroll rules', () => {
 
     // Nothing was saved: back on the check, the person's figures are as the run left them.
     await owner.getByRole('button', { name: '← Wages' }).click();
-    await expect(rows.first()).toBeVisible();
+    await expect(rows.filter({ hasNotText: 'Ananya Sen' }).first().locator('td:nth-child(2)')).toHaveText(payBefore);
     await owner.context().close();
   });
 
@@ -62,11 +69,7 @@ test.describe.serial('wages and payroll rules', () => {
   });
 
   test('the Super Admin reads the state rules, edits a draft, and cannot add a version over a draft', async ({ browser }) => {
-    const admin = await newPage(browser);
-    await admin.goto('/');
-    await admin.fill('#email', SUPER_ADMIN.email);
-    await admin.fill('#password', SUPER_ADMIN.password);
-    await admin.click('button.primary');
+    const admin = await signIn(browser, SUPER_ADMIN.email, SUPER_ADMIN.password);
     await expect(admin.getByText('Platform console')).toBeVisible();
     await nav(admin, 'Payroll rules');
     const page = admin.getByTestId('payroll-rules');
@@ -82,17 +85,27 @@ test.describe.serial('wages and payroll rules', () => {
     await ka.getByRole('button', { name: 'Edit' }).click();
     const form = admin.getByRole('form', { name: 'Edit rule' });
     await expect(form).toBeVisible();
+    const original = await form.getByLabel('Where the figures come from').inputValue();
     await form.getByLabel('Where the figures come from').fill('Karnataka LWF notification, checked against the consultant’s note');
     await form.getByRole('button', { name: 'Save the draft' }).click();
     await expect(form).toHaveCount(0);
     await expect(ka).toContainText('Draft');
+    // Opening another rule while one is open shows that rule, not the one before; and the source is put back as it was.
+    await ka.getByRole('button', { name: 'Edit' }).click();
+    await expect(form.getByLabel('Where the figures come from')).toHaveValue('Karnataka LWF notification, checked against the consultant’s note');
+    await page.locator('tr[data-rule^="lwf:MH:"]').getByRole('button', { name: 'Edit' }).click();
+    await expect(form.getByLabel('State')).toHaveValue('MH');
+    await page.locator('tr[data-rule^="lwf:KA:"]').getByRole('button', { name: 'Edit' }).click();
+    await form.getByLabel('Where the figures come from').fill(original);
+    await form.getByRole('button', { name: 'Save the draft' }).click();
+    await expect(form).toHaveCount(0);
 
     // A new version cannot be added while the latest is a draft.
     await page.getByRole('button', { name: 'Add a rule' }).click();
     const add = admin.getByRole('form', { name: 'Add a rule' });
     await add.getByLabel('State').selectOption('KA');
     await add.getByLabel('Rule').selectOption('lwf');
-    await add.getByLabel(/Applies from/).fill('2031-01-01');
+    await add.getByLabel(/Applies from/).fill('2031-01');
     await add.getByLabel('Where the figures come from').fill('A later notification');
     await add.getByLabel('Employee pays (₹)').fill('20');
     await add.getByLabel('Employer pays (₹)').fill('40');

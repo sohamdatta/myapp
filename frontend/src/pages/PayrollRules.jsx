@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { platform } from '../api.js'
-import { formatDay, useAction, useLoad } from '../hooks.js'
+import { formatDay, localToday, useAction, useLoad } from '../hooks.js'
 import { Badge, Empty, ErrorNote } from '../ui.jsx'
 import { STATE_NAMES } from './payrollText.js'
 
@@ -42,12 +42,12 @@ export default function PayrollRules({ me }) {
       </div>
       <p className="hint">
         Professional tax and labour welfare fund by state. Payroll says on every payslip when a figure came from a draft that is waiting for the
-        consultant’s sign-off.
+        consultant’s sign-off. Rules can be added for Goa, Karnataka and Maharashtra for now.
       </p>
       <ErrorNote>{loaded.error}</ErrorNote>
-      {form && <RuleForm rule={form.rule} onCancel={() => setForm(null)} onDone={done} />}
-      {signing && <SignOffForm rule={signing} onCancel={() => setSigning(null)} onDone={done} />}
-      {!loaded.loading && rules.length === 0 && <Empty>No rules yet.</Empty>}
+      {form && <RuleForm key={form.rule?.id ?? 'new'} rule={form.rule} onCancel={() => setForm(null)} onDone={done} />}
+      {signing && <SignOffForm key={signing.id} rule={signing} onCancel={() => setSigning(null)} onDone={done} />}
+      {!loaded.loading && !loaded.error && rules.length === 0 && <Empty>No rules yet.</Empty>}
       {rules.length > 0 && (
         <div className="table-wrap">
           <table>
@@ -159,7 +159,7 @@ function RuleForm({ rule, onCancel, onDone }) {
   const { busy, error, run } = useAction()
   const [statute, setStatute] = useState(rule?.statute || 'pt')
   const [state, setState] = useState(rule?.jurisdiction || 'MH')
-  const [from, setFrom] = useState(rule?.validFrom || '')
+  const [from, setFrom] = useState(rule?.validFrom ? rule.validFrom.slice(0, 7) : '')   // a month: a rule starts on the first
   const [source, setSource] = useState(rule?.source || '')
   const [men, setMen] = useState(slabsToForm(rule?.pt?.men).length ? slabsToForm(rule?.pt?.men) : [blankSlab()])
   const [women, setWomen] = useState(slabsToForm(rule?.pt?.women))
@@ -172,14 +172,14 @@ function RuleForm({ rule, onCancel, onDone }) {
     e.preventDefault()
     const body =
       statute === 'pt'
-        ? { statute, jurisdiction: state, validFrom: from, source, pt: { men: slabsToBody(men), women: slabsToBody(women), yearlyCeiling: num(ceiling) } }
-        : { statute, jurisdiction: state, validFrom: from, source, lwf: { employee: num(employee), employer: num(employer), months } }
+        ? { statute, jurisdiction: state, validFrom: `${from}-01`, source, pt: { men: slabsToBody(men), women: slabsToBody(women), yearlyCeiling: num(ceiling) } }
+        : { statute, jurisdiction: state, validFrom: `${from}-01`, source, lwf: { employee: num(employee), employer: num(employer), months } }
     const saved = await run(() => (editing ? platform.editRule(rule.id, body) : platform.addRule(body)))
     if (saved) onDone()
   }
 
   return (
-    <form onSubmit={save} className="panel inner" aria-label={editing ? 'Edit rule' : 'Add a rule'}>
+    <form onSubmit={save} className="panel inline-form" aria-label={editing ? 'Edit rule' : 'Add a rule'}>
       <h3>{editing ? 'Edit this draft' : 'Add a rule'}</h3>
       <ErrorNote>{error}</ErrorNote>
       <div className="form-grid">
@@ -206,8 +206,8 @@ function RuleForm({ rule, onCancel, onDone }) {
           </select>
         </label>
         <label>
-          Applies from (first of a month)
-          <input type="date" value={from} disabled={editing} onChange={(e) => setFrom(e.target.value)} />
+          Applies from (month)
+          <input type="month" value={from} disabled={editing} onChange={(e) => setFrom(e.target.value)} />
         </label>
       </div>
       <label>
@@ -271,7 +271,7 @@ function SignOffForm({ rule, onCancel, onDone }) {
     if (await run(() => platform.signOffRule(rule.id, { signedBy: by, signedOn: on }))) onDone()
   }
   return (
-    <form onSubmit={save} className="panel inner" aria-label="Record sign-off">
+    <form onSubmit={save} className="panel inline-form" aria-label="Record sign-off">
       <h3>
         Record the consultant’s sign-off: {STATUTES[rule.statute]}, {STATE_NAMES[rule.jurisdiction] || rule.jurisdiction}, from {formatDay(rule.validFrom)}
       </h3>
@@ -284,7 +284,7 @@ function SignOffForm({ rule, onCancel, onDone }) {
         </label>
         <label>
           Date they signed it off
-          <input type="date" value={on} onChange={(e) => setOn(e.target.value)} />
+          <input type="date" value={on} max={localToday()} onChange={(e) => setOn(e.target.value)} />
         </label>
       </div>
       <div className="form-actions">
