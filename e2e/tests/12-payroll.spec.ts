@@ -23,6 +23,14 @@ const firstOfMonth = (offset = 0) => {
   return new Date(Date.UTC(y, m - 1 + offset, 1)).toISOString().slice(0, 10);
 };
 
+/**
+ * Whether Meera is still employed when next month starts. Her last day is the one the manager recommended in 10-exit,
+ * twenty days from today (her notice is thirty). Late in a month that falls in next month, so she is in next month's run;
+ * in the first days of a month (1 to 11 in a 31-day month, 1 to 8 in February) it falls before it, and she is rightly not. A test that always expected her there failed
+ * on every first of the month, which no fixed-date run covers.
+ */
+const meeraInNextMonth = () => isoDay(20) >= firstOfMonth(1); // date-safe: Meera's last day is today + 20 (10-exit); the comparison with next month is the point
+
 /** Clicks something that downloads a file; keeps a copy beside the screenshots and returns its text. */
 async function download(page: Page, button: string, keepAs?: string): Promise<string> {
   const [file] = await Promise.all([page.waitForEvent('download'), page.getByRole('button', { name: button, exact: true }).click()]);
@@ -341,7 +349,9 @@ test.describe.serial('payroll', () => {
 
     await runs(owner);
     await owner.getByRole('button', { name: `Open ${monthLabel(1)}` }).click();
-    await expect(owner.locator('tr[data-employee="Meera Iyer"]')).toBeVisible();
+    const meera = owner.locator('tr[data-employee="Meera Iyer"]');
+    if (meeraInNextMonth()) await expect(meera).toBeVisible();
+    else await expect(meera).toHaveCount(0);
     // Nina's last day is ten days after the exit was started (10-exit): before next month, she is not in it; late in a
     // month it falls in next month, and she is rightly paid for those days.
     const nina = owner.locator('tr[data-employee="Nina Paul"]');
@@ -362,12 +372,16 @@ test.describe.serial('payroll', () => {
   test('Meera reads her payslip and why her pay changed, on a phone', async ({ browser }) => {
     const phone = await signIn(browser, MEERA, PASSWORD, 390);
     await nav(phone, 'My pay');
-    await expect(phone.getByTestId('my-payslip')).toHaveCount(2);
+    // Two payslips when she is still here for next month's run; one when she has left before it (see meeraInNextMonth).
+    await expect(phone.getByTestId('my-payslip')).toHaveCount(meeraInNextMonth() ? 2 : 1);
     await shot(phone, 'payroll-19-my-pay-phone', true);
     await phone.getByTestId('my-payslip').first().click();
-    const why = phone.getByTestId('why-changed');
-    await expect(why).toContainText('Why pay changed from');
-    await expect(why).toContainText('Bonus');
+    if (meeraInNextMonth()) {
+      // Only a second payslip can say why pay changed from the first.
+      const why = phone.getByTestId('why-changed');
+      await expect(why).toContainText('Why pay changed from');
+      await expect(why).toContainText('Bonus');
+    }
     await expect(phone.getByTestId('net')).toBeVisible();
     await expectNoSidewaysScroll(phone);
     await shot(phone, 'payroll-20-payslip-phone', true);
