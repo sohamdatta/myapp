@@ -11,6 +11,7 @@ export function navFor(me) {
         label: 'Platform',
         items: [
           { id: 'organizations', label: 'Organizations' },
+          { id: 'usage', label: 'Usage' },
           isSuperAdmin && { id: 'users', label: 'Platform users' },
           canSupport && { id: 'support', label: 'Support access' },
           canSupport && { id: 'email', label: 'Email' },

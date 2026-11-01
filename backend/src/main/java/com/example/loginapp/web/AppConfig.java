@@ -63,6 +63,7 @@ import com.example.loginapp.core.StatutoryFilings;
 import com.example.loginapp.core.TaxCertificates;
 import com.example.loginapp.core.TdsChallans;
 import com.example.loginapp.core.TdsStatements;
+import com.example.loginapp.core.UsageStats;
 import com.example.loginapp.core.WageCheck;
 import com.example.loginapp.core.WageSimulator;
 import com.example.loginapp.core.PerformanceSetup;
@@ -354,6 +355,16 @@ public class AppConfig {
     @Bean
     public PayrollRules payrollRules(Db db) {
         return new PayrollRules(db);
+    }
+
+    @Bean
+    public UsageStats usageStats(Db db) {
+        return new UsageStats(db);
+    }
+
+    @Bean
+    public UsageWorker usageWorker(UsageStats usage) {
+        return new UsageWorker(usage);
     }
 
     @Bean
