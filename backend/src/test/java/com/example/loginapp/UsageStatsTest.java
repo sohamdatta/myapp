@@ -396,9 +396,13 @@ class UsageStatsTest {
         assertTrue(stored(k.org.id, TODAY.minusYears(2).plusDays(3), "members") != null, "inside two years: kept");
 
         // Counting needs no access for the console: it holds numbers, and cannot read any table an Organization keeps.
-        for (String table : List.of("punch", "leave_request", "onboarding", "payroll_run", "payslip", "tax_declaration", "exit_case", "membership", "audit_event")) {
-            Boolean any = db.inOwner(c -> (Boolean) Sql.one(c, "select has_table_privilege('app_platform', 'app." + table + "', 'select') as p").get("p"));
-            assertEquals(false, any, "app_platform must not read app." + table);
+        // Every table in schema app, not a hand-picked few; payroll_rule is the one it was already granted (V37, rule data, no personal data).
+        List<Map<String, Object>> tables = db.inOwner(c -> Sql.query(c, "select tablename from pg_tables where schemaname = 'app' order by 1"));
+        assertTrue(tables.size() > 20, "the list of tables was read");
+        for (Map<String, Object> t : tables) {
+            String table = String.valueOf(t.get("tablename"));
+            Boolean any = db.inOwner(c -> (Boolean) Sql.one(c, "select has_table_privilege('app_platform', 'app.\"" + table + "\"', 'select') as p").get("p"));
+            assertEquals("payroll_rule".equals(table), any, "app_platform and app." + table);
         }
         assertThrows(Exception.class, () -> db.inPlatform(c -> Sql.query(c, "select count(*) from app.punch")));
         assertThrows(Exception.class, () -> db.inPlatform(c -> Sql.query(c, "select * from app.leave_request")));
