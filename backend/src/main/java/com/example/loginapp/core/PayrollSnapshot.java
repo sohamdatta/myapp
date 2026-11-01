@@ -219,8 +219,8 @@ final class PayrollSnapshot {
             was.put("annual", before.get("annual"));
             was.put("compensationFrom", before.get("compensationFrom"));
             List<Map<String, Object>> lines = new ArrayList<>();
-            for (Map<String, Object> l : Sql.query(c, "select code, name, kind, amount from app.payslip_line where payslip_id = ? "
-                    + "and kind in ('earning','deduction') order by position", previous.get("id"))) {
+            for (Map<String, Object> l : Sql.query(c, "select code, name, kind, amount from app.payslip_line where payslip_id = ?::uuid "
+                    + "and kind in ('earning','deduction') order by position", String.valueOf(previous.get("id")))) {
                 Map<String, Object> m = new LinkedHashMap<>();
                 m.put("code", l.get("code"));
                 m.put("name", l.get("name"));

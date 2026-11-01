@@ -567,6 +567,8 @@ function Exceptions({ run: x, open, onChanged, onOpen, beside }) {
   const { error, run } = useAction()
   const canAcceptHere = x.canAccept && x.state === 'calculated'
   const acceptable = open.filter((e) => e.acceptable)
+  // After a recalculation the exceptions are new rows: keep only the picks that still exist.
+  const live = picked.filter((id) => acceptable.some((e) => e.id === id))
   const warnings = x.exceptions.filter((e) => e.level === 'warning')
   const blocking = x.exceptions.filter((e) => e.level === 'blocking')
   return (
@@ -579,23 +581,23 @@ function Exceptions({ run: x, open, onChanged, onOpen, beside }) {
       </h3>
       {canAcceptHere && acceptable.length > 1 && (
         <div className="form-actions">
-          <button type="button" className="secondary" onClick={() => setPicked(picked.length === acceptable.length ? [] : acceptable.map((e) => e.id))}>
-            {picked.length === acceptable.length ? 'Clear the selection' : `Select all ${acceptable.length} that can be accepted`}
+          <button type="button" className="secondary" onClick={() => setPicked(live.length === acceptable.length ? [] : acceptable.map((e) => e.id))}>
+            {live.length === acceptable.length ? 'Clear the selection' : `Select all ${acceptable.length} that can be accepted`}
           </button>
-          {picked.length > 0 && (
+          {live.length > 0 && (
             <button type="button" className="primary" onClick={() => setMany(true)}>
-              Accept {picked.length} selected…
+              Accept {live.length} selected…
             </button>
           )}
         </div>
       )}
       {many && (
         <ReasonForm
-          label={`Why accept these ${picked.length}`}
+          label={`Why accept these ${live.length}`}
           action="Accept selected"
           onCancel={() => setMany(false)}
           onSubmit={async (reason) => {
-            if (await run(() => payroll.acceptMany(x.id, picked, reason))) {
+            if (await run(() => payroll.acceptMany(x.id, live, reason))) {
               setMany(false)
               setPicked([])
               onChanged()
@@ -610,9 +612,9 @@ function Exceptions({ run: x, open, onChanged, onOpen, beside }) {
               {canAcceptHere && e.level === 'blocking' && e.acceptable && !e.acceptedAt && acceptable.length > 1 && (
                 <input
                   type="checkbox"
-                  checked={picked.includes(e.id)}
+                  checked={live.includes(e.id)}
                   aria-label={`Select ${e.name || e.code}: ${e.code}`}
-                  onChange={(ev) => setPicked(ev.target.checked ? [...picked, e.id] : picked.filter((id) => id !== e.id))}
+                  onChange={(ev) => setPicked(ev.target.checked ? [...live, e.id] : live.filter((id) => id !== e.id))}
                 />
               )}
               <Badge tone={e.level === 'blocking' ? (e.acceptedAt ? 'neutral' : 'bad') : 'warn'}>

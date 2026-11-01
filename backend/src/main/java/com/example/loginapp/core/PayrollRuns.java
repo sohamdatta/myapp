@@ -385,7 +385,7 @@ public final class PayrollRuns {
                 }
                 for (Map<String, Object> x : calc.exceptions()) {
                     String code = (String) x.get("code");
-                    boolean level = code.startsWith("missing_registration") || code.equals("missing_state_pack");
+                    boolean level = code.startsWith("missing_registration") || code.equals("missing_state_pack") || code.equals("after_last_day");
                     if (heldPay && !level && "blocking".equals(x.get("level"))) {
                         // Held pay is not paid this month: its problems are fixed before it is released, not before the run.
                         x = new LinkedHashMap<>(x);
@@ -399,8 +399,9 @@ public final class PayrollRuns {
                     Map<String, Object> was = accepted.get((who == null ? "null" : who.toString()) + "|" + code);
                     // An acceptance stands only while the same thing is still wrong: a net pay change accepted at one figure is
                     // looked at again when the figure moves.
-                    if (was != null && !java.util.Objects.equals(was.get("detailKey"), x.get("detailKey"))) {
-                        was = null;
+                    if (was != null && (!java.util.Objects.equals(was.get("detailKey"), x.get("detailKey")) || !"blocking".equals(x.get("level"))
+                            || !Boolean.TRUE.equals(x.get("acceptable")))) {
+                        was = null;   // also when pay is now held: a warning is never accepted
                     }
                     exceptionRows.add(new Object[] {ctx.tenantId(), runId, who, code.contains(":") ? code.substring(0, code.indexOf(':')) : code,
                             x.get("level"), x.get("acceptable"), x.get("message"), x.get("link"), x.get("detailKey"),
@@ -460,17 +461,27 @@ public final class PayrollRuns {
         return out;
     }
 
-    /** Pay must stop on someone's last day. If it was moved earlier after the inputs were frozen, the frozen figures pay too many days. */
+    /**
+     * Pay must stop on someone's last day, and the run froze its own copy of it. If the exit was moved, brought forward, put back or
+     * cancelled since, the frozen figures pay the wrong days (and, for tax, the wrong number of months left). Reopen and freeze again.
+     */
     private static void lastDayCheck(PayrollEngine.Calc calc, Map<String, Object> emp, LocalDate now, LocalDate period) {
-        if (!calc.calculated() || now == null || !now.isBefore(period.plusMonths(1))) {
+        if (!calc.calculated()) {
             return;
         }
         LocalDate frozen = emp.get("leavingOn") == null ? null : LocalDate.parse((String) emp.get("leavingOn"));
-        if (frozen == null || now.isBefore(frozen)) {
-            calc.exceptions().add(new LinkedHashMap<>(Map.of("code", "after_last_day", "level", "blocking", "acceptable", false,
-                    "message", "Their last day is now " + now + ", after the inputs were frozen, so this pays days after it. Reopen the run and freeze it again.",
-                    "link", "payroll")));
+        if (java.util.Objects.equals(frozen, now)) {
+            return;
         }
+        LocalDate end = period.plusMonths(1);   // first day after the month
+        boolean matters = (frozen != null && frozen.isBefore(end)) || (now != null && now.isBefore(end));
+        if (!matters) {
+            return;
+        }
+        String message = now == null ? "Their exit was cancelled after the inputs were frozen, so the pay is worked out as if they left on " + frozen + ". Reopen the run and freeze it again."
+                : "Their last day is now " + now + (frozen == null ? "" : ", not " + frozen + " as when the inputs were frozen") + ". Reopen the run and freeze it again.";
+        calc.exceptions().add(new LinkedHashMap<>(Map.of("code", "after_last_day", "level", "blocking", "acceptable", false,
+                "message", message, "link", "payroll")));
     }
 
     /** Accepts several exceptions at once, each with the same reason, each recorded in the audit as its own event. */
@@ -484,7 +495,7 @@ public final class PayrollRuns {
             throw ApiException.badRequest("Choose between 1 and 500 exceptions");
         }
         return db.inTenant(ctx.tenantId(), c -> {
-            if (!"calculated".equals(run(c, runId).get("state"))) {
+            if (!"calculated".equals(lockRun(c, runId).get("state"))) {
                 throw new ApiException(409, "payroll.state", "Exceptions are accepted on a calculated run");
             }
             int done = 0;
@@ -499,7 +510,10 @@ public final class PayrollRuns {
                 if (x.get("acceptedAt") != null) {
                     continue;
                 }
-                Sql.update(c, "update app.run_exception set accepted_by = ?, accepted_reason = ?, accepted_at = now() where id = ?", ctx.membershipId(), why, id);
+                if (Sql.update(c, "update app.run_exception set accepted_by = ?, accepted_reason = ?, accepted_at = now() where id = ? and accepted_at is null",
+                        ctx.membershipId(), why, id) == 0) {
+                    continue;
+                }
                 Map<String, Object> detail = new LinkedHashMap<>();
                 detail.put("code", x.get("code"));
                 detail.put("reason", why);
@@ -543,7 +557,7 @@ public final class PayrollRuns {
             throw ApiException.badRequest("Say why this is accepted");
         }
         db.inTenant(ctx.tenantId(), c -> {
-            if (!"calculated".equals(run(c, runId).get("state"))) {
+            if (!"calculated".equals(lockRun(c, runId).get("state"))) {
                 throw new ApiException(409, "payroll.state", "Exceptions are accepted on a calculated run");
             }
             Map<String, Object> x = Sql.one(c, "select level, acceptable, code from app.run_exception where id = ? and run_id = ?", exceptionId, runId);

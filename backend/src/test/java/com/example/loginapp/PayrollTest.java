@@ -466,6 +466,19 @@ class PayrollTest {
         assertEquals(0, runs.acceptMany(org.admin, run, acceptable, "Paid by cheque this month"), "already accepted: nothing more to do");
         long audited = db.inTenant(org.id, c -> Sql.query(c, "select 1 from app.audit_event where action = 'payroll.exception_accepted' and target_id = ?", run)).size();
         assertEquals(acceptable.size(), audited);
+        // Pay held after an exception was accepted, then recalculated: the acceptance is not carried onto what is now only a warning.
+        runs.hold(operator, run, hrId, "Salary letter not signed yet", true);
+        runs.calculate(operator, run);
+        Map<String, Object> held = runs.get(operator, run);
+        assertTrue(((List<?>) held.get("exceptions")).stream().noneMatch(e -> ((Map<?, ?>) e).get("employmentId") != null
+                && hrId.toString().equals(String.valueOf(((Map<?, ?>) e).get("employmentId"))) && ((Map<?, ?>) e).get("acceptedAt") != null
+                && "warning".equals(((Map<?, ?>) e).get("level"))));
+        for (Object o : (List<?>) held.get("exceptions")) {
+            Map<?, ?> x = (Map<?, ?>) o;
+            if ("blocking".equals(x.get("level")) && Boolean.TRUE.equals(x.get("acceptable")) && x.get("acceptedAt") == null) {
+                runs.accept(org.admin, run, UUID.fromString((String) x.get("id")), "Paid by cheque this month");
+            }
+        }
         runs.approve(org.admin, run);
         assertError(409, "payroll.not_draft", () -> runs.addInput(operator, run, new PayrollRuns.InputInput(ashaId.toString(), "BONUS",
                 BigDecimal.ONE, null)));
@@ -675,6 +688,28 @@ class PayrollTest {
         assertTrue(zero != null, "a month with no pay says so");
         assertEquals("blocking", zero.get("level"));
         assertEquals(true, zero.get("acceptable"));
+    }
+
+    @Test
+    void fromNoPayToPayIsAChangeAndAnOldRunSaysHowMuchNotWhy() {
+        Map<String, Object> cfg = baseConfig();
+        LocalDate oct = LocalDate.of(2026, 10, 1);
+        PayrollEngine.Calc nothing = PayrollEngine.calculate(cfg, asha(0, 31, "KA"), oct);
+        Map<String, Object> emp = asha(31, 0, "KA");
+        emp.put("previous", lastMonth(nothing, 31, 0));
+        Map<String, Object> settings = PayrollEngine.map(cfg, "settings");
+        settings.put("varianceAmount", BigDecimal.ZERO);
+        assertTrue(exception(PayrollEngine.calculate(cfg, emp, oct.plusMonths(1)), "variance") != null, "from ₹0 to full pay is flagged even with the rupee test off");
+        // A run frozen before the lines were kept: no cause, and no wrong one.
+        PayrollEngine.Calc full = PayrollEngine.calculate(cfg, asha(31, 0, "KA"), oct);
+        Map<String, Object> old = asha(10, 21, "KA");
+        Map<String, Object> was = lastMonth(full, 31, 31);
+        was.remove("lines");
+        old.put("previous", was);
+        Map<String, Object> x = exception(PayrollEngine.calculate(cfg, old, oct.plusMonths(1)), "variance");
+        assertTrue(x != null);
+        assertFalse(String.valueOf(x.get("message")).contains("Pay revised"), String.valueOf(x.get("message")));
+        assertFalse(String.valueOf(x.get("message")).contains("days paid"), String.valueOf(x.get("message")));
     }
 
     // ── helpers ─────────────────────────────────────────────────────────

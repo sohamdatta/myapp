@@ -362,7 +362,9 @@ public final class PayrollEngine {
             out.exception("net_zero", "blocking", true, "Net pay is ₹0. Accept it if that is right (pay held elsewhere, or a month fully without pay).",
                     "payroll", "zero");
         }
-        variance(out, emp, settings);
+        if (out.net.signum() != 0) {
+            variance(out, emp, settings, period);   // a month with no pay at all is already said, by net_zero
+        }
         return out;
     }
 
@@ -371,7 +373,7 @@ public final class PayrollEngine {
      * (0 switches the rupee test off), and says why, from the two payslips. A joiner, or someone with no earlier month, has nothing to
      * compare with and is not flagged.
      */
-    private static void variance(Calc out, Map<String, Object> emp, Map<String, Object> settings) {
+    private static void variance(Calc out, Map<String, Object> emp, Map<String, Object> settings, LocalDate period) {
         Map<String, Object> previous = map(emp, "previous");
         if (previous.get("net") == null) {
             return;
@@ -380,11 +382,13 @@ public final class PayrollEngine {
         BigDecimal difference = out.net.subtract(before);
         BigDecimal pct = dec(settings, "variancePct");
         BigDecimal amount = settings.get("varianceAmount") == null ? ZERO : dec(settings, "varianceAmount");
-        boolean overPct = before.signum() > 0 && difference.abs().multiply(HUNDRED).compareTo(before.multiply(pct)) > 0;
+        // From nothing to something is always a change worth a look (a percentage of zero says nothing).
+        boolean overPct = before.signum() > 0 ? difference.abs().multiply(HUNDRED).compareTo(before.multiply(pct)) > 0 : difference.signum() != 0;
         boolean overAmount = amount.signum() > 0 && difference.abs().compareTo(amount) > 0;
         if (!overPct && !overAmount) {
             return;
         }
+        boolean explainable = previous.get("lines") != null;   // a run frozen before the lines were kept can say how much, not why
         List<PayChange.Line> was = new ArrayList<>();
         for (Object o : (List<?>) previous.getOrDefault("lines", List.of())) {
             Map<String, Object> l = castLine(o);
@@ -402,15 +406,20 @@ public final class PayrollEngine {
                 String.valueOf(previous.get("compensationFrom")), was);
         PayChange.Slip slipNow = new PayChange.Slip(out.daysPaid, out.daysInPeriod, dec(emp, "annual"),
                 String.valueOf(emp.get("compensationFrom")), now);
-        List<PayChange.Cause> causes = PayChange.diff(slipBefore, slipNow);
+        List<PayChange.Cause> causes = explainable ? PayChange.diff(slipBefore, slipNow) : List.of();
         StringBuilder why = new StringBuilder();
         for (int i = 0; i < Math.min(2, causes.size()); i++) {
             why.append(i == 0 ? ": " : "; ").append(causes.get(i).text()).append(" (").append(causes.get(i).amount().signum() > 0 ? "+" : "-")
                     .append(rupees(causes.get(i).amount().abs())).append(")");
         }
+        if (causes.size() > 2) {
+            why.append("; and ").append(causes.size() - 2).append(" more, on the payslip");
+        }
+        String since = previous.get("period") != null && !LocalDate.parse(String.valueOf(previous.get("period"))).equals(period.minusMonths(1))
+                ? PayrollRuns.monthWords(LocalDate.parse(String.valueOf(previous.get("period")))) : "last month";
         String pctText = before.signum() > 0 ? " (" + difference.abs().multiply(HUNDRED).divide(before, 1, RoundingMode.HALF_UP).stripTrailingZeros().toPlainString() + "%)" : "";
         out.exception("variance", "blocking", true, "Net pay is " + rupees(difference.abs()) + (difference.signum() > 0 ? " higher" : " lower")
-                + " than last month" + pctText + why, "payroll", before.toPlainString() + ">" + out.net.toPlainString());
+                + " than " + since + pctText + why, "payroll", before.setScale(2, RoundingMode.HALF_UP).toPlainString() + ">" + out.net.setScale(2, RoundingMode.HALF_UP).toPlainString());
     }
 
     @SuppressWarnings("unchecked")
