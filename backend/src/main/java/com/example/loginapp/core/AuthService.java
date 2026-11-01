@@ -269,6 +269,8 @@ public final class AuthService {
                 return out;
             }));
         }
+        // A new Org Admin starts on Getting started, until the Organization has a location or a shift.
+        me.put("setupOpen", ctx.inOrganization() && ctx.can("tenant.manage") && db.inTenant(ctx.tenantId(), SetupService::isOpen));
         me.put("openTasks", ctx.membershipId() == null ? 0 : db.inTenant(ctx.tenantId(), c -> ChecklistService.openCount(c, ctx.membershipId())
                 + ExitTasks.openCount(c, ctx.membershipId())));
         // Whether the person has an employment record (so My exit can be offered), and their exit if one is open.

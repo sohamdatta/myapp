@@ -73,7 +73,11 @@ platform users, the first Super Admin.
 1. Sign in as the Super Admin. You land in the platform console. Create an
    Organization and give the email of its first Org Admin. Copy the invitation
    link.
-2. Sign out, open the link, and set a password. You are now the Org Admin.
+2. Sign out, open the link, and set a password. You are now the Org Admin, and
+   you land on **Getting started**: pick a starting setup (Office, Factory with
+   shifts, or Retail and hospitality), name your main location and its state,
+   and it adds the location, shifts, leave types and the three national holidays
+   that never move. Change any of it afterwards under Attendance and Leave.
 3. Under **Invitations**, invite a user with the HR Admin role, and open that
    link in a private window. The HR Admin can invite employees and managers,
    but the payroll and admin roles are greyed out for them.
@@ -680,6 +684,29 @@ Employee role.
   focused. Everyday successes (a punch, a leave request sent, a decision) show a short note at the
   bottom of the screen that screen readers announce. `src/feedback.jsx` has both.
 
+## Getting started
+
+A new Organization is empty. Its Org Admin lands on **Getting started** (until the Organization has a
+work location or a shift), which lists the steps to a usable Organization and what payroll still needs.
+
+- **A starting setup** fills only sections that are still empty, in one transaction, and never changes
+  what exists: the work location (the name and state are the Org Admin's), shifts and the three fixed
+  national holidays (Republic Day, Independence Day, Gandhi Jayanti) for the next twelve months in India
+  time, and, with the Leave module, casual, sick and earned leave with the carry-forward rule chosen.
+  Locations, shifts and holidays are Core HR, so they do not need Attendance. State holidays are not
+  added: their dates vary by year and gazette. The leave numbers are suggestions, not legal advice.
+  It is refused (409 `setup.already_started`) when nothing is empty, and two people pressing the button
+  at once fill it once (an advisory lock per Organization). Audited as `setup.starter_applied` plus the
+  usual `attendance.location_created`, `attendance.shift_created`, `attendance.holiday_added` and
+  `leave.type_created` events.
+- **The steps** are done when the thing they ask for exists (people imported, invitations accepted,
+  people with a login assigned a location and shift, leave types), so nothing is remembered between
+  visits. Leave and attendance work for a person only once they have signed in.
+- **Ready for payroll?** counts what payroll would stop on, the way payroll counts it: people with no
+  bank account, no PAN (replaced or still only applied-for ones do not count) or no work location, work
+  locations with no state, states without a professional tax rule in force, and rules still awaiting
+  sign-off. Only the Org Admin (`tenant.manage`) sees any of it; under a support session it is hidden.
+
 ## API
 
 Every call except sign-in and the invitation page needs
@@ -698,6 +725,8 @@ Every call except sign-in and the invitation page needs
 | POST | `/api/org/invitations/{id}/resend`, `/revoke` | New link, or withdraw |
 | PUT | `/api/org/users/{id}/roles` | Sets a user's roles |
 | POST | `/api/org/users/{id}/suspend`, `/reactivate`, `/end` | Changes a user's status |
+| GET | `/api/org/setup` | What is set up, which sections a starting setup can still fill, the starting setups, the states, and what payroll still needs (Org Admin) |
+| POST | `/api/org/setup/starter` | Fills the empty sections from a starting setup; 409 `setup.already_started` when none is empty (Org Admin) |
 | GET, POST | `/api/platform/organizations` | Lists and creates Organizations |
 | POST | `/api/platform/organizations/{id}/invite-admin`, `/suspend`, `/reactivate`, `/close` | Manages one |
 | GET, POST | `/api/platform/users` | Platform users |
@@ -899,6 +928,7 @@ The browser tests tell one story in order, each step depending on the one before
 14. `17-role-tour`: each role through its own login (Super Admin, Org Admin, a separate Payroll Approver, Auditor, IT Admin, HR Admin and Payroll Operator, a Manager, an Employee): the menu it gets, its main screens, and what it cannot do. The screenshots of the guide come from this run.
 15. `18-attendance-modes`: in an Organization of its own, a location made present by default and another given a biometric device; a manager marks his report absent with a reason and she sees who did it; a device is registered, calls in as a real device would, and sends a log with every kind of line; a device off its office network is turned away.
 16. `19-modules`: the Super Admin creates a payroll-only Organization; its owner gets no attendance or leave, on screen or through the API, and keeps the work calendar; an Attendance trial is switched on, and Payroll off and on again, each seen at once.
+17. `32-getting-started`: in an Organization of its own, a new Org Admin lands on Getting started; choosing a setup asks first, then adds the location, shifts and leave types with the chosen changes; payroll readiness names the state without a professional tax rule; a second try is refused; an HR Admin and an employee neither see the page nor get past the server.
 
 Every browser test also fails on any error in the browser console.
 
