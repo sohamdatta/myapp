@@ -317,7 +317,7 @@ public final class PayrollEngine {
         Map<String, Object> rules = map(config, "rules");
         Map<String, Object> profile = map(emp, "profile");
         if (components.containsKey("PF_EE")) {
-            pf(out, rules, profile, settings, components, pfWage, wages, addBack, position);
+            pf(out, rules, profile, settings, components, pfWage, wages, addBack, position, period);
             position += 2;
         }
         esi(out, rules, profile, components, emp, esiWage, esiWageFull, paid, position);
@@ -589,17 +589,37 @@ public final class PayrollEngine {
     }
 
     private static void pf(Calc out, Map<String, Object> rules, Map<String, Object> profile, Map<String, Object> settings,
-                           Map<String, Object> components, BigDecimal pfWage, BigDecimal wages, BigDecimal addBack, int position) {
+                           Map<String, Object> components, BigDecimal pfWage, BigDecimal wages, BigDecimal addBack, int position,
+                           LocalDate period) {
         Map<String, Object> pf = map(rules, "pf");
+        BigDecimal ceiling = dec(pf, "ceiling");
+        BigDecimal previous = pf.get("previousCeiling") == null ? null : dec(pf, "previousCeiling");
         if (!Boolean.TRUE.equals(profile.get("pfMember"))) {
+            // Someone left out while the ceiling was lower may now be covered: say so, once, and leave the decision to HR.
+            if (previous != null && pfWage.compareTo(previous) > 0 && pfWage.compareTo(ceiling) <= 0) {
+                out.exception("pf_coverage_review", "warning", false, "PF wages of " + rupees(pfWage) + " are now within the "
+                        + rupees(ceiling) + " ceiling (it was " + rupees(previous) + "), but this person is not a PF member. Check whether they must be covered.",
+                        "people");
+            }
             return;
         }
-        BigDecimal ceiling = dec(pf, "ceiling");
         BigDecimal base = pfBase(pfWage, profile, settings, ceiling);
+        // The pension share has its own ceiling in the rule (the return file checks against it); fall back to the PF ceiling.
+        BigDecimal epsCap = pf.get("epsCeiling") == null ? ceiling : dec(pf, "epsCeiling");
+        String transition = pf.get("transitionMonth") == null ? null : String.valueOf(pf.get("transitionMonth"));
+        if (transition != null && previous != null && pfWage.compareTo(previous) > 0 && period.toString().startsWith(transition)) {
+            if ("whole_month".equals(String.valueOf(pf.get("transitionBasis")))) {
+                out.exception("pf_ceiling_transition", "warning", false, "The PF wage ceiling rose to " + rupees(ceiling) + " on "
+                        + pf.get("notifiedFrom") + ". This month uses " + rupees(ceiling) + " for the whole month. The consultant has not yet confirmed this reading.", null);
+            } else {
+                out.exception("pf_ceiling_transition", "blocking", false, "The PF ceiling changed during this month and the rule's transition basis '"
+                        + pf.get("transitionBasis") + "' is not supported. Ask the payroll consultant before approving.", null);
+            }
+        }
         BigDecimal ee = base.multiply(dec(pf, "employeeRate")).divide(HUNDRED, MC);
         BigDecimal er = base.multiply(dec(pf, "employerRate")).divide(HUNDRED, MC);
         BigDecimal eps = Boolean.TRUE.equals(profile.get("epsEligible"))
-                ? round(pfWage.min(ceiling).multiply(dec(pf, "epsRate")).divide(HUNDRED, MC), "nearest") : ZERO;
+                ? round(pfWage.min(epsCap).multiply(dec(pf, "epsRate")).divide(HUNDRED, MC), "nearest") : ZERO;
         Map<String, Object> t = rule(rules, "pf", "IN");
         String wageWords = "PF wage " + rupees(pfWage) + (addBack.signum() > 0
                 ? " (wages " + rupees(wages) + " plus " + rupees(addBack) + " added back so that wages are half of pay)" : "");
@@ -614,7 +634,7 @@ public final class PayrollEngine {
         t2.put("working", "12% of " + rupees(base) + ": pension (EPS) " + rupees(eps) + ", provident fund " + rupees(erRounded.subtract(eps)));
         boolean epsEligible = Boolean.TRUE.equals(profile.get("epsEligible"));
         t2.put("epsEligible", epsEligible);
-        t2.put("epsWages", epsEligible ? scale(pfWage.min(ceiling)) : ZERO);
+        t2.put("epsWages", epsEligible ? scale(pfWage.min(epsCap)) : ZERO);
         t2.put("eps", eps);
         addLine(out, map(components, "PF_ER"), er, null, (String) map(rules, "ruleIds").get("pf:IN"), t2, position + 1);
     }

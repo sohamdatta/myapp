@@ -53,7 +53,7 @@ class GoldenPayslipsTest {
     private static final Path DIR = Path.of("src/test/resources/golden/payslips");
     private static final boolean UPDATE = "true".equals(System.getProperty("golden.update"));
     /** Fewer than this many scenarios means one was deleted rather than changed. */
-    private static final int AT_LEAST = 18;
+    private static final int AT_LEAST = 22;
 
     @TestFactory
     Stream<DynamicTest> everyScenarioGivesItsGoldenPayslip() throws IOException {

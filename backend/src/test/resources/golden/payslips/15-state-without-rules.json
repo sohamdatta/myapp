@@ -12,16 +12,16 @@
     }
   },
   "expected": {
-    "gross": "73200",
-    "deductions": "1800",
-    "net": "71400",
-    "employerCost": "1800",
+    "gross": "72000",
+    "deductions": "3000",
+    "net": "69000",
+    "employerCost": "3000",
     "lines": [
       {"code": "BASIC", "kind": "earning", "amount": "37500"},
       {"code": "HRA", "kind": "earning", "amount": "15000"},
-      {"code": "SPECIAL", "kind": "earning", "amount": "20700"},
-      {"code": "PF_EE", "kind": "deduction", "amount": "1800"},
-      {"code": "PF_ER", "kind": "employer", "amount": "1800"}
+      {"code": "SPECIAL", "kind": "earning", "amount": "19500"},
+      {"code": "PF_EE", "kind": "deduction", "amount": "3000"},
+      {"code": "PF_ER", "kind": "employer", "amount": "3000"}
     ],
     "exceptions": [
       {"level": "blocking", "code": "missing_state_pack"}

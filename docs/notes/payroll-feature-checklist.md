@@ -39,7 +39,7 @@ Dated: 30 Aug 2026 · **corrected 7 Sep 2026 for the Form 130/138 renumbering**
 
 Build as **versioned data keyed by jurisdiction and date**, never `if` statements.
 
-**Provident fund** — 12% employee; employer 12% split EPS 8.33% (capped) + EPF 3.67% · ₹15,000 ceiling plus the employer's restrict-or-not policy · deemed-wage basis under the Code on Wages · EDLI and admin charges · EPS eligibility exclusions for new members above the ceiling · VPF · ECR file by the 15th · UAN and exit-date marking · international workers (later)
+**Provident fund** — 12% employee; employer 12% split EPS 8.33% (capped) + EPF 3.67% · ₹25,000 ceiling from 17 Sep 2026 (₹15,000 before; a dated rule version, never a constant) plus the employer's restrict-or-not policy · deemed-wage basis under the Code on Wages · EDLI and admin charges · EPS eligibility exclusions for new members above the ceiling · VPF · ECR file by the 15th · UAN and exit-date marking · international workers (later)
 
 **ESI** — ₹21,000 gross threshold (₹25,000 disability); 0.75% employee / 3.25% employer · **contribution-period stickiness** · low-wage exemption from employee share · monthly file + half-yearly returns · non-implemented areas (later)
 
@@ -94,7 +94,7 @@ Build as **versioned data keyed by jurisdiction and date**, never `if` statement
 5. **Mid-month salary revision** — split period, prorate each half, apply statutory rules to the combined total. Different code path.
 6. **Rounding** — each statute rounds its own way; the sum of rounded components ≠ the rounded sum. A rupee out fails a return upload.
 7. **LOP flows into everything** — reduces wages → reduces PF → changes ESI eligibility → changes tax projection.
-8. **The above-ceiling policy** — restrict PF to ₹15,000 or compute on full wages is the employer's choice, often per employee. Both paths plus an override.
+8. **The above-ceiling policy** — restrict PF to the ceiling (₹25,000 from 17 Sep 2026) or compute on full wages is the employer's choice, often per employee. Both paths plus an override.
 9. **Interstate employees** — transfer changes PT jurisdiction, LWF, minimum wage floor, holiday calendar. Which state applies in the transfer month is a policy question needing an answer.
 10. **The forms were renumbered** — under the Income Tax Act 2025, **Form 24Q became Form 138** and **Form 16 becomes Form 130** (s.395(4)(b)) from tax year 2026-27. The Q1 FY27 return already had to use Form 138. Form 130 has three parts rather than two, Part C carries a detailed salary computation Form 16 never required, and it is **TRACES-generated only** — issued after Form 138 is filed and processed, never offline. Form 16 remains correct for FY 2025-26. *Nine of twelve vendors still advertise the old numbers; don't copy them.*
 11. **The first employee without a PAN** — higher deduction, no certificate issuable, the return rejects the record. Have the answer before a customer's first run.

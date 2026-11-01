@@ -160,7 +160,7 @@
   "tables": {},
   "registrations": ["pf", "esi", "pt:KA", "lwf:KA", "pt:MH", "lwf:MH"],
   "rules": {
-    "pf": {"employeeRate": 12, "employerRate": 12, "epsRate": 8.33, "ceiling": 15000},
+    "pf": {"employeeRate": 12, "employerRate": 12, "epsRate": 8.33, "ceiling": 25000, "epsCeiling": 25000},
     "esi": {"employeeRate": 0.75, "employerRate": 3.25, "threshold": 21000, "thresholdDisability": 25000, "lowWageDaily": 176},
     "pt": {
       "KA": {

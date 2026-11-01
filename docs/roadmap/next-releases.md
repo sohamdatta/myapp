@@ -228,9 +228,9 @@ One text file per PF establishment code per month, one line per member, fields i
 | 1 | UAN | `statutory_id` kind `uan` (full number, decrypted only while writing the file) |
 | 2 | Member name | Name as on the PF record |
 | 3 | Gross wages | Payslip gross for the month |
-| 4 | EPF wages | The PF wage base the engine used; 15,000 when the employer restricts to the ceiling |
-| 5 | EPS wages | EPF wages capped at 15,000; 0 when not EPS-eligible |
-| 6 | EDLI wages | EPF wages capped at 15,000 |
+| 4 | EPF wages | The PF wage base the engine used; the rule's ceiling (25,000 from September 2026) when the employer restricts to it |
+| 5 | EPS wages | EPF wages capped at the rule's EPS ceiling (25,000 from September 2026); 0 when not EPS-eligible |
+| 6 | EDLI wages | EPF wages capped at the rule's EDLI ceiling (25,000 from September 2026; unverified) |
 | 7 | EE share | `PF_EE` line |
 | 8 | EPS contribution | The EPS part of `PF_ER`, 8.33% of EPS wages |
 | 9 | ER share | `PF_ER` less the EPS part |
@@ -239,7 +239,7 @@ One text file per PF establishment code per month, one line per member, fields i
 
 All amounts in whole rupees. The separator EPFO's upload expects (`#~#` today) and the line ending are checked against a golden file, so any change shows up as a reviewed diff.
 
-**Pre-checks** (each a blocking exception with the person named, or a warning): UAN missing or not 12 digits; EPF wages above gross; EPS wages above EPF wages or above 15,000; EDLI above 15,000; EE share above gross; a member who joined after the wage month or left before it; the file total of EE + EPS + ER not equal to the run's PF lines. Arrears (a separate arrear ECR) wait until revised pay for past months exists.
+**Pre-checks** (each a blocking exception with the person named, or a warning): UAN missing or not 12 digits; EPF wages above gross; EPS wages above EPF wages or above the rule's EPS ceiling; EDLI above its ceiling; EE share above gross; a member who joined after the wage month or left before it; the file total of EE + EPS + ER not equal to the run's PF lines. Arrears (a separate arrear ECR) wait until revised pay for past months exists.
 
 ### ESI: the monthly contribution file
 

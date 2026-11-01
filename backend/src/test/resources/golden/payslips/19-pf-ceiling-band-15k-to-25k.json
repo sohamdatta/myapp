@@ -1,0 +1,29 @@
+{
+  "name": "19-pf-ceiling-band-15k-to-25k",
+  "why": "Basic of 20,000, in the band that the Rs 25,000 ceiling (from 17 Sep 2026) newly covers: PF is 12% of the whole 20,000 each side, 2,400, and the pension share is 8.33% of 20,000 = 1,666. (Starts this month, so there is no income earlier in the tax year and the new-regime rebate covers the six months projected: no TDS.)",
+  "status": "provisional",
+  "period": "2026-10-01",
+  "employee": {
+    "annual": 480000,
+    "days": {
+      "base": 31,
+      "paid": 31,
+      "lop": 0
+    }
+  },
+  "expected": {
+    "gross": "37600",
+    "deductions": "2600.00",
+    "net": "35000.00",
+    "employerCost": "2400",
+    "lines": [
+      {"code": "BASIC", "kind": "earning", "amount": "20000"},
+      {"code": "HRA", "kind": "earning", "amount": "8000"},
+      {"code": "SPECIAL", "kind": "earning", "amount": "9600"},
+      {"code": "PF_EE", "kind": "deduction", "amount": "2400"},
+      {"code": "PF_ER", "kind": "employer", "amount": "2400"},
+      {"code": "PT", "kind": "deduction", "amount": "200.00"}
+    ],
+    "exceptions": []
+  }
+}

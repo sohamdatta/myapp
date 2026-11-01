@@ -1,0 +1,29 @@
+{
+  "name": "20-pf-at-new-ceiling",
+  "why": "Basic of exactly 25,000, the new wage ceiling: PF is 3,000 each side and the pension share is 8.33% of 25,000 = 2,083 (2,082.5 rounds half up). (Starts this month, so there is no income earlier in the tax year and the new-regime rebate covers the six months projected: no TDS.)",
+  "status": "provisional",
+  "period": "2026-10-01",
+  "employee": {
+    "annual": 600000,
+    "days": {
+      "base": 31,
+      "paid": 31,
+      "lop": 0
+    }
+  },
+  "expected": {
+    "gross": "47000",
+    "deductions": "3200.00",
+    "net": "43800.00",
+    "employerCost": "3000",
+    "lines": [
+      {"code": "BASIC", "kind": "earning", "amount": "25000"},
+      {"code": "HRA", "kind": "earning", "amount": "10000"},
+      {"code": "SPECIAL", "kind": "earning", "amount": "12000"},
+      {"code": "PF_EE", "kind": "deduction", "amount": "3000"},
+      {"code": "PF_ER", "kind": "employer", "amount": "3000"},
+      {"code": "PT", "kind": "deduction", "amount": "200.00"}
+    ],
+    "exceptions": []
+  }
+}
