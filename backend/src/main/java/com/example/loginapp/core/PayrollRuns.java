@@ -523,7 +523,7 @@ public final class PayrollRuns {
                     String key;
                     try {
                         // Accounts are numbered within a bank, not a branch: the bank is the first four letters of the IFSC.
-                        key = ifsc.substring(0, 4) + "|" + crypto.decryptText(tenantId, rs.getBytes("account_enc"));
+                        key = BankHashes.key(ifsc, crypto.decryptText(tenantId, rs.getBytes("account_enc")));
                     } catch (IllegalStateException e) {
                         key = "unreadable|" + rs.getObject("id", UUID.class);   // cannot be compared; never equal to another
                     }
@@ -555,8 +555,47 @@ public final class PayrollRuns {
                                 + " days. Check with the employee before paying it.", "link", "people", "detailKey", first.id().toString())));
             }
         }
-        for (Map<UUID, UUID> persons : byAccount.values()) {
-            if (persons.size() < 2) {
+        // The same accounts on people who are not in this run (another pay group, someone who has left), found by their fingerprints.
+        Map<String, List<String>> outside = new HashMap<>();   // account key -> who else, by name
+        Map<String, List<UUID>> outsidePeople = new HashMap<>();
+        if (!byAccount.isEmpty()) {
+            Map<String, String> keyOfHash = new HashMap<>();
+            List<byte[]> hashes = new ArrayList<>();
+            for (String key : byAccount.keySet()) {
+                if (key.startsWith("unreadable|")) {
+                    continue;
+                }
+                byte[] h = crypto.fingerprint(tenantId, "bank", key);
+                hashes.add(h);
+                keyOfHash.put(java.util.HexFormat.of().formatHex(h), key);
+            }
+            if (!hashes.isEmpty()) {
+                byte[][] hashArray = hashes.toArray(new byte[0][]);
+                UUID[] inRun = new HashSet<>(personOf.values()).toArray(UUID[]::new);
+                try (java.sql.PreparedStatement ps = c.prepareStatement("select p.id, coalesce(p.preferred_name, p.legal_name) as name, t.account_hash, "
+                        + "exists (select 1 from app.employment e where e.person_id = p.id and e.status = 'active') as active "
+                        + "from (select distinct on (x.person_id) x.person_id, x.account_hash from app.bank_account x where x.effective_from <= ? "
+                        + "and x.person_id in (select person_id from app.bank_account where account_hash = any(?)) "
+                        + "order by x.person_id, x.effective_from desc, x.created_at desc) t join app.person p on p.id = t.person_id "
+                        + "where t.account_hash = any(?) and t.person_id <> all(?)")) {
+                    ps.setObject(1, period.plusMonths(1).minusDays(1));
+                    ps.setArray(2, c.createArrayOf("bytea", hashArray));
+                    ps.setArray(3, c.createArrayOf("bytea", hashArray));
+                    ps.setArray(4, c.createArrayOf("uuid", inRun));
+                    try (java.sql.ResultSet rs = ps.executeQuery()) {
+                        while (rs.next()) {
+                            String key = keyOfHash.get(java.util.HexFormat.of().formatHex(rs.getBytes("account_hash")));
+                            outside.computeIfAbsent(key, k -> new ArrayList<>()).add(rs.getString("name") + (rs.getBoolean("active") ? "" : " (no longer employed)"));
+                            outsidePeople.computeIfAbsent(key, k -> new ArrayList<>()).add(rs.getObject("id", UUID.class));
+                        }
+                    }
+                }
+            }
+        }
+        for (Map.Entry<String, Map<UUID, UUID>> account : byAccount.entrySet()) {
+            Map<UUID, UUID> persons = account.getValue();
+            List<String> away = outside.getOrDefault(account.getKey(), List.of());
+            if (persons.size() + away.size() < 2) {
                 continue;   // one person, even with two employments, is not sharing with anyone
             }
             List<UUID> sorted = new ArrayList<>(persons.keySet());
@@ -565,6 +604,9 @@ public final class PayrollRuns {
             for (UUID person : sorted) {
                 key.append(person).append(':').append(current.get(persons.get(person))).append(',');   // the people and their rows: a new account is a new thing to accept
             }
+            List<UUID> awayIds = new ArrayList<>(outsidePeople.getOrDefault(account.getKey(), List.of()));
+            awayIds.sort(java.util.Comparator.comparing(UUID::toString));
+            awayIds.forEach(id -> key.append(id).append(','));
             for (Map.Entry<UUID, UUID> who : persons.entrySet()) {
                 List<String> others = new ArrayList<>();
                 for (Map.Entry<UUID, UUID> other : persons.entrySet()) {
@@ -572,6 +614,7 @@ public final class PayrollRuns {
                         others.add(names.get(other.getValue()));
                     }
                 }
+                others.addAll(away);
                 String shown = others.size() <= 3 ? String.join(", ", others) : String.join(", ", others.subList(0, 3)) + " and " + (others.size() - 3) + " others";
                 // Every employment of this person is told, not only the one that was kept in the map.
                 for (Map.Entry<UUID, UUID> mine : personOf.entrySet().stream().filter(x -> x.getValue().equals(who.getKey())).toList()) {

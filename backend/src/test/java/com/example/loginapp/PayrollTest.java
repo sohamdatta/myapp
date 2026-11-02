@@ -770,6 +770,23 @@ class PayrollTest {
         assertTrue(flags(runs.get(operator, run), "bank_changed_recent").get(0).get("acceptedAt") != null, "same account: still accepted");
         assertTrue(flags(runs.get(operator, run), "bank_changed_recent").size() == 1);
 
+        // Someone outside the run (added after it was frozen; another pay group or a leaver is the same) with Asha's new account is found
+        // by the fingerprint kept beside every account. Accounts written before the fingerprints existed are filled in by a pass.
+        SessionCtx chitra = join(org, "chitra", List.of("employee"));
+        UUID chitraId = UUID.fromString((String) employees.add(org.admin, person("Chitra Nair", "ABCPC1234F", chitra)).get("id"));
+        employees.setBank(org.admin, chitraId, "Chitra Nair", "987654321098", "HDFC0009999", null, null, null);
+        runs.calculate(operator, run);
+        List<Map<?, ?>> outside = flags(runs.get(operator, run), "bank_shared");
+        assertEquals(1, outside.size());
+        assertTrue(String.valueOf(outside.get(0).get("message")).contains("Chitra Nair"), String.valueOf(outside.get(0).get("message")));
+        assertFalse(String.valueOf(outside.get(0).get("message")).contains("987654321098"));
+        db.inOwner(c -> Sql.update(c, "update app.bank_account set account_hash = null where tenant_id = ?", org.id));
+        runs.calculate(operator, run);
+        assertEquals(0, flags(runs.get(operator, run), "bank_shared").size(), "not fingerprinted yet, so not found");
+        assertTrue(com.example.loginapp.core.BankHashes.fill(db, Crypto.withKey(Crypto.DEVELOPMENT_KEY)) >= 3);
+        runs.calculate(operator, run);
+        assertEquals(1, flags(runs.get(operator, run), "bank_shared").size(), "found again once filled in");
+
         // Everything accepted, then the account is changed again before approval: the run must be calculated again.
         for (Object o : (List<?>) runs.get(operator, run).get("exceptions")) {
             Map<?, ?> x = (Map<?, ?>) o;
