@@ -3,6 +3,7 @@ package com.example.loginapp;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
@@ -710,6 +711,110 @@ class PayrollTest {
         assertTrue(x != null);
         assertFalse(String.valueOf(x.get("message")).contains("Pay revised"), String.valueOf(x.get("message")));
         assertFalse(String.valueOf(x.get("message")).contains("days paid"), String.valueOf(x.get("message")));
+    }
+
+    @Test
+    void aSharedOrRecentlyChangedBankAccountIsFlaggedAndAcceptable() {
+        assumeTrue(reachable, "PostgreSQL is not reachable");
+        Org org = newOrg();
+        SessionCtx operator = join(org, "payroll", List.of("payroll_operator"));
+        SessionCtx asha = join(org, "asha", List.of("employee"));
+        SessionCtx bela = join(org, "bela", List.of("employee"));
+        UUID ashaId = UUID.fromString((String) employees.add(org.admin, person("Asha Rao", "ABCPR1234F", asha)).get("id"));
+        UUID belaId = UUID.fromString((String) employees.add(org.admin, person("Bela Das", "ABCPB1234F", bela)).get("id"));
+        Map<String, Object> setup = config.setup(operator);
+        String staff = (String) ((Map<?, ?>) ((List<?>) setup.get("structures")).get(0)).get("id");
+        LocalDate period = TODAY.withDayOfMonth(1);
+        for (UUID id : List.of(ashaId, belaId)) {
+            pay.revise(org.admin, id, new PayrollPay.ReviseInput(period.toString(), staff, new BigDecimal("900000"), "Joining salary"));
+        }
+        String group = (String) ((Map<?, ?>) ((List<?>) runs.list(operator).get("groups")).get(0)).get("id");
+        config.addMembers(operator, UUID.fromString(group), List.of(), null);
+
+        // Bela gives the account Asha already has, at another branch of the same bank (a number is unique within the bank, not the
+        // branch): each is told about the other, by name and last four digits only.
+        employees.setBank(org.admin, belaId, "Bela Das", "123456789012", "HDFC0005678", null, null, null);
+        UUID run = UUID.fromString((String) runs.open(operator, UUID.fromString(group), period.toString()).get("id"));
+        runs.freeze(operator, run);
+        runs.calculate(operator, run);
+        List<Map<?, ?>> shared = flags(runs.get(operator, run), "bank_shared");
+        assertEquals(2, shared.size());
+        for (Map<?, ?> x : shared) {
+            assertEquals("blocking", x.get("level"));
+            assertEquals(true, x.get("acceptable"));
+            String message = String.valueOf(x.get("message"));
+            assertTrue(message.contains("9012"), message);
+            assertFalse(message.contains("123456789012"), "the full number never reaches a message");
+            String other = String.valueOf(x.get("name")).contains("Asha") ? "Bela Das" : "Asha Rao";
+            assertTrue(message.contains(other), "it names the other person: " + message);
+            assertFalse(message.contains(String.valueOf(x.get("name"))), "and not themselves: " + message);
+        }
+        assertEquals(0, flags(runs.get(operator, run), "bank_changed_recent").size(), "a first account is not a change");
+
+        // Asha enters the same account again (a branch corrected): not a change.
+        employees.setBank(org.admin, ashaId, "Asha Rao", "123456789012", "HDFC0001234", null, null, null);
+        runs.calculate(operator, run);
+        assertEquals(0, flags(runs.get(operator, run), "bank_changed_recent").size(), "the same account again is not a change");
+        assertEquals(2, flags(runs.get(operator, run), "bank_shared").size());
+
+        // Asha replaces her account: a recent change, to be checked with her. Accepting it carries over only while the account is the same.
+        employees.setBank(org.admin, ashaId, "Asha Rao", "987654321098", "HDFC0ABC123", null, null, null);
+        runs.calculate(operator, run);
+        Map<String, Object> after = runs.get(operator, run);
+        assertEquals(0, flags(after, "bank_shared").size(), "no longer the same account");
+        List<Map<?, ?>> recent = flags(after, "bank_changed_recent");
+        assertEquals(1, recent.size());
+        assertEquals("blocking", recent.get(0).get("level"));
+        assertError(409, "payroll.one_by_one", () -> runs.acceptMany(org.admin, run, List.of(UUID.fromString((String) recent.get(0).get("id"))), "Confirmed with Asha"));
+        runs.accept(org.admin, run, UUID.fromString((String) recent.get(0).get("id")), "Confirmed with Asha by phone");
+        runs.calculate(operator, run);
+        assertTrue(flags(runs.get(operator, run), "bank_changed_recent").get(0).get("acceptedAt") != null, "same account: still accepted");
+        assertTrue(flags(runs.get(operator, run), "bank_changed_recent").size() == 1);
+
+        // Someone outside the run (added after it was frozen; another pay group or a leaver is the same) with Asha's new account is found
+        // by the fingerprint kept beside every account. Accounts written before the fingerprints existed are filled in by a pass.
+        SessionCtx chitra = join(org, "chitra", List.of("employee"));
+        UUID chitraId = UUID.fromString((String) employees.add(org.admin, person("Chitra Nair", "ABCPC1234F", chitra)).get("id"));
+        employees.setBank(org.admin, chitraId, "Chitra Nair", "987654321098", "HDFC0009999", null, null, null);
+        runs.calculate(operator, run);
+        List<Map<?, ?>> outside = flags(runs.get(operator, run), "bank_shared");
+        assertEquals(1, outside.size());
+        assertTrue(String.valueOf(outside.get(0).get("message")).contains("Chitra Nair"), String.valueOf(outside.get(0).get("message")));
+        assertFalse(String.valueOf(outside.get(0).get("message")).contains("987654321098"));
+        db.inOwner(c -> Sql.update(c, "update app.bank_account set account_hash = null where tenant_id = ?", org.id));
+        runs.calculate(operator, run);
+        assertEquals(0, flags(runs.get(operator, run), "bank_shared").size(), "not fingerprinted yet, so not found");
+        assertTrue(com.example.loginapp.core.BankHashes.fill(db, Crypto.withKey(Crypto.DEVELOPMENT_KEY)) >= 3);
+        runs.calculate(operator, run);
+        assertEquals(1, flags(runs.get(operator, run), "bank_shared").size(), "found again once filled in");
+
+        // Everything accepted, then the account is changed again before approval: the run must be calculated again.
+        for (Object o : (List<?>) runs.get(operator, run).get("exceptions")) {
+            Map<?, ?> x = (Map<?, ?>) o;
+            if ("blocking".equals(x.get("level")) && Boolean.TRUE.equals(x.get("acceptable")) && x.get("acceptedAt") == null) {
+                runs.accept(org.admin, run, UUID.fromString((String) x.get("id")), "Checked");
+            }
+        }
+        employees.setBank(org.admin, ashaId, "Asha Rao", "111122223333", "HDFC0ABC123", null, null, null);
+        assertError(409, "payroll.bank_changed", () -> runs.approve(org.admin, run));
+        runs.calculate(operator, run);
+        assertEquals(null, flags(runs.get(operator, run), "bank_changed_recent").get(0).get("acceptedAt"), "another new account: to be checked again");
+
+        // An account that cannot be opened here (sealed under a key this server does not hold) is passed over, and the pass still ends.
+        db.inOwner(c -> Sql.update(c, "update app.bank_account set account_enc = '\\x00ff'::bytea, account_hash = null where tenant_id = ? "
+                + "and person_id = (select person_id from app.employment where id = ?)", org.id, chitraId));
+        assertTimeoutPreemptively(java.time.Duration.ofSeconds(30),
+                () -> com.example.loginapp.core.BankHashes.fill(db, Crypto.withKey(Crypto.DEVELOPMENT_KEY)));
+    }
+
+    private static List<Map<?, ?>> flags(Map<String, Object> run, String code) {
+        List<Map<?, ?>> out = new java.util.ArrayList<>();
+        for (Object o : (List<?>) run.get("exceptions")) {
+            if (code.equals(((Map<?, ?>) o).get("code"))) {
+                out.add((Map<?, ?>) o);
+            }
+        }
+        return out;
     }
 
     // ── helpers ─────────────────────────────────────────────────────────

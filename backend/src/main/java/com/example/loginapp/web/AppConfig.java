@@ -368,6 +368,11 @@ public class AppConfig {
     }
 
     @Bean
+    public BankHashWorker bankHashWorker(Db db, Crypto crypto) {
+        return new BankHashWorker(db, crypto);
+    }
+
+    @Bean
     public WageCheck wageCheck(Db db) {
         return new WageCheck(db);
     }

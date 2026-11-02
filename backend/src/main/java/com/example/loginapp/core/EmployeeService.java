@@ -825,9 +825,9 @@ public final class EmployeeService {
     private void insertBank(Connection c, SessionCtx ctx, UUID personId, String holder, String account, String ifsc,
                             String bankName, String branch, LocalDate from) throws SQLException {
         Sql.update(c, "insert into app.bank_account (tenant_id, person_id, holder_name, account_enc, account_last4, ifsc, "
-                        + "bank_name, branch, effective_from, created_by) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                        + "bank_name, branch, effective_from, created_by, account_hash) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 ctx.tenantId(), personId, holder, crypto.encrypt(ctx.tenantId(), account), IdChecks.last4(account), ifsc,
-                bankName, branch, from, ctx.membershipId());
+                bankName, branch, from, ctx.membershipId(), BankHashes.of(crypto, ctx.tenantId(), ifsc, account));
     }
 
     private static Map<String, Object> lockEmployment(Connection c, UUID employmentId) throws SQLException {

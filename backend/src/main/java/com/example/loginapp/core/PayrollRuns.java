@@ -355,10 +355,14 @@ public final class PayrollRuns {
             List<Object[]> lineRows = new ArrayList<>();
             List<Object[]> exceptionRows = new ArrayList<>();
             Map<UUID, LocalDate> lastDays = currentLastDays(c, PayrollEngine.list(snapshot, "employees"));
+            BankRead bank = bankChecks(c, ctx.tenantId(), PayrollEngine.list(snapshot, "employees"), period);
             for (Map<String, Object> emp : PayrollEngine.list(snapshot, "employees")) {
                 PayrollEngine.Calc calc = PayrollEngine.calculate(config, emp, period);
                 UUID employment = AuthService.uuid(emp.get("employmentId"));
                 lastDayCheck(calc, emp, lastDays.get(employment), period);
+                if (calc.calculated()) {
+                    calc.exceptions().addAll(bank.flags.getOrDefault(employment, List.of()));
+                }
                 boolean heldPay = onHold.contains(employment);
                 if (calc.calculated()) {
                     boolean held = heldPay;
@@ -367,6 +371,9 @@ public final class PayrollRuns {
                     info.put("structure", PayrollEngine.map(PayrollEngine.map(config, "structures"), (String) emp.get("structureId")).get("name"));
                     info.put("compensationFrom", emp.get("compensationFrom"));
                     info.put("proration", PayrollEngine.map(config, "settings").get("proration"));
+                    if (bank.current.get(employment) != null) {
+                        info.put("bankAccountId", bank.current.get(employment));   // the account this payslip is paid to; approval checks it is unchanged
+                    }
                     UUID payslip = UUID.randomUUID();   // made here so the lines can name it without waiting for the insert
                     payslipRows.add(new Object[] {payslip, ctx.tenantId(), runId, employment,
                             emp.get("membershipId") == null ? null : AuthService.uuid(emp.get("membershipId")),
@@ -461,6 +468,170 @@ public final class PayrollRuns {
         return out;
     }
 
+    /** A bank account is "recent" when it was changed within this many days of the calculation. */
+    private static final int BANK_RECENT_DAYS = 7;
+    /** How many earlier accounts are looked at to tell a real change from the same account entered again. */
+    private static final int BANK_HISTORY = 5;
+
+    /** What the bank read found: the flags per person, and the account row each person is paid to. */
+    private static final class BankRead {
+        final Map<UUID, List<Map<String, Object>>> flags;
+        final Map<UUID, String> current;
+
+        BankRead(Map<UUID, List<Map<String, Object>>> flags, Map<UUID, String> current) {
+            this.flags = flags;
+            this.current = current;
+        }
+    }
+
+    /**
+     * Risk signals on where the pay goes, read when the run is calculated, from the account the run pays (the latest effective by the end
+     * of the month, as the bank file does): it was replaced by a different account in the last few days (a changed account is the
+     * usual sign of diverted pay), or the same account is on two people. The same account entered again (a branch corrected, a section
+     * saved twice) is not a change. Accounts are compared by decrypting inside this method; only the last four digits and the other
+     * person's name ever reach a message.
+     */
+    private BankRead bankChecks(Connection c, UUID tenantId, List<Map<String, Object>> employees, LocalDate period) throws SQLException {
+        Map<UUID, List<Map<String, Object>>> flags = new HashMap<>();
+        Map<UUID, String> current = new HashMap<>();
+        List<UUID> ids = new ArrayList<>();
+        for (Map<String, Object> e : employees) {
+            ids.add(AuthService.uuid(e.get("employmentId")));
+        }
+        if (ids.isEmpty()) {
+            return new BankRead(flags, current);
+        }
+        java.time.Instant recentSince = clock.instant().minus(java.time.Duration.ofDays(BANK_RECENT_DAYS));
+        record Row(UUID id, java.time.Instant createdAt, String key, String last4) {}
+        Map<UUID, List<Row>> rows = new HashMap<>();   // newest first, per employment
+        Map<UUID, UUID> personOf = new HashMap<>();
+        Map<UUID, String> names = new HashMap<>();
+        // Plain JDBC: the encrypted account number is bytes, which the row helper does not return.
+        try (java.sql.PreparedStatement ps = c.prepareStatement("select * from (select e.id as employment, e.person_id, "
+                + "coalesce(p.preferred_name, p.legal_name) as name, x.id, x.account_enc, x.account_last4, x.ifsc, x.created_at, "
+                + "row_number() over (partition by e.id order by x.effective_from desc, x.created_at desc) as rn "
+                + "from app.employment e join app.person p on p.id = e.person_id join app.bank_account x on x.person_id = e.person_id "
+                + "and x.effective_from <= ? where e.id = any(?)) t where rn <= " + BANK_HISTORY + " order by employment, rn")) {
+            ps.setObject(1, period.plusMonths(1).minusDays(1));
+            ps.setArray(2, c.createArrayOf("uuid", ids.toArray(UUID[]::new)));
+            try (java.sql.ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    UUID employment = rs.getObject("employment", UUID.class);
+                    personOf.put(employment, rs.getObject("person_id", UUID.class));
+                    names.put(employment, rs.getString("name"));
+                    String ifsc = rs.getString("ifsc");
+                    String key;
+                    try {
+                        // Accounts are numbered within a bank, not a branch: the bank is the first four letters of the IFSC.
+                        key = BankHashes.key(ifsc, crypto.decryptText(tenantId, rs.getBytes("account_enc")));
+                    } catch (IllegalStateException e) {
+                        key = "unreadable|" + rs.getObject("id", UUID.class);   // cannot be compared; never equal to another
+                    }
+                    rows.computeIfAbsent(employment, k -> new ArrayList<>())
+                            .add(new Row(rs.getObject("id", UUID.class), rs.getTimestamp("created_at").toInstant(), key, rs.getString("account_last4")));
+                }
+            }
+        }
+        Map<String, Map<UUID, UUID>> byAccount = new HashMap<>();   // account -> person -> an employment of theirs
+        Map<UUID, String> latestKey = new HashMap<>();
+        for (Map.Entry<UUID, List<Row>> entry : rows.entrySet()) {
+            UUID employment = entry.getKey();
+            List<Row> history = entry.getValue();
+            Row latest = history.get(0);
+            current.put(employment, latest.id().toString());
+            latestKey.put(employment, latest.key());
+            byAccount.computeIfAbsent(latest.key(), k -> new HashMap<>()).put(personOf.get(employment), employment);
+            // Walk back over the same account entered again; what comes before is the account it replaced, if there is one.
+            Row first = latest;
+            int i = 1;
+            while (i < history.size() && history.get(i).key().equals(latest.key())) {
+                first = history.get(i);
+                i++;
+            }
+            boolean replaced = i < history.size();
+            if (replaced && first.createdAt().isAfter(recentSince)) {
+                flags.computeIfAbsent(employment, k -> new ArrayList<>()).add(new LinkedHashMap<>(Map.of("code", "bank_changed_recent", "level", "blocking",
+                        "acceptable", true, "message", "The bank account (ending " + latest.last4() + ") was changed in the last " + BANK_RECENT_DAYS
+                                + " days. Check with the employee before paying it.", "link", "people", "detailKey", first.id().toString())));
+            }
+        }
+        // The same accounts on people who are not in this run (another pay group, someone who has left), found by their fingerprints.
+        Map<String, List<String>> outside = new HashMap<>();   // account key -> who else, by name
+        Map<String, List<UUID>> outsidePeople = new HashMap<>();
+        if (!byAccount.isEmpty()) {
+            Map<String, String> keyOfHash = new HashMap<>();
+            List<byte[]> hashes = new ArrayList<>();
+            for (String key : byAccount.keySet()) {
+                if (key.startsWith("unreadable|")) {
+                    continue;
+                }
+                byte[] h = crypto.fingerprint(tenantId, "bank", key);
+                hashes.add(h);
+                keyOfHash.put(java.util.HexFormat.of().formatHex(h), key);
+            }
+            if (!hashes.isEmpty()) {
+                byte[][] hashArray = hashes.toArray(new byte[0][]);
+                UUID[] inRun = new HashSet<>(personOf.values()).toArray(UUID[]::new);
+                try (java.sql.PreparedStatement ps = c.prepareStatement("select p.id, coalesce(p.preferred_name, p.legal_name) as name, t.account_hash, "
+                        + "(select min(case e.status when 'active' then 0 when 'onboarding' then 1 else 2 end) from app.employment e where e.person_id = p.id) as standing "
+                        + "from (select distinct on (x.person_id) x.person_id, x.account_hash from app.bank_account x where x.effective_from <= ? "
+                        + "and x.person_id in (select person_id from app.bank_account where account_hash = any(?)) "
+                        + "order by x.person_id, x.effective_from desc, x.created_at desc) t join app.person p on p.id = t.person_id "
+                        + "where t.account_hash = any(?) and t.person_id <> all(?)")) {
+                    ps.setObject(1, period.plusMonths(1).minusDays(1));
+                    ps.setArray(2, c.createArrayOf("bytea", hashArray));
+                    ps.setArray(3, c.createArrayOf("bytea", hashArray));
+                    ps.setArray(4, c.createArrayOf("uuid", inRun));
+                    try (java.sql.ResultSet rs = ps.executeQuery()) {
+                        while (rs.next()) {
+                            String key = keyOfHash.get(java.util.HexFormat.of().formatHex(rs.getBytes("account_hash")));
+                            // Someone with no employment at all never joined: not shown. A leaver is named and said to have left.
+                            int standing = rs.getObject("standing") == null ? -1 : rs.getInt("standing");
+                            if (standing < 0) {
+                                continue;
+                            }
+                            outside.computeIfAbsent(key, k -> new ArrayList<>()).add(rs.getString("name") + (standing == 2 ? " (no longer employed)" : ""));
+                            outsidePeople.computeIfAbsent(key, k -> new ArrayList<>()).add(rs.getObject("id", UUID.class));
+                        }
+                    }
+                }
+            }
+        }
+        for (Map.Entry<String, Map<UUID, UUID>> account : byAccount.entrySet()) {
+            Map<UUID, UUID> persons = account.getValue();
+            List<String> away = outside.getOrDefault(account.getKey(), List.of());
+            if (persons.size() + away.size() < 2) {
+                continue;   // one person, even with two employments, is not sharing with anyone
+            }
+            List<UUID> sorted = new ArrayList<>(persons.keySet());
+            sorted.sort(java.util.Comparator.comparing(UUID::toString));
+            StringBuilder key = new StringBuilder();
+            for (UUID person : sorted) {
+                key.append(person).append(':').append(current.get(persons.get(person))).append(',');   // the people and their rows: a new account is a new thing to accept
+            }
+            List<UUID> awayIds = new ArrayList<>(outsidePeople.getOrDefault(account.getKey(), List.of()));
+            awayIds.sort(java.util.Comparator.comparing(UUID::toString));
+            awayIds.forEach(id -> key.append(id).append(','));
+            for (Map.Entry<UUID, UUID> who : persons.entrySet()) {
+                List<String> others = new ArrayList<>();
+                for (Map.Entry<UUID, UUID> other : persons.entrySet()) {
+                    if (!other.getKey().equals(who.getKey())) {
+                        others.add(names.get(other.getValue()));
+                    }
+                }
+                others.addAll(away);
+                String shown = others.size() <= 3 ? String.join(", ", others) : String.join(", ", others.subList(0, 3)) + " and " + (others.size() - 3) + " others";
+                // Every employment of this person is told, not only the one that was kept in the map.
+                for (Map.Entry<UUID, UUID> mine : personOf.entrySet().stream().filter(x -> x.getValue().equals(who.getKey())).toList()) {
+                    flags.computeIfAbsent(mine.getKey(), k -> new ArrayList<>()).add(new LinkedHashMap<>(Map.of("code", "bank_shared", "level", "blocking",
+                            "acceptable", true, "message", "The same bank account (ending " + rows.get(mine.getKey()).get(0).last4() + ") is also on " + shown
+                                    + ". Accept it only if it is a joint account.", "link", "people", "detailKey", key.toString())));
+                }
+            }
+        }
+        return new BankRead(flags, current);
+    }
+
     /**
      * Pay must stop on someone's last day, and the run froze its own copy of it. If the exit was moved, brought forward, put back or
      * cancelled since, the frozen figures pay the wrong days (and, for tax, the wrong number of months left). Reopen and freeze again.
@@ -506,6 +677,9 @@ public final class PayrollRuns {
                 }
                 if (!"blocking".equals(x.get("level")) || !Boolean.TRUE.equals(x.get("acceptable"))) {
                     throw new ApiException(409, "payroll.not_acceptable", "One of these cannot be accepted; it has to be fixed");
+                }
+                if (String.valueOf(x.get("code")).startsWith("bank_")) {
+                    throw new ApiException(409, "payroll.one_by_one", "Bank account checks are accepted one at a time, each with its own reason");
                 }
                 if (x.get("acceptedAt") != null) {
                     continue;
@@ -584,6 +758,15 @@ public final class PayrollRuns {
             }
             if (ctx.membershipId() != null && ctx.membershipId().toString().equals(r.get("calculatedBy"))) {
                 throw new ApiException(409, "payroll.maker_checker", "The person who calculated a run cannot approve it");
+            }
+            // Pay goes to the account that was checked: if one was changed after the calculation, calculate again.
+            long moved = Sql.query(c, "select 1 from app.payslip ps join app.employment e on e.id = ps.employment_id where ps.run_id = ? and not ps.held "
+                    + "and jsonb_exists(ps.info, 'bankAccountId') and ps.info->>'bankAccountId' is distinct from (select x.id::text from app.bank_account x "
+                    + "where x.person_id = e.person_id and x.effective_from <= ?::date order by x.effective_from desc, x.created_at desc limit 1)",
+                    runId, LocalDate.parse((String) r.get("period")).plusMonths(1).minusDays(1).toString()).size();
+            if (moved > 0) {
+                throw new ApiException(409, "payroll.bank_changed", "The bank account of " + moved + (moved == 1 ? " person was" : " people were")
+                        + " changed after the run was calculated. Calculate it again so the new account is checked.");
             }
             long open = Sql.query(c, "select 1 from app.run_exception where run_id = ? and level = 'blocking' and accepted_at is null", runId).size();
             if (open > 0) {

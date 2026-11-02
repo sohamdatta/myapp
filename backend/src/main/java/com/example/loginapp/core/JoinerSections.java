@@ -512,10 +512,18 @@ final class JoinerSections {
         } else {
             sealed = bytes(c, "select account_enc from app.bank_account where person_id = ? order by created_at desc limit 1", j.personId());
             last4 = (String) last.get("accountLast4");
+            // The number is kept; the hash follows the bank in the IFSC. An account sealed under a key this server no longer holds
+            // is saved as before, without a fingerprint, and is simply not matched.
+            try {
+                account = crypto.decryptText(j.tenantId(), sealed);
+            } catch (IllegalStateException e) {
+                account = null;
+            }
         }
         Sql.update(c, "insert into app.bank_account (tenant_id, person_id, holder_name, account_enc, account_last4, ifsc, bank_name, branch, "
-                + "effective_from, created_by) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", j.tenantId(), j.personId(), limit(holder, 120),
-                sealed, last4, ifsc, limit(bankName, 80), limit(branch, 80), j.joiningDate(), ctx.membershipId());
+                + "effective_from, created_by, account_hash) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", j.tenantId(), j.personId(), limit(holder, 120),
+                sealed, last4, ifsc, limit(bankName, 80), limit(branch, 80), j.joiningDate(), ctx.membershipId(),
+                account == null ? null : BankHashes.of(crypto, j.tenantId(), ifsc, account));
     }
 
     private void saveStatutory(Connection c, SessionCtx ctx, Joiner j, Map<String, Object> in) throws SQLException {

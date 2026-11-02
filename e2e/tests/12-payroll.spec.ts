@@ -82,7 +82,8 @@ async function acceptAll(page: Page, reasons: Record<string, string>, bulk = fal
     await page.fill('#reason-Accept-selected', 'Paid by cheque this month; bank details follow');
     await page.locator('form:has(#reason-Accept-selected)').getByRole('button', { name: 'Accept selected', exact: true }).click();
     await expect(page.locator('#reason-Accept-selected')).toHaveCount(0);
-    await expect(exceptions.getByRole('button', { name: 'Accept…' })).toHaveCount(0);
+    // Bank account checks are not in the bulk; they are accepted one at a time below.
+    await expect(exceptions.locator('li.exception.blocking:not([data-code^="bank_"])').getByRole('button', { name: 'Accept…' })).toHaveCount(0);
   }
   const buttons = exceptions.getByRole('button', { name: 'Accept…' });
   for (let left = await buttons.count(); left > 0; left--) {
