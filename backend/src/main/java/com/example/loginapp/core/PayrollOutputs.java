@@ -96,7 +96,8 @@ final class PayrollOutputs {
         // Sql leaves bytea out on purpose; the sealed account numbers are read here and opened one by one.
         try (var st = c.prepareStatement("select ps.net, ps.info->>'code' as code, b.holder_name, b.account_enc, b.ifsc "
                 + "from app.payslip ps join app.employment e on e.id = ps.employment_id join lateral (select * from app.bank_account b "
-                + "where b.person_id = e.person_id and b.effective_from <= ? order by b.effective_from desc, b.created_at desc limit 1) b on true "
+                + "where b.person_id = e.person_id and (case when jsonb_exists(ps.info, 'bankAccountId') then b.id::text = ps.info->>'bankAccountId' "
+                + "else b.effective_from <= ? end) order by b.effective_from desc, b.created_at desc limit 1) b on true "
                 + "where ps.run_id = ? and not ps.held and ps.net > 0 order by lower(ps.info->>'name')")) {
             st.setObject(1, period.plusMonths(1).minusDays(1));
             st.setObject(2, runId);

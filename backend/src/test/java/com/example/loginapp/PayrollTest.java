@@ -730,8 +730,9 @@ class PayrollTest {
         String group = (String) ((Map<?, ?>) ((List<?>) runs.list(operator).get("groups")).get(0)).get("id");
         config.addMembers(operator, UUID.fromString(group), List.of(), null);
 
-        // Bela gives the account Asha already has: each is told about the other, by name and last four digits only.
-        employees.setBank(org.admin, belaId, "Bela Das", "123456789012", "HDFC0001234", null, null, null);
+        // Bela gives the account Asha already has, at another branch of the same bank (a number is unique within the bank, not the
+        // branch): each is told about the other, by name and last four digits only.
+        employees.setBank(org.admin, belaId, "Bela Das", "123456789012", "HDFC0005678", null, null, null);
         UUID run = UUID.fromString((String) runs.open(operator, UUID.fromString(group), period.toString()).get("id"));
         runs.freeze(operator, run);
         runs.calculate(operator, run);
@@ -743,9 +744,17 @@ class PayrollTest {
             String message = String.valueOf(x.get("message"));
             assertTrue(message.contains("9012"), message);
             assertFalse(message.contains("123456789012"), "the full number never reaches a message");
-            assertTrue(message.contains("Asha Rao") || message.contains("Bela Das"), message);
+            String other = String.valueOf(x.get("name")).contains("Asha") ? "Bela Das" : "Asha Rao";
+            assertTrue(message.contains(other), "it names the other person: " + message);
+            assertFalse(message.contains(String.valueOf(x.get("name"))), "and not themselves: " + message);
         }
         assertEquals(0, flags(runs.get(operator, run), "bank_changed_recent").size(), "a first account is not a change");
+
+        // Asha enters the same account again (a branch corrected): not a change.
+        employees.setBank(org.admin, ashaId, "Asha Rao", "123456789012", "HDFC0001234", null, null, null);
+        runs.calculate(operator, run);
+        assertEquals(0, flags(runs.get(operator, run), "bank_changed_recent").size(), "the same account again is not a change");
+        assertEquals(2, flags(runs.get(operator, run), "bank_shared").size());
 
         // Asha replaces her account: a recent change, to be checked with her. Accepting it carries over only while the account is the same.
         employees.setBank(org.admin, ashaId, "Asha Rao", "987654321098", "HDFC0ABC123", null, null, null);
@@ -755,10 +764,21 @@ class PayrollTest {
         List<Map<?, ?>> recent = flags(after, "bank_changed_recent");
         assertEquals(1, recent.size());
         assertEquals("blocking", recent.get(0).get("level"));
+        assertError(409, "payroll.one_by_one", () -> runs.acceptMany(org.admin, run, List.of(UUID.fromString((String) recent.get(0).get("id"))), "Confirmed with Asha"));
         runs.accept(org.admin, run, UUID.fromString((String) recent.get(0).get("id")), "Confirmed with Asha by phone");
         runs.calculate(operator, run);
         assertTrue(flags(runs.get(operator, run), "bank_changed_recent").get(0).get("acceptedAt") != null, "same account: still accepted");
+        assertTrue(flags(runs.get(operator, run), "bank_changed_recent").size() == 1);
+
+        // Everything accepted, then the account is changed again before approval: the run must be calculated again.
+        for (Object o : (List<?>) runs.get(operator, run).get("exceptions")) {
+            Map<?, ?> x = (Map<?, ?>) o;
+            if ("blocking".equals(x.get("level")) && Boolean.TRUE.equals(x.get("acceptable")) && x.get("acceptedAt") == null) {
+                runs.accept(org.admin, run, UUID.fromString((String) x.get("id")), "Checked");
+            }
+        }
         employees.setBank(org.admin, ashaId, "Asha Rao", "111122223333", "HDFC0ABC123", null, null, null);
+        assertError(409, "payroll.bank_changed", () -> runs.approve(org.admin, run));
         runs.calculate(operator, run);
         assertEquals(null, flags(runs.get(operator, run), "bank_changed_recent").get(0).get("acceptedAt"), "another new account: to be checked again");
     }
