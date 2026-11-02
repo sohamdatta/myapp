@@ -712,6 +712,67 @@ class PayrollTest {
         assertFalse(String.valueOf(x.get("message")).contains("days paid"), String.valueOf(x.get("message")));
     }
 
+    @Test
+    void aSharedOrRecentlyChangedBankAccountIsFlaggedAndAcceptable() {
+        assumeTrue(reachable, "PostgreSQL is not reachable");
+        Org org = newOrg();
+        SessionCtx operator = join(org, "payroll", List.of("payroll_operator"));
+        SessionCtx asha = join(org, "asha", List.of("employee"));
+        SessionCtx bela = join(org, "bela", List.of("employee"));
+        UUID ashaId = UUID.fromString((String) employees.add(org.admin, person("Asha Rao", "ABCPR1234F", asha)).get("id"));
+        UUID belaId = UUID.fromString((String) employees.add(org.admin, person("Bela Das", "ABCPB1234F", bela)).get("id"));
+        Map<String, Object> setup = config.setup(operator);
+        String staff = (String) ((Map<?, ?>) ((List<?>) setup.get("structures")).get(0)).get("id");
+        LocalDate period = TODAY.withDayOfMonth(1);
+        for (UUID id : List.of(ashaId, belaId)) {
+            pay.revise(org.admin, id, new PayrollPay.ReviseInput(period.toString(), staff, new BigDecimal("900000"), "Joining salary"));
+        }
+        String group = (String) ((Map<?, ?>) ((List<?>) runs.list(operator).get("groups")).get(0)).get("id");
+        config.addMembers(operator, UUID.fromString(group), List.of(), null);
+
+        // Bela gives the account Asha already has: each is told about the other, by name and last four digits only.
+        employees.setBank(org.admin, belaId, "Bela Das", "123456789012", "HDFC0001234", null, null, null);
+        UUID run = UUID.fromString((String) runs.open(operator, UUID.fromString(group), period.toString()).get("id"));
+        runs.freeze(operator, run);
+        runs.calculate(operator, run);
+        List<Map<?, ?>> shared = flags(runs.get(operator, run), "bank_shared");
+        assertEquals(2, shared.size());
+        for (Map<?, ?> x : shared) {
+            assertEquals("blocking", x.get("level"));
+            assertEquals(true, x.get("acceptable"));
+            String message = String.valueOf(x.get("message"));
+            assertTrue(message.contains("9012"), message);
+            assertFalse(message.contains("123456789012"), "the full number never reaches a message");
+            assertTrue(message.contains("Asha Rao") || message.contains("Bela Das"), message);
+        }
+        assertEquals(0, flags(runs.get(operator, run), "bank_changed_recent").size(), "a first account is not a change");
+
+        // Asha replaces her account: a recent change, to be checked with her. Accepting it carries over only while the account is the same.
+        employees.setBank(org.admin, ashaId, "Asha Rao", "987654321098", "HDFC0ABC123", null, null, null);
+        runs.calculate(operator, run);
+        Map<String, Object> after = runs.get(operator, run);
+        assertEquals(0, flags(after, "bank_shared").size(), "no longer the same account");
+        List<Map<?, ?>> recent = flags(after, "bank_changed_recent");
+        assertEquals(1, recent.size());
+        assertEquals("blocking", recent.get(0).get("level"));
+        runs.accept(org.admin, run, UUID.fromString((String) recent.get(0).get("id")), "Confirmed with Asha by phone");
+        runs.calculate(operator, run);
+        assertTrue(flags(runs.get(operator, run), "bank_changed_recent").get(0).get("acceptedAt") != null, "same account: still accepted");
+        employees.setBank(org.admin, ashaId, "Asha Rao", "111122223333", "HDFC0ABC123", null, null, null);
+        runs.calculate(operator, run);
+        assertEquals(null, flags(runs.get(operator, run), "bank_changed_recent").get(0).get("acceptedAt"), "another new account: to be checked again");
+    }
+
+    private static List<Map<?, ?>> flags(Map<String, Object> run, String code) {
+        List<Map<?, ?>> out = new java.util.ArrayList<>();
+        for (Object o : (List<?>) run.get("exceptions")) {
+            if (code.equals(((Map<?, ?>) o).get("code"))) {
+                out.add((Map<?, ?>) o);
+            }
+        }
+        return out;
+    }
+
     // ── helpers ─────────────────────────────────────────────────────────
 
     /** The default configuration, as a frozen snapshot would carry it, built without a database. */

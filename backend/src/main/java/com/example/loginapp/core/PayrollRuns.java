@@ -355,10 +355,14 @@ public final class PayrollRuns {
             List<Object[]> lineRows = new ArrayList<>();
             List<Object[]> exceptionRows = new ArrayList<>();
             Map<UUID, LocalDate> lastDays = currentLastDays(c, PayrollEngine.list(snapshot, "employees"));
+            Map<UUID, List<Map<String, Object>>> bankFlags = bankChecks(c, ctx.tenantId(), PayrollEngine.list(snapshot, "employees"));
             for (Map<String, Object> emp : PayrollEngine.list(snapshot, "employees")) {
                 PayrollEngine.Calc calc = PayrollEngine.calculate(config, emp, period);
                 UUID employment = AuthService.uuid(emp.get("employmentId"));
                 lastDayCheck(calc, emp, lastDays.get(employment), period);
+                if (calc.calculated()) {
+                    calc.exceptions().addAll(bankFlags.getOrDefault(employment, List.of()));
+                }
                 boolean heldPay = onHold.contains(employment);
                 if (calc.calculated()) {
                     boolean held = heldPay;
@@ -456,6 +460,67 @@ public final class PayrollRuns {
                 + "from app.employment e where e.id = any(?)", (Object) ids.toArray(UUID[]::new))) {
             if (r.get("leaving") != null) {
                 out.put(AuthService.uuid(r.get("id")), LocalDate.parse(String.valueOf(r.get("leaving"))));
+            }
+        }
+        return out;
+    }
+
+    /** A bank account is "recent" when it was changed within this many days of the calculation. */
+    private static final int BANK_RECENT_DAYS = 7;
+
+    /**
+     * Risk signals on where the pay goes, read when the run is calculated: the account was changed in the last few days (a changed
+     * account is the usual sign of diverted pay), or the same account is on two people. Accounts are compared by decrypting inside
+     * this method; only the last four digits and the other person's name ever reach a message.
+     */
+    private Map<UUID, List<Map<String, Object>>> bankChecks(Connection c, UUID tenantId, List<Map<String, Object>> employees) throws SQLException {
+        Map<UUID, List<Map<String, Object>>> out = new HashMap<>();
+        List<UUID> ids = new ArrayList<>();
+        for (Map<String, Object> e : employees) {
+            ids.add(AuthService.uuid(e.get("employmentId")));
+        }
+        if (ids.isEmpty()) {
+            return out;
+        }
+        java.time.Instant recentSince = clock.instant().minus(java.time.Duration.ofDays(BANK_RECENT_DAYS));
+        Map<String, List<UUID>> byAccount = new HashMap<>();
+        Map<UUID, String> names = new HashMap<>();
+        Map<UUID, String> last4 = new HashMap<>();
+        // Plain JDBC: the encrypted account number is bytes, which the row helper does not return.
+        try (java.sql.PreparedStatement ps = c.prepareStatement("select e.id, coalesce(p.preferred_name, p.legal_name), b.id, b.account_enc, "
+                + "b.account_last4, b.ifsc, b.created_at, (select count(*) from app.bank_account o where o.person_id = e.person_id and o.id <> b.id) "
+                + "from app.employment e join app.person p on p.id = e.person_id "
+                + "join lateral (select * from app.bank_account x where x.person_id = e.person_id order by x.effective_from desc, x.created_at desc limit 1) b on true "
+                + "where e.id = any(?)")) {
+            ps.setArray(1, c.createArrayOf("uuid", ids.toArray(UUID[]::new)));
+            try (java.sql.ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    UUID employment = rs.getObject(1, UUID.class);
+                    names.put(employment, rs.getString(2));
+                    String lastFour = rs.getString(5);
+                    last4.put(employment, lastFour);
+                    byAccount.computeIfAbsent(rs.getString(6) + "|" + crypto.decryptText(tenantId, rs.getBytes(4)), k -> new ArrayList<>()).add(employment);
+                    // A joiner's first account is not a change; only a replacement of an account that was already there.
+                    if (rs.getLong(8) > 0 && rs.getTimestamp(7).toInstant().isAfter(recentSince)) {
+                        out.computeIfAbsent(employment, k -> new ArrayList<>()).add(new LinkedHashMap<>(Map.of("code", "bank_changed_recent", "level", "blocking",
+                                "acceptable", true, "message", "The bank account (ending " + lastFour + ") was changed in the last " + BANK_RECENT_DAYS
+                                        + " days. Check with the employee before paying it.", "link", "people", "detailKey", rs.getObject(3, UUID.class).toString())));
+                    }
+                }
+            }
+        }
+        for (List<UUID> same : byAccount.values()) {
+            if (same.size() < 2) {
+                continue;
+            }
+            List<UUID> sorted = new ArrayList<>(same);
+            sorted.sort(java.util.Comparator.comparing(UUID::toString));
+            String key = String.join(",", sorted.stream().map(UUID::toString).toList());
+            for (UUID who : same) {
+                String others = String.join(", ", same.stream().filter(u -> !u.equals(who)).map(names::get).toList());
+                out.computeIfAbsent(who, k -> new ArrayList<>()).add(new LinkedHashMap<>(Map.of("code", "bank_shared", "level", "blocking", "acceptable", true,
+                        "message", "The same bank account (ending " + last4.get(who) + ") is also on " + others + ". Accept it only if it is a joint account.",
+                        "link", "people", "detailKey", key)));
             }
         }
         return out;
