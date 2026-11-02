@@ -566,7 +566,8 @@ function Exceptions({ run: x, open, onChanged, onOpen, beside }) {
   const [many, setMany] = useState(false)
   const { error, run } = useAction()
   const canAcceptHere = x.canAccept && x.state === 'calculated'
-  const acceptable = open.filter((e) => e.acceptable)
+  // Bank account checks are accepted one at a time, each with its own reason.
+  const acceptable = open.filter((e) => e.acceptable && !e.code.startsWith('bank_'))
   // After a recalculation the exceptions are new rows: keep only the picks that still exist.
   const live = picked.filter((id) => acceptable.some((e) => e.id === id))
   const warnings = x.exceptions.filter((e) => e.level === 'warning')
@@ -609,7 +610,7 @@ function Exceptions({ run: x, open, onChanged, onOpen, beside }) {
         {[...blocking, ...warnings].map((e) => (
           <li key={e.id} className={e.level === 'blocking' && !e.acceptedAt ? 'exception blocking' : 'exception'} data-code={e.code}>
             <div className="exception-head">
-              {canAcceptHere && e.level === 'blocking' && e.acceptable && !e.acceptedAt && acceptable.length > 1 && (
+              {canAcceptHere && e.level === 'blocking' && e.acceptable && !e.code.startsWith('bank_') && !e.acceptedAt && acceptable.length > 1 && (
                 <input
                   type="checkbox"
                   checked={live.includes(e.id)}
