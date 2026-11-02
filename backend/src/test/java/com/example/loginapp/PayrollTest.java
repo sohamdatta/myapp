@@ -3,6 +3,7 @@ package com.example.loginapp;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
@@ -798,6 +799,12 @@ class PayrollTest {
         assertError(409, "payroll.bank_changed", () -> runs.approve(org.admin, run));
         runs.calculate(operator, run);
         assertEquals(null, flags(runs.get(operator, run), "bank_changed_recent").get(0).get("acceptedAt"), "another new account: to be checked again");
+
+        // An account that cannot be opened here (sealed under a key this server does not hold) is passed over, and the pass still ends.
+        db.inOwner(c -> Sql.update(c, "update app.bank_account set account_enc = '\\x00ff'::bytea, account_hash = null where tenant_id = ? "
+                + "and person_id = (select person_id from app.employment where id = ?)", org.id, chitraId));
+        assertTimeoutPreemptively(java.time.Duration.ofSeconds(30),
+                () -> com.example.loginapp.core.BankHashes.fill(db, Crypto.withKey(Crypto.DEVELOPMENT_KEY)));
     }
 
     private static List<Map<?, ?>> flags(Map<String, Object> run, String code) {

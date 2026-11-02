@@ -573,7 +573,7 @@ public final class PayrollRuns {
                 byte[][] hashArray = hashes.toArray(new byte[0][]);
                 UUID[] inRun = new HashSet<>(personOf.values()).toArray(UUID[]::new);
                 try (java.sql.PreparedStatement ps = c.prepareStatement("select p.id, coalesce(p.preferred_name, p.legal_name) as name, t.account_hash, "
-                        + "exists (select 1 from app.employment e where e.person_id = p.id and e.status = 'active') as active "
+                        + "(select min(case e.status when 'active' then 0 when 'onboarding' then 1 else 2 end) from app.employment e where e.person_id = p.id) as standing "
                         + "from (select distinct on (x.person_id) x.person_id, x.account_hash from app.bank_account x where x.effective_from <= ? "
                         + "and x.person_id in (select person_id from app.bank_account where account_hash = any(?)) "
                         + "order by x.person_id, x.effective_from desc, x.created_at desc) t join app.person p on p.id = t.person_id "
@@ -585,7 +585,12 @@ public final class PayrollRuns {
                     try (java.sql.ResultSet rs = ps.executeQuery()) {
                         while (rs.next()) {
                             String key = keyOfHash.get(java.util.HexFormat.of().formatHex(rs.getBytes("account_hash")));
-                            outside.computeIfAbsent(key, k -> new ArrayList<>()).add(rs.getString("name") + (rs.getBoolean("active") ? "" : " (no longer employed)"));
+                            // Someone with no employment at all never joined: not shown. A leaver is named and said to have left.
+                            int standing = rs.getObject("standing") == null ? -1 : rs.getInt("standing");
+                            if (standing < 0) {
+                                continue;
+                            }
+                            outside.computeIfAbsent(key, k -> new ArrayList<>()).add(rs.getString("name") + (standing == 2 ? " (no longer employed)" : ""));
                             outsidePeople.computeIfAbsent(key, k -> new ArrayList<>()).add(rs.getObject("id", UUID.class));
                         }
                     }
