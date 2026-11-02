@@ -170,25 +170,25 @@ class WageCheckTest {
 
         // 50,000 a month less the 600 employer PF the structure's balancing allowance sees (PF on the 5,000 of basic,
         // before the add-back) is 49,400 of pay. Basic is 5,000 (10.1%), half of pay is 24,700, so 19,700 of the
-        // conditional allowances count as wages. PF is on at most 15,000: 5,000 became 15,000, 10,000 more,
-        // at 12% from each side.
+        // conditional allowances count as wages. PF is on at most 25,000 (the ceiling from 17 Sep 2026), so the 24,700
+        // of wages is not cut: 5,000 became 24,700, at 12% from each side that is 2,964 each against 600 before.
         WageCheck.Row ravi = view.rows().stream().filter(r -> r.name().equals("Ravi Kumar")).findFirst().orElseThrow();
         assertTrue(ravi.toppedUp());
         assertEquals(0, new BigDecimal("49400").compareTo(ravi.remuneration()), ravi.toString());
         assertEquals(0, new BigDecimal("5000").compareTo(ravi.wages()));
         assertEquals(0, new BigDecimal("19700").compareTo(ravi.addedBack()));
         assertEquals(0, new BigDecimal("10.1").compareTo(ravi.wageShare()));
-        assertEquals(0, new BigDecimal("2400").compareTo(ravi.pfExtra()));
+        assertEquals(0, new BigDecimal("4728").compareTo(ravi.pfExtra()));
 
         assertEquals(2, view.summary().people());
         assertEquals(1, view.summary().toppedUp());
         assertEquals(0, new BigDecimal("19700").compareTo(view.summary().addedBack()));
-        assertEquals(0, new BigDecimal("2400").compareTo(view.summary().pfExtra()));
+        assertEquals(0, new BigDecimal("4728").compareTo(view.summary().pfExtra()));
 
         // The month shows what was paid: changing the Organization's PF setting afterwards changes nothing.
         db.inOwner(c -> Sql.update(c, "update app.payroll_settings set pf_restrict = false where tenant_id = ?", m.org.id));
         WageCheck.View later = wageCheck.check(m.operator, null);
-        assertEquals(0, new BigDecimal("2400").compareTo(later.summary().pfExtra()), "figures come from the run, not today's settings");
+        assertEquals(0, new BigDecimal("4728").compareTo(later.summary().pfExtra()), "figures come from the run, not today's settings");
         assertEquals(0, new BigDecimal("19700").compareTo(later.summary().addedBack()));
         assertEquals(1, later.rows().stream().filter(WageCheck.Row::toppedUp).count());
         assertTrue(later.pending().isEmpty());

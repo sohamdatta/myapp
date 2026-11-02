@@ -182,13 +182,13 @@ class StatutoryFilingsTest {
         assertEquals("100200300400", f[0]);
         assertEquals("Asha Rao", f[1]);
         assertEquals(whole((BigDecimal) asha.get("gross")), f[2]);
-        assertEquals("15000", f[3], "EPF wages are restricted to the ceiling by default");
-        assertEquals("15000", f[4]);
-        assertEquals("15000", f[5]);
+        assertEquals("25000", f[3], "EPF wages are restricted to the ceiling by default (Rs 25,000 from 17 Sep 2026)");
+        assertEquals("25000", f[4]);
+        assertEquals("25000", f[5]);
         assertEquals(whole(lineAmount(asha, "PF_EE")), f[6]);
-        assertEquals("1250", f[7], "8.33% of 15,000 is the pension share");
+        assertEquals("2083", f[7], "8.33% of 25,000 is the pension share");
         BigDecimal er = lineAmount(asha, "PF_ER");
-        assertEquals(whole(er.subtract(new BigDecimal("1250"))), f[8]);
+        assertEquals(whole(er.subtract(new BigDecimal("2083"))), f[8]);
         assertEquals("0", f[9]);
         assertEquals("0", f[10]);
 

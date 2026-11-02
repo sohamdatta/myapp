@@ -409,7 +409,7 @@ class PayrollTest {
         LocalDate period = TODAY.withDayOfMonth(1).plusMonths(1);
         Map<String, Object> preview = pay.preview(hr, ashaId, new PayrollPay.ReviseInput(period.toString(), staff, new BigDecimal("900000"), "Joining salary"));
         assertEquals(null, preview.get("before"));
-        assertEquals(0, new BigDecimal("73200").compareTo((BigDecimal) PayrollEngine.map(preview, "after").get("gross")));
+        assertEquals(0, new BigDecimal("72000").compareTo((BigDecimal) PayrollEngine.map(preview, "after").get("gross")));
         pay.revise(hr, ashaId, new PayrollPay.ReviseInput(TODAY.withDayOfMonth(1).toString(), staff, new BigDecimal("900000"), "Joining salary"));
         assertError(404, "not_found", () -> pay.revise(hr, hrId, new PayrollPay.ReviseInput(TODAY.withDayOfMonth(1).toString(), staff,
                 new BigDecimal("1200000"), "My own raise")));
@@ -434,11 +434,11 @@ class PayrollTest {
         assertEquals(0, new BigDecimal(days - 2).compareTo((BigDecimal) slip.get("daysPaid")));
         BigDecimal basic = new BigDecimal("37500").multiply(BigDecimal.valueOf(days - 2)).divide(BigDecimal.valueOf(days), 0, RoundingMode.HALF_UP);
         assertEquals(0, basic.compareTo(lineAmount(slip, "BASIC")));
-        assertEquals(0, new BigDecimal("1800").compareTo(lineAmount(slip, "PF_EE")));
+        assertEquals(0, new BigDecimal("3000").compareTo(lineAmount(slip, "PF_EE")));
         BigDecimal pt = period.getMonthValue() == 2 ? new BigDecimal("300") : new BigDecimal("200");
         assertEquals(0, pt.compareTo(lineAmount(slip, "PT")));
         BigDecimal lwf = period.getMonthValue() == 12 ? new BigDecimal("50") : BigDecimal.ZERO;
-        assertEquals(0, ((BigDecimal) slip.get("gross")).subtract(new BigDecimal("1800")).subtract(pt).subtract(lwf)
+        assertEquals(0, ((BigDecimal) slip.get("gross")).subtract(new BigDecimal("3000")).subtract(pt).subtract(lwf)
                 .compareTo((BigDecimal) slip.get("net")));
         Map<?, ?> basicTrace = (Map<?, ?>) lineOf(slip, "BASIC").get("trace");
         assertEquals("CTC_MONTHLY * 0.5", basicTrace.get("formula"));

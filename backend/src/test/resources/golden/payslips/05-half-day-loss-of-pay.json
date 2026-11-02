@@ -11,16 +11,16 @@
     }
   },
   "expected": {
-    "gross": "69657",
-    "deductions": "2000.00",
-    "net": "67657.00",
-    "employerCost": "1800",
+    "gross": "68515",
+    "deductions": "3200.00",
+    "net": "65315.00",
+    "employerCost": "3000",
     "lines": [
       {"code": "BASIC", "kind": "earning", "amount": "35685"},
       {"code": "HRA", "kind": "earning", "amount": "14274"},
-      {"code": "SPECIAL", "kind": "earning", "amount": "19698"},
-      {"code": "PF_EE", "kind": "deduction", "amount": "1800"},
-      {"code": "PF_ER", "kind": "employer", "amount": "1800"},
+      {"code": "SPECIAL", "kind": "earning", "amount": "18556"},
+      {"code": "PF_EE", "kind": "deduction", "amount": "3000"},
+      {"code": "PF_ER", "kind": "employer", "amount": "3000"},
       {"code": "PT", "kind": "deduction", "amount": "200.00"}
     ],
     "exceptions": []
