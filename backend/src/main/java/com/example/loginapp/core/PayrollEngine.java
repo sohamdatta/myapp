@@ -198,7 +198,8 @@ public final class PayrollEngine {
             if (overrides.containsKey(code)) {
                 Map<String, Object> o = map(overrides, code);
                 full.put(code, dec(o, "amount"));
-                trace.put("source", "Override from " + o.get("from") + ": " + o.get("reason"));
+                trace.put("source", "A fixed amount set for this employee from " + o.get("from"));
+                trace.put("overrideReason", o.get("reason"));   // HR's reason: for payroll, never shown to the employee
                 traces.put(code, trace);
                 continue;
             }
@@ -218,6 +219,7 @@ public final class PayrollEngine {
                 full.put(code, r.value());
                 trace.put("formula", f);
                 trace.put("read", r.read());
+                trace.put("where", whereFrom(r.read().keySet(), emp, components));
                 trace.put("source", structure.get("name") + " structure, version of " + structure.get("validFrom"));
                 if (r.dividedByZero()) {
                     out.exception("formula_division", "warning", false, c.get("name") + ": a division by zero gave 0.", "payroll-setup");
@@ -403,9 +405,12 @@ public final class PayrollEngine {
             }
         }
         PayChange.Slip slipBefore = new PayChange.Slip(dec(previous, "daysPaid"), dec(previous, "daysInPeriod"), dec(previous, "annual"),
-                String.valueOf(previous.get("compensationFrom")), was);
+                String.valueOf(previous.get("compensationFrom")), was, null,
+                previous.get("lopDays") == null ? null : dec(previous, "lopDays"));
         PayChange.Slip slipNow = new PayChange.Slip(out.daysPaid, out.daysInPeriod, dec(emp, "annual"),
-                String.valueOf(emp.get("compensationFrom")), now);
+                String.valueOf(emp.get("compensationFrom")), now,
+                PayChange.lossOfPayWords(castDates(map(emp, "days").get("lopDates")), map(emp, "days").get("lopEntered") == null ? null : dec(map(emp, "days"), "lopEntered")),
+                out.lopDays);
         List<PayChange.Cause> causes = explainable ? PayChange.diff(slipBefore, slipNow) : List.of();
         StringBuilder why = new StringBuilder();
         for (int i = 0; i < Math.min(2, causes.size()); i++) {
@@ -423,6 +428,11 @@ public final class PayrollEngine {
     }
 
     @SuppressWarnings("unchecked")
+    private static List<Map<String, Object>> castDates(Object o) {
+        return (List<Map<String, Object>>) o;
+    }
+
+    @SuppressWarnings("unchecked")
     private static Map<String, Object> castLine(Object o) {
         return (Map<String, Object>) o;
     }
@@ -435,6 +445,49 @@ public final class PayrollEngine {
             out.info.put(k, emp.get(k));
         }
         out.info.put("regime", map(emp, "profile").getOrDefault("taxRegime", "new"));
+        Map<String, Object> days = map(emp, "days");
+        if (days.get("lopDates") != null && !((List<?>) days.get("lopDates")).isEmpty()) {
+            out.info.put("lopDates", days.get("lopDates"));
+        }
+        if (days.get("lopEntered") != null && dec(days, "lopEntered").signum() > 0) {
+            out.info.put("lopEntered", days.get("lopEntered"));   // days HR entered for the month, with no date of their own
+        }
+    }
+
+    /** Where each value a formula read came from, in words: the pay record, the days, the employee record, another line. */
+    static Map<String, Object> whereFrom(java.util.Collection<String> names, Map<String, Object> emp, Map<String, Object> components) {
+        Map<String, Object> out = new LinkedHashMap<>();
+        for (String name : names) {
+            String text;
+            if (STARTING.contains(name)) {
+                text = (name.startsWith("GROSS") ? "Gross pay" : "Pay (CTC)") + " of " + rupees(dec(emp, "annual")) + " a year, from "
+                        + (emp.get("compensationFrom") == null ? "the pay record" : LocalDate.parse(String.valueOf(emp.get("compensationFrom")))
+                                .format(java.time.format.DateTimeFormatter.ofPattern("d MMM yyyy", java.util.Locale.ENGLISH)));
+            } else if (Formula.isComponent(name)) {
+                Map<String, Object> c = map(components, name);
+                text = map(map(emp, "overrides"), name).isEmpty()
+                        ? (c.get("name") == null ? name : c.get("name")) + ", another line of the same structure, for a full month"
+                        : (c.get("name") == null ? name : c.get("name")) + ", a fixed amount set for this employee";
+            } else if (name.startsWith("ytd(")) {
+                text = "Paid so far this tax year";
+            } else if (name.startsWith("table")) {
+                text = "A table in the Organization's payroll setup";
+            } else if (name.startsWith("days.")) {
+                text = "The days of the month: attendance and leave, and any loss of pay HR entered";
+            } else if (name.startsWith("location.")) {
+                text = "Their work location on the employment record";
+            } else if (name.startsWith("period.")) {
+                text = "The pay month";
+            } else if (name.equals("months_of_service")) {
+                text = "Their joining date";
+            } else if (Set.of("employment.type", "designation", "department", "gender").contains(name)) {
+                text = "Their employee record";
+            } else {
+                text = "The Organization's payroll setup";
+            }
+            out.put(name, text);
+        }
+        return out;
     }
 
     static Map<String, Object> facts(Map<String, Object> emp, LocalDate period) {

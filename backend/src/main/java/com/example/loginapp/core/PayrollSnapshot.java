@@ -204,7 +204,7 @@ final class PayrollSnapshot {
                 + "and r.period >= ? and r.period < ? and l.code in ('ESI_EE','ESI_ER') and l.amount > 0 limit 1", employmentId, esiStart, period) != null);
 
         // The last approved month, for the variance check: what was paid, and the lines and days that explain it.
-        Map<String, Object> previous = Sql.one(c, "select ps.id, ps.net, ps.days_paid, ps.days_in_period, ps.info, r.period from app.payslip ps "
+        Map<String, Object> previous = Sql.one(c, "select ps.id, ps.net, ps.days_paid, ps.days_in_period, ps.lop_days, ps.info, r.period from app.payslip ps "
                 + "join app.payroll_run r on r.id = ps.run_id where ps.employment_id = ? and r.state in ('approved','paid','released') "
                 + "and r.period < ? order by r.period desc limit 1", employmentId, period);
         if (previous == null) {
@@ -215,6 +215,7 @@ final class PayrollSnapshot {
             was.put("period", previous.get("period"));
             was.put("daysPaid", previous.get("daysPaid"));
             was.put("daysInPeriod", previous.get("daysInPeriod"));
+            was.put("lopDays", previous.get("lopDays"));
             Map<String, Object> before = parse(previous.get("info"));
             was.put("annual", before.get("annual"));
             was.put("compensationFrom", before.get("compensationFrom"));
@@ -253,6 +254,7 @@ final class PayrollSnapshot {
         LocalDate from = joined.isAfter(period) ? joined : period;
         LocalDate to = leaving != null && leaving.isBefore(end) ? leaving : end;
         BigDecimal lop = BigDecimal.ZERO;
+        List<Map<String, Object>> lopDates = new ArrayList<>();   // the days behind the loss of pay, for the payslip to name
         if ((attendanceOn || leaveOn) && membership != null && !to.isBefore(from)) {
             Map<String, Map<String, Object>> rows = new HashMap<>();
             // The attendance days already worked out; without Attendance, leave alone is read below.
@@ -266,17 +268,24 @@ final class PayrollSnapshot {
                 if (row != null) {
                     if (leaveOn && Boolean.TRUE.equals(row.get("leaveUnpaid"))) {
                         lop = lop.add(PayrollEngine.dec(row, "leaveDays"));
+                        if (PayrollEngine.dec(row, "leaveDays").signum() > 0) {
+                            lopDates.add(lopDay(d, PayrollEngine.dec(row, "leaveDays"), "leave"));
+                        }
                     } else if (absentIsLop && "absent".equals(row.get("status"))) {
                         lop = lop.add(BigDecimal.ONE);
+                        lopDates.add(lopDay(d, BigDecimal.ONE, "absent"));
                     } else if (absentIsLop && "half_day".equals(row.get("status")) && PayrollEngine.dec(row, "leaveDays").signum() == 0) {
                         lop = lop.add(new BigDecimal("0.5"));
+                        lopDates.add(lopDay(d, new BigDecimal("0.5"), "absent"));
                     }
                 } else if (leaveOn) {
                     AttendanceDays.Assigned at = AttendanceDays.assigned(c, membership, d);
                     boolean off = at != null && AttendanceDays.dayOff(c, at, d) != null;
                     DayCalculator.Leave leave = LeaveService.leaveOn(c, membership, d, off);
                     if (leave != null && leave.unpaid()) {
-                        lop = lop.add(leave.half() == null ? BigDecimal.ONE : new BigDecimal("0.5"));
+                        BigDecimal part = leave.half() == null ? BigDecimal.ONE : new BigDecimal("0.5");
+                        lop = lop.add(part);
+                        lopDates.add(lopDay(d, part, "leave"));
                     }
                 }
             }
@@ -315,8 +324,17 @@ final class PayrollSnapshot {
         out.put("paid", paid.subtract(enteredLop).max(BigDecimal.ZERO));
         out.put("lop", lop.add(enteredLop));
         out.put("lopEntered", enteredLop);
+        out.put("lopDates", lopDates);
         out.put("notEmployed", notEmployed);
         return out;
+    }
+
+    private static Map<String, Object> lopDay(LocalDate day, BigDecimal days, String source) {
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("date", day.toString());
+        m.put("days", days);
+        m.put("source", source);   // leave: unpaid leave; absent: absence the Organization counts as loss of pay
+        return m;
     }
 
     /** The Organization being worked in, for helpers that take its id. */

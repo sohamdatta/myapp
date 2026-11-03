@@ -19,8 +19,8 @@ final class PayChange {
     /** One earning or deduction, signed: a deduction is negative. {@code oneTime} marks an amount entered for the month. */
     record Line(String code, String name, BigDecimal signed, boolean oneTime) {}
 
-    /** What a payslip says about the month: days, the annual pay it was worked from, and its lines. */
-    record Slip(BigDecimal daysPaid, BigDecimal daysInPeriod, BigDecimal annual, String compensationFrom, List<Line> lines) {}
+    /** What a payslip says about the month: days, the annual pay it was worked from, its lines, and the loss of pay in words (null when there was none). */
+    record Slip(BigDecimal daysPaid, BigDecimal daysInPeriod, BigDecimal annual, String compensationFrom, List<Line> lines, String lossOfPay, BigDecimal lopDays) {}
 
     /** A cause and the net amount it accounts for (negative when pay fell). */
     record Cause(String text, BigDecimal amount) {}
@@ -28,6 +28,51 @@ final class PayChange {
     private static final Set<String> FOLLOW_THE_PAY = Set.of("PT", "LWF_EE", "TDS", "PF_EE", "ESI_EE");
 
     private PayChange() {}
+
+    /**
+     * The loss of pay of a month in words, from the days behind it: "1 day of loss of pay on 14 Mar", "2 days of loss of pay (14 Mar,
+     * 15 Mar)". Days HR entered carry no date of their own. Null when there was none.
+     */
+    static String lossOfPayWords(List<Map<String, Object>> dates, BigDecimal entered) {
+        BigDecimal total = BigDecimal.ZERO;
+        List<String> shown = new java.util.ArrayList<>();
+        for (Map<String, Object> d : dates == null ? List.<Map<String, Object>>of() : dates) {
+            total = total.add(PayrollEngine.dec(d, "days"));
+            shown.add(java.time.LocalDate.parse((String) d.get("date")).format(java.time.format.DateTimeFormatter.ofPattern("d MMM", java.util.Locale.ENGLISH))
+                    + (PayrollEngine.dec(d, "days").compareTo(BigDecimal.ONE) < 0 ? " (half day)" : ""));
+        }
+        BigDecimal extra = entered == null ? BigDecimal.ZERO : entered;
+        if (total.signum() == 0 && extra.signum() == 0) {
+            return null;
+        }
+        StringBuilder out = new StringBuilder();
+        if (total.signum() > 0) {
+            out.append(days(total)).append(" of loss of pay ");
+            out.append(shown.size() == 1 ? "on " + shown.get(0)
+                    : "(" + String.join(", ", shown.subList(0, Math.min(3, shown.size()))) + (shown.size() > 3 ? " and " + (shown.size() - 3) + " more" : "") + ")");
+        }
+        if (extra.signum() > 0) {
+            out.append(out.length() > 0 ? ", and " : "").append(days(extra)).append(" of loss of pay entered by HR");
+        }
+        return out.toString();
+    }
+
+    /**
+     * The days paid moved by exactly what the loss of pay moved by, in a month of the same length: then loss of pay is the whole story.
+     * A leaver, a joiner or a different month length also moves the days, and those are not blamed on it.
+     */
+    private static boolean lossOfPayExplainsDays(Slip before, Slip now) {
+        if (before.lopDays() == null || now.lopDays() == null || now.daysInPeriod().compareTo(before.daysInPeriod()) != 0) {
+            return false;
+        }
+        BigDecimal lopDelta = now.lopDays().subtract(before.lopDays());
+        return lopDelta.signum() != 0 && now.daysPaid().subtract(before.daysPaid()).compareTo(lopDelta.negate()) == 0
+                && (now.lopDays().signum() == 0 || now.lossOfPay() != null);
+    }
+
+    private static String days(BigDecimal n) {
+        return PayrollEngine.plain(n) + (n.compareTo(BigDecimal.ONE) == 0 ? " day" : " days");
+    }
 
     /** The causes, largest first. Amounts that cancel out are left out. */
     static List<Cause> diff(Slip before, Slip now) {
@@ -67,6 +112,9 @@ final class PayChange {
                 cause = "PF and ESI follow the wages";
             } else if (revised) {
                 cause = "Pay revised from " + now.compensationFrom();
+            } else if (daysChanged && lossOfPayExplainsDays(before, now)) {
+                cause = now.lopDays().signum() == 0 ? "No loss of pay this month (last month " + days(before.lopDays()) + ")"
+                        : now.lossOfPay() + (before.lopDays().signum() > 0 ? " (last month " + days(before.lopDays()) + ")" : "");
             } else if (daysChanged) {
                 cause = PayrollEngine.plain(now.daysPaid()) + " of " + PayrollEngine.plain(now.daysInPeriod()) + " days paid (last month "
                         + PayrollEngine.plain(before.daysPaid()) + " of " + PayrollEngine.plain(before.daysInPeriod()) + ")";
