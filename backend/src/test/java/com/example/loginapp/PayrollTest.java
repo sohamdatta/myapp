@@ -432,6 +432,13 @@ class PayrollTest {
         Map<String, Object> slip = runs.employee(operator, run, ashaId);
         int days = period.lengthOfMonth();
         assertEquals(0, new BigDecimal(days - 2).compareTo((BigDecimal) slip.get("daysPaid")));
+        // The payslip names the days behind the loss of pay, and each line says where its values came from.
+        List<?> lopDates = (List<?>) ((Map<?, ?>) slip.get("info")).get("lopDates");
+        assertEquals(2, lopDates.size());
+        assertEquals(tue.toString(), ((Map<?, ?>) lopDates.get(0)).get("date"));
+        assertEquals("leave", ((Map<?, ?>) lopDates.get(0)).get("source"));
+        Map<?, ?> basicWhere = (Map<?, ?>) ((Map<?, ?>) lineOf(slip, "BASIC").get("trace")).get("where");
+        assertTrue(String.valueOf(basicWhere.get("CTC_MONTHLY")).startsWith("Pay of "), String.valueOf(basicWhere));
         BigDecimal basic = new BigDecimal("37500").multiply(BigDecimal.valueOf(days - 2)).divide(BigDecimal.valueOf(days), 0, RoundingMode.HALF_UP);
         assertEquals(0, basic.compareTo(lineAmount(slip, "BASIC")));
         assertEquals(0, new BigDecimal("3000").compareTo(lineAmount(slip, "PF_EE")));

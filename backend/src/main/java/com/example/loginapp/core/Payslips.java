@@ -43,9 +43,9 @@ final class Payslips {
         for (Map<String, Object> l : lines) {
             Map<String, Object> trace = parse(l.get("trace"));
             if (!forPayroll) {
-                // Employees see the reason in words, not the working of formulas and rounding.
+                // Employees see the reason: the formula, the values it read and where each came from, the days; not the rounding or rule status.
                 Map<String, Object> plain = new LinkedHashMap<>();
-                for (String k : List.of("prorated", "working")) {
+                for (String k : List.of("prorated", "working", "formula", "read", "where", "source", "fullMonth")) {
                     if (trace.get(k) != null) {
                         plain.put(k, trace.get(k));
                     }
@@ -90,9 +90,9 @@ final class Payslips {
             }
         }
         PayChange.Slip slipBefore = new PayChange.Slip(PayrollEngine.dec(before, "daysPaid"), PayrollEngine.dec(before, "daysInPeriod"),
-                PayrollEngine.dec(infoBefore, "annual"), String.valueOf(infoBefore.get("compensationFrom")), was);
+                PayrollEngine.dec(infoBefore, "annual"), String.valueOf(infoBefore.get("compensationFrom")), was, null);
         PayChange.Slip slipNow = new PayChange.Slip(PayrollEngine.dec(ps, "daysPaid"), PayrollEngine.dec(ps, "daysInPeriod"),
-                PayrollEngine.dec(infoNow, "annual"), String.valueOf(infoNow.get("compensationFrom")), now);
+                PayrollEngine.dec(infoNow, "annual"), String.valueOf(infoNow.get("compensationFrom")), now, lossOfPay(infoNow));
         List<Map<String, Object>> items = new ArrayList<>();
         for (PayChange.Cause cause : PayChange.diff(slipBefore, slipNow)) {
             items.add(Map.of("cause", cause.text(), "amount", cause.amount()));
@@ -102,6 +102,11 @@ final class Payslips {
         out.put("difference", PayrollEngine.dec(ps, "net").subtract(PayrollEngine.dec(before, "net")));
         out.put("items", items);
         return out;
+    }
+
+    @SuppressWarnings("unchecked")
+    private static String lossOfPay(Map<String, Object> info) {
+        return PayChange.lossOfPayWords((List<Map<String, Object>>) info.get("lopDates"), info.get("lopEntered") == null ? null : PayrollEngine.dec(info, "lopEntered"));
     }
 
     private static BigDecimal signed(Map<String, Object> l) {

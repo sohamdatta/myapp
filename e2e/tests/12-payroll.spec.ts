@@ -307,6 +307,7 @@ test.describe.serial('payroll', () => {
     await expect(hr.getByTestId('payslip')).toBeVisible();
     await hr.locator('tr[data-line="BASIC"]').getByRole('button', { name: 'Explain' }).click();
     await expect(hr.getByTestId('explain-BASIC')).toContainText('CTC_MONTHLY');
+    await expect(hr.getByTestId('explain-BASIC')).toContainText('Pay of');   // where the value came from, not only the value
     await hr.locator('tr[data-line="MEAL_CARD"]').getByRole('button', { name: 'Explain' }).click();
     await expect(hr.getByTestId('explain-MEAL_CARD')).toContainText('meal_card');
     await hr.locator('tr[data-line="PF_EE"]').getByRole('button', { name: 'Explain' }).click();
@@ -391,6 +392,10 @@ test.describe.serial('payroll', () => {
       await expect(why).toContainText('Bonus');
     }
     await expect(phone.getByTestId('net')).toBeVisible();
+    // Her own payslip explains each line: the formula, what it read, and where each value came from.
+    await phone.locator('tr[data-line="BASIC"]').getByRole('button', { name: 'Why' }).click();
+    await expect(phone.getByTestId('explain-BASIC')).toContainText('CTC_MONTHLY');
+    await expect(phone.getByTestId('explain-BASIC')).toContainText('Pay of');
     await expectNoSidewaysScroll(phone);
     await shot(phone, 'payroll-20-payslip-phone', true);
     await phone.context().close();
