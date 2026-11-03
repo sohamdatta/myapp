@@ -876,22 +876,42 @@ public final class PayrollRuns {
 
     /**
      * A person's payslips from approved runs, newest first, for HR to read from the employee's record: the same figures and explanations
-     * as the run page. For those who may read payroll for everyone; nobody reads their own this way (they have My pay), and a person
+     * as the run page. For those who read pay for everyone (HR Admin included); nobody reads their own this way (they have My pay), and a person
      * is told "not found" about themselves, as elsewhere in pay.
      */
     public List<PayslipRow> payslipsOf(SessionCtx ctx, UUID employmentId) {
-        requireRuns(ctx);
+        PayrollPay.canRead(ctx);   // the same people who see the Pay tab: compensation.read, or payroll.prepare, for everyone
         return db.inTenant(ctx.tenantId(), c -> {
             PayrollPay.notOwn(c, ctx, employmentId);
             List<PayslipRow> out = new ArrayList<>();
             for (Map<String, Object> r : Sql.query(c, "select ps.id, r.id as run_id, r.period, r.state, ps.gross, ps.net, ps.held from app.payslip ps "
                     + "join app.payroll_run r on r.id = ps.run_id where ps.employment_id = ? and r.state in ('approved','paid','released') "
-                    + "order by r.period desc limit 60", employmentId)) {
+                    + "order by r.period desc, ps.id limit 60", employmentId)) {
                 LocalDate period = LocalDate.parse((String) r.get("period"));
                 out.add(new PayslipRow(String.valueOf(r.get("runId")), String.valueOf(r.get("id")), period.toString(), monthWords(period),
                         (String) r.get("state"), PayrollEngine.dec(r, "gross"), PayrollEngine.dec(r, "net"), Boolean.TRUE.equals(r.get("held"))));
             }
             return out;
+        });
+    }
+
+    /**
+     * One of a person's payslips from an approved run, in full with its explanations, for HR to read from the employee's record. The
+     * same guard as the list, and the reading is recorded in the audit: looking up one named person's pay is the targeted read the
+     * other sensitive views (a revealed PAN, a viewed document) are recorded for. Answers the payslip as the run page shows it.
+     */
+    public Object payslipOf(SessionCtx ctx, UUID employmentId, UUID payslipId) {
+        PayrollPay.canRead(ctx);
+        return db.inTenant(ctx.tenantId(), c -> {
+            PayrollPay.notOwn(c, ctx, employmentId);
+            Map<String, Object> ps = Sql.one(c, "select ps.id, r.id as run_id, r.period from app.payslip ps join app.payroll_run r on r.id = ps.run_id "
+                    + "where ps.id = ? and ps.employment_id = ? and r.state in ('approved','paid','released')", payslipId, employmentId);
+            if (ps == null) {
+                throw ApiException.notFound("The payslip");
+            }
+            UserService.audit(c, ctx, "payroll.payslip_viewed", "employment", employmentId,
+                    Map.of("runId", String.valueOf(ps.get("runId")), "period", String.valueOf(ps.get("period"))));
+            return payslip(c, payslipId, true);
         });
     }
 

@@ -741,6 +741,7 @@ const payrollCalls = {
   release: (id) => post(`/org/payroll/runs/${id}/release`),
   employee: (id, employmentId) => get(`/org/payroll/runs/${id}/employees/${employmentId}`),
   payslipsOf: (employmentId) => get(`/org/payroll/employees/${employmentId}/payslips`),
+  payslipOf: (employmentId, payslipId) => get(`/org/payroll/employees/${employmentId}/payslips/${payslipId}`),
   payslipPdf: (id, employmentId, name) => downloadFile(`/org/payroll/runs/${id}/employees/${employmentId}/payslip`, name),
   output: (id, kind, name) => downloadFile(`/org/payroll/runs/${id}/outputs/${kind}`, name),
   pay: (employmentId) => get(`/org/people/employees/${employmentId}/pay`),
