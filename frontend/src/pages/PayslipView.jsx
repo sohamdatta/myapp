@@ -1,14 +1,21 @@
 import { useState } from 'react'
 import { Badge } from '../ui.jsx'
-import { formatDay } from '../hooks.js'
+import { formatDay, formatDays } from '../hooks.js'
 import { rupees, signed } from './payrollText.js'
+
+/** A value a formula read: money for pay figures, plain numbers for days, months and the like. */
+const readValue = (name, value) => {
+  if (/^(days\.|period\.|months_of_service)/.test(name)) return String(Number(value))
+  return typeof value === 'number' || /^-?[0-9.]+$/.test(String(value)) ? rupees(value, true) : String(value)
+}
 
 /** One line's explanation: the formula and the values it read, the days, the rule. */
 function Explain({ line }) {
   const t = line.trace || {}
   return (
-    <div className="explain" data-testid={`explain-${line.code}`}>
+    <div className="explain" id={`explain-${line.code}`} data-testid={`explain-${line.code}`}>
       {t.source && <p className="hint">{t.source}</p>}
+      {t.overrideReason && <p className="hint">Reason: {t.overrideReason}</p>}
       {t.formula && (
         <p>
           <code>{t.formula}</code>
@@ -18,7 +25,7 @@ function Explain({ line }) {
         <ul className="explain-reads">
           {Object.entries(t.read).map(([name, value]) => (
             <li key={name}>
-              <code>{name}</code> = {typeof value === 'number' || /^-?[0-9.]+$/.test(String(value)) ? rupees(value, true) : String(value)}
+              <code>{name}</code> = {readValue(name, value)}
               {t.where?.[name] && <span className="hint"> · {t.where[name]}</span>}
             </li>
           ))}
@@ -53,7 +60,14 @@ function Lines({ title, lines, explain }) {
                 {(explain || l.trace?.prorated || l.trace?.working || l.trace?.formula) && (
                   <>
                     {' '}
-                    <button type="button" className="text-link small" onClick={() => setOpen(open === l.code ? null : l.code)} aria-expanded={open === l.code}>
+                    <button
+                      type="button"
+                      className="text-link small"
+                      onClick={() => setOpen(open === l.code ? null : l.code)}
+                      aria-expanded={open === l.code}
+                      aria-controls={`explain-${l.code}`}
+                      aria-label={`${explain ? 'Explain' : 'Why'} ${l.name}`}
+                    >
                       {open === l.code ? 'Hide' : explain ? 'Explain' : 'Why'}
                     </button>
                   </>
@@ -81,14 +95,16 @@ export default function PayslipView({ slip, explain = false }) {
         <dt>Days paid</dt>
         <dd>
           {Number(slip.daysPaid)} of {Number(slip.daysInPeriod)}
-          {Number(slip.lopDays) > 0 && <span className="hint"> · {Number(slip.lopDays)} days loss of pay</span>}
+          {Number(slip.lopDays) > 0 && <span className="hint"> · {formatDays(slip.lopDays)} loss of pay</span>}
         </dd>
         {(info.lopDates?.length > 0 || Number(info.lopEntered) > 0) && (
           <>
             <dt>Loss of pay</dt>
             <dd data-testid="loss-of-pay-days">
-              {(info.lopDates || []).map((d) => `${formatDay(d.date)}${Number(d.days) < 1 ? ' (half day)' : ''} (${d.source === 'leave' ? 'unpaid leave' : 'absent'})`).join(', ')}
-              {Number(info.lopEntered) > 0 && `${info.lopDates?.length ? ', and ' : ''}${Number(info.lopEntered)} days entered by HR`}
+              {(info.lopDates || [])
+                .map((d) => `${formatDay(d.date)} (${Number(d.days) < 1 ? 'half day, ' : ''}${d.source === 'leave' ? 'unpaid leave' : 'absent'})`)
+                .join('; ')}
+              {Number(info.lopEntered) > 0 && `${info.lopDates?.length ? '; and ' : ''}${formatDays(info.lopEntered)} entered by HR`}
             </dd>
           </>
         )}

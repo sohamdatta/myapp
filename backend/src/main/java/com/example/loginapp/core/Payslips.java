@@ -67,7 +67,7 @@ final class Payslips {
 
     /** Each difference from the previous approved payslip, with its cause, largest first. */
     static Map<String, Object> whyChanged(Connection c, Map<String, Object> ps, List<Map<String, Object>> lines) throws SQLException {
-        Map<String, Object> before = Sql.one(c, "select ps.id, ps.days_paid, ps.days_in_period, ps.net, ps.info, r.period from app.payslip ps "
+        Map<String, Object> before = Sql.one(c, "select ps.id, ps.days_paid, ps.days_in_period, ps.lop_days, ps.net, ps.info, r.period from app.payslip ps "
                 + "join app.payroll_run r on r.id = ps.run_id where ps.employment_id = ?::uuid and r.period < ?::date and r.state in ('approved','paid','released') "
                 + "order by r.period desc limit 1", ps.get("employmentId"), ps.get("period"));
         Map<String, Object> out = new LinkedHashMap<>();
@@ -90,9 +90,9 @@ final class Payslips {
             }
         }
         PayChange.Slip slipBefore = new PayChange.Slip(PayrollEngine.dec(before, "daysPaid"), PayrollEngine.dec(before, "daysInPeriod"),
-                PayrollEngine.dec(infoBefore, "annual"), String.valueOf(infoBefore.get("compensationFrom")), was, null);
+                PayrollEngine.dec(infoBefore, "annual"), String.valueOf(infoBefore.get("compensationFrom")), was, null, PayrollEngine.dec(before, "lopDays"));
         PayChange.Slip slipNow = new PayChange.Slip(PayrollEngine.dec(ps, "daysPaid"), PayrollEngine.dec(ps, "daysInPeriod"),
-                PayrollEngine.dec(infoNow, "annual"), String.valueOf(infoNow.get("compensationFrom")), now, lossOfPay(infoNow));
+                PayrollEngine.dec(infoNow, "annual"), String.valueOf(infoNow.get("compensationFrom")), now, lossOfPay(infoNow), PayrollEngine.dec(ps, "lopDays"));
         List<Map<String, Object>> items = new ArrayList<>();
         for (PayChange.Cause cause : PayChange.diff(slipBefore, slipNow)) {
             items.add(Map.of("cause", cause.text(), "amount", cause.amount()));
