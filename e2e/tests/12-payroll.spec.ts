@@ -346,6 +346,18 @@ test.describe.serial('payroll', () => {
     await shot(owner, 'payroll-17-released', true);
   });
 
+  test('the Org Admin reads Meera’s payslip from her record, with how each line was worked out', async () => {
+    await openPay(owner, 'Meera Iyer');
+    const panel = owner.getByTestId('payslips-of');
+    await expect(panel).toBeVisible();
+    const month = panel.locator('li[data-payslip]').first();
+    await month.getByRole('button').first().click();
+    await expect(month.getByTestId('payslip')).toBeVisible();
+    await month.locator('tr[data-line="BASIC"]').getByRole('button', { name: 'Explain' }).click();
+    await expect(month.getByTestId('explain-BASIC')).toContainText('a year, from');
+    await shot(owner, 'payroll-17b-payslips-from-the-record', true);
+  });
+
   test('November: a full month for Meera, and Harish’s revision', async () => {
     await runs(hr);
     await hr.getByRole('button', { name: `Start ${monthLabel(1)}` }).click();

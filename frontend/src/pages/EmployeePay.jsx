@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { payroll } from '../api.js'
 import { formatDate, formatDay, useAction, useLoad, numeric } from '../hooks.js'
 import { Badge, Empty, ErrorNote } from '../ui.jsx'
+import PayslipView from './PayslipView.jsx'
 import { monthLabel, rupees, signed } from './payrollText.js'
 
 const firstOfNextMonth = (iso) => {
@@ -362,6 +363,46 @@ export default function EmployeePay({ employmentId }) {
         )}
         <ErrorNote>{error}</ErrorNote>
       </section>
+      {p.canPayslips && <Payslips employmentId={employmentId} />}
     </>
   )
+}
+
+/**
+ * A person's payslips from approved runs, from their record: each month's pay, and the full payslip with its explanations (the formula,
+ * what each line read and where from, the days, why pay changed) as the run page shows it.
+ */
+function Payslips({ employmentId }) {
+  const list = useLoad(() => payroll.payslipsOf(employmentId))
+  const [open, setOpen] = useState(null)
+  return (
+    <section className="panel" data-testid="payslips-of">
+      <h3>Payslips</h3>
+      <ErrorNote>{list.error}</ErrorNote>
+      {list.loading && <p className="muted" role="status">Loading…</p>}
+      {!list.loading && !list.error && list.data.length === 0 && <Empty>No payslips from an approved run yet.</Empty>}
+      {list.data?.length > 0 && (
+        <ul className="payslip-list">
+          {list.data.map((r) => (
+            <li key={r.payslipId} id={`payslip-${r.payslipId}`} data-payslip={r.payslipId}>
+              <button type="button" className="text-link" aria-expanded={open?.payslipId === r.payslipId} aria-controls={`payslip-${r.payslipId}`} onClick={() => setOpen(open?.payslipId === r.payslipId ? null : r)}>
+                {r.label}
+              </button>{' '}
+              <span className="num">{rupees(r.net)}</span> {r.held && <Badge tone="warn">Held</Badge>}{' '}
+              {r.state !== 'released' && <Badge tone="neutral">Not yet released to them</Badge>}
+              {open?.payslipId === r.payslipId && <OpenPayslip key={r.payslipId} payslipId={r.payslipId} employmentId={employmentId} />}
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  )
+}
+
+/** One payslip in full, loaded when it is opened. */
+function OpenPayslip({ payslipId, employmentId }) {
+  const slip = useLoad(() => payroll.payslipOf(employmentId, payslipId))
+  if (slip.loading) return <p className="muted" role="status">Loading…</p>
+  if (slip.error) return <ErrorNote>{slip.error}</ErrorNote>
+  return <PayslipView slip={slip.data} explain />
 }

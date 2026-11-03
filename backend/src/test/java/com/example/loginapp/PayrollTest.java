@@ -487,7 +487,24 @@ class PayrollTest {
                 runs.accept(org.admin, run, UUID.fromString((String) x.get("id")), "Paid by cheque this month");
             }
         }
+        assertEquals(0, runs.payslipsOf(operator, ashaId).size(), "a calculated run is not offered");
         runs.approve(org.admin, run);
+        // HR reads a person's payslips from the record: from approved runs only, by those who read pay for everyone (HR Admin included),
+        // never one's own; reading one is recorded.
+        List<PayrollRuns.PayslipRow> ofAsha = runs.payslipsOf(operator, ashaId);
+        assertEquals(1, ofAsha.size());
+        assertEquals(run.toString(), ofAsha.get(0).runId());
+        assertEquals(0, ((BigDecimal) slip.get("net")).compareTo(ofAsha.get(0).net()));
+        assertEquals(1, runs.payslipsOf(hr, ashaId).size());
+        assertError(403, "permission.denied", () -> runs.payslipsOf(asha, ashaId));
+        assertError(404, "not_found", () -> runs.payslipsOf(hr, hrId));
+        UUID openedId = UUID.fromString(ofAsha.get(0).payslipId());
+        assertTrue(runs.payslipOf(hr, ashaId, openedId) instanceof Map<?, ?> opened && opened.get("lines") != null);
+        assertError(404, "not_found", () -> runs.payslipOf(hr, ashaId, UUID.randomUUID()));
+        assertError(404, "not_found", () -> runs.payslipOf(hr, hrId, openedId));
+        assertError(403, "permission.denied", () -> runs.payslipOf(asha, ashaId, openedId));
+        long viewed = db.inTenant(org.id, c -> Sql.query(c, "select 1 from app.audit_event where action = 'payroll.payslip_viewed' and target_id = ?", ashaId)).size();
+        assertEquals(1, viewed);
         assertError(409, "payroll.not_draft", () -> runs.addInput(operator, run, new PayrollRuns.InputInput(ashaId.toString(), "BONUS",
                 BigDecimal.ONE, null)));
         assertThrows(Exception.class, () -> db.inTenant(org.id, c -> Sql.update(c, "update app.payslip set net = 1 where run_id = ?", run)));

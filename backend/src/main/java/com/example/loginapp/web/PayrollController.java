@@ -264,6 +264,20 @@ public class PayrollController {
         return ResponseEntity.noContent().build();
     }
 
+    /** A person's payslips from approved runs, for HR to read from the employee's record. */
+    @GetMapping("/payroll/employees/{employment}/payslips")
+    public List<PayrollRuns.PayslipRow> payslipsOf(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                                              @PathVariable("employment") String employment) {
+        return runs.payslipsOf(Requests.session(auth, authorization, Modules.PAYROLL), Requests.id(employment));
+    }
+
+    /** One of them in full, with its explanations; the reading is recorded in the audit. */
+    @GetMapping("/payroll/employees/{employment}/payslips/{payslip}")
+    public Object payslipOf(@RequestHeader(value = "Authorization", required = false) String authorization,
+                            @PathVariable("employment") String employment, @PathVariable("payslip") String payslip) {
+        return runs.payslipOf(Requests.session(auth, authorization, Modules.PAYROLL), Requests.id(employment), Requests.id(payslip));
+    }
+
     @GetMapping("/payroll/runs/{id}/employees/{employment}")
     public Map<String, Object> employee(@RequestHeader(value = "Authorization", required = false) String authorization,
                                         @PathVariable("id") String id, @PathVariable("employment") String employment) {
