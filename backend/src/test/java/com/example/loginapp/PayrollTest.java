@@ -481,6 +481,13 @@ class PayrollTest {
             }
         }
         runs.approve(org.admin, run);
+        // HR reads a person's payslips from the record: from approved runs only, for those who read payroll for everyone, never one's own.
+        List<PayrollRuns.PayslipRow> ofAsha = runs.payslipsOf(operator, ashaId);
+        assertEquals(1, ofAsha.size());
+        assertEquals(run.toString(), ofAsha.get(0).runId());
+        assertEquals(0, ((BigDecimal) slip.get("net")).compareTo(ofAsha.get(0).net()));
+        assertError(403, "permission.denied", () -> runs.payslipsOf(asha, ashaId));
+        assertError(403, "permission.denied", () -> runs.payslipsOf(hr, ashaId));
         assertError(409, "payroll.not_draft", () -> runs.addInput(operator, run, new PayrollRuns.InputInput(ashaId.toString(), "BONUS",
                 BigDecimal.ONE, null)));
         assertThrows(Exception.class, () -> db.inTenant(org.id, c -> Sql.update(c, "update app.payslip set net = 1 where run_id = ?", run)));

@@ -47,6 +47,9 @@ public final class PayrollRuns {
 
     public record ReasonInput(String reason) {}
 
+    /** One of a person's payslips in an approved run: which month, and what was paid. */
+    public record PayslipRow(String runId, String payslipId, String period, String label, String state, BigDecimal gross, BigDecimal net, boolean held) {}
+
     public record PaidInput(String paidOn, String reference) {}
 
     private final Db db;
@@ -867,6 +870,27 @@ public final class PayrollRuns {
             Map<String, Object> out = payslip(c, AuthService.uuid(ps.get("id")), true);
             out.put("exceptions", Sql.query(c, "select id, code, level, acceptable, message, link, accepted_reason from app.run_exception "
                     + "where run_id = ? and employment_id = ? order by (level = 'blocking') desc", runId, employmentId));
+            return out;
+        });
+    }
+
+    /**
+     * A person's payslips from approved runs, newest first, for HR to read from the employee's record: the same figures and explanations
+     * as the run page. For those who may read payroll for everyone; nobody reads their own this way (they have My pay), and a person
+     * is told "not found" about themselves, as elsewhere in pay.
+     */
+    public List<PayslipRow> payslipsOf(SessionCtx ctx, UUID employmentId) {
+        requireRuns(ctx);
+        return db.inTenant(ctx.tenantId(), c -> {
+            PayrollPay.notOwn(c, ctx, employmentId);
+            List<PayslipRow> out = new ArrayList<>();
+            for (Map<String, Object> r : Sql.query(c, "select ps.id, r.id as run_id, r.period, r.state, ps.gross, ps.net, ps.held from app.payslip ps "
+                    + "join app.payroll_run r on r.id = ps.run_id where ps.employment_id = ? and r.state in ('approved','paid','released') "
+                    + "order by r.period desc limit 60", employmentId)) {
+                LocalDate period = LocalDate.parse((String) r.get("period"));
+                out.add(new PayslipRow(String.valueOf(r.get("runId")), String.valueOf(r.get("id")), period.toString(), monthWords(period),
+                        (String) r.get("state"), PayrollEngine.dec(r, "gross"), PayrollEngine.dec(r, "net"), Boolean.TRUE.equals(r.get("held"))));
+            }
             return out;
         });
     }

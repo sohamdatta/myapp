@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { payroll } from '../api.js'
 import { formatDate, formatDay, useAction, useLoad, numeric } from '../hooks.js'
 import { Badge, Empty, ErrorNote } from '../ui.jsx'
+import PayslipView from './PayslipView.jsx'
 import { monthLabel, rupees, signed } from './payrollText.js'
 
 const firstOfNextMonth = (iso) => {
@@ -362,6 +363,44 @@ export default function EmployeePay({ employmentId }) {
         )}
         <ErrorNote>{error}</ErrorNote>
       </section>
+      {p.canPayslips && <Payslips employmentId={employmentId} />}
     </>
   )
+}
+
+/**
+ * A person's payslips from approved runs, from their record: each month's pay, and the full payslip with its explanations (the formula,
+ * what each line read and where from, the days, why pay changed) as the run page shows it.
+ */
+function Payslips({ employmentId }) {
+  const list = useLoad(() => payroll.payslipsOf(employmentId))
+  const [open, setOpen] = useState(null)
+  return (
+    <section className="panel" data-testid="payslips-of">
+      <h3>Payslips</h3>
+      <ErrorNote>{list.error}</ErrorNote>
+      {!list.loading && !list.error && list.data.length === 0 && <Empty>No payslips from an approved run yet.</Empty>}
+      {list.data?.length > 0 && (
+        <ul className="payslip-list">
+          {list.data.map((r) => (
+            <li key={r.payslipId} data-payslip={r.label}>
+              <button type="button" className="text-link" aria-expanded={open?.runId === r.runId} onClick={() => setOpen(open?.runId === r.runId ? null : r)}>
+                {r.label}
+              </button>{' '}
+              <span className="num">{rupees(r.net)}</span> {r.held && <Badge tone="warn">Held</Badge>}
+              {open?.runId === r.runId && <OpenPayslip key={r.runId} runId={r.runId} employmentId={employmentId} />}
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  )
+}
+
+/** One payslip in full, loaded when it is opened. */
+function OpenPayslip({ runId, employmentId }) {
+  const slip = useLoad(() => payroll.employee(runId, employmentId))
+  if (slip.loading) return <p className="muted">Loading…</p>
+  if (slip.error) return <ErrorNote>{slip.error}</ErrorNote>
+  return <PayslipView slip={slip.data} explain />
 }

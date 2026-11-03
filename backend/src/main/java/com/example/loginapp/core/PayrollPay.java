@@ -116,6 +116,7 @@ public final class PayrollPay {
                 out.put("breakup", breakup(c, employmentId, period, today, null));
             }
             out.put("canWrite", ctx.reachesEveryone("compensation.write") || ctx.reachesEveryone("payroll.prepare"));
+            out.put("canPayslips", ctx.reachesEveryone("payroll.read") || ctx.reachesEveryone("payroll.prepare"));   // the payslips of past runs, as the run page shows them
             out.put("thisMonth", period.toString());
             out.put("openFrom", PayrollConfig.openFrom(c, today).toString());
             return out;

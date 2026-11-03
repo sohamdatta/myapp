@@ -740,6 +740,7 @@ const payrollCalls = {
   paid: (id, paidOn, reference) => post(`/org/payroll/runs/${id}/paid`, { paidOn, reference }),
   release: (id) => post(`/org/payroll/runs/${id}/release`),
   employee: (id, employmentId) => get(`/org/payroll/runs/${id}/employees/${employmentId}`),
+  payslipsOf: (employmentId) => get(`/org/payroll/employees/${employmentId}/payslips`),
   payslipPdf: (id, employmentId, name) => downloadFile(`/org/payroll/runs/${id}/employees/${employmentId}/payslip`, name),
   output: (id, kind, name) => downloadFile(`/org/payroll/runs/${id}/outputs/${kind}`, name),
   pay: (employmentId) => get(`/org/people/employees/${employmentId}/pay`),

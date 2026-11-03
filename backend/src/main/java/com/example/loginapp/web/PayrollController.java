@@ -264,6 +264,13 @@ public class PayrollController {
         return ResponseEntity.noContent().build();
     }
 
+    /** A person's payslips from approved runs, for HR to read from the employee's record. */
+    @GetMapping("/payroll/employees/{employment}/payslips")
+    public java.util.List<PayrollRuns.PayslipRow> payslipsOf(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                                              @PathVariable("employment") String employment) {
+        return runs.payslipsOf(Requests.session(auth, authorization, Modules.PAYROLL), Requests.id(employment));
+    }
+
     @GetMapping("/payroll/runs/{id}/employees/{employment}")
     public Map<String, Object> employee(@RequestHeader(value = "Authorization", required = false) String authorization,
                                         @PathVariable("id") String id, @PathVariable("employment") String employment) {
