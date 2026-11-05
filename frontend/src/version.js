@@ -5,4 +5,6 @@ export const APP = {
   built: import.meta.env.VITE_APP_BUILT || '',
 }
 
-export const versionLabel = (v) => (v.version === 'dev' ? 'dev build' : `v${v.version} · ${v.commit}`)
+/** What people see: the release number only. The commit is in the hover text and at /api/version. */
+export const versionLabel = (v) => (v.version === 'dev' ? 'dev build' : `v${v.version}`)
+export const buildLabel = (v) => (v.version === 'dev' ? 'dev build' : `v${v.version} (${v.commit})`)

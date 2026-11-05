@@ -273,10 +273,9 @@ night). Production is never deployed by a workflow: its SSH stays closed to the 
 
    The log shows Flyway applying the migrations from the dry run, then the app starting.
 5. Check the version: the sign-in page footer (and the bottom of the sidebar once signed in) shows
-   `v<release> · <commit>`; it must match the commit you deployed (`git log -1 --format=%h`). The
-   server reports its own build at `https://<your domain>/api/version`; if the screens and the
-   server differ, the page shows "Update available, reload". Bump the release in `VERSION` when you
-   cut a release.
+   `v<release>`; it must match `VERSION` in the commit you deployed. Hover over it, or open
+   `https://<your domain>/api/version`, for the exact commit and build time; if the screens and the
+   server differ, the page shows "Update available, reload". Bump `VERSION` for each release so deployments can be told apart on screen.
 6. Check the site opens and you can sign in; open a screen the change touched.
 
 **If it goes wrong**
