@@ -11,7 +11,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.UUID;
 
 import static com.example.loginapp.core.PayrollRuns.parse;
 
@@ -59,11 +58,14 @@ final class AnnualTax {
         LocalDate from = TaxYears.start(year);
         LocalDate to = from.plusYears(1);
         Map<String, List<Map<String, Object>>> slips = new LinkedHashMap<>();
-        for (Map<String, Object> p : Sql.query(c, "select ps.id, ps.employment_id, ps.membership_id, e.person_id, r.period, ps.info, "
+        for (Map<String, Object> p : Sql.query(c, "select ps.id, ps.employment_id, ps.membership_id, e.person_id, r.period, "
+                // Only the last payslip's whole info is read (its name, code and flags); the others give just the taxable amount.
+                + "(ps.info->'bases'->>'taxable') as taxable, "
+                + "case when row_number() over (partition by ps.employment_id order by r.period desc, ps.id desc) = 1 then ps.info end as info, "
                 + "coalesce((r.snapshot->'config'->'rules'->'drafts'->>'income_tax:IN')::boolean, true) as draft_rules from app.payslip ps "
                 + "join app.employment e on e.id = ps.employment_id "
                 + "join app.payroll_run r on r.id = ps.run_id where r.state in ('approved','paid','released') and r.period >= ? and r.period < ? "
-                + "order by ps.employment_id, r.period", from, to)) {
+                + "order by ps.employment_id, r.period, ps.id", from, to)) {
             slips.computeIfAbsent(String.valueOf(p.get("employmentId")), k -> new ArrayList<>()).add(p);
         }
         Map<String, Map<String, Object>> tds = tdsLines(c, from, to);
@@ -91,7 +93,7 @@ final class AnnualTax {
             Map<String, Object> t = tds.get(String.valueOf(last.get("id")));
             BigDecimal taxable = BigDecimal.ZERO;
             for (Map<String, Object> p : list) {
-                taxable = taxable.add(PayrollEngine.dec(PayrollEngine.map(parse(p.get("info")), "bases"), "taxable"));
+                taxable = taxable.add(p.get("taxable") == null ? BigDecimal.ZERO : new BigDecimal(String.valueOf(p.get("taxable"))));
             }
             Map<String, Object> partB = partB(info, settings, year, taxable, t == null ? BigDecimal.ZERO : PayrollEngine.dec(t, "amount"));
             people.add(new Person(e.getKey(), String.valueOf(last.get("personId")), last.get("membershipId"), code, name, partB,

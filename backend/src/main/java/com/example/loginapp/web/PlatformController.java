@@ -9,11 +9,11 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.example.loginapp.core.ApiException;
+import com.example.loginapp.core.SessionCtx;
 import com.example.loginapp.core.AuthService;
 import com.example.loginapp.core.PayrollRules;
 import com.example.loginapp.core.PlatformService;
@@ -49,113 +49,113 @@ public class PlatformController {
 
     /** State professional tax and labour welfare fund rules: every version, newest first. */
     @GetMapping("/payroll-rules")
-    public List<PayrollRules.Rule> rules(@RequestHeader(value = "Authorization", required = false) String authorization) {
-        return rules.list(Requests.session(auth, authorization));
+    public List<PayrollRules.Rule> rules(SessionCtx ctx) {
+        return rules.list(ctx);
     }
 
     /** Adds a draft version, closing the one in force on its start date. */
     @PostMapping("/payroll-rules")
-    public PayrollRules.Rule addRule(@RequestHeader(value = "Authorization", required = false) String authorization, @RequestBody PayrollRules.Input request) {
-        return rules.add(Requests.session(auth, authorization), request);
+    public PayrollRules.Rule addRule(SessionCtx ctx, @RequestBody PayrollRules.Input request) {
+        return rules.add(ctx, request);
     }
 
     /** Changes the figures of a draft. */
     @org.springframework.web.bind.annotation.PutMapping("/payroll-rules/{id}")
-    public PayrollRules.Rule editRule(@RequestHeader(value = "Authorization", required = false) String authorization, @PathVariable("id") String id,
+    public PayrollRules.Rule editRule(SessionCtx ctx, @PathVariable("id") String id,
                                       @RequestBody PayrollRules.Input request) {
-        return rules.edit(Requests.session(auth, authorization), Requests.id(id), request);
+        return rules.edit(ctx, Requests.id(id), request);
     }
 
     /** Records the payroll consultant's sign-off of a draft. */
     @PostMapping("/payroll-rules/{id}/sign-off")
-    public PayrollRules.Rule signOffRule(@RequestHeader(value = "Authorization", required = false) String authorization, @PathVariable("id") String id,
+    public PayrollRules.Rule signOffRule(SessionCtx ctx, @PathVariable("id") String id,
                                          @RequestBody PayrollRules.SignOff request) {
-        return rules.signOff(Requests.session(auth, authorization), Requests.id(id), request);
+        return rules.signOff(ctx, Requests.id(id), request);
     }
 
     @GetMapping("/organizations")
-    public List<Map<String, Object>> organizations(@RequestHeader(value = "Authorization", required = false) String authorization) {
-        return platform.organizations(Requests.session(auth, authorization));
+    public List<Map<String, Object>> organizations(SessionCtx ctx) {
+        return platform.organizations(ctx);
     }
 
     @PostMapping("/organizations")
-    public Map<String, Object> createOrganization(@RequestHeader(value = "Authorization", required = false) String authorization,
+    public Map<String, Object> createOrganization(SessionCtx ctx,
                                                   @RequestBody CreateOrganizationRequest request) {
-        return platform.createOrganization(Requests.session(auth, authorization),
+        return platform.createOrganization(ctx,
                 request.name(), request.slug(), request.adminEmail(), request.modules(), request.licensedEmployees());
     }
 
     /** Switches Attendance or Payroll on (until a trial end, if given) or off for an Organization. */
     @PostMapping("/organizations/{id}/modules")
-    public Map<String, Object> setModule(@RequestHeader(value = "Authorization", required = false) String authorization,
+    public Map<String, Object> setModule(SessionCtx ctx,
                                          @PathVariable("id") String id, @RequestBody ModuleRequest request) {
         if (request.on() == null) {
             throw com.example.loginapp.core.ApiException.badRequest("Say whether the module is on or off");
         }
-        return platform.setModule(Requests.session(auth, authorization), Requests.id(id), request.module(), request.on(), request.trialEndsOn());
+        return platform.setModule(ctx, Requests.id(id), request.module(), request.on(), request.trialEndsOn());
     }
 
     /** Sets the employee licences the Organization has bought; an empty number means no limit. */
     @PostMapping("/organizations/{id}/licences")
-    public PlatformService.Licences setLicences(@RequestHeader(value = "Authorization", required = false) String authorization,
+    public PlatformService.Licences setLicences(SessionCtx ctx,
                                            @PathVariable("id") String id, @RequestBody LicenceRequest request) {
-        return platform.setLicences(Requests.session(auth, authorization), Requests.id(id), request.licensedEmployees());
+        return platform.setLicences(ctx, Requests.id(id), request.licensedEmployees());
     }
 
     @PostMapping("/organizations/{id}/invite-admin")
-    public Map<String, Object> inviteAdmin(@RequestHeader(value = "Authorization", required = false) String authorization,
+    public Map<String, Object> inviteAdmin(SessionCtx ctx,
                                            @PathVariable("id") String id, @RequestBody InviteAdminRequest request) {
-        return platform.inviteFirstAdmin(Requests.session(auth, authorization), Requests.id(id), request.adminEmail());
+        return platform.inviteFirstAdmin(ctx, Requests.id(id), request.adminEmail());
     }
 
     /** action is suspend, reactivate or close. */
     @PostMapping("/organizations/{id}/{action}")
-    public ResponseEntity<Void> changeOrganization(@RequestHeader(value = "Authorization", required = false) String authorization,
+    public ResponseEntity<Void> changeOrganization(SessionCtx ctx,
                                                    @PathVariable("id") String id, @PathVariable("action") String action) {
-        platform.changeOrganizationStatus(Requests.session(auth, authorization), Requests.id(id), action);
+        platform.changeOrganizationStatus(ctx, Requests.id(id), action);
         return ResponseEntity.noContent().build();
     }
 
     @GetMapping("/users")
-    public List<Map<String, Object>> platformUsers(@RequestHeader(value = "Authorization", required = false) String authorization) {
-        return platform.platformUsers(Requests.session(auth, authorization));
+    public List<Map<String, Object>> platformUsers(SessionCtx ctx) {
+        return platform.platformUsers(ctx);
     }
 
     @PostMapping("/users")
-    public ResponseEntity<Void> addPlatformUser(@RequestHeader(value = "Authorization", required = false) String authorization,
+    public ResponseEntity<Void> addPlatformUser(SessionCtx ctx,
                                                 @RequestBody PlatformUserRequest request) {
-        platform.addPlatformUser(Requests.session(auth, authorization), request.email(), request.role(), request.password());
+        platform.addPlatformUser(ctx, request.email(), request.role(), request.password());
         return ResponseEntity.noContent().build();
     }
 
     /** action is suspend or reactivate. */
     @PostMapping("/users/{id}/{action}")
-    public ResponseEntity<Void> changePlatformUser(@RequestHeader(value = "Authorization", required = false) String authorization,
+    public ResponseEntity<Void> changePlatformUser(SessionCtx ctx,
                                                    @PathVariable("id") String id, @PathVariable("action") String action) {
         if (!action.equals("suspend") && !action.equals("reactivate")) {
             throw ApiException.badRequest("Unknown action: " + action);
         }
-        platform.setPlatformUserStatus(Requests.session(auth, authorization), Requests.id(id), action.equals("reactivate"));
+        platform.setPlatformUserStatus(ctx, Requests.id(id), action.equals("reactivate"));
         return ResponseEntity.noContent().build();
     }
 
     @GetMapping("/grants")
-    public List<Map<String, Object>> grants(@RequestHeader(value = "Authorization", required = false) String authorization) {
-        return platform.grants(Requests.session(auth, authorization));
+    public List<Map<String, Object>> grants(SessionCtx ctx) {
+        return platform.grants(ctx);
     }
 
     @PostMapping("/grants")
-    public Map<String, Object> requestGrant(@RequestHeader(value = "Authorization", required = false) String authorization,
+    public Map<String, Object> requestGrant(SessionCtx ctx,
                                             @RequestBody GrantRequest request) {
-        return platform.requestGrant(Requests.session(auth, authorization),
+        return platform.requestGrant(ctx,
                 Requests.id(request.organizationId()), request.mode(), request.reason());
     }
 
     /** Starts a support session inside the Organization and returns its token. */
     @PostMapping("/grants/{id}/start")
-    public Map<String, Object> startSupport(@RequestHeader(value = "Authorization", required = false) String authorization,
+    public Map<String, Object> startSupport(SessionCtx ctx,
                                             @PathVariable("id") String id) {
-        String token = platform.startSupportSession(Requests.session(auth, authorization), Requests.id(id));
+        String token = platform.startSupportSession(ctx, Requests.id(id));
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("token", token);
         body.putAll(auth.me(auth.resolve(token)));
@@ -164,9 +164,9 @@ public class PlatformController {
 
     /** action is approve, reject or revoke. */
     @PostMapping("/grants/{id}/{action}")
-    public ResponseEntity<Void> decideGrant(@RequestHeader(value = "Authorization", required = false) String authorization,
+    public ResponseEntity<Void> decideGrant(SessionCtx ctx,
                                             @PathVariable("id") String id, @PathVariable("action") String action) {
-        platform.decideGrant(Requests.session(auth, authorization), Requests.id(id), action);
+        platform.decideGrant(ctx, Requests.id(id), action);
         return ResponseEntity.noContent().build();
     }
 }

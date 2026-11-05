@@ -6,12 +6,12 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.example.loginapp.core.AuthService;
+import com.example.loginapp.core.SessionCtx;
 import com.example.loginapp.core.MailOutbox;
 import com.example.loginapp.core.MailSender;
 
@@ -35,35 +35,35 @@ public class EmailController {
     }
 
     @GetMapping
-    public MailOutbox.Overview overview(@RequestHeader(value = "Authorization", required = false) String authorization) {
-        return outbox.overview(Requests.session(auth, authorization), sender);
+    public MailOutbox.Overview overview(SessionCtx ctx) {
+        return outbox.overview(ctx, sender);
     }
 
     @PostMapping("/{id}/retry")
-    public ResponseEntity<Void> retry(@RequestHeader(value = "Authorization", required = false) String authorization,
+    public ResponseEntity<Void> retry(SessionCtx ctx,
                                       @PathVariable("id") long id) {
-        outbox.retry(Requests.session(auth, authorization), id);
+        outbox.retry(ctx, id);
         return ResponseEntity.noContent().build();
     }
 
     @PostMapping("/suppressions")
-    public ResponseEntity<Void> suppress(@RequestHeader(value = "Authorization", required = false) String authorization,
+    public ResponseEntity<Void> suppress(SessionCtx ctx,
                                          @RequestBody SuppressRequest request) {
-        outbox.suppress(Requests.session(auth, authorization), request.email(), request.reason());
+        outbox.suppress(ctx, request.email(), request.reason());
         return ResponseEntity.noContent().build();
     }
 
     @DeleteMapping("/suppressions")
-    public ResponseEntity<Void> unsuppress(@RequestHeader(value = "Authorization", required = false) String authorization,
+    public ResponseEntity<Void> unsuppress(SessionCtx ctx,
                                            @RequestParam("email") String email) {
-        outbox.unsuppress(Requests.session(auth, authorization), email);
+        outbox.unsuppress(ctx, email);
         return ResponseEntity.noContent().build();
     }
 
     @PostMapping("/test")
-    public ResponseEntity<Void> test(@RequestHeader(value = "Authorization", required = false) String authorization,
+    public ResponseEntity<Void> test(SessionCtx ctx,
                                      @RequestBody TestRequest request) {
-        outbox.sendTest(Requests.session(auth, authorization), request.to());
+        outbox.sendTest(ctx, request.to());
         return ResponseEntity.noContent().build();
     }
 }

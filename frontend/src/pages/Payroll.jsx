@@ -322,14 +322,14 @@ function RunPage({ id, me, onBack }) {
             <h3>Files</h3>
           </div>
           <div className="form-actions">
-            <button type="button" className="outline" onClick={() => run(() => payroll.output(id, 'register', `Salary register ${month}.csv`))}>
+            <button type="button" className="outline" disabled={busy} onClick={() => run(() => payroll.output(id, 'register', `Salary register ${month}.csv`))}>
               Salary register
             </button>
-            <button type="button" className="outline" onClick={() => run(() => payroll.output(id, 'journal', `Payroll journal ${month}.csv`))}>
+            <button type="button" className="outline" disabled={busy} onClick={() => run(() => payroll.output(id, 'journal', `Payroll journal ${month}.csv`))}>
               Accounting journal
             </button>
             {x.state !== 'calculated' && x.canPay && (
-              <button type="button" className="outline" onClick={() => run(() => payroll.output(id, 'bank', `HDFC bank file ${month}.csv`))}>
+              <button type="button" className="outline" disabled={busy} onClick={() => run(() => payroll.output(id, 'bank', `HDFC bank file ${month}.csv`))}>
                 HDFC bank file
               </button>
             )}

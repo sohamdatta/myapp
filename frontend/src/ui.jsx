@@ -143,17 +143,28 @@ export function CopyLink({ label, link, onDismiss, note = 'It works once and exp
   )
 }
 
+/** Tabs that follow the keyboard pattern: only the current one is in the Tab order; the arrow keys, Home and End move between them. */
 export function Tabs({ tabs, current, onChange }) {
+  function onKeyDown(event, index) {
+    const last = tabs.length - 1
+    const target = { ArrowRight: index === last ? 0 : index + 1, ArrowLeft: index === 0 ? last : index - 1, Home: 0, End: last }[event.key]
+    if (target === undefined) return
+    event.preventDefault()
+    onChange(tabs[target].id)
+    event.currentTarget.parentElement.children[target]?.focus()
+  }
   return (
     <div className="tabs" role="tablist">
-      {tabs.map((tab) => (
+      {tabs.map((tab, index) => (
         <button
           key={tab.id}
           type="button"
           role="tab"
           aria-selected={current === tab.id}
+          tabIndex={current === tab.id ? 0 : -1}
           className={current === tab.id ? 'tab tab-current' : 'tab'}
           onClick={() => onChange(tab.id)}
+          onKeyDown={(event) => onKeyDown(event, index)}
         >
           {tab.label}
         </button>

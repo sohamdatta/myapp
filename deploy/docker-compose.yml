@@ -15,6 +15,9 @@ services:
         APP_BUILT: ${HRMS_BUILT:-}
     # deploy/hrms.sh sets HRMS_ENV_FILE to env/<environment>.env.
     env_file: ${HRMS_ENV_FILE:-.env}
+    # Keep the JVM inside its share of the 4 GB server: heap (60% of this) plus metaspace, stacks and code cache.
+    # Without a limit the heap is sized from the whole host and the app can crowd out the web proxy.
+    mem_limit: 2560m
     restart: unless-stopped
     healthcheck:
       # Signed out, the "who am I" call answers 401: the app and its database are up.
@@ -45,6 +48,7 @@ services:
     volumes:
       - caddy_data:/data      # the HTTPS certificates; keep this volume
       - caddy_config:/config
+    mem_limit: 256m
     restart: unless-stopped
     logging:
       driver: json-file

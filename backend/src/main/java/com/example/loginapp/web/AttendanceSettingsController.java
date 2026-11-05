@@ -9,12 +9,12 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.example.loginapp.core.ApiException;
+import com.example.loginapp.core.SessionCtx;
 import com.example.loginapp.core.AttendanceImportService;
 import com.example.loginapp.core.AttendanceSettingsService;
 import com.example.loginapp.core.AuthService;
@@ -49,50 +49,50 @@ public class AttendanceSettingsController {
     }
 
     @GetMapping("/locations")
-    public List<Map<String, Object>> locations(@RequestHeader(value = "Authorization", required = false) String authorization) {
-        return settings.locations(Requests.session(auth, authorization));
+    public List<Map<String, Object>> locations(SessionCtx ctx) {
+        return settings.locations(ctx);
     }
 
     @PostMapping("/locations")
-    public Map<String, Object> createLocation(@RequestHeader(value = "Authorization", required = false) String authorization,
+    public Map<String, Object> createLocation(SessionCtx ctx,
                                               @RequestBody AttendanceSettingsService.LocationInput request) {
-        return settings.saveLocation(Requests.session(auth, authorization), null, request);
+        return settings.saveLocation(ctx, null, request);
     }
 
     @PutMapping("/locations/{id}")
-    public Map<String, Object> changeLocation(@RequestHeader(value = "Authorization", required = false) String authorization,
+    public Map<String, Object> changeLocation(SessionCtx ctx,
                                               @PathVariable("id") String id,
                                               @RequestBody AttendanceSettingsService.LocationInput request) {
-        return settings.saveLocation(Requests.session(auth, authorization), Requests.id(id), request);
+        return settings.saveLocation(ctx, Requests.id(id), request);
     }
 
     /** How the location records attendance (app, device or present), from a date. */
     @PostMapping("/locations/{id}/mode")
-    public Map<String, Object> setMode(@RequestHeader(value = "Authorization", required = false) String authorization,
+    public Map<String, Object> setMode(@RequiresModule(Modules.ATTENDANCE) SessionCtx ctx,
                                        @PathVariable("id") String id, @RequestBody ModeRequest request) {
-        return settings.setMode(Requests.session(auth, authorization, Modules.ATTENDANCE), Requests.id(id), request.mode(), request.effectiveFrom());
+        return settings.setMode(ctx, Requests.id(id), request.mode(), request.effectiveFrom());
     }
 
     @GetMapping("/shifts")
-    public List<Map<String, Object>> shifts(@RequestHeader(value = "Authorization", required = false) String authorization) {
-        return settings.shifts(Requests.session(auth, authorization));
+    public List<Map<String, Object>> shifts(SessionCtx ctx) {
+        return settings.shifts(ctx);
     }
 
     @PostMapping("/shifts")
-    public Map<String, Object> createShift(@RequestHeader(value = "Authorization", required = false) String authorization,
+    public Map<String, Object> createShift(SessionCtx ctx,
                                            @RequestBody AttendanceSettingsService.ShiftInput request) {
-        return settings.saveShift(Requests.session(auth, authorization), null, request);
+        return settings.saveShift(ctx, null, request);
     }
 
     @PutMapping("/shifts/{id}")
-    public Map<String, Object> changeShift(@RequestHeader(value = "Authorization", required = false) String authorization,
+    public Map<String, Object> changeShift(SessionCtx ctx,
                                            @PathVariable("id") String id,
                                            @RequestBody AttendanceSettingsService.ShiftInput request) {
-        return settings.saveShift(Requests.session(auth, authorization), Requests.id(id), request);
+        return settings.saveShift(ctx, Requests.id(id), request);
     }
 
     @GetMapping("/holidays")
-    public List<Map<String, Object>> holidays(@RequestHeader(value = "Authorization", required = false) String authorization,
+    public List<Map<String, Object>> holidays(SessionCtx ctx,
                                               @RequestParam(value = "year", required = false) String year) {
         Integer y = null;
         if (year != null && !year.isBlank()) {
@@ -105,33 +105,33 @@ public class AttendanceSettingsController {
                 throw ApiException.badRequest("The year must look like 2026");
             }
         }
-        return settings.holidays(Requests.session(auth, authorization), y);
+        return settings.holidays(ctx, y);
     }
 
     @PostMapping("/holidays")
-    public Map<String, Object> addHoliday(@RequestHeader(value = "Authorization", required = false) String authorization,
+    public Map<String, Object> addHoliday(SessionCtx ctx,
                                           @RequestBody HolidayRequest request) {
-        return settings.addHoliday(Requests.session(auth, authorization), request.date(), request.name(),
+        return settings.addHoliday(ctx, request.date(), request.name(),
                 request.workLocationId() == null || request.workLocationId().isBlank() ? null : Requests.id(request.workLocationId()));
     }
 
     @PostMapping("/holidays/{id}/delete")
-    public ResponseEntity<Void> removeHoliday(@RequestHeader(value = "Authorization", required = false) String authorization,
+    public ResponseEntity<Void> removeHoliday(SessionCtx ctx,
                                               @PathVariable("id") String id) {
-        settings.removeHoliday(Requests.session(auth, authorization), Requests.id(id));
+        settings.removeHoliday(ctx, Requests.id(id));
         return ResponseEntity.noContent().build();
     }
 
     /** Every user with their employee code and the assignment in force today. */
     @GetMapping("/assignments")
-    public List<Map<String, Object>> people(@RequestHeader(value = "Authorization", required = false) String authorization) {
-        return settings.people(Requests.session(auth, authorization));
+    public List<Map<String, Object>> people(SessionCtx ctx) {
+        return settings.people(ctx);
     }
 
     @PostMapping("/assignments")
-    public ResponseEntity<Void> assign(@RequestHeader(value = "Authorization", required = false) String authorization,
+    public ResponseEntity<Void> assign(SessionCtx ctx,
                                        @RequestBody AssignRequest request) {
-        settings.assign(Requests.session(auth, authorization), request.membershipIds(),
+        settings.assign(ctx, request.membershipIds(),
                 request.workLocationId() == null ? null : Requests.id(request.workLocationId()),
                 request.shiftId() == null ? null : Requests.id(request.shiftId()),
                 request.weeklyOffs(), request.remoteDays(), request.effectiveFrom());
@@ -139,47 +139,47 @@ public class AttendanceSettingsController {
     }
 
     @PutMapping("/users/{id}/employee-code")
-    public ResponseEntity<Void> employeeCode(@RequestHeader(value = "Authorization", required = false) String authorization,
+    public ResponseEntity<Void> employeeCode(SessionCtx ctx,
                                              @PathVariable("id") String id, @RequestBody CodeRequest request) {
-        settings.setEmployeeCode(Requests.session(auth, authorization), Requests.id(id), request.code());
+        settings.setEmployeeCode(ctx, Requests.id(id), request.code());
         return ResponseEntity.noContent().build();
     }
 
     @GetMapping("/settings")
-    public Map<String, Object> settings(@RequestHeader(value = "Authorization", required = false) String authorization) {
-        return settings.settings(Requests.session(auth, authorization));
+    public Map<String, Object> settings(SessionCtx ctx) {
+        return settings.settings(ctx);
     }
 
     @PutMapping("/settings")
-    public Map<String, Object> saveSettings(@RequestHeader(value = "Authorization", required = false) String authorization,
+    public Map<String, Object> saveSettings(@RequiresModule(Modules.ATTENDANCE) SessionCtx ctx,
                                             @RequestBody AttendanceSettingsService.SettingsInput request) {
-        return settings.saveSettings(Requests.session(auth, authorization, Modules.ATTENDANCE), request);
+        return settings.saveSettings(ctx, request);
     }
 
     @PutMapping("/users/{id}/wfh")
-    public ResponseEntity<Void> wfhAllowed(@RequestHeader(value = "Authorization", required = false) String authorization,
+    public ResponseEntity<Void> wfhAllowed(@RequiresModule(Modules.ATTENDANCE) SessionCtx ctx,
                                            @PathVariable("id") String id, @RequestBody AllowedRequest request) {
-        settings.setWfhAllowed(Requests.session(auth, authorization, Modules.ATTENDANCE), Requests.id(id), Boolean.TRUE.equals(request.allowed()));
+        settings.setWfhAllowed(ctx, Requests.id(id), Boolean.TRUE.equals(request.allowed()));
         return ResponseEntity.noContent().build();
     }
 
     // ── device imports ──────────────────────────────────────────────────
 
     @GetMapping("/imports")
-    public Map<String, Object> importHealth(@RequestHeader(value = "Authorization", required = false) String authorization) {
-        return imports.health(Requests.session(auth, authorization, Modules.ATTENDANCE));
+    public Map<String, Object> importHealth(@RequiresModule(Modules.ATTENDANCE) SessionCtx ctx) {
+        return imports.health(ctx);
     }
 
     @PostMapping("/imports/preview")
-    public Map<String, Object> preview(@RequestHeader(value = "Authorization", required = false) String authorization,
+    public Map<String, Object> preview(@RequiresModule(Modules.ATTENDANCE) SessionCtx ctx,
                                        @RequestBody ImportRequest request) {
-        return imports.preview(Requests.session(auth, authorization, Modules.ATTENDANCE), request.deviceLabel(), request.content());
+        return imports.preview(ctx, request.deviceLabel(), request.content());
     }
 
     @PostMapping("/imports")
-    public Map<String, Object> importFile(@RequestHeader(value = "Authorization", required = false) String authorization,
+    public Map<String, Object> importFile(@RequiresModule(Modules.ATTENDANCE) SessionCtx ctx,
                                           @RequestBody ImportRequest request) {
-        return imports.importFile(Requests.session(auth, authorization, Modules.ATTENDANCE), request.deviceLabel(), request.fileName(),
+        return imports.importFile(ctx, request.deviceLabel(), request.fileName(),
                 request.content(), request.mapping());
     }
 }

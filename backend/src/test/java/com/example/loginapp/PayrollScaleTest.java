@@ -125,6 +125,55 @@ class PayrollScaleTest {
         Map<String, Object> totals = runs.calculate(admin, run);
         long calcMs = (System.nanoTime() - c0) / 1_000_000;
         assertEquals(size, ((Number) totals.get("people")).intValue(), "everyone is in the run");
+        // Payslips are written in chunks while calculating: every one must still be there, once.
+        long written = db.inTenant(admin.tenantId(), c -> com.example.loginapp.core.Sql.count(c, "select 1 from app.payslip where run_id = ?", run));
+        assertEquals(size, written, "one payslip per person, none lost or doubled between chunks");
+
+        // More operations on the same run: opening it, recalculating (with the heap's peak), the register, journal and a payslip PDF.
+        long[] open = new long[20];
+        Map<String, Object> detail = null;
+        for (int i = 0; i < open.length; i++) {
+            long s = System.nanoTime();
+            detail = runs.get(admin, run);
+            open[i] = (System.nanoTime() - s) / 1_000_000;
+        }
+        assertEquals(size, ((List<?>) detail.get("people")).size(), "the run lists everyone");
+        assertTrue(!detail.containsKey("snapshot"), "the run detail must not carry the frozen snapshot");
+        UUID someone = UUID.fromString((String) ((Map<?, ?>) ((List<?>) detail.get("people")).get(0)).get("employmentId"));
+
+        // Bytes this thread allocates: steadier than the heap's peak, which depends on when the collector happens to run.
+        com.sun.management.ThreadMXBean threads = (com.sun.management.ThreadMXBean) java.lang.management.ManagementFactory.getThreadMXBean();
+        long tid = Thread.currentThread().threadId();
+        long a0 = threads.getThreadAllocatedBytes(tid);
+        long r0 = System.nanoTime();
+        runs.calculate(admin, run);
+        long recalcMs = (System.nanoTime() - r0) / 1_000_000;
+        long recalcAllocMb = (threads.getThreadAllocatedBytes(tid) - a0) / (1024 * 1024);
+        a0 = threads.getThreadAllocatedBytes(tid);
+        runs.get(admin, run);
+        long openAllocMb = (threads.getThreadAllocatedBytes(tid) - a0) / (1024 * 1024);
+
+        long g0 = System.nanoTime();
+        int registerBytes = runs.output(admin, run, "register").bytes().length;
+        long registerMs = (System.nanoTime() - g0) / 1_000_000;
+        g0 = System.nanoTime();
+        int journalBytes = runs.output(admin, run, "journal").bytes().length;
+        long journalMs = (System.nanoTime() - g0) / 1_000_000;
+        long[] pdf = new long[10];
+        for (int i = 0; i < pdf.length; i++) {
+            long s = System.nanoTime();
+            assertTrue(runs.payslipPdf(admin, run, someone).bytes().length > 1000, "a payslip PDF is made");
+            pdf[i] = (System.nanoTime() - s) / 1_000_000;
+        }
+        long openP95 = p95(open);
+        long pdfP95 = p95(pdf);
+        System.out.printf("SCALE2 employees=%d run_open_p95_ms=%d recalculate_ms=%d recalculate_alloc_mb=%d run_open_alloc_mb=%d register_ms=%d (%d bytes) journal_ms=%d (%d bytes) payslip_pdf_p95_ms=%d (budgets: open 300, register 10000, pdf 500)%n",
+                size, openP95, recalcMs, recalcAllocMb, openAllocMb, registerMs, registerBytes, journalMs, journalBytes, pdfP95);
+        if (!warnOnly) {
+            assertTrue(openP95 < READ_P95_BUDGET_MS, "opening a run p95 " + openP95 + " ms");
+            assertTrue(registerMs < 10_000, "the register took " + registerMs + " ms");
+            assertTrue(pdfP95 < 500, "a payslip PDF p95 " + pdfP95 + " ms");
+        }
 
         long listP95 = p95(list);
         long searchP95 = p95(search);

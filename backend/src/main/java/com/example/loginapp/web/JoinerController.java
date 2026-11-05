@@ -8,12 +8,12 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.example.loginapp.core.AuthService;
+import com.example.loginapp.core.SessionCtx;
 import com.example.loginapp.core.JoinerService;
 import com.example.loginapp.core.JoinerService.NewJoiner;
 
@@ -35,78 +35,78 @@ public class JoinerController {
     }
 
     @GetMapping
-    public Map<String, Object> list(@RequestHeader(value = "Authorization", required = false) String authorization,
+    public Map<String, Object> list(SessionCtx ctx,
                                     @RequestParam(value = "status", required = false) String status) {
-        return joiners.list(Requests.session(auth, authorization), status);
+        return joiners.list(ctx, status);
     }
 
     @PostMapping
-    public Map<String, Object> add(@RequestHeader(value = "Authorization", required = false) String authorization,
+    public Map<String, Object> add(SessionCtx ctx,
                                    @RequestBody NewJoiner request) {
-        return joiners.add(Requests.session(auth, authorization), request);
+        return joiners.add(ctx, request);
     }
 
     @GetMapping("/{id}")
-    public Map<String, Object> get(@RequestHeader(value = "Authorization", required = false) String authorization,
+    public Map<String, Object> get(SessionCtx ctx,
                                    @PathVariable("id") String id) {
-        return joiners.get(Requests.session(auth, authorization), Requests.id(id));
+        return joiners.get(ctx, Requests.id(id));
     }
 
     @GetMapping("/{id}/sections/{section}")
-    public Map<String, Object> section(@RequestHeader(value = "Authorization", required = false) String authorization,
+    public Map<String, Object> section(SessionCtx ctx,
                                        @PathVariable("id") String id, @PathVariable("section") String section) {
-        return joiners.section(Requests.session(auth, authorization), Requests.id(id), section);
+        return joiners.section(ctx, Requests.id(id), section);
     }
 
     @PutMapping("/{id}/sections/{section}")
-    public Map<String, Object> saveSection(@RequestHeader(value = "Authorization", required = false) String authorization,
+    public Map<String, Object> saveSection(SessionCtx ctx,
                                            @PathVariable("id") String id, @PathVariable("section") String section,
                                            @RequestBody Map<String, Object> values) {
-        return joiners.saveSection(Requests.session(auth, authorization), Requests.id(id), section, values);
+        return joiners.saveSection(ctx, Requests.id(id), section, values);
     }
 
     @PostMapping("/{id}/sections/{section}/submit")
-    public Map<String, Object> submit(@RequestHeader(value = "Authorization", required = false) String authorization,
+    public Map<String, Object> submit(SessionCtx ctx,
                                       @PathVariable("id") String id, @PathVariable("section") String section) {
-        return joiners.submitSection(Requests.session(auth, authorization), Requests.id(id), section);
+        return joiners.submitSection(ctx, Requests.id(id), section);
     }
 
     @PostMapping("/{id}/sections/{section}/verify")
-    public Map<String, Object> verify(@RequestHeader(value = "Authorization", required = false) String authorization,
+    public Map<String, Object> verify(SessionCtx ctx,
                                       @PathVariable("id") String id, @PathVariable("section") String section,
                                       @RequestBody(required = false) Note request) {
-        return joiners.verify(Requests.session(auth, authorization), Requests.id(id), section, request == null ? null : request.note());
+        return joiners.verify(ctx, Requests.id(id), section, request == null ? null : request.note());
     }
 
     @PostMapping("/{id}/sections/{section}/return")
-    public Map<String, Object> returnSection(@RequestHeader(value = "Authorization", required = false) String authorization,
+    public Map<String, Object> returnSection(SessionCtx ctx,
                                              @PathVariable("id") String id, @PathVariable("section") String section,
                                              @RequestBody Note request) {
-        return joiners.returnSection(Requests.session(auth, authorization), Requests.id(id), section, request.note());
+        return joiners.returnSection(ctx, Requests.id(id), section, request.note());
     }
 
     @PostMapping("/{id}/invite")
-    public Map<String, Object> invite(@RequestHeader(value = "Authorization", required = false) String authorization,
+    public Map<String, Object> invite(SessionCtx ctx,
                                       @PathVariable("id") String id) {
-        return joiners.invite(Requests.session(auth, authorization), Requests.id(id));
+        return joiners.invite(ctx, Requests.id(id));
     }
 
     @PostMapping("/{id}/activate")
-    public Map<String, Object> activate(@RequestHeader(value = "Authorization", required = false) String authorization,
+    public Map<String, Object> activate(SessionCtx ctx,
                                         @PathVariable("id") String id) {
-        return joiners.activate(Requests.session(auth, authorization), Requests.id(id));
+        return joiners.activate(ctx, Requests.id(id));
     }
 
     @PostMapping("/{id}/withdraw")
-    public Map<String, Object> withdraw(@RequestHeader(value = "Authorization", required = false) String authorization,
+    public Map<String, Object> withdraw(SessionCtx ctx,
                                         @PathVariable("id") String id, @RequestBody Reason request) {
-        joiners.withdraw(Requests.session(auth, authorization), Requests.id(id), request.reason());
+        joiners.withdraw(ctx, Requests.id(id), request.reason());
         return Map.of("withdrawn", true);
     }
 
     @GetMapping("/{id}/history")
-    public List<Map<String, Object>> history(@RequestHeader(value = "Authorization", required = false) String authorization,
+    public List<Map<String, Object>> history(SessionCtx ctx,
                                              @PathVariable("id") String id) {
-        return joiners.history(Requests.session(auth, authorization), Requests.id(id));
+        return joiners.history(ctx, Requests.id(id));
     }
 }

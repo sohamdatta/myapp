@@ -15,6 +15,19 @@ export default defineConfig({
       },
     },
   },
+  // Unit and component tests: `npm test`; `npm run test:coverage` adds a coverage report.
+  test: {
+    environment: 'jsdom',
+    globals: true,
+    setupFiles: ['./src/test/setup.js'],
+    include: ['src/**/*.test.{js,jsx}'],
+    coverage: {
+      provider: 'v8',
+      include: ['src/**/*.{js,jsx}'],
+      exclude: ['src/test/**', 'src/**/*.test.{js,jsx}', 'src/main.jsx'],
+      reporter: ['text-summary', 'json-summary', 'html'],
+    },
+  },
   server: {
     host: true,
     port: 5173,

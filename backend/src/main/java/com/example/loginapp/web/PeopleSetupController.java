@@ -9,12 +9,12 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.example.loginapp.core.AppliesTo;
+import com.example.loginapp.core.SessionCtx;
 import com.example.loginapp.core.AuthService;
 import com.example.loginapp.core.OnboardingConfigService;
 import com.example.loginapp.core.OnboardingConfigService.ChecklistInput;
@@ -44,88 +44,88 @@ public class PeopleSetupController {
     }
 
     @GetMapping("/settings")
-    public Map<String, Object> settings(@RequestHeader(value = "Authorization", required = false) String authorization) {
-        return config.settings(Requests.session(auth, authorization));
+    public Map<String, Object> settings(SessionCtx ctx) {
+        return config.settings(ctx);
     }
 
     @PutMapping("/settings")
-    public Map<String, Object> saveSettings(@RequestHeader(value = "Authorization", required = false) String authorization,
+    public Map<String, Object> saveSettings(SessionCtx ctx,
                                            @RequestBody SettingsInput request) {
-        return config.saveSettings(Requests.session(auth, authorization), request);
+        return config.saveSettings(ctx, request);
     }
 
     @PostMapping("/notice")
-    public Map<String, Object> notice(@RequestHeader(value = "Authorization", required = false) String authorization,
+    public Map<String, Object> notice(SessionCtx ctx,
                                       @RequestBody Notice request) {
-        return config.publishNotice(Requests.session(auth, authorization), request.body());
+        return config.publishNotice(ctx, request.body());
     }
 
     @GetMapping("/flows")
-    public List<Map<String, Object>> flows(@RequestHeader(value = "Authorization", required = false) String authorization) {
-        return config.flows(Requests.session(auth, authorization));
+    public List<Map<String, Object>> flows(SessionCtx ctx) {
+        return config.flows(ctx);
     }
 
     @PostMapping("/flows")
-    public Map<String, Object> createFlow(@RequestHeader(value = "Authorization", required = false) String authorization,
+    public Map<String, Object> createFlow(SessionCtx ctx,
                                           @RequestBody FlowInput request) {
-        return config.saveFlow(Requests.session(auth, authorization), null, request);
+        return config.saveFlow(ctx, null, request);
     }
 
     @PutMapping("/flows/order")
-    public List<Map<String, Object>> order(@RequestHeader(value = "Authorization", required = false) String authorization,
+    public List<Map<String, Object>> order(SessionCtx ctx,
                                            @RequestBody Order request) {
-        return config.orderFlows(Requests.session(auth, authorization), request.ids());
+        return config.orderFlows(ctx, request.ids());
     }
 
     @PutMapping("/flows/{id}")
-    public Map<String, Object> saveFlow(@RequestHeader(value = "Authorization", required = false) String authorization,
+    public Map<String, Object> saveFlow(SessionCtx ctx,
                                         @PathVariable("id") String id, @RequestBody FlowInput request) {
-        return config.saveFlow(Requests.session(auth, authorization), Requests.id(id), request);
+        return config.saveFlow(ctx, Requests.id(id), request);
     }
 
     @GetMapping("/fields")
-    public List<Map<String, Object>> fields(@RequestHeader(value = "Authorization", required = false) String authorization) {
-        return config.fields(Requests.session(auth, authorization), null);
+    public List<Map<String, Object>> fields(SessionCtx ctx) {
+        return config.fields(ctx, null);
     }
 
     @PutMapping("/fields")
-    public List<Map<String, Object>> saveFields(@RequestHeader(value = "Authorization", required = false) String authorization,
+    public List<Map<String, Object>> saveFields(SessionCtx ctx,
                                                 @RequestBody Fields request) {
-        return config.saveFields(Requests.session(auth, authorization), null, request.fields());
+        return config.saveFields(ctx, null, request.fields());
     }
 
     @GetMapping("/flows/{id}/fields")
-    public List<Map<String, Object>> flowFields(@RequestHeader(value = "Authorization", required = false) String authorization,
+    public List<Map<String, Object>> flowFields(SessionCtx ctx,
                                                 @PathVariable("id") String id) {
-        return config.fields(Requests.session(auth, authorization), Requests.id(id));
+        return config.fields(ctx, Requests.id(id));
     }
 
     @PutMapping("/flows/{id}/fields")
-    public List<Map<String, Object>> saveFlowFields(@RequestHeader(value = "Authorization", required = false) String authorization,
+    public List<Map<String, Object>> saveFlowFields(SessionCtx ctx,
                                                     @PathVariable("id") String id, @RequestBody Fields request) {
-        return config.saveFields(Requests.session(auth, authorization), Requests.id(id), request.fields());
+        return config.saveFields(ctx, Requests.id(id), request.fields());
     }
 
     @GetMapping("/custom-fields")
-    public List<Map<String, Object>> customFields(@RequestHeader(value = "Authorization", required = false) String authorization) {
-        return config.customFields(Requests.session(auth, authorization));
+    public List<Map<String, Object>> customFields(SessionCtx ctx) {
+        return config.customFields(ctx);
     }
 
     @PostMapping("/custom-fields")
-    public Map<String, Object> createCustomField(@RequestHeader(value = "Authorization", required = false) String authorization,
+    public Map<String, Object> createCustomField(SessionCtx ctx,
                                                  @RequestBody CustomFieldInput request) {
-        return config.saveCustomField(Requests.session(auth, authorization), null, request);
+        return config.saveCustomField(ctx, null, request);
     }
 
     @PutMapping("/custom-fields/{id}")
-    public Map<String, Object> saveCustomField(@RequestHeader(value = "Authorization", required = false) String authorization,
+    public Map<String, Object> saveCustomField(SessionCtx ctx,
                                                @PathVariable("id") String id, @RequestBody CustomFieldInput request) {
-        return config.saveCustomField(Requests.session(auth, authorization), Requests.id(id), request);
+        return config.saveCustomField(ctx, Requests.id(id), request);
     }
 
     /** The form a joiner would see: for a flow, or for the joiner described (the flow is then picked by the rules). */
     @GetMapping("/preview")
-    public Map<String, Object> preview(@RequestHeader(value = "Authorization", required = false) String authorization,
+    public Map<String, Object> preview(SessionCtx ctx,
                                        @RequestParam(value = "flow", required = false) String flow,
                                        @RequestParam(value = "employmentType", required = false) String employmentType,
                                        @RequestParam(value = "department", required = false) String department,
@@ -133,7 +133,7 @@ public class PeopleSetupController {
                                        @RequestParam(value = "designation", required = false) String designation) {
         AppliesTo.Subject subject = new AppliesTo.Subject(optionalId(department), optionalId(workLocation),
                 blank(employmentType) ? null : employmentType.trim(), blank(designation) ? null : designation.trim());
-        return config.preview(Requests.session(auth, authorization), optionalId(flow), subject);
+        return config.preview(ctx, optionalId(flow), subject);
     }
 
     private static UUID optionalId(String value) {
@@ -145,41 +145,41 @@ public class PeopleSetupController {
     }
 
     @GetMapping("/document-types")
-    public List<Map<String, Object>> documentTypes(@RequestHeader(value = "Authorization", required = false) String authorization) {
-        return config.documentTypes(Requests.session(auth, authorization));
+    public List<Map<String, Object>> documentTypes(SessionCtx ctx) {
+        return config.documentTypes(ctx);
     }
 
     @PostMapping("/document-types")
-    public Map<String, Object> createDocumentType(@RequestHeader(value = "Authorization", required = false) String authorization,
+    public Map<String, Object> createDocumentType(SessionCtx ctx,
                                                   @RequestBody DocumentTypeInput request) {
-        return config.saveDocumentType(Requests.session(auth, authorization), null, request);
+        return config.saveDocumentType(ctx, null, request);
     }
 
     @PutMapping("/document-types/{id}")
-    public Map<String, Object> saveDocumentType(@RequestHeader(value = "Authorization", required = false) String authorization,
+    public Map<String, Object> saveDocumentType(SessionCtx ctx,
                                                 @PathVariable("id") String id, @RequestBody DocumentTypeInput request) {
-        return config.saveDocumentType(Requests.session(auth, authorization), Requests.id(id), request);
+        return config.saveDocumentType(ctx, Requests.id(id), request);
     }
 
     @GetMapping("/checklists")
-    public List<Map<String, Object>> checklists(@RequestHeader(value = "Authorization", required = false) String authorization) {
-        return config.checklists(Requests.session(auth, authorization));
+    public List<Map<String, Object>> checklists(SessionCtx ctx) {
+        return config.checklists(ctx);
     }
 
     @PostMapping("/checklists")
-    public Map<String, Object> createChecklist(@RequestHeader(value = "Authorization", required = false) String authorization,
+    public Map<String, Object> createChecklist(SessionCtx ctx,
                                                @RequestBody ChecklistInput request) {
-        return config.saveChecklist(Requests.session(auth, authorization), null, request);
+        return config.saveChecklist(ctx, null, request);
     }
 
     @PutMapping("/checklists/{id}")
-    public Map<String, Object> saveChecklist(@RequestHeader(value = "Authorization", required = false) String authorization,
+    public Map<String, Object> saveChecklist(SessionCtx ctx,
                                              @PathVariable("id") String id, @RequestBody ChecklistInput request) {
-        return config.saveChecklist(Requests.session(auth, authorization), Requests.id(id), request);
+        return config.saveChecklist(ctx, Requests.id(id), request);
     }
 
     @GetMapping("/changes")
-    public Map<String, Object> changes(@RequestHeader(value = "Authorization", required = false) String authorization) {
-        return config.lastChanges(Requests.session(auth, authorization));
+    public Map<String, Object> changes(SessionCtx ctx) {
+        return config.lastChanges(ctx);
     }
 }

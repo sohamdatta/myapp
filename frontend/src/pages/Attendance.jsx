@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { attendance } from '../api.js'
+import { attendance, saveBlob } from '../api.js'
 import { formatDay, formatMinutes, formatMonth, formatTime, liveStatus, localToday, shiftDay, useAction, useLoad, whoName, formatLate } from '../hooks.js'
 import { Badge, DayStatus, Empty, ErrorNote, StatusBadge, Tabs, Trail, Who } from '../ui.jsx'
 import { useConfirm, useToast } from '../feedbackContext.js'
@@ -14,12 +14,7 @@ function label(status) {
 }
 
 function download(fileName, text) {
-  const url = URL.createObjectURL(new Blob([text], { type: 'text/csv' }))
-  const link = document.createElement('a')
-  link.href = url
-  link.download = fileName
-  link.click()
-  URL.revokeObjectURL(url)
+  saveBlob(new Blob([text], { type: 'text/csv' }), fileName)
 }
 
 /** HR enters a punch for someone, with a reason. The original punches are never changed. */
@@ -172,10 +167,7 @@ function Board({ date, canManage, canMark, meId, onChanged }) {
                 canMark={canMark && r.mode === 'present' && r.membershipId !== meId}
                 open={open === r.membershipId}
                 onToggle={() => setOpen(open === r.membershipId ? null : r.membershipId)}
-                onChanged={() => {
-                  board.reload()
-                  onChanged()
-                }}
+                onChanged={onChanged}   // the parent's new key remounts this board, which loads it again
               />
             ))}
           </tbody>

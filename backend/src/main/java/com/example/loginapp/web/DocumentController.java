@@ -17,6 +17,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.example.loginapp.core.ApiException;
+import com.example.loginapp.core.SessionCtx;
 import com.example.loginapp.core.AuthService;
 import com.example.loginapp.core.DocumentService;
 import com.example.loginapp.core.FileSniffer;
@@ -42,8 +43,8 @@ public class DocumentController {
     }
 
     @GetMapping("/onboarding/me/documents")
-    public Map<String, Object> mine(@RequestHeader(value = "Authorization", required = false) String authorization) {
-        return documents.mine(Requests.session(auth, authorization));
+    public Map<String, Object> mine(SessionCtx ctx) {
+        return documents.mine(ctx);
     }
 
     @PostMapping("/onboarding/me/documents")
@@ -55,15 +56,15 @@ public class DocumentController {
     }
 
     @GetMapping("/onboarding/me/documents/{id}/content")
-    public ResponseEntity<byte[]> myContent(@RequestHeader(value = "Authorization", required = false) String authorization,
+    public ResponseEntity<byte[]> myContent(SessionCtx ctx,
                                             @PathVariable("id") String id) {
-        return file(documents.myContent(Requests.session(auth, authorization), Requests.id(id)));
+        return file(documents.myContent(ctx, Requests.id(id)));
     }
 
     @GetMapping("/people/joiners/{id}/documents")
-    public Map<String, Object> forJoiner(@RequestHeader(value = "Authorization", required = false) String authorization,
+    public Map<String, Object> forJoiner(SessionCtx ctx,
                                          @PathVariable("id") String id) {
-        return documents.forJoiner(Requests.session(auth, authorization), Requests.id(id));
+        return documents.forJoiner(ctx, Requests.id(id));
     }
 
     @PostMapping("/people/joiners/{id}/documents")
@@ -76,26 +77,37 @@ public class DocumentController {
     }
 
     @PostMapping("/people/joiners/{id}/documents/{documentId}/verify")
-    public Map<String, Object> verify(@RequestHeader(value = "Authorization", required = false) String authorization,
+    public Map<String, Object> verify(SessionCtx ctx,
                                       @PathVariable("id") String id, @PathVariable("documentId") String documentId) {
-        return documents.verify(Requests.session(auth, authorization), Requests.id(id), Requests.id(documentId));
+        return documents.verify(ctx, Requests.id(id), Requests.id(documentId));
     }
 
     @PostMapping("/people/joiners/{id}/documents/{documentId}/reject")
-    public Map<String, Object> reject(@RequestHeader(value = "Authorization", required = false) String authorization,
+    public Map<String, Object> reject(SessionCtx ctx,
                                       @PathVariable("id") String id, @PathVariable("documentId") String documentId,
                                       @RequestBody Note request) {
-        return documents.reject(Requests.session(auth, authorization), Requests.id(id), Requests.id(documentId), request.note());
+        return documents.reject(ctx, Requests.id(id), Requests.id(documentId), request.note());
     }
 
     @GetMapping("/people/documents/{id}/content")
-    public ResponseEntity<byte[]> content(@RequestHeader(value = "Authorization", required = false) String authorization,
+    public ResponseEntity<byte[]> content(SessionCtx ctx,
                                           @PathVariable("id") String id) {
-        return file(documents.content(Requests.session(auth, authorization), Requests.id(id)));
+        return file(documents.content(ctx, Requests.id(id)));
     }
+
+    private static final java.util.concurrent.Semaphore UPLOADS = new java.util.concurrent.Semaphore(8);
 
     /** Reads at most one byte more than allowed, so an oversized upload is refused without reading it all. */
     static byte[] read(InputStream body) {
+        // Each upload being read holds up to 10 MB, and requests run on virtual threads, so only a few are read at once.
+        try {
+            if (!UPLOADS.tryAcquire(10, java.util.concurrent.TimeUnit.SECONDS)) {
+                throw new ApiException(503, "upload.busy", "Too many files are being uploaded right now. Try again in a moment");
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw ApiException.badRequest("The upload was interrupted. Try again");
+        }
         try {
             byte[] bytes = body == null ? new byte[0] : body.readNBytes(FileSniffer.MAX_BYTES + 1);
             if (bytes.length > FileSniffer.MAX_BYTES) {
@@ -104,6 +116,8 @@ public class DocumentController {
             return bytes;
         } catch (IOException e) {
             throw ApiException.badRequest("The upload was interrupted. Try again");
+        } finally {
+            UPLOADS.release();
         }
     }
 

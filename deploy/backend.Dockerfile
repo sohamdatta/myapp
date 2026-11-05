@@ -13,7 +13,7 @@ COPY --from=build /app.jar /app/app.jar
 USER hrms
 # UTC for the JVM and its database sessions; the app works out India dates itself.
 ENV TZ=UTC \
-    JAVA_TOOL_OPTIONS="-XX:MaxRAMPercentage=60 -Duser.timezone=UTC"
+    JAVA_TOOL_OPTIONS="-XX:MaxRAMPercentage=60 -XX:+ExitOnOutOfMemoryError -XX:MaxMetaspaceSize=256m -Duser.timezone=UTC"
 # Which build this is: shown at /api/version (set by deploy/hrms.sh).
 ARG APP_VERSION=dev
 ARG APP_COMMIT=dev

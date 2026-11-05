@@ -3,7 +3,6 @@ package com.example.loginapp.core;
 import java.awt.Graphics2D;
 import java.awt.RenderingHints;
 import java.awt.image.BufferedImage;
-import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.util.Iterator;
@@ -96,9 +95,9 @@ public final class FileSniffer {
     private static byte[] redraw(byte[] bytes, String type) {
         BufferedImage source;
         try {
-            source = ImageIO.read(new ByteArrayInputStream(bytes));
-        } catch (IOException | RuntimeException e) {
-            source = null;
+            source = ImageDecode.read(bytes);
+        } catch (ImageDecode.TooLarge e) {
+            throw new ApiException(413, "document.too_large", "This photo has too many pixels. Send a smaller photo or a PDF");
         }
         if (source == null) {
             throw new ApiException(415, "document.unreadable", "This image could not be read. Take the photo again, or send a PDF");

@@ -16,6 +16,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.example.loginapp.core.AuthService;
+import com.example.loginapp.core.SessionCtx;
 import com.example.loginapp.core.Modules;
 import com.example.loginapp.core.TaxDeclarations;
 
@@ -38,32 +39,32 @@ public class TaxController {
     // ── the employee's own ──────────────────────────────────────────────
 
     @GetMapping("/me/tax")
-    public Map<String, Object> mine(@RequestHeader(value = "Authorization", required = false) String authorization,
+    public Map<String, Object> mine(@RequiresModule(Modules.PAYROLL) SessionCtx ctx,
                                     @RequestParam(value = "year", required = false) String year) {
-        return tax.mine(Requests.session(auth, authorization, Modules.PAYROLL), year);
+        return tax.mine(ctx, year);
     }
 
     @PostMapping("/me/tax/items")
-    public Map<String, Object> addItem(@RequestHeader(value = "Authorization", required = false) String authorization,
+    public Map<String, Object> addItem(@RequiresModule(Modules.PAYROLL) SessionCtx ctx,
                                        @RequestBody TaxDeclarations.ItemInput request) {
-        return tax.addItem(Requests.session(auth, authorization, Modules.PAYROLL), request);
+        return tax.addItem(ctx, request);
     }
 
     @PutMapping("/me/tax/items/{id}")
-    public Map<String, Object> updateItem(@RequestHeader(value = "Authorization", required = false) String authorization,
+    public Map<String, Object> updateItem(@RequiresModule(Modules.PAYROLL) SessionCtx ctx,
                                           @PathVariable("id") String id, @RequestBody TaxDeclarations.ItemInput request) {
-        return tax.updateItem(Requests.session(auth, authorization, Modules.PAYROLL), Requests.id(id), request);
+        return tax.updateItem(ctx, Requests.id(id), request);
     }
 
     @DeleteMapping("/me/tax/items/{id}")
-    public Map<String, Object> removeItem(@RequestHeader(value = "Authorization", required = false) String authorization,
+    public Map<String, Object> removeItem(@RequiresModule(Modules.PAYROLL) SessionCtx ctx,
                                           @PathVariable("id") String id) {
-        return tax.removeItem(Requests.session(auth, authorization, Modules.PAYROLL), Requests.id(id));
+        return tax.removeItem(ctx, Requests.id(id));
     }
 
     @PostMapping("/me/tax/submit")
-    public Map<String, Object> submit(@RequestHeader(value = "Authorization", required = false) String authorization) {
-        return tax.submit(Requests.session(auth, authorization, Modules.PAYROLL));
+    public Map<String, Object> submit(@RequiresModule(Modules.PAYROLL) SessionCtx ctx) {
+        return tax.submit(ctx);
     }
 
     @PostMapping("/me/tax/items/{id}/proofs")
@@ -75,48 +76,48 @@ public class TaxController {
     }
 
     @DeleteMapping("/me/tax/items/{id}/proofs/{document}")
-    public Map<String, Object> removeProof(@RequestHeader(value = "Authorization", required = false) String authorization,
+    public Map<String, Object> removeProof(@RequiresModule(Modules.PAYROLL) SessionCtx ctx,
                                            @PathVariable("id") String id, @PathVariable("document") String document) {
-        return tax.removeProof(Requests.session(auth, authorization, Modules.PAYROLL), Requests.id(id), Requests.id(document));
+        return tax.removeProof(ctx, Requests.id(id), Requests.id(document));
     }
 
     // ── a proof file, for its owner or a reviewer ───────────────────────
 
     @GetMapping("/tax/proofs/{document}")
-    public ResponseEntity<byte[]> proof(@RequestHeader(value = "Authorization", required = false) String authorization,
+    public ResponseEntity<byte[]> proof(@RequiresModule(Modules.PAYROLL) SessionCtx ctx,
                                         @PathVariable("document") String document) {
-        return DocumentController.file(tax.proof(Requests.session(auth, authorization, Modules.PAYROLL), Requests.id(document)));
+        return DocumentController.file(tax.proof(ctx, Requests.id(document)));
     }
 
     // ── HR ──────────────────────────────────────────────────────────────
 
     @GetMapping("/payroll/tax")
-    public Map<String, Object> overview(@RequestHeader(value = "Authorization", required = false) String authorization,
+    public Map<String, Object> overview(@RequiresModule(Modules.PAYROLL) SessionCtx ctx,
                                         @RequestParam(value = "year", required = false) String year) {
-        return tax.overview(Requests.session(auth, authorization, Modules.PAYROLL), year);
+        return tax.overview(ctx, year);
     }
 
     @PutMapping("/payroll/tax/window")
-    public Map<String, Object> saveWindow(@RequestHeader(value = "Authorization", required = false) String authorization,
+    public Map<String, Object> saveWindow(@RequiresModule(Modules.PAYROLL) SessionCtx ctx,
                                           @RequestBody TaxDeclarations.WindowInput request) {
-        return tax.saveWindow(Requests.session(auth, authorization, Modules.PAYROLL), request);
+        return tax.saveWindow(ctx, request);
     }
 
     @GetMapping("/payroll/tax/employees/{id}")
-    public Map<String, Object> employee(@RequestHeader(value = "Authorization", required = false) String authorization,
+    public Map<String, Object> employee(@RequiresModule(Modules.PAYROLL) SessionCtx ctx,
                                         @PathVariable("id") String id, @RequestParam(value = "year", required = false) String year) {
-        return tax.employee(Requests.session(auth, authorization, Modules.PAYROLL), Requests.id(id), year);
+        return tax.employee(ctx, Requests.id(id), year);
     }
 
     @PostMapping("/payroll/tax/items/{id}/accept")
-    public Map<String, Object> accept(@RequestHeader(value = "Authorization", required = false) String authorization,
+    public Map<String, Object> accept(@RequiresModule(Modules.PAYROLL) SessionCtx ctx,
                                       @PathVariable("id") String id, @RequestBody TaxDeclarations.AcceptInput request) {
-        return tax.accept(Requests.session(auth, authorization, Modules.PAYROLL), Requests.id(id), request.amount());
+        return tax.accept(ctx, Requests.id(id), request.amount());
     }
 
     @PostMapping("/payroll/tax/items/{id}/return")
-    public Map<String, Object> returnProof(@RequestHeader(value = "Authorization", required = false) String authorization,
+    public Map<String, Object> returnProof(@RequiresModule(Modules.PAYROLL) SessionCtx ctx,
                                            @PathVariable("id") String id, @RequestBody TaxDeclarations.NoteInput request) {
-        return tax.returnProof(Requests.session(auth, authorization, Modules.PAYROLL), Requests.id(id), request.note());
+        return tax.returnProof(ctx, Requests.id(id), request.note());
     }
 }

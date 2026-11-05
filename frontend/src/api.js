@@ -135,12 +135,34 @@ export function uploadFile(path, file, onProgress) {
   })
 }
 
+/**
+ * Saves a Blob to the person's device. The address is freed a few seconds later, not at once: some browsers cancel the
+ * download if it is freed straight after the click.
+ */
+export function saveBlob(blob, name) {
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = name
+  a.click()
+  setTimeout(() => URL.revokeObjectURL(url), 10000)
+}
+
+/** fetch() that reports a lost connection the way the other calls do, instead of the browser's own message. */
+async function fetchOrNetworkError(url, init) {
+  try {
+    return await fetch(url, init)
+  } catch {
+    throw new ApiError('Cannot reach the server. Check your connection and try again.', 0, 'network')
+  }
+}
+
 /** Fetches a file the server sends as an attachment, as a Blob to show or save. */
 export async function fetchFile(path, retried = false) {
   const headers = {}
   const token = getToken()
   if (token) headers.Authorization = `Bearer ${token}`
-  const response = await fetch(`/api${path}`, { headers })
+  const response = await fetchOrNetworkError(`/api${path}`, { headers })
   if (!response.ok) {
     let data = {}
     try {
@@ -161,7 +183,7 @@ export async function postFile(path, body, retried = false) {
   const headers = { 'Content-Type': 'application/json' }
   const token = getToken()
   if (token) headers.Authorization = `Bearer ${token}`
-  const response = await fetch(`/api${path}`, { method: 'POST', headers, body: JSON.stringify(body) })
+  const response = await fetchOrNetworkError(`/api${path}`, { method: 'POST', headers, body: JSON.stringify(body) })
   if (!response.ok) {
     let data = {}
     try {
@@ -179,13 +201,7 @@ export async function postFile(path, body, retried = false) {
 
 /** Saves a document the server holds, such as a letter, to the person's device. */
 export async function downloadDocument(documentId, name) {
-  const blob = await fetchFile(`/org/people/documents/${documentId}/content`)
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = name
-  a.click()
-  setTimeout(() => URL.revokeObjectURL(url), 10000)
+  saveBlob(await fetchFile(`/org/people/documents/${documentId}/content`), name)
   return true
 }
 
@@ -699,13 +715,7 @@ export async function endSupportSession() {
 
 /** Saves a file the server makes on request (a register, a bank file, a payslip). */
 export async function downloadFile(path, name) {
-  const blob = await fetchFile(path)
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = name
-  a.click()
-  setTimeout(() => URL.revokeObjectURL(url), 10000)
+  saveBlob(await fetchFile(path), name)
   return true
 }
 
