@@ -12,6 +12,7 @@ import Bell from './Bell.jsx'
 import RegionBoundary from './RegionBoundary.jsx'
 import { PRODUCT, logoUrl } from './brand/brand.js'
 import NexvanceLogo from './brand/NexvanceLogo.jsx'
+import VersionLine from './VersionLine.jsx'
 import { NavIcon } from './icons.jsx'
 import { initials } from './initials.js'
 import { firstPage, navFor } from './nav.js'
@@ -104,7 +105,7 @@ function Shell({ me, nav, page, onNavigate, onSwitch, onSignOut, onEndSupport, c
             </div>
           ) : (
             <div className="brand">
-              <NexvanceLogo />
+              <NexvanceLogo size={36} />
             </div>
           )}
           {!logo && <div className="where where-under">{where}</div>}
@@ -136,6 +137,7 @@ function Shell({ me, nav, page, onNavigate, onSwitch, onSignOut, onEndSupport, c
           <a className="powered-by" href={PRODUCT.site} target="_blank" rel="noreferrer">
             {logo ? `Powered by ${PRODUCT.name}` : PRODUCT.tagline}
           </a>
+          <VersionLine className="sidebar-version" />
         </nav>
         <main className="main">
           <header className="topbar">
@@ -284,6 +286,7 @@ export default function App() {
   if (emailLink) {
     return (
       <main className="centered">
+        <div className="brand brand-sign-in"><NexvanceLogo size={40} /></div>
         <EmailLink
           kind={emailLink.kind}
           token={emailLink.token}
@@ -300,6 +303,7 @@ export default function App() {
   if (resetToken) {
     return (
       <main className="centered">
+        <div className="brand brand-sign-in"><NexvanceLogo size={40} /></div>
         <ResetPassword
           token={resetToken}
           onDone={() => {
@@ -315,6 +319,7 @@ export default function App() {
   if (inviteToken) {
     return (
       <main className="centered">
+        <div className="brand brand-sign-in"><NexvanceLogo size={40} /></div>
         <AcceptInvitation
           token={inviteToken}
           me={me}
@@ -330,7 +335,7 @@ export default function App() {
 
   if (!me) {
     return (
-      <main className="centered">
+      <main className="centered centered-wide">
         <LoginForm onSignedIn={setMe} />
       </main>
     )
@@ -339,6 +344,7 @@ export default function App() {
   if (me.kind === 'identity' || choosing) {
     return (
       <main className="centered">
+        <div className="brand brand-sign-in"><NexvanceLogo size={40} /></div>
         <Chooser
           me={me}
           onEntered={entered}

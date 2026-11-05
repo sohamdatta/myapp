@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" role="img" aria-label="Nexvance">
+<polygon points="128,36 208,82 208,174 128,220 48,174 48,82" fill="#262d55" stroke="#7480dc" stroke-width="10" stroke-linejoin="round"/>
+<circle cx="128" cy="26" r="13" fill="#8c9bff"/>
+<path d="M82 168V92l44 72V92" fill="none" stroke="#ffffff" stroke-width="18" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M138 92l20 74 30-76" fill="none" stroke="#8c9bff" stroke-width="18" stroke-linecap="round" stroke-linejoin="round"/></svg>

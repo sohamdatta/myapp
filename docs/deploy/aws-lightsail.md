@@ -248,8 +248,10 @@ night). Production is never deployed by a workflow: its SSH stays closed to the 
    cd ~/hrms
    git log -1 --format='%h %s'          # note what runs now, to roll back to
    git fetch origin && git checkout --detach <commit checked on UAT>
-   deploy/hrms.sh production build app
+   deploy/hrms.sh production build app web
    ```
+
+   Build both: `app` is the server, `web` holds the screens. Building only `app` leaves the old screens.
 
 3. **Dry run** the migrations with the new build, against production. It changes nothing:
 
@@ -270,7 +272,12 @@ night). Production is never deployed by a workflow: its SSH stays closed to the 
    ```
 
    The log shows Flyway applying the migrations from the dry run, then the app starting.
-5. Check: the site opens and you can sign in; open a screen the change touched.
+5. Check the version: the sign-in page footer (and the bottom of the sidebar once signed in) shows
+   `v<release> · <commit>`; it must match the commit you deployed (`git log -1 --format=%h`). The
+   server reports its own build at `https://<your domain>/api/version`; if the screens and the
+   server differ, the page shows "Update available, reload". Bump the release in `VERSION` when you
+   cut a release.
+6. Check the site opens and you can sign in; open a screen the change touched.
 
 **If it goes wrong**
 

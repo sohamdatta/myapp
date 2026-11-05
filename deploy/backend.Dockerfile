@@ -14,5 +14,10 @@ USER hrms
 # UTC for the JVM and its database sessions; the app works out India dates itself.
 ENV TZ=UTC \
     JAVA_TOOL_OPTIONS="-XX:MaxRAMPercentage=60 -Duser.timezone=UTC"
+# Which build this is: shown at /api/version (set by deploy/hrms.sh).
+ARG APP_VERSION=dev
+ARG APP_COMMIT=dev
+ARG APP_BUILT=
+ENV APP_VERSION=$APP_VERSION APP_COMMIT=$APP_COMMIT APP_BUILT=$APP_BUILT
 EXPOSE 8080
 ENTRYPOINT ["java", "-jar", "/app/app.jar"]

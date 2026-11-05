@@ -6,10 +6,10 @@
   --border: #e2e8f0;
   --border-strong: #cbd5e1;
   --row: #f8fafc;
-  --accent: #2563eb;
-  --accent-hover: #1d4ed8;
-  --accent-soft: #eff6ff;
-  --accent-text: #1d4ed8;
+  --accent: #5b4bf0;
+  --accent-hover: #4a3bd6;
+  --accent-soft: #eeeefc;
+  --accent-text: #4a3bd6;
   --on-accent: #ffffff;
   /* Orange draws the eye to what needs someone: counts of things to decide, late, blocking. */
   --attention: #ea580c;
@@ -44,10 +44,10 @@
     --border: #1e293b;
     --border-strong: #334155;
     --row: #152036;
-    --accent: #60a5fa;
-    --accent-hover: #93c5fd;
-    --accent-soft: #172554;
-    --accent-text: #93c5fd;
+    --accent: #8c9bff;
+    --accent-hover: #a5b0ff;
+    --accent-soft: #1e1b4b;
+    --accent-text: #c7cdff;
     --on-accent: #0b1220;
     --attention: #fb923c;
     --attention-soft: #fdba74;
@@ -257,11 +257,20 @@ a:focus-visible,
   border-color: var(--border-strong);
 }
 
+/* Disabled: a flat grey that is still readable, never a faded copy of the live colour. */
 .primary:disabled,
-.secondary:disabled,
+.secondary:disabled {
+  color: var(--muted);
+  background: var(--border);
+  border-color: var(--border);
+  cursor: not-allowed;
+}
+
 .outline:disabled,
 .quiet:disabled {
-  opacity: 0.6;
+  color: var(--muted);
+  background: var(--neutral-bg);
+  border-color: var(--border);
   cursor: not-allowed;
 }
 
@@ -384,27 +393,6 @@ td .hint {
   display: flex;
   align-items: center;
   gap: 10px;
-}
-
-.brand-mark {
-  flex: none;
-  width: 30px;
-  height: 30px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: 600;
-  color: var(--on-accent);
-  background: linear-gradient(135deg, var(--accent), var(--accent-hover));
-  border-radius: 8px;
-  box-shadow:
-    var(--shadow-sm),
-    inset 0 1px 0 rgb(255 255 255 / 0.18);
-}
-
-.brand-name {
-  font-size: 1.2rem;
-  font-weight: 600;
 }
 
 .card {
@@ -1384,7 +1372,9 @@ td.never {
 }
 
 .danger-outline:disabled {
-  opacity: 0.6;
+  color: var(--muted);
+  background: var(--neutral-bg);
+  border-color: var(--border);
   cursor: not-allowed;
 }
 
@@ -4173,32 +4163,6 @@ textarea.code {
 }
 
 /* ── brand ──────────────────────────────────────────────────────────── */
-.nexvance-logo {
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
-}
-.nexvance-words {
-  display: flex;
-  flex-direction: column;
-  line-height: 1.05;
-}
-.nexvance-name {
-  font-weight: 700;
-  letter-spacing: 0.14em;
-  font-size: 1.02rem;
-}
-.nexvance-sub {
-  font-size: 0.78rem;
-  color: var(--muted);
-  letter-spacing: 0.02em;
-}
-.brand-sign-in .nexvance-name {
-  font-size: 1.35rem;
-}
-.brand-sign-in .nexvance-sub {
-  font-size: 0.9rem;
-}
 .brand-org {
   flex-direction: column;
   align-items: flex-start;
@@ -4285,3 +4249,149 @@ textarea.code {
 .usage-spark .spark-none {
   fill: var(--border, #cbd5e1);
 }
+
+/* ── sign-in: brand panel beside the card ──────────────────────────── */
+.centered-wide {
+  padding: 0;
+}
+.signin-shell {
+  width: 100%;
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr);
+}
+.signin-side {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  padding: 32px 16px;
+}
+.signin-logo-small {
+  display: none;
+}
+.signin-hero {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 28px;
+  padding: 56px clamp(32px, 6vw, 88px);
+  overflow: hidden;
+  color: #fff;
+  background:
+    radial-gradient(520px 420px at 90% 0%, rgb(140 155 255 / 0.22), transparent 65%),
+    linear-gradient(145deg, #1c203e 0%, #272d5c 100%);
+}
+.signin-hero::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image: radial-gradient(rgb(255 255 255 / 0.12) 1px, transparent 1px);
+  background-size: 22px 22px;
+  mask-image: linear-gradient(to bottom right, transparent 35%, #000);
+}
+.signin-hero > * {
+  position: relative;
+  z-index: 1;
+}
+.signin-hero .signin-headline {
+  margin: 0;
+  max-width: 16ch;
+  font-size: clamp(1.9rem, 3.2vw, 2.8rem);
+  line-height: 1.12;
+  letter-spacing: -0.02em;
+  color: #fff;
+}
+.signin-points {
+  display: grid;
+  gap: 18px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  max-width: 460px;
+}
+.signin-points li {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+}
+.signin-points li > span:last-child {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 0.92rem;
+  color: rgb(255 255 255 / 0.82);
+}
+.signin-points strong {
+  font-size: 1rem;
+  color: #fff;
+}
+.signin-tick {
+  flex: none;
+  width: 26px;
+  height: 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  font-size: 0.8rem;
+  background: rgb(255 255 255 / 0.18);
+  border: 1px solid rgb(255 255 255 / 0.35);
+}
+.signin-foot {
+  margin: 0;
+  font-size: 0.8rem;
+  color: rgb(255 255 255 / 0.65);
+}
+.signin-side .card {
+  max-width: 420px;
+}
+.signin-side .card h1 {
+  font-size: 1.6rem;
+  letter-spacing: -0.01em;
+}
+@media (max-width: 860px) {
+  .signin-shell {
+    grid-template-columns: 1fr;
+  }
+  .signin-hero {
+    display: none;
+  }
+  .signin-logo-small {
+    display: flex;
+  }
+  .signin-side {
+    min-height: 100vh;
+  }
+}
+.signin-side .card > button.link {
+  position: static;
+  display: block;
+  margin: 14px auto 0;
+}
+.nexvance-logo { display: block; max-width: 100%; height: auto; }
+
+/* ── sign-in polish ───────────────────────────────────────────────── */
+.signin-hero .signin-headline { font-weight: 600; max-width: 18ch; }
+.signin-points { gap: 0; max-width: 480px; }
+.signin-points li { padding: 18px 0; border-top: 1px solid rgb(255 255 255 / 0.12); }
+.signin-points li:last-child { border-bottom: 1px solid rgb(255 255 255 / 0.12); }
+.signin-tick { width: 32px; height: 32px; border-radius: 8px; background: rgb(140 155 255 / 0.16); border: 1px solid rgb(140 155 255 / 0.4); color: #c7cdff; }
+.signin-tick svg { width: 16px; height: 16px; }
+.signin-side { background: var(--card); }
+.signin-side .card { border: none; box-shadow: none; padding: 8px 0 24px; max-width: 380px; background: transparent; }
+.signin-side .card h1 { font-size: 1.75rem; margin-bottom: 4px; }
+.signin-side .card input { height: 44px; }
+.signin-side .card button.primary { height: 46px; font-size: 1rem; }
+.signin-side > p.muted { max-width: 380px; padding-top: 16px; border-top: 1px solid var(--border); font-size: 0.88rem; }
+@media (max-width: 860px) { .signin-side { background: var(--card); } }
+
+.version-line { font-size: 0.75rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+.sidebar-version { display: block; padding: 4px 8px 0; }
+.signin-foot .version-line { color: rgb(255 255 255 / 0.65); }
+.version-reload { padding: 0; font: inherit; color: var(--accent-text); background: none; border: none; text-decoration: underline; cursor: pointer; }
+.signin-version-mobile { display: none; }
+@media (max-width: 860px) { .signin-version-mobile { display: block; } }

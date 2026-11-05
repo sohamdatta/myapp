@@ -9,6 +9,10 @@ services:
     build:
       context: ..
       dockerfile: deploy/backend.Dockerfile
+      args: &version_args
+        APP_VERSION: ${HRMS_VERSION:-dev}
+        APP_COMMIT: ${HRMS_COMMIT:-dev}
+        APP_BUILT: ${HRMS_BUILT:-}
     # deploy/hrms.sh sets HRMS_ENV_FILE to env/<environment>.env.
     env_file: ${HRMS_ENV_FILE:-.env}
     restart: unless-stopped
@@ -27,6 +31,7 @@ services:
     build:
       context: ..
       dockerfile: deploy/web.Dockerfile
+      args: *version_args
     environment:
       DOMAIN: ${DOMAIN:?Set DOMAIN in the environment's settings file (deploy/env/<environment>.env)}
       DEVICE_PORT: ${DEVICE_PORT:-8081}

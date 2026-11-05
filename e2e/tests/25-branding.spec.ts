@@ -23,7 +23,7 @@ test.describe.serial('branding', () => {
     await page.goto('/');
     await expect(page).toHaveTitle('Nexvance HRMS');
     await expect(page.getByRole('img', { name: 'Nexvance Solutions' })).toBeVisible();
-    await expect(page.getByText("Advancing What's Next")).toBeVisible();
+    await expect(page.getByText('People operations, made simple for India.')).toBeVisible();
     await shot(page, 'brand-01-sign-in');
     await context.close();
 
