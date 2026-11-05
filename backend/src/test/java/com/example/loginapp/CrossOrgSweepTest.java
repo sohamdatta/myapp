@@ -257,7 +257,7 @@ class CrossOrgSweepTest {
 
     private Org seed(SessionCtx superAdmin, String slug) {
         String adminEmail = "admin@" + slug + ".test";
-        Map<String, Object> created = platform.createOrganization(superAdmin, "Org " + slug, slug, "growth", adminEmail);
+        Map<String, Object> created = platform.createOrganization(superAdmin, "Org " + slug, slug, adminEmail);
         String token = invitations.accept((String) created.get("invitationToken"), PASSWORD, null);
         SessionCtx admin = auth.resolve(token);
         UUID tenant = UUID.fromString((String) created.get("id"));

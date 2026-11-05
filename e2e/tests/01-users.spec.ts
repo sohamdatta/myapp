@@ -29,7 +29,6 @@ test.describe.serial('users and access', () => {
 
     await admin.fill('#org-name', ORG);
     await expect(admin.locator('#org-slug')).toHaveValue('globex-ltd');
-    await admin.selectOption('#org-plan', 'growth');
     await admin.fill('#org-admin', OWNER);
     await shot(admin, '02-console-create');
     await admin.click('text=Create and invite');

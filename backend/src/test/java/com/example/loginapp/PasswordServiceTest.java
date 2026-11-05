@@ -88,7 +88,7 @@ class PasswordServiceTest {
     private String owner() {
         String slug = "pw-" + SEQ.incrementAndGet();
         String email = "owner@" + slug + ".test";
-        Map<String, Object> created = platform.createOrganization(superAdmin, "Org " + slug, slug, "growth", email);
+        Map<String, Object> created = platform.createOrganization(superAdmin, "Org " + slug, slug, email);
         new InvitationService(db, limits).accept((String) created.get("invitationToken"), PASSWORD, null);
         return email;
     }

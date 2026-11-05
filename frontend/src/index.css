@@ -3619,11 +3619,52 @@ textarea.code {
 
 .module-row {
   display: grid;
-  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) 10rem 12rem;
   gap: 16px;
-  align-items: end;
+  align-items: center;
   padding-bottom: 12px;
   border-bottom: 1px solid var(--border);
+}
+
+.module-row label {
+  margin-bottom: 4px;
+  font-size: 0.86rem;
+  color: var(--muted);
+}
+
+.module-row input {
+  margin-bottom: 0;
+}
+
+.module-row .form-actions {
+  justify-content: flex-start;
+  flex-wrap: nowrap;
+}
+
+.module-row .form-actions button {
+  white-space: nowrap;
+}
+
+td.org-cell {
+  min-width: 10rem;
+}
+
+td.org-cell .hint {
+  white-space: nowrap;
+}
+
+.detail-row td {
+  padding: 16px 20px;
+}
+
+.detail-row .module-editor {
+  max-width: 56rem;
+}
+
+@media (min-width: 761px) {
+  .org-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 720px) {
@@ -4395,3 +4436,8 @@ textarea.code {
 .version-reload { padding: 0; font: inherit; color: var(--accent-text); background: none; border: none; text-decoration: underline; cursor: pointer; }
 .signin-version-mobile { display: none; }
 @media (max-width: 860px) { .signin-version-mobile { display: block; } }
+
+.licence-note { font-size: 0.85rem; color: var(--muted); margin-right: 12px; }
+.licence-full { color: var(--error); font-weight: 600; }
+
+td.licence-cell { white-space: nowrap; }

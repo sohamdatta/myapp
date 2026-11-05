@@ -77,7 +77,7 @@ class SignInLimitsTest {
     private static String owner(InvitationService invitations) {
         String slug = "limits-" + SEQ.incrementAndGet();
         String email = "owner@" + slug + ".test";
-        Map<String, Object> created = platform.createOrganization(superAdmin, "Org " + slug, slug, "growth", email);
+        Map<String, Object> created = platform.createOrganization(superAdmin, "Org " + slug, slug, email);
         invitations.accept((String) created.get("invitationToken"), PASSWORD, null);
         return email;
     }
@@ -144,7 +144,7 @@ class SignInLimitsTest {
         String email = owner(invitations);
         // a second Organization invites the same person: they already have an account, so accepting asks for its password
         String slug = "limits-second-" + SEQ.incrementAndGet();
-        Map<String, Object> created = platform.createOrganization(superAdmin, "Org " + slug, slug, "growth", email);
+        Map<String, Object> created = platform.createOrganization(superAdmin, "Org " + slug, slug, email);
         String link = (String) created.get("invitationToken");
         for (int i = 0; i < 5; i++) {
             assertEquals("invitation.email_mismatch", refusal(() -> invitations.accept(link, "wrong-password", null, "10.1.1.1")).code());

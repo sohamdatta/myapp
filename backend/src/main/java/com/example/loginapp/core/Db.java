@@ -172,6 +172,10 @@ public final class Db {
         if (state.equals("42501")) {
             return new ApiException(403, "permission.denied", "This action is not allowed");
         }
+        if (state.equals("P0001") && message.contains("employee licence limit")) {
+            return new ApiException(409, "licence.limit",
+                    "All of this Organization's employee licences are in use. Ask Nexvance to add more licences, or end an employee first");
+        }
         if (state.equals("P0001")) {
             String first = message.lines().findFirst().orElse(message).replaceFirst("^ERROR:\\s*", "");
             return new ApiException(409, "request.refused", first);

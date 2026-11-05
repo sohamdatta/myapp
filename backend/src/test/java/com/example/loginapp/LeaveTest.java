@@ -674,7 +674,7 @@ class LeaveTest {
     private static Org newOrg() {
         String slug = "leave-" + SEQUENCE.incrementAndGet();
         String adminEmail = "admin@" + slug + ".test";
-        Map<String, Object> created = platform.createOrganization(superAdmin, "Org " + slug, slug, "growth", adminEmail);
+        Map<String, Object> created = platform.createOrganization(superAdmin, "Org " + slug, slug, adminEmail);
         String token = invitations.accept((String) created.get("invitationToken"), PASSWORD, null);
         return new Org(UUID.fromString((String) created.get("id")), slug, adminEmail, auth.resolve(token));
     }

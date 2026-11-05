@@ -233,7 +233,7 @@ class EmployeeImportTest {
 
     private static Org newOrg() {
         String slug = "import-" + SEQUENCE.incrementAndGet();
-        Map<String, Object> created = platform.createOrganization(superAdmin, "Org " + slug, slug, "growth", "admin@" + slug + ".test");
+        Map<String, Object> created = platform.createOrganization(superAdmin, "Org " + slug, slug, "admin@" + slug + ".test");
         return new Org(UUID.fromString((String) created.get("id")), slug,
                 auth.resolve(invitations.accept((String) created.get("invitationToken"), PASSWORD, null)));
     }

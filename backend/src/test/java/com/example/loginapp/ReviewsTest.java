@@ -240,7 +240,7 @@ class ReviewsTest {
     /** HR, a manager, the worker (with two agreed goals, 60% and 40%) and a colleague; with competencies when asked. */
     private static Setup setup(boolean competencies) {
         String slug = "rev-" + SEQUENCE.incrementAndGet();
-        Map<String, Object> created = platform.createOrganization(superAdmin, "Org " + slug, slug, "growth", "admin@" + slug + ".test");
+        Map<String, Object> created = platform.createOrganization(superAdmin, "Org " + slug, slug, "admin@" + slug + ".test");
         SessionCtx admin = auth.resolve(invitations.accept((String) created.get("invitationToken"), PASSWORD, null));
         Org org = new Org(UUID.fromString((String) created.get("id")), slug, admin);
         SessionCtx hr = join(org, "hr", List.of("hr_admin", "employee"));

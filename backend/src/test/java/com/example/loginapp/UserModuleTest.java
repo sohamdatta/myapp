@@ -411,10 +411,10 @@ class UserModuleTest {
     void platformRolesAreChecked() {
         Org org = newOrg();
         assertError(403, "permission.denied", () -> platform.organizations(org.admin));
-        assertError(403, "permission.denied", () -> platform.createOrganization(org.admin, "X", "xxx", "essential", "a@b.test"));
+        assertError(403, "permission.denied", () -> platform.createOrganization(org.admin, "X", "xxx", "a@b.test"));
         assertError(409, "request.refused", () -> platform.setPlatformUserStatus(superAdmin, superAdmin.platformUserId(), false));
-        assertError(409, "tenant.slug_taken", () -> platform.createOrganization(superAdmin, "Copy", org.slug, "essential", "a@b.test"));
-        assertError(400, "request.invalid", () -> platform.createOrganization(superAdmin, "Bad", "Not A Slug", "essential", "a@b.test"));
+        assertError(409, "tenant.slug_taken", () -> platform.createOrganization(superAdmin, "Copy", org.slug, "a@b.test"));
+        assertError(400, "request.invalid", () -> platform.createOrganization(superAdmin, "Bad", "Not A Slug", "a@b.test"));
     }
 
     // ── helpers ─────────────────────────────────────────────────────────
@@ -430,7 +430,7 @@ class UserModuleTest {
         assertEquals(java.util.Set.of("attendance", "leave", "payroll"), all.admin().modules());
 
         String slug = "mod-" + SEQUENCE.incrementAndGet();
-        Map<String, Object> created = platform.createOrganization(superAdmin, "Payroll only " + slug, slug, "growth",
+        Map<String, Object> created = platform.createOrganization(superAdmin, "Payroll only " + slug, slug,
                 "admin@" + slug + ".test", List.of("payroll"));
         UUID id = UUID.fromString((String) created.get("id"));
         String token = invitations.accept((String) created.get("invitationToken"), PASSWORD, null);
@@ -469,7 +469,7 @@ class UserModuleTest {
         assertError(400, "request.invalid", () -> platform.setModule(superAdmin, id, "attendance", true, "next week"));
         assertError(404, "not_found", () -> platform.setModule(superAdmin, UUID.randomUUID(), "payroll", true, null));
         assertError(403, "permission.denied", () -> platform.setModule(admin, id, "attendance", true, null));
-        assertError(400, "request.invalid", () -> platform.createOrganization(superAdmin, "Bad", "bad-" + slug, "growth",
+        assertError(400, "request.invalid", () -> platform.createOrganization(superAdmin, "Bad", "bad-" + slug,
                 "a@bad-" + slug + ".test", List.of("chess")));
         List<String> actions = db.inOwner(c -> Sql.query(c, "select action from platform.platform_audit where target_id = ?", id))
                 .stream().map(r -> (String) r.get("action")).toList();
@@ -480,7 +480,7 @@ class UserModuleTest {
     void leaveIsAModuleOfItsOwnApartFromAttendance() {
         // The free plan: Core HR with Leave, and neither Attendance nor Payroll.
         String slug = "leave-" + SEQUENCE.incrementAndGet();
-        Map<String, Object> created = platform.createOrganization(superAdmin, "Leave only " + slug, slug, "essential",
+        Map<String, Object> created = platform.createOrganization(superAdmin, "Leave only " + slug, slug,
                 "admin@" + slug + ".test", List.of("leave"));
         UUID id = UUID.fromString((String) created.get("id"));
         String token = invitations.accept((String) created.get("invitationToken"), PASSWORD, null);
@@ -522,7 +522,7 @@ class UserModuleTest {
     private static Org newOrg() {
         String slug = "org-" + SEQUENCE.incrementAndGet();
         String adminEmail = "admin@" + slug + ".test";
-        Map<String, Object> created = platform.createOrganization(superAdmin, "Org " + slug, slug, "growth", adminEmail);
+        Map<String, Object> created = platform.createOrganization(superAdmin, "Org " + slug, slug, adminEmail);
         assertEquals("provisioning", created.get("status"));
         String token = invitations.accept((String) created.get("invitationToken"), PASSWORD, null);
         return new Org(UUID.fromString((String) created.get("id")), slug, adminEmail, token, auth.resolve(token));

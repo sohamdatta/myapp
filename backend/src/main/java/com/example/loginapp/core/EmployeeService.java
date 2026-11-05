@@ -289,6 +289,21 @@ public final class EmployeeService {
         return db.inTenant(ctx.tenantId(), c -> insert(c, ctx, k));
     }
 
+    /** How many employee licences the Organization has bought (null: no limit) and how many are in use. */
+    public Licence licence(SessionCtx ctx) {
+        ctx.require("employee.read");
+        return db.inTenant(ctx.tenantId(), c -> {
+            Map<String, Object> row = Sql.one(c, "select licensed, used from app.employee_licence()");
+            if (row == null) {
+                return new Licence(null, 0);
+            }
+            return new Licence(row.get("licensed") == null ? null : ((Number) row.get("licensed")).intValue(), ((Number) row.get("used")).longValue());
+        });
+    }
+
+    /** Employee licences bought (null: no limit) and employees joining or working now. */
+    public record Licence(Integer licensed, long used) {}
+
     /** Checks a new employee's details without touching the database; a problem is thrown as an ApiException. */
     static Checked check(NewEmployee in) {
         String legalName = required(in.legalName(), "the full name as on PAN", 120);

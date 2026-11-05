@@ -88,7 +88,7 @@ class BrandingTest {
     @Test
     void theOrgAdminSetsALogoThatIsRedrawnServedAndRemoved() throws Exception {
         String slug = "brand-" + SEQUENCE.incrementAndGet();
-        Map<String, Object> created = platform.createOrganization(superAdmin, "Org " + slug, slug, "growth", "admin@" + slug + ".test");
+        Map<String, Object> created = platform.createOrganization(superAdmin, "Org " + slug, slug, "admin@" + slug + ".test");
         SessionCtx admin = auth.resolve(invitations.accept((String) created.get("invitationToken"), PASSWORD, null));
         UUID tenant = UUID.fromString((String) created.get("id"));
         String invitation = (String) users.invite(admin, "hr@" + slug + ".test", List.of("hr_admin", "employee")).get("token");

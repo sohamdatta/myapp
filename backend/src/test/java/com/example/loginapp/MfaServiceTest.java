@@ -110,7 +110,7 @@ class MfaServiceTest {
     private String owner() {
         String slug = "mfa-" + SEQ.incrementAndGet();
         String email = "owner@" + slug + ".test";
-        Map<String, Object> created = platform.createOrganization(superAdmin, "Org " + slug, slug, "growth", email);
+        Map<String, Object> created = platform.createOrganization(superAdmin, "Org " + slug, slug, email);
         new InvitationService(db, limits).accept((String) created.get("invitationToken"), PASSWORD, null);
         return email;
     }
@@ -297,7 +297,7 @@ class MfaServiceTest {
         String email = owner();
         enrol(email);
         String slug = "mfa-second-" + SEQ.incrementAndGet();
-        Map<String, Object> created = platform.createOrganization(superAdmin, "Org " + slug, slug, "growth", email);
+        Map<String, Object> created = platform.createOrganization(superAdmin, "Org " + slug, slug, email);
         InvitationService invitations = new InvitationService(db, limits);
         String link = (String) created.get("invitationToken");
         ApiException e = refusal(() -> invitations.accept(link, PASSWORD, null, "10.5.5.5"));

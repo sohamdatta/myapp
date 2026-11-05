@@ -4,20 +4,83 @@ import { formatDate, formatDay, useAction, useLoad } from '../hooks.js'
 import { Badge, CopyLink, Empty, ErrorNote, StatusBadge } from '../ui.jsx'
 import { useConfirm } from '../feedbackContext.js'
 
-const PLAN_NAMES = { essential: 'Essential', growth: 'Growth', professional: 'Professional', enterprise: 'Enterprise' }
 
 /** The add-ons an Organization can buy. Core HR is always included. */
 const MODULES = [
-  { id: 'attendance', label: 'Attendance', about: 'punching, devices, the daily board and work from home' },
-  { id: 'leave', label: 'Leave', about: 'balances, leave requests, who is away and the leave year' },
+  { id: 'attendance_leave', label: 'Attendance & Leave', about: 'punching, devices, the daily board, work from home, balances, leave requests and the leave year' },
   { id: 'payroll', label: 'Payroll', about: 'salaries, monthly runs, statutory deductions and payslips' },
 ]
 const ALL_MODULES = MODULES.map((m) => m.id)
 
+const BOTH = 'attendance_leave'
+
+/**
+ * Attendance and Leave are sold as one thing; each still works alone underneath. The editor always shows the pair as one
+ * row. It reads as on only when both are on; if just one is on (an older arrangement) it reads as off, so saving turns on both.
+ */
+function paired(modules) {
+  const att = modules.find((m) => m.module === 'attendance')
+  const lv = modules.find((m) => m.module === 'leave')
+  if (!att || !lv) return modules
+  const both = att.status === 'on' && lv.status === 'on'
+  const merged = {
+    module: BOTH,
+    name: 'Attendance & Leave',
+    status: both ? 'on' : 'off',
+    trialEndsOn: att.trialEndsOn || lv.trialEndsOn || null,
+    active: att.active && lv.active,
+    onlyOne: !both && (att.status === 'on' || lv.status === 'on') ? (att.status === 'on' ? 'Attendance' : 'Leave') : null,
+  }
+  return [merged, ...modules.filter((m) => m.module !== 'attendance' && m.module !== 'leave')]
+}
+
+/** What the list shows: the pair as one badge when both are working, otherwise each module as it is. */
+function shown(modules) {
+  const att = modules.find((m) => m.module === 'attendance')
+  const lv = modules.find((m) => m.module === 'leave')
+  return att?.active && lv?.active ? paired(modules) : modules
+}
+/** The employee licences an Organization has bought; empty means no limit. Cannot go below the employees already in use. */
+function LicenceEditor({ org, onSaved }) {
+  const { busy, error, run } = useAction()
+  const [value, setValue] = useState(org.licensedEmployees == null ? '' : String(org.licensedEmployees))
+
+  async function save(event) {
+    event.preventDefault()
+    const trimmed = value.trim()
+    const done = await run(() => platform.setLicences(org.id, trimmed === '' ? null : Number(trimmed)))
+    if (done) onSaved()
+  }
+
+  return (
+    <form className="module-editor" onSubmit={save} noValidate>
+      <div className="module-row">
+        <div>
+          <strong>Employee licences</strong>
+          <div className="hint">
+            {org.employeesUsed} employee{org.employeesUsed === 1 ? '' : 's'} joining or working now. Past the limit, adding or importing
+            employees is refused. Leave empty for no limit.
+          </div>
+        </div>
+        <div>
+          <label htmlFor={`licences-${org.id}`}>Licences</label>
+          <input id={`licences-${org.id}`} type="number" min="1" step="1" inputMode="numeric" value={value} onChange={(e) => setValue(e.target.value)} />
+        </div>
+        <div className="form-actions">
+          <button type="submit" className="outline" disabled={busy} aria-label="Save licences">
+            Save
+          </button>
+        </div>
+      </div>
+      <ErrorNote>{error}</ErrorNote>
+    </form>
+  )
+}
+
 /** Switches an Organization's modules on (optionally for a trial) or off. Off hides; it deletes nothing. */
 function ModuleEditor({ org, onSaved }) {
   const { busy, error, run } = useAction()
-  const [trials, setTrials] = useState(() => Object.fromEntries(org.modules.map((m) => [m.module, m.trialEndsOn || ''])))
+  const [trials, setTrials] = useState(() => Object.fromEntries(paired(org.modules).map((m) => [m.module, m.trialEndsOn || ''])))
 
   async function save(module, on) {
     const done = await run(() => platform.setModule(org.id, { module, on, trialEndsOn: on ? trials[module] || null : null }))
@@ -26,17 +89,18 @@ function ModuleEditor({ org, onSaved }) {
 
   return (
     <div className="module-editor">
-      {org.modules.map((m) => {
+      {paired(org.modules).map((m) => {
         const about = MODULES.find((x) => x.id === m.module)
         return (
           <div key={m.module} className="module-row">
             <div>
               <strong>{m.name}</strong> {m.active ? <Badge tone="good">on</Badge> : <Badge>off</Badge>}
               {m.status === 'on' && !m.active && <Badge tone="warn">trial ended</Badge>}
+              {m.onlyOne && <Badge tone="warn">only {m.onlyOne} is on</Badge>}
               <div className="hint">{about?.about}</div>
             </div>
             <div>
-              <label htmlFor={`trial-${org.id}-${m.module}`}>Trial until (optional)</label>
+              <label htmlFor={`trial-${org.id}-${m.module}`}>Trial until</label>
               <input
                 id={`trial-${org.id}-${m.module}`}
                 type="date"
@@ -45,8 +109,14 @@ function ModuleEditor({ org, onSaved }) {
               />
             </div>
             <div className="form-actions">
-              <button type="button" className="secondary" disabled={busy} onClick={() => save(m.module, true)}>
-                {m.active ? `Save ${m.name}` : `Switch on ${m.name}`}
+              <button
+                type="button"
+                className="outline"
+                disabled={busy}
+                aria-label={m.active ? `Save ${m.name}` : `Switch on ${m.name}`}
+                onClick={() => save(m.module, true)}
+              >
+                {m.active ? 'Save' : 'Switch on'}
               </button>
               {m.status === 'on' && (
                 <button type="button" className="quiet danger" disabled={busy} onClick={() => save(m.module, false)}>
@@ -59,11 +129,17 @@ function ModuleEditor({ org, onSaved }) {
       })}
       <p className="hint">
         Switching a module off hides its screens and refuses its requests at once; its records stay and come back when it is switched on.
-        Without a trial date a module stays on until switched off.
+        A trial date is optional: without one a module stays on until switched off.
       </p>
       <ErrorNote>{error}</ErrorNote>
     </div>
   )
+}
+
+/** Closes the row-actions menu once an action is chosen. */
+const shut = (e) => {
+  const menu = e.currentTarget.closest('details')
+  if (menu) menu.open = false
 }
 
 function slugFrom(name) {
@@ -76,7 +152,7 @@ function slugFrom(name) {
 
 function OrganizationsTab({ me }) {
   const orgs = useLoad(platform.organizations)
-  const [form, setForm] = useState({ name: '', slug: '', plan: 'essential', adminEmail: '', modules: ALL_MODULES })
+  const [form, setForm] = useState({ name: '', slug: '', adminEmail: '', modules: ALL_MODULES, licensedEmployees: '' })
   const [editing, setEditing] = useState(null)
   const [slugEdited, setSlugEdited] = useState(false)
   const [issued, setIssued] = useState(null)
@@ -91,10 +167,12 @@ function OrganizationsTab({ me }) {
 
   async function create(event) {
     event.preventDefault()
-    const created = await run(() => platform.createOrganization(form))
+    const created = await run(() =>
+      platform.createOrganization({ ...form, licensedEmployees: form.licensedEmployees.trim() === '' ? null : Number(form.licensedEmployees) }),
+    )
     if (created) {
       setIssued({ email: created.invitationEmail, link: invitationLink(created.invitationToken) })
-      setForm({ name: '', slug: '', plan: 'essential', adminEmail: '', modules: ALL_MODULES })
+      setForm({ name: '', slug: '', adminEmail: '', modules: ALL_MODULES, licensedEmployees: '' })
       setSlugEdited(false)
       orgs.reload()
     }
@@ -133,7 +211,7 @@ function OrganizationsTab({ me }) {
       {isSuperAdmin && (
         <form className="panel" onSubmit={create} noValidate>
           <h2>Create an Organization</h2>
-          <div className="grid">
+          <div className="grid org-grid">
             <div>
               <label htmlFor="org-name">Name</label>
               <input id="org-name" value={form.name} onChange={(e) => setName(e.target.value)} />
@@ -154,13 +232,20 @@ function OrganizationsTab({ me }) {
               </p>
             </div>
             <div>
-              <label htmlFor="org-plan">Plan</label>
-              <select id="org-plan" value={form.plan} onChange={(e) => setForm((f) => ({ ...f, plan: e.target.value }))}>
-                <option value="essential">Essential</option>
-                <option value="growth">Growth</option>
-                <option value="professional">Professional</option>
-                <option value="enterprise">Enterprise</option>
-              </select>
+              <label htmlFor="org-licences">Employee licences</label>
+              <input
+                id="org-licences"
+                type="number"
+                min="1"
+                step="1"
+                inputMode="numeric"
+                aria-describedby="org-licences-hint"
+                value={form.licensedEmployees}
+                onChange={(e) => setForm((f) => ({ ...f, licensedEmployees: e.target.value }))}
+              />
+              <p id="org-licences-hint" className="hint">
+                How many employees they bought. Empty: no limit.
+              </p>
             </div>
             <div>
               <label htmlFor="org-admin">First Org Admin's email</label>
@@ -214,27 +299,26 @@ function OrganizationsTab({ me }) {
             <thead>
               <tr>
                 <th>Name</th>
-                <th>Plan</th>
                 <th>Modules</th>
+                <th>Licences</th>
                 <th>Status</th>
-                <th>Active users</th>
-                <th>Pending invitations</th>
+                <th className="num">Users</th>
+                <th className="num">Invitations</th>
                 <th aria-label="Actions" />
               </tr>
             </thead>
             <tbody>
               {orgs.data.map((o) => (
                 <Fragment key={o.id}>
-                <tr>
-                  <td>
+                <tr className={editing === o.id ? 'row-current' : undefined}>
+                  <td className="org-cell">
                     {o.name}
                     <div className="hint">{o.slug}</div>
                   </td>
-                  <td>{PLAN_NAMES[o.planCode] || o.planCode}</td>
                   <td>
                     <div className="module-badges">
                       <Badge>Core HR</Badge>
-                      {o.modules
+                      {shown(o.modules)
                         .filter((m) => m.active)
                         .map((m) => (
                           <Badge key={m.module} tone="good">
@@ -242,27 +326,40 @@ function OrganizationsTab({ me }) {
                           </Badge>
                         ))}
                     </div>
-                    {o.modules
+                    {shown(o.modules)
                       .filter((m) => m.active && m.trialEndsOn)
                       .map((m) => (
                         <div key={m.module} className="hint">
                           {m.name} trial until {formatDay(m.trialEndsOn)}
                         </div>
                       ))}
-                    {o.modules
+                    {shown(o.modules)
                       .filter((m) => m.status === 'on' && !m.active)
                       .map((m) => (
-                        <div key={m.module} className="hint">
-                          {m.name} trial ended
+                        <div key={m.module}>
+                          <Badge tone="warn">{m.name} trial ended</Badge>
                         </div>
                       ))}
+                  </td>
+                  <td className="licence-cell">
+                    {o.licensedEmployees == null ? (
+                      <>
+                        No limit
+                        <div className="hint">{o.employeesUsed} in use</div>
+                      </>
+                    ) : (
+                      <>
+                        {o.employeesUsed} of {o.licensedEmployees}
+                        {o.employeesUsed >= o.licensedEmployees && <div className="hint warn">Full</div>}
+                      </>
+                    )}
                   </td>
                   <td>
                     <StatusBadge status={o.status} />
                     {o.status === 'provisioning' && <div className="hint">Awaiting Org Admin</div>}
                   </td>
-                  <td>{o.activeMembers}</td>
-                  <td>{o.pendingInvitations}</td>
+                  <td className="num">{o.activeMembers}</td>
+                  <td className="num">{o.pendingInvitations}</td>
                   <td className="actions">
                     {canChangeModules && o.status !== 'closed' && (
                       <button
@@ -271,34 +368,40 @@ function OrganizationsTab({ me }) {
                         aria-expanded={editing === o.id}
                         onClick={() => setEditing(editing === o.id ? null : o.id)}
                       >
-                        {editing === o.id ? 'Hide modules' : 'Modules'}
-                      </button>
-                    )}
-                    {isSuperAdmin && o.status === 'provisioning' && (
-                      <button type="button" className="quiet" disabled={busy} onClick={() => reinvite(o)}>
-                        New invitation
-                      </button>
-                    )}
-                    {isSuperAdmin && o.status === 'active' && (
-                      <button type="button" className="quiet" disabled={busy} onClick={() => change(o, 'suspend')}>
-                        Suspend
-                      </button>
-                    )}
-                    {isSuperAdmin && o.status === 'suspended' && (
-                      <button type="button" className="quiet" disabled={busy} onClick={() => change(o, 'reactivate')}>
-                        Reactivate
+                        {editing === o.id ? 'Hide' : 'Manage'}
                       </button>
                     )}
                     {isSuperAdmin && o.status !== 'closed' && (
-                      <button type="button" className="quiet danger" disabled={busy} onClick={() => change(o, 'close')}>
-                        Close
-                      </button>
+                      <details className="menu">
+                        <summary aria-label={`More actions for ${o.name}`}>⋯</summary>
+                        <div className="menu-items">
+                          {o.status === 'provisioning' && (
+                            <button type="button" className="quiet" disabled={busy} onClick={(e) => { shut(e); reinvite(o) }}>
+                              New invitation
+                            </button>
+                          )}
+                          {o.status === 'active' && (
+                            <button type="button" className="quiet" disabled={busy} onClick={(e) => { shut(e); change(o, 'suspend') }}>
+                              Suspend
+                            </button>
+                          )}
+                          {o.status === 'suspended' && (
+                            <button type="button" className="quiet" disabled={busy} onClick={(e) => { shut(e); change(o, 'reactivate') }}>
+                              Reactivate
+                            </button>
+                          )}
+                          <button type="button" className="quiet danger" disabled={busy} onClick={(e) => { shut(e); change(o, 'close') }}>
+                            Close
+                          </button>
+                        </div>
+                      </details>
                     )}
                   </td>
                 </tr>
                 {editing === o.id && (
                   <tr className="detail-row">
                     <td colSpan={7}>
+                      <LicenceEditor org={o} onSaved={orgs.reload} />
                       <ModuleEditor org={o} onSaved={orgs.reload} />
                     </td>
                   </tr>
