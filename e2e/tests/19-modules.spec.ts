@@ -17,7 +17,7 @@ async function modulesOf(admin: Page): Promise<Page> {
   await admin.reload();
   const row = admin.locator('tr', { hasText: ORG }).first();
   await expect(row).toBeVisible();
-  await row.getByRole('button', { name: 'Modules', exact: true }).click();
+  await row.getByRole('button', { name: 'Manage', exact: true }).click();
   await expect(admin.locator('.module-editor')).toBeVisible();
   return admin;
 }
@@ -41,11 +41,9 @@ test.describe.serial('modules', () => {
 
     await admin.fill('#org-name', ORG);
     await admin.fill('#org-admin', OWNER);
-    await expect(admin.locator('#org-mod-attendance')).toBeChecked();
-    await expect(admin.locator('#org-mod-leave')).toBeChecked();
+    await expect(admin.locator('#org-mod-attendance_leave')).toBeChecked();
     await expect(admin.locator('#org-mod-payroll')).toBeChecked();
-    await admin.uncheck('#org-mod-attendance');
-    await admin.uncheck('#org-mod-leave');
+    await admin.uncheck('#org-mod-attendance_leave');
     await shot(admin, 'mods-01-create-payroll-only', true);
     await admin.click('text=Create and invite');
     await expect(admin.getByText(`Invitation for ${OWNER}.`)).toBeVisible();
@@ -105,11 +103,11 @@ test.describe.serial('modules', () => {
 
   test('the Super Admin starts an Attendance trial; it appears at once', async () => {
     await modulesOf(admin);
-    await admin.fill(`[id$="-attendance"][type=date]`, isoDay(14));
+    await admin.fill(`[id$="-attendance_leave"][type=date]`, isoDay(14)); // date-safe: a trial end date, any future day is valid
     await shot(admin, 'mods-06-start-trial', true);
-    await admin.getByRole('button', { name: 'Switch on Attendance' }).click();
+    await admin.getByRole('button', { name: 'Switch on Attendance & Leave' }).click();
     const row = admin.locator('tr', { hasText: ORG }).first();
-    await expect(row).toContainText('Attendance trial until');
+    await expect(row).toContainText('Attendance & Leave trial until');
 
     // A trial ending in the past, or a year and more away, is refused.
     const org = (await api(admin, 'GET', '/platform/organizations')).body.find((o: any) => o.name === ORG);
@@ -124,10 +122,9 @@ test.describe.serial('modules', () => {
     expect(items).toContain('Attendance');
     expect(items).toContain('My attendance');
     expect(items).not.toContain('Work locations');
-    // Attendance does not bring Leave with it: the two are sold apart.
-    expect(items).not.toContain('Leave');
-    expect(items).not.toContain('My leave');
-    await expectRefused(owner, 'GET', '/org/leave/me/balances', [403], undefined, 'module.off');
+    // Attendance and Leave are one choice in the console, so switching it on brings both.
+    expect(items).toContain('Leave');
+    expect(items).toContain('My leave');
     await nav(owner, 'User management');
     await tab(owner, 'Subscription');
     await expect(owner.locator('tr', { hasText: 'Attendance' })).toContainText('Trial until');
@@ -139,7 +136,10 @@ test.describe.serial('modules', () => {
     await modulesOf(admin);
     await admin.locator('.module-row', { hasText: 'Attendance' }).getByRole('button', { name: 'Switch off' }).click();
     await expect(admin.locator('tr', { hasText: ORG }).first().locator('.module-badges')).not.toContainText('Attendance');
-    await admin.locator('.module-row', { hasText: 'Balances, leave requests' }).getByRole('button', { name: 'Switch on Leave' }).click();
+    // Each module still works alone underneath (an older arrangement): switch Leave on by itself through the API.
+    const org2 = (await api(admin, 'GET', '/platform/organizations')).body.find((o: any) => o.name === ORG);
+    expect((await api(admin, 'POST', `/platform/organizations/${org2.id}/modules`, { module: 'leave', on: true })).status).toBe(200);
+    await admin.reload();
     await expect(admin.locator('tr', { hasText: ORG }).first().locator('.module-badges')).toContainText('Leave');
     await shot(admin, 'mods-08-leave-on', true);
 

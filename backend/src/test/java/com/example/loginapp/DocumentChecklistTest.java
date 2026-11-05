@@ -364,7 +364,7 @@ class DocumentChecklistTest {
 
     private static Setup setup() {
         String slug = "docs-" + SEQUENCE.incrementAndGet();
-        Map<String, Object> created = platform.createOrganization(superAdmin, "Org " + slug, slug, "growth", "admin@" + slug + ".test");
+        Map<String, Object> created = platform.createOrganization(superAdmin, "Org " + slug, slug, "admin@" + slug + ".test");
         Org org = new Org(UUID.fromString((String) created.get("id")), slug,
                 auth.resolve(invitations.accept((String) created.get("invitationToken"), PASSWORD, null)));
         String location = (String) attendanceSettings.saveLocation(org.admin, null,

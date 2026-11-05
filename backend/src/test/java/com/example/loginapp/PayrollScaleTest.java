@@ -81,7 +81,7 @@ class PayrollScaleTest {
         PlatformService platform = new PlatformService(db);
         platform.ensureFirstSuperAdmin("root@scale.test", PASSWORD);
         SessionCtx superAdmin = auth.resolve(auth.enterConsole(auth.resolve(auth.login("root@scale.test", PASSWORD))));
-        Map<String, Object> created = platform.createOrganization(superAdmin, "Scale Org", "scale", "growth", "admin@scale.test");
+        Map<String, Object> created = platform.createOrganization(superAdmin, "Scale Org", "scale", "admin@scale.test");
         SessionCtx admin = auth.resolve(new InvitationService(db).accept((String) created.get("invitationToken"), PASSWORD, null));
 
         // The person k6 signs in as (hr@scale.test): the database is left in place for the read load.

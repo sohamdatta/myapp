@@ -394,7 +394,7 @@ class JoinerFlowTest {
 
     private static Setup setup() {
         String slug = "joiners-" + SEQUENCE.incrementAndGet();
-        Map<String, Object> created = platform.createOrganization(superAdmin, "Org " + slug, slug, "growth", "admin@" + slug + ".test");
+        Map<String, Object> created = platform.createOrganization(superAdmin, "Org " + slug, slug, "admin@" + slug + ".test");
         String token = invitations.accept((String) created.get("invitationToken"), PASSWORD, null);
         Org org = new Org(UUID.fromString((String) created.get("id")), slug, auth.resolve(token));
         String location = (String) attendanceSettings.saveLocation(org.admin, null,

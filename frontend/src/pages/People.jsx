@@ -36,6 +36,8 @@ function EmployeeList({ canWrite, onOpen, onAdd }) {
   const [department, setDepartment] = useState('')
   const departments = useLoad(people.departments)
   const list = useLoad(() => people.employeesWithTotal({ status }))
+  const licence = useLoad(people.licence)
+  const atLimit = licence.data && licence.data.licensed != null && licence.data.used >= licence.data.licensed
 
   const term = search.trim().toLowerCase()
   const shown = (list.data?.rows || []).filter(
@@ -85,8 +87,13 @@ function EmployeeList({ canWrite, onOpen, onAdd }) {
           </>
         )}
         <span className="spacer" />
+        {licence.data && licence.data.licensed != null && (
+          <span className={atLimit ? 'licence-note licence-full' : 'licence-note'}>
+            {licence.data.used} of {licence.data.licensed} licences used{atLimit ? ' · limit reached' : ''}
+          </span>
+        )}
         {canWrite && (
-          <button type="button" className="outline" onClick={onAdd}>
+          <button type="button" className="outline" onClick={onAdd} disabled={atLimit} title={atLimit ? 'All employee licences are in use. Ask Nexvance to add more.' : undefined}>
             Add employee
           </button>
         )}

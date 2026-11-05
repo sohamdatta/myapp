@@ -354,7 +354,7 @@ class UsageStatsTest {
     @Test
     void everyViewExportsAsCsvThatSpreadsheetsWillNotRunAsAFormula() throws Exception {
         assumeTrue(reachable, "PostgreSQL is not reachable");
-        Map<String, Object> created = platform.createOrganization(superAdmin, "=HYPERLINK(\"http://x.test\",\"a, b\")", "usage-csv-" + SEQUENCE.incrementAndGet(), "growth", "admin@usage-csv.test");
+        Map<String, Object> created = platform.createOrganization(superAdmin, "=HYPERLINK(\"http://x.test\",\"a, b\")", "usage-csv-" + SEQUENCE.incrementAndGet(), "admin@usage-csv.test");
         UUID tenant = UUID.fromString((String) created.get("id"));
         usage.run(true);
         String grid = usage.gridCsv(superAdmin);
@@ -415,7 +415,7 @@ class UsageStatsTest {
 
     private static Org newOrg() {
         String slug = "wage-" + SEQUENCE.incrementAndGet();
-        Map<String, Object> created = platform.createOrganization(superAdmin, "Org " + slug, slug, "growth", "admin@" + slug + ".test");
+        Map<String, Object> created = platform.createOrganization(superAdmin, "Org " + slug, slug, "admin@" + slug + ".test");
         String token = invitations.accept((String) created.get("invitationToken"), PASSWORD, null);
         return new Org(UUID.fromString((String) created.get("id")), slug, auth.resolve(token));
     }

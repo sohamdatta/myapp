@@ -317,7 +317,7 @@ class SetupTest {
 
     private static Org newOrg(List<String> modules) {
         String slug = "setup-" + SEQUENCE.incrementAndGet();
-        Map<String, Object> created = platform.createOrganization(superAdmin, "Org " + slug, slug, "growth", "admin@" + slug + ".test", modules);
+        Map<String, Object> created = platform.createOrganization(superAdmin, "Org " + slug, slug, "admin@" + slug + ".test", modules);
         SessionCtx admin = auth.resolve(invitations.accept((String) created.get("invitationToken"), PASSWORD, null));
         return new Org(UUID.fromString((String) created.get("id")), admin);
     }

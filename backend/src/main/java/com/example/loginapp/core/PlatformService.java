@@ -31,9 +31,10 @@ public final class PlatformService {
         ctx.requirePlatform("super_admin", "support", "billing");
         return db.inPlatform(c -> {
             List<Map<String, Object>> rows = Sql.query(c,
-                    "select t.id, t.name, t.slug, t.status, t.plan_code, t.created_at, "
-                            + "s.active_members, s.pending_invitations, s.owners "
+                    "select t.id, t.name, t.slug, t.status, t.created_at, "
+                            + "s.active_members, s.pending_invitations, s.owners, l.licensed as licensed_employees, l.used as employees_used "
                             + "from platform.tenant t cross join lateral platform.tenant_stats(t.id) s "
+                            + "cross join lateral platform.tenant_licence(t.id) l "
                             + "order by t.created_at desc");
             for (Map<String, Object> r : rows) {
                 r.put("modules", modules(c, AuthService.uuid(r.get("id"))));
@@ -69,8 +70,8 @@ public final class PlatformService {
      */
     public Map<String, Object> setModule(SessionCtx ctx, UUID tenantId, String module, boolean on, String trialEndsOn) {
         ctx.requirePlatform("super_admin", "billing");
-        if (module == null || !Modules.ALL.contains(module)) {
-            throw ApiException.badRequest("The module must be one of " + String.join(", ", Modules.ALL));
+        if (module == null || !Modules.known(module)) {
+            throw ApiException.badRequest("The module must be one of " + String.join(", ", Modules.ALL) + ", or " + Modules.ATTENDANCE_LEAVE);
         }
         LocalDate trial = null;
         if (on && trialEndsOn != null && !trialEndsOn.isBlank()) {
@@ -92,37 +93,82 @@ public final class PlatformService {
             if (Sql.one(c, "select 1 from platform.tenant where id = ?", tenantId) == null) {
                 throw ApiException.notFound("The Organization");
             }
-            Sql.update(c, "insert into platform.tenant_module (tenant_id, module, status, trial_ends_on, changed_by) values (?, ?, ?, ?, ?) "
-                    + "on conflict (tenant_id, module) do update set status = excluded.status, trial_ends_on = excluded.trial_ends_on, "
-                    + "changed_by = excluded.changed_by, changed_at = now()", tenantId, module, on ? "on" : "off", trialEnd, ctx.platformUserId());
-            Map<String, Object> detail = new LinkedHashMap<>();
-            detail.put("module", module);
-            if (trialEnd != null) {
-                detail.put("trialEndsOn", trialEnd.toString());
+            for (String each : Modules.expand(module)) {
+                Sql.update(c, "insert into platform.tenant_module (tenant_id, module, status, trial_ends_on, changed_by) values (?, ?, ?, ?, ?) "
+                        + "on conflict (tenant_id, module) do update set status = excluded.status, trial_ends_on = excluded.trial_ends_on, "
+                        + "changed_by = excluded.changed_by, changed_at = now()", tenantId, each, on ? "on" : "off", trialEnd, ctx.platformUserId());
+                Map<String, Object> detail = new LinkedHashMap<>();
+                detail.put("module", each);
+                if (trialEnd != null) {
+                    detail.put("trialEndsOn", trialEnd.toString());
+                }
+                audit(c, ctx, on ? "tenant.module_on" : "tenant.module_off", "tenant", tenantId, detail);
             }
-            audit(c, ctx, on ? "tenant.module_on" : "tenant.module_off", "tenant", tenantId, detail);
             return Map.of("modules", modules(c, tenantId));
         });
     }
 
+    private static void checkLicences(Integer licensed) {
+        if (licensed != null && (licensed < 1 || licensed > 1_000_000)) {
+            throw ApiException.badRequest("Employee licences must be a whole number from 1 to 1,000,000, or empty for no limit");
+        }
+    }
+
+    /**
+     * Sets how many employees the Organization has bought licences for (null: no limit). It cannot be set
+     * below the employees already joining or working; end or move them first, or set a larger number.
+     */
+    public Licences setLicences(SessionCtx ctx, UUID tenantId, Integer licensed) {
+        ctx.requirePlatform("super_admin", "billing");
+        checkLicences(licensed);
+        return db.inPlatform(c -> {
+            Map<String, Object> now = Sql.one(c, "select l.used from platform.tenant_licence(?) l where exists (select 1 from platform.tenant where id = ?)",
+                    tenantId, tenantId);
+            if (now == null) {
+                throw ApiException.notFound("The Organization");
+            }
+            long used = ((Number) now.get("used")).longValue();
+            if (licensed != null && licensed < used) {
+                throw new ApiException(409, "licence.below_use", "This Organization already has " + used
+                        + " employees joining or working, so it cannot have fewer than " + used + " licences");
+            }
+            Sql.update(c, "update platform.tenant set licensed_employees = ? where id = ?", licensed, tenantId);
+            Map<String, Object> detail = new LinkedHashMap<>();
+            detail.put("licensedEmployees", licensed == null ? "no limit" : licensed.toString());
+            audit(c, ctx, "tenant.licences_set", "tenant", tenantId, detail);
+            return new Licences(licensed, used);
+        });
+    }
+
+    /** The licences an Organization now has (null: no limit) and the employees in use. */
+    public record Licences(Integer licensedEmployees, long employeesUsed) {}
+
     /** Creates an Organization and invites its first Org Admin. Returns the Organization and the invitation token. */
-    public Map<String, Object> createOrganization(SessionCtx ctx, String name, String slug, String planCode, String adminEmail) {
-        return createOrganization(ctx, name, slug, planCode, adminEmail, null);
+    public Map<String, Object> createOrganization(SessionCtx ctx, String name, String slug, String adminEmail) {
+        return createOrganization(ctx, name, slug, adminEmail, null);
     }
 
     /**
      * Creates an Organization with the modules it has bought (null: all of them) and invites its first
      * Org Admin. Returns the Organization and the invitation token.
      */
-    public Map<String, Object> createOrganization(SessionCtx ctx, String name, String slug, String planCode, String adminEmail,
+    public Map<String, Object> createOrganization(SessionCtx ctx, String name, String slug, String adminEmail,
                                                   List<String> modules) {
+        return createOrganization(ctx, name, slug, adminEmail, modules, null);
+    }
+
+    /** As above, with the number of employee licences the Organization has bought (null: no limit). */
+    public Map<String, Object> createOrganization(SessionCtx ctx, String name, String slug, String adminEmail,
+                                                  List<String> modules, Integer licensedEmployees) {
         ctx.requirePlatform("super_admin");
-        List<String> chosen = modules == null ? Modules.ALL : modules;
-        for (String m : chosen) {
-            if (!Modules.ALL.contains(m)) {
+        checkLicences(licensedEmployees);
+        List<String> asked = modules == null ? Modules.ALL : modules;
+        for (String m : asked) {
+            if (!Modules.known(m)) {
                 throw ApiException.badRequest("Unknown module: " + m + ". Choose from " + String.join(", ", Modules.ALL));
             }
         }
+        List<String> chosen = asked.stream().flatMap(m -> Modules.expand(m).stream()).distinct().toList();
         if (name == null || name.isBlank()) {
             throw ApiException.badRequest("Enter the Organization's name");
         }
@@ -133,10 +179,9 @@ public final class PlatformService {
         String token = Secrets.newToken();
         return db.inPlatform(c -> {
             Map<String, Object> tenant = Sql.one(c,
-                    "insert into platform.tenant (name, slug, plan_code, created_by) values (?, ?, ?, ?) "
-                            + "returning id, name, slug, status, plan_code, created_at",
-                    name.trim(), slug, planCode == null || planCode.isBlank() ? "essential" : planCode.trim(),
-                    ctx.platformUserId());
+                    "insert into platform.tenant (name, slug, licensed_employees, created_by) values (?, ?, ?, ?) "
+                            + "returning id, name, slug, status, licensed_employees, created_at",
+                    name.trim(), slug, licensedEmployees, ctx.platformUserId());
             UUID tenantId = AuthService.uuid(tenant.get("id"));
             Sql.query(c, "select platform.invite_first_owner(?, ?::citext, ?)", tenantId, adminEmail.trim(), Secrets.sha256(token));
             for (String m : Modules.ALL) {

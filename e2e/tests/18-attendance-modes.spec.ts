@@ -70,7 +70,7 @@ test.describe.serial('attendance modes', () => {
     await admin.fill('#password', SUPER_ADMIN.password);
     await admin.click('button.primary');
     await expect(admin.getByText('Platform console')).toBeVisible();
-    const org = await ok(api(admin, 'POST', '/platform/organizations', { name: 'Initech Ltd', slug: 'initech-ltd', plan: 'growth', adminEmail: OWNER }));
+    const org = await ok(api(admin, 'POST', '/platform/organizations', { name: 'Initech Ltd', slug: 'initech-ltd', adminEmail: OWNER }));
     await admin.context().close();
     owner = await acceptInvite(browser, `/?invite=${org.invitationToken}`);
 

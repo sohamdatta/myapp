@@ -29,6 +29,19 @@ public final class Modules {
 
     public static final List<String> ALL = List.copyOf(NAMES.keySet());
 
+    /** What the console sells as one thing: Attendance with Leave. Switching it applies to both; each still works alone. */
+    public static final String ATTENDANCE_LEAVE = "attendance_leave";
+
+    /** The modules a console choice stands for: the pair for {@link #ATTENDANCE_LEAVE}, otherwise the module itself. */
+    public static List<String> expand(String choice) {
+        return ATTENDANCE_LEAVE.equals(choice) ? List.of(ATTENDANCE, LEAVE) : List.of(choice);
+    }
+
+    /** Whether this is a module, or the Attendance-with-Leave choice. */
+    public static boolean known(String choice) {
+        return ALL.contains(choice) || ATTENDANCE_LEAVE.equals(choice);
+    }
+
     private Modules() {}
 
     public static String name(String module) {

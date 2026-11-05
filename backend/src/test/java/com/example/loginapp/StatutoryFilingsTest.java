@@ -509,7 +509,7 @@ class StatutoryFilingsTest {
 
     private static Org newOrg() {
         String slug = "filing-" + SEQUENCE.incrementAndGet();
-        Map<String, Object> created = platform.createOrganization(superAdmin, "Org " + slug, slug, "growth", "admin@" + slug + ".test");
+        Map<String, Object> created = platform.createOrganization(superAdmin, "Org " + slug, slug, "admin@" + slug + ".test");
         String token = invitations.accept((String) created.get("invitationToken"), PASSWORD, null);
         return new Org(UUID.fromString((String) created.get("id")), slug, auth.resolve(token));
     }

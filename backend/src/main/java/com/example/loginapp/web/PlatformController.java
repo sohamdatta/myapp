@@ -24,7 +24,10 @@ import com.example.loginapp.core.PlatformService;
 public class PlatformController {
 
     /** modules: the add-ons bought (attendance, payroll); left out, the Organization gets all of them. */
-    public record CreateOrganizationRequest(String name, String slug, String plan, String adminEmail, List<String> modules) {}
+    public record CreateOrganizationRequest(String name, String slug, String adminEmail, List<String> modules,
+                                            Integer licensedEmployees) {}
+
+    public record LicenceRequest(Integer licensedEmployees) {}
 
     public record ModuleRequest(String module, Boolean on, String trialEndsOn) {}
 
@@ -79,7 +82,7 @@ public class PlatformController {
     public Map<String, Object> createOrganization(@RequestHeader(value = "Authorization", required = false) String authorization,
                                                   @RequestBody CreateOrganizationRequest request) {
         return platform.createOrganization(Requests.session(auth, authorization),
-                request.name(), request.slug(), request.plan(), request.adminEmail(), request.modules());
+                request.name(), request.slug(), request.adminEmail(), request.modules(), request.licensedEmployees());
     }
 
     /** Switches Attendance or Payroll on (until a trial end, if given) or off for an Organization. */
@@ -90,6 +93,13 @@ public class PlatformController {
             throw com.example.loginapp.core.ApiException.badRequest("Say whether the module is on or off");
         }
         return platform.setModule(Requests.session(auth, authorization), Requests.id(id), request.module(), request.on(), request.trialEndsOn());
+    }
+
+    /** Sets the employee licences the Organization has bought; an empty number means no limit. */
+    @PostMapping("/organizations/{id}/licences")
+    public PlatformService.Licences setLicences(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                           @PathVariable("id") String id, @RequestBody LicenceRequest request) {
+        return platform.setLicences(Requests.session(auth, authorization), Requests.id(id), request.licensedEmployees());
     }
 
     @PostMapping("/organizations/{id}/invite-admin")

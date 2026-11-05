@@ -662,7 +662,7 @@ class ExitTest {
     /** An Organization with HR, a manager, the manager's report and a colleague, each with a login and a record. */
     private static Setup setup() {
         String slug = "exit-" + SEQUENCE.incrementAndGet();
-        Map<String, Object> created = platform.createOrganization(superAdmin, "Org " + slug, slug, "growth", "admin@" + slug + ".test");
+        Map<String, Object> created = platform.createOrganization(superAdmin, "Org " + slug, slug, "admin@" + slug + ".test");
         String token = invitations.accept((String) created.get("invitationToken"), PASSWORD, null);
         SessionCtx admin = auth.resolve(token);
         TOKENS.put(admin.membershipId(), token);

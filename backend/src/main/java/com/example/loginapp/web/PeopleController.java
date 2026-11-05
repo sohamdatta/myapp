@@ -63,6 +63,12 @@ public class PeopleController {
         return employees.orgChart(Requests.session(auth, authorization));
     }
 
+    /** Employee licences bought and in use, so screens can say "42 of 50" and stop offering Add at the limit. */
+    @GetMapping("/employees/licence")
+    public EmployeeService.Licence licence(@RequestHeader(value = "Authorization", required = false) String authorization) {
+        return employees.licence(Requests.session(auth, authorization));
+    }
+
     @PostMapping("/employees")
     public Map<String, Object> add(@RequestHeader(value = "Authorization", required = false) String authorization,
                                    @RequestBody EmployeeService.NewEmployee request) {
