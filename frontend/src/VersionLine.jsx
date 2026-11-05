@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { APP, versionLabel } from './version.js'
+import { APP, buildLabel, versionLabel } from './version.js'
 
 /**
  * The build number, small and quiet, so a deployment can be told apart at a glance. It also asks the server
@@ -19,7 +19,7 @@ export default function VersionLine({ className = '' }) {
   }, [])
 
   const mismatch = server && APP.commit !== 'dev' && server.commit !== 'dev' && server.commit !== APP.commit
-  const title = `Screens: ${versionLabel(APP)}${APP.built ? `, built ${APP.built}` : ''}${server ? `\nServer: ${versionLabel(server)}${server.built ? `, built ${server.built}` : ''}` : ''}`
+  const title = `Screens: ${buildLabel(APP)}${APP.built ? `, built ${APP.built}` : ''}${server ? `\nServer: ${buildLabel(server)}${server.built ? `, built ${server.built}` : ''}` : ''}`
   return (
     <span className={`version-line ${className}`} title={title}>
       {versionLabel(APP)}
