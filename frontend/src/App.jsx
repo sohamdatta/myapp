@@ -104,7 +104,7 @@ function Shell({ me, nav, page, onNavigate, onSwitch, onSignOut, onEndSupport, c
             </div>
           ) : (
             <div className="brand">
-              <NexvanceLogo />
+              <NexvanceLogo size={36} />
             </div>
           )}
           {!logo && <div className="where where-under">{where}</div>}
@@ -284,6 +284,7 @@ export default function App() {
   if (emailLink) {
     return (
       <main className="centered">
+        <div className="brand brand-sign-in"><NexvanceLogo size={40} /></div>
         <EmailLink
           kind={emailLink.kind}
           token={emailLink.token}
@@ -300,6 +301,7 @@ export default function App() {
   if (resetToken) {
     return (
       <main className="centered">
+        <div className="brand brand-sign-in"><NexvanceLogo size={40} /></div>
         <ResetPassword
           token={resetToken}
           onDone={() => {
@@ -315,6 +317,7 @@ export default function App() {
   if (inviteToken) {
     return (
       <main className="centered">
+        <div className="brand brand-sign-in"><NexvanceLogo size={40} /></div>
         <AcceptInvitation
           token={inviteToken}
           me={me}
@@ -330,7 +333,7 @@ export default function App() {
 
   if (!me) {
     return (
-      <main className="centered">
+      <main className="centered centered-wide">
         <LoginForm onSignedIn={setMe} />
       </main>
     )
@@ -339,6 +342,7 @@ export default function App() {
   if (me.kind === 'identity' || choosing) {
     return (
       <main className="centered">
+        <div className="brand brand-sign-in"><NexvanceLogo size={40} /></div>
         <Chooser
           me={me}
           onEntered={entered}

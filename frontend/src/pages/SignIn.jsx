@@ -8,8 +8,45 @@ const Security = lazy(() => import('./Security.jsx'))
 
 export function LoginForm({ onSignedIn }) {
   const [forgot, setForgot] = useState(false)
-  if (forgot) return <ForgotPassword onBack={() => setForgot(false)} />
-  return <SignInForm onSignedIn={onSignedIn} onForgot={() => setForgot(true)} />
+  return (
+    <div className="signin-shell">
+      <SignInHero />
+      <div className="signin-side">
+        <div className="brand brand-sign-in signin-logo-small">
+          <NexvanceLogo size={40} />
+        </div>
+        {forgot ? <ForgotPassword onBack={() => setForgot(false)} /> : <SignInForm onSignedIn={onSignedIn} onForgot={() => setForgot(true)} />}
+      </div>
+    </div>
+  )
+}
+
+const HIGHLIGHTS = [
+  ['Payroll that follows Indian rules', 'PF, ESI, professional tax and TDS, signed off before they apply.'],
+  ['Attendance, leave and shifts', 'From biometric and geo-fenced check-ins to approvals in one tap.'],
+  ['One place for every employee', 'Onboarding, documents, exits and self-service, with a clear audit trail.'],
+]
+
+/** The brand panel beside the sign-in card: logo, promise and three highlights. Hidden on small screens. */
+function SignInHero() {
+  return (
+    <div className="signin-hero">
+      <NexvanceLogo size={52} onDark />
+      <p className="signin-headline">People operations, made simple for India.</p>
+      <ul className="signin-points">
+        {HIGHLIGHTS.map(([title, note]) => (
+          <li key={title}>
+            <span className="signin-tick" aria-hidden="true"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3.5 8.5l3 3 6-7" /></svg></span>
+            <span>
+              <strong>{title}</strong>
+              <span>{note}</span>
+            </span>
+          </li>
+        ))}
+      </ul>
+      <p className="signin-foot">© 2026 Nexvance Solutions · Hosted in India</p>
+    </div>
+  )
 }
 
 function SignInForm({ onSignedIn, onForgot }) {
@@ -30,12 +67,9 @@ function SignInForm({ onSignedIn, onForgot }) {
 
   return (
     <>
-    <div className="brand brand-sign-in">
-      <NexvanceLogo size={40} tagline />
-    </div>
     <form className="card" onSubmit={handleSubmit} noValidate>
-      <h1>Sign in</h1>
-      <p className="muted">Use your work email. You go straight to your Organization.</p>
+      <h1>Welcome back</h1>
+      <p className="muted">Sign in with your work email. You go straight to your Organization.</p>
 
       <label htmlFor="email">Email</label>
       <input
