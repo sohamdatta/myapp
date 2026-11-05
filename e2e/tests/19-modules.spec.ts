@@ -103,7 +103,7 @@ test.describe.serial('modules', () => {
 
   test('the Super Admin starts an Attendance trial; it appears at once', async () => {
     await modulesOf(admin);
-    await admin.fill(`[id$="-attendance_leave"][type=date]`, isoDay(14));
+    await admin.fill(`[id$="-attendance_leave"][type=date]`, isoDay(14)); // date-safe: a trial end date, any future day is valid
     await shot(admin, 'mods-06-start-trial', true);
     await admin.getByRole('button', { name: 'Switch on Attendance & Leave' }).click();
     const row = admin.locator('tr', { hasText: ORG }).first();

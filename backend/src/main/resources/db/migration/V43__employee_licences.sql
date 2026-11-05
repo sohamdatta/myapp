@@ -1,3 +1,5 @@
+set lock_timeout = '5s';
+
 -- Employee licences: how many employees an Organization has bought.
 -- null means no limit (every Organization before this change, and any not yet given a number).
 alter table platform.tenant
