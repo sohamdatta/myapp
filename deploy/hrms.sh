@@ -47,6 +47,13 @@ if [ "$declared" != "$env" ]; then
   exit 1
 fi
 
+# What is being built, shown in the app and at /api/version so a deployment can be told apart:
+# the release number from VERSION, the short commit, and the build time.
+root="$(dirname "$here")"
+export HRMS_VERSION="$(tr -d '[:space:]' < "$root/VERSION" 2>/dev/null || echo dev)"
+export HRMS_COMMIT="$(git -C "$root" rev-parse --short=7 HEAD 2>/dev/null || echo unknown)"
+export HRMS_BUILT="$(date -u +%Y-%m-%dT%H:%MZ)"
+
 # HRMS_ENV_FILE: the file the app container reads its settings from (docker-compose.yml).
 export HRMS_ENV_FILE="env/$env.env"
 exec docker compose --env-file "$env_file" "${files[@]}" "$@"

@@ -12,6 +12,7 @@ import Bell from './Bell.jsx'
 import RegionBoundary from './RegionBoundary.jsx'
 import { PRODUCT, logoUrl } from './brand/brand.js'
 import NexvanceLogo from './brand/NexvanceLogo.jsx'
+import VersionLine from './VersionLine.jsx'
 import { NavIcon } from './icons.jsx'
 import { initials } from './initials.js'
 import { firstPage, navFor } from './nav.js'
@@ -136,6 +137,7 @@ function Shell({ me, nav, page, onNavigate, onSwitch, onSignOut, onEndSupport, c
           <a className="powered-by" href={PRODUCT.site} target="_blank" rel="noreferrer">
             {logo ? `Powered by ${PRODUCT.name}` : PRODUCT.tagline}
           </a>
+          <VersionLine className="sidebar-version" />
         </nav>
         <main className="main">
           <header className="topbar">

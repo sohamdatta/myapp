@@ -3,6 +3,7 @@ import { acceptInvitation, completeMfa, confirmEmailChange, undoEmailChange, ent
 import { useAction } from '../hooks.js'
 import { ErrorNote } from '../ui.jsx'
 import NexvanceLogo from '../brand/NexvanceLogo.jsx'
+import VersionLine from '../VersionLine.jsx'
 
 const Security = lazy(() => import('./Security.jsx'))
 
@@ -16,6 +17,7 @@ export function LoginForm({ onSignedIn }) {
           <NexvanceLogo size={40} />
         </div>
         {forgot ? <ForgotPassword onBack={() => setForgot(false)} /> : <SignInForm onSignedIn={onSignedIn} onForgot={() => setForgot(true)} />}
+        <VersionLine className="signin-version-mobile" />
       </div>
     </div>
   )
@@ -44,7 +46,7 @@ function SignInHero() {
           </li>
         ))}
       </ul>
-      <p className="signin-foot">© 2026 Nexvance Solutions · Hosted in India</p>
+      <p className="signin-foot">© 2026 Nexvance Solutions · Hosted in India · <VersionLine /></p>
     </div>
   )
 }
