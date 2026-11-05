@@ -135,6 +135,7 @@ test.describe('confirmations and notes', () => {
   test('closing an Organization asks first; the safe choice has the focus and Escape keeps it', async ({ browser }) => {
     const admin = await signIn(browser, SUPER_ADMIN.email, SUPER_ADMIN.password);
     const row = admin.locator('tr', { hasText: 'Globex Ltd' });
+    await row.getByText('⋯').click();
     await row.getByRole('button', { name: 'Close', exact: true }).click();
     const dialog = admin.getByRole('dialog');
     await expect(dialog).toContainText('Close Globex Ltd?');
@@ -145,6 +146,7 @@ test.describe('confirmations and notes', () => {
     await expect(dialog).toHaveCount(0);
     await expect(row).toContainText(/active/i); // nothing happened
 
+    await row.getByText('⋯').click();
     await row.getByRole('button', { name: 'Close', exact: true }).click();
     await admin.getByRole('dialog').getByRole('button', { name: 'Keep it' }).click();
     await expect(admin.getByRole('dialog')).toHaveCount(0);

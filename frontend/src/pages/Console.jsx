@@ -53,7 +53,7 @@ function LicenceEditor({ org, onSaved }) {
   }
 
   return (
-    <form className="module-editor" onSubmit={save} noValidate>
+    <form className="licence-editor" onSubmit={save} noValidate>
       <div className="module-row">
         <div>
           <strong>Employee licences</strong>

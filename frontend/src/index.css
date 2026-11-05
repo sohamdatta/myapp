@@ -3612,7 +3612,8 @@ textarea.code {
   gap: 4px;
 }
 
-.module-editor {
+.module-editor,
+.licence-editor {
   display: grid;
   gap: 12px;
 }
