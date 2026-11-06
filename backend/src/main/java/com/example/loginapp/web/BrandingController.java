@@ -15,6 +15,7 @@ import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.example.loginapp.core.ApiException;
+import com.example.loginapp.core.SessionCtx;
 import com.example.loginapp.core.AuthService;
 import com.example.loginapp.core.Branding;
 
@@ -31,8 +32,8 @@ public class BrandingController {
     }
 
     @GetMapping("/api/org/setup/branding")
-    public Map<String, Object> get(@RequestHeader(value = "Authorization", required = false) String authorization) {
-        return branding.get(Requests.session(auth, authorization));
+    public Map<String, Object> get(SessionCtx ctx) {
+        return branding.get(ctx);
     }
 
     /** The logo file as the request body (PNG or JPEG, at most 2 MB). */
@@ -49,8 +50,8 @@ public class BrandingController {
     }
 
     @DeleteMapping("/api/org/setup/branding/logo")
-    public Map<String, Object> removeLogo(@RequestHeader(value = "Authorization", required = false) String authorization) {
-        return branding.removeLogo(Requests.session(auth, authorization));
+    public Map<String, Object> removeLogo(SessionCtx ctx) {
+        return branding.removeLogo(ctx);
     }
 
     /**

@@ -3,7 +3,6 @@ package com.example.loginapp.core;
 import java.awt.Graphics2D;
 import java.awt.RenderingHints;
 import java.awt.image.BufferedImage;
-import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.util.LinkedHashMap;
@@ -120,9 +119,9 @@ public final class Branding {
     static BufferedImage redraw(byte[] bytes) {
         BufferedImage source;
         try {
-            source = ImageIO.read(new ByteArrayInputStream(bytes));
-        } catch (IOException | RuntimeException e) {
-            source = null;
+            source = ImageDecode.read(bytes);
+        } catch (ImageDecode.TooLarge e) {
+            throw new ApiException(413, "logo.too_large", "This image has too many pixels; use a smaller one");
         }
         if (source == null) {
             throw new ApiException(415, "logo.unreadable", "This image could not be read");

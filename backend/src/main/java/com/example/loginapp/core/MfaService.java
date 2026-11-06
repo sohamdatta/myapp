@@ -1,6 +1,5 @@
 package com.example.loginapp.core;
 
-import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
 import java.sql.Connection;
 import java.sql.PreparedStatement;

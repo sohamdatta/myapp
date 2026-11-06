@@ -198,7 +198,7 @@ public final class MailOutbox {
                         (String) r.get("lastError"), String.valueOf(r.get("createdAt")), String.valueOf(r.get("nextAttemptAt"))));
             }
             List<Suppressed> suppressions = new ArrayList<>();
-            for (Map<String, Object> r : Sql.query(c, "select email, reason, at, by from mail.suppression order by at desc")) {
+            for (Map<String, Object> r : Sql.query(c, "select email, reason, at, by from mail.suppression order by at desc limit 500")) {
                 suppressions.add(new Suppressed((String) r.get("email"), (String) r.get("reason"), String.valueOf(r.get("at")), (String) r.get("by")));
             }
             return new Overview(sender != null, sender == null ? null : sender.describe(), sender == null ? null : sender.from(),

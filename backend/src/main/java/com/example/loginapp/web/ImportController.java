@@ -6,11 +6,11 @@ import java.util.Map;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.example.loginapp.core.AuthService;
+import com.example.loginapp.core.SessionCtx;
 import com.example.loginapp.core.EmployeeImport;
 import com.example.loginapp.core.EmployeeImport.Invite;
 import com.example.loginapp.core.EmployeeImport.Request;
@@ -31,31 +31,31 @@ public class ImportController {
     }
 
     @PostMapping("/read")
-    public Map<String, Object> read(@RequestHeader(value = "Authorization", required = false) String authorization,
+    public Map<String, Object> read(SessionCtx ctx,
                                     @RequestBody Content request) {
-        return imports.read(Requests.session(auth, authorization), request.content());
+        return imports.read(ctx, request.content());
     }
 
     @PostMapping("/preview")
-    public Map<String, Object> preview(@RequestHeader(value = "Authorization", required = false) String authorization,
+    public Map<String, Object> preview(SessionCtx ctx,
                                        @RequestBody Request request) {
-        return imports.preview(Requests.session(auth, authorization), request);
+        return imports.preview(ctx, request);
     }
 
     @PostMapping("/run")
-    public Map<String, Object> run(@RequestHeader(value = "Authorization", required = false) String authorization,
+    public Map<String, Object> run(SessionCtx ctx,
                                    @RequestBody Request request) {
-        return imports.run(Requests.session(auth, authorization), request);
+        return imports.run(ctx, request);
     }
 
     @GetMapping("/uninvited")
-    public List<Map<String, Object>> uninvited(@RequestHeader(value = "Authorization", required = false) String authorization) {
-        return imports.uninvited(Requests.session(auth, authorization));
+    public List<Map<String, Object>> uninvited(SessionCtx ctx) {
+        return imports.uninvited(ctx);
     }
 
     @PostMapping("/invite")
-    public List<Map<String, Object>> invite(@RequestHeader(value = "Authorization", required = false) String authorization,
+    public List<Map<String, Object>> invite(SessionCtx ctx,
                                             @RequestBody Invite request) {
-        return imports.invite(Requests.session(auth, authorization), request);
+        return imports.invite(ctx, request);
     }
 }

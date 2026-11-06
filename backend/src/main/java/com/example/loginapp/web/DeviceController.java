@@ -8,11 +8,11 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.example.loginapp.core.AuthService;
+import com.example.loginapp.core.SessionCtx;
 import com.example.loginapp.core.Modules;
 import com.example.loginapp.core.DeviceService;
 
@@ -30,25 +30,25 @@ public class DeviceController {
     }
 
     @GetMapping
-    public List<Map<String, Object>> devices(@RequestHeader(value = "Authorization", required = false) String authorization) {
-        return devices.devices(Requests.session(auth, authorization, Modules.ATTENDANCE));
+    public List<Map<String, Object>> devices(@RequiresModule(Modules.ATTENDANCE) SessionCtx ctx) {
+        return devices.devices(ctx);
     }
 
     @PostMapping
-    public Map<String, Object> register(@RequestHeader(value = "Authorization", required = false) String authorization,
+    public Map<String, Object> register(@RequiresModule(Modules.ATTENDANCE) SessionCtx ctx,
                                         @RequestBody DeviceService.DeviceInput request) {
-        return devices.save(Requests.session(auth, authorization, Modules.ATTENDANCE), null, request);
+        return devices.save(ctx, null, request);
     }
 
     @PutMapping("/{id}")
-    public Map<String, Object> change(@RequestHeader(value = "Authorization", required = false) String authorization,
+    public Map<String, Object> change(@RequiresModule(Modules.ATTENDANCE) SessionCtx ctx,
                                       @PathVariable("id") String id, @RequestBody DeviceService.DeviceInput request) {
-        return devices.save(Requests.session(auth, authorization, Modules.ATTENDANCE), Requests.id(id), request);
+        return devices.save(ctx, Requests.id(id), request);
     }
 
     @GetMapping("/{id}/log")
-    public List<Map<String, Object>> log(@RequestHeader(value = "Authorization", required = false) String authorization,
+    public List<Map<String, Object>> log(@RequiresModule(Modules.ATTENDANCE) SessionCtx ctx,
                                          @PathVariable("id") String id) {
-        return devices.log(Requests.session(auth, authorization, Modules.ATTENDANCE), Requests.id(id));
+        return devices.log(ctx, Requests.id(id));
     }
 }

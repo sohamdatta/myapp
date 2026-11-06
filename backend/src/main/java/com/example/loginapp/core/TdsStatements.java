@@ -147,7 +147,7 @@ public final class TdsStatements {
             Map<UUID, BigDecimal> seenChallans = new HashMap<>();
             for (int m = 0; m < 3; m++) {
                 LocalDate month = first.plusMonths(m);
-                int open = Sql.query(c, "select 1 from app.payroll_run where period = ? and state not in ('approved','paid','released')", month).size();
+                long open = Sql.count(c, "select 1 from app.payroll_run where period = ? and state not in ('approved','paid','released')", month);
                 if (open > 0) {
                     checks.add(new Check("run_open", "blocking", false, month.toString().substring(0, 7),
                             open + " payroll run(s) for " + month.toString().substring(0, 7) + " are not approved; their tax is missing from the statement."));

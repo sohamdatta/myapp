@@ -75,12 +75,31 @@ jobs:
           BASE_URL: http://localhost:8080
           EMAIL: hr@scale.test
           PASSWORD: correct-horse-battery
+        shell: bash   # adds pipefail, so a failing k6 is not hidden by tee
         run: k6 run perf/k6/reads.js | tee scale-reads.log
+
+      - name: Mixed load (reads, a run, payslip PDFs, the register)
+        continue-on-error: ${{ !inputs.enforce }}
+        env:
+          BASE_URL: http://localhost:8080
+          EMAIL: hr@scale.test
+          PASSWORD: correct-horse-battery
+        shell: bash   # adds pipefail, so a failing k6 is not hidden by tee
+        run: k6 run perf/k6/mixed.js | tee scale-mixed.log
+
+      - name: Spike (the request rate jumps, then recovers)
+        continue-on-error: ${{ !inputs.enforce }}
+        env:
+          BASE_URL: http://localhost:8080
+          EMAIL: hr@scale.test
+          PASSWORD: correct-horse-battery
+        shell: bash   # adds pipefail, so a failing k6 is not hidden by tee
+        run: k6 run perf/k6/spike.js | tee scale-spike.log
 
       - name: Summary
         if: always()
         run: |
-          { echo '### Scale check'; echo; grep '^SCALE' scale-payroll.log || echo 'no payroll line'; echo; echo '```'; grep -E 'http_req_duration|http_req_failed|checks|✓|✗' scale-reads.log || true; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          { echo '### Scale check'; echo; grep '^SCALE' scale-payroll.log || echo 'no payroll line'; echo; echo '```'; grep -E 'http_req_duration|http_req_failed|checks|✓|✗' scale-reads.log scale-mixed.log scale-spike.log || true; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
 
       - uses: actions/upload-artifact@v7
         if: always()
@@ -89,5 +108,7 @@ jobs:
           path: |
             scale-payroll.log
             scale-reads.log
+            scale-mixed.log
+            scale-spike.log
             backend.log
           retention-days: 14

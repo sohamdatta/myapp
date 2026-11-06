@@ -15,6 +15,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.example.loginapp.core.AuthService;
+import com.example.loginapp.core.SessionCtx;
 import com.example.loginapp.core.LetterService;
 import com.example.loginapp.core.LetterService.IssueInput;
 import com.example.loginapp.core.LetterService.TemplateInput;
@@ -41,57 +42,57 @@ public class LetterController {
     // ── setup ───────────────────────────────────────────────────────────
 
     @GetMapping("/people/setup/letters")
-    public List<Map<String, Object>> templates(@RequestHeader(value = "Authorization", required = false) String authorization) {
-        return letters.templates(Requests.session(auth, authorization));
+    public List<Map<String, Object>> templates(SessionCtx ctx) {
+        return letters.templates(ctx);
     }
 
     @PostMapping("/people/setup/letters")
-    public Map<String, Object> createTemplate(@RequestHeader(value = "Authorization", required = false) String authorization,
+    public Map<String, Object> createTemplate(SessionCtx ctx,
                                               @RequestBody TemplateInput request) {
-        return letters.saveTemplate(Requests.session(auth, authorization), null, request);
+        return letters.saveTemplate(ctx, null, request);
     }
 
     @PutMapping("/people/setup/letters/{id}")
-    public Map<String, Object> saveTemplate(@RequestHeader(value = "Authorization", required = false) String authorization,
+    public Map<String, Object> saveTemplate(SessionCtx ctx,
                                             @PathVariable("id") String id, @RequestBody TemplateInput request) {
-        return letters.saveTemplate(Requests.session(auth, authorization), Requests.id(id), request);
+        return letters.saveTemplate(ctx, Requests.id(id), request);
     }
 
     @GetMapping("/people/setup/policies")
-    public List<Map<String, Object>> policies(@RequestHeader(value = "Authorization", required = false) String authorization) {
-        return policies.policies(Requests.session(auth, authorization));
+    public List<Map<String, Object>> policies(SessionCtx ctx) {
+        return policies.policies(ctx);
     }
 
     @PostMapping("/people/setup/policies")
-    public Map<String, Object> createPolicy(@RequestHeader(value = "Authorization", required = false) String authorization,
+    public Map<String, Object> createPolicy(SessionCtx ctx,
                                             @RequestBody PolicyInput request) {
-        return policies.save(Requests.session(auth, authorization), null, request);
+        return policies.save(ctx, null, request);
     }
 
     @PutMapping("/people/setup/policies/{id}")
-    public Map<String, Object> savePolicy(@RequestHeader(value = "Authorization", required = false) String authorization,
+    public Map<String, Object> savePolicy(SessionCtx ctx,
                                           @PathVariable("id") String id, @RequestBody PolicyInput request) {
-        return policies.save(Requests.session(auth, authorization), Requests.id(id), request);
+        return policies.save(ctx, Requests.id(id), request);
     }
 
     // ── one joiner ──────────────────────────────────────────────────────
 
     @GetMapping("/people/joiners/{id}/letters")
-    public Map<String, Object> joinerLetters(@RequestHeader(value = "Authorization", required = false) String authorization,
+    public Map<String, Object> joinerLetters(SessionCtx ctx,
                                              @PathVariable("id") String id) {
-        return letters.forJoiner(Requests.session(auth, authorization), Requests.id(id));
+        return letters.forJoiner(ctx, Requests.id(id));
     }
 
     @GetMapping("/people/joiners/{id}/letters/preview")
-    public Map<String, Object> preview(@RequestHeader(value = "Authorization", required = false) String authorization,
+    public Map<String, Object> preview(SessionCtx ctx,
                                        @PathVariable("id") String id, @RequestParam("template") String template) {
-        return letters.preview(Requests.session(auth, authorization), Requests.id(id), Requests.id(template));
+        return letters.preview(ctx, Requests.id(id), Requests.id(template));
     }
 
     @PostMapping("/people/joiners/{id}/letters")
-    public Map<String, Object> issue(@RequestHeader(value = "Authorization", required = false) String authorization,
+    public Map<String, Object> issue(SessionCtx ctx,
                                      @PathVariable("id") String id, @RequestBody IssueInput request) {
-        return letters.issue(Requests.session(auth, authorization), Requests.id(id), request);
+        return letters.issue(ctx, Requests.id(id), request);
     }
 
     @PostMapping("/people/joiners/{id}/letters/upload")
@@ -112,38 +113,38 @@ public class LetterController {
     }
 
     @GetMapping("/people/joiners/{id}/policies")
-    public List<Map<String, Object>> joinerPolicies(@RequestHeader(value = "Authorization", required = false) String authorization,
+    public List<Map<String, Object>> joinerPolicies(SessionCtx ctx,
                                                     @PathVariable("id") String id) {
-        return policies.forJoiner(Requests.session(auth, authorization), Requests.id(id));
+        return policies.forJoiner(ctx, Requests.id(id));
     }
 
     // ── the joiner's own ────────────────────────────────────────────────
 
     @GetMapping("/onboarding/me/letters")
-    public List<Map<String, Object>> myLetters(@RequestHeader(value = "Authorization", required = false) String authorization) {
-        return letters.mine(Requests.session(auth, authorization));
+    public List<Map<String, Object>> myLetters(SessionCtx ctx) {
+        return letters.mine(ctx);
     }
 
     @PostMapping("/onboarding/me/letters/{id}/accept")
-    public Map<String, Object> accept(@RequestHeader(value = "Authorization", required = false) String authorization,
+    public Map<String, Object> accept(SessionCtx ctx,
                                       @PathVariable("id") String id) {
-        return letters.respond(Requests.session(auth, authorization), Requests.id(id), true);
+        return letters.respond(ctx, Requests.id(id), true);
     }
 
     @PostMapping("/onboarding/me/letters/{id}/decline")
-    public Map<String, Object> decline(@RequestHeader(value = "Authorization", required = false) String authorization,
+    public Map<String, Object> decline(SessionCtx ctx,
                                        @PathVariable("id") String id) {
-        return letters.respond(Requests.session(auth, authorization), Requests.id(id), false);
+        return letters.respond(ctx, Requests.id(id), false);
     }
 
     @GetMapping("/onboarding/me/policies")
-    public List<Map<String, Object>> myPolicies(@RequestHeader(value = "Authorization", required = false) String authorization) {
-        return policies.mine(Requests.session(auth, authorization));
+    public List<Map<String, Object>> myPolicies(SessionCtx ctx) {
+        return policies.mine(ctx);
     }
 
     @PostMapping("/onboarding/me/policies/{id}/acknowledge")
-    public List<Map<String, Object>> acknowledge(@RequestHeader(value = "Authorization", required = false) String authorization,
+    public List<Map<String, Object>> acknowledge(SessionCtx ctx,
                                                  @PathVariable("id") String id, @RequestBody Version request) {
-        return policies.acknowledge(Requests.session(auth, authorization), Requests.id(id), request.version());
+        return policies.acknowledge(ctx, Requests.id(id), request.version());
     }
 }

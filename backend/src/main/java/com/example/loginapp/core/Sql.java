@@ -19,26 +19,82 @@ public final class Sql {
     private Sql() {}
 
     public static List<Map<String, Object>> query(Connection c, String sql, Object... params) throws SQLException {
+        return query(c, sql, 0, params);
+    }
+
+    /** Runs a query that needs at most {@code maxRows} rows (0 = all), so the driver does not send the rest. */
+    private static List<Map<String, Object>> query(Connection c, String sql, int maxRows, Object[] params) throws SQLException {
         try (PreparedStatement ps = c.prepareStatement(sql)) {
             bind(c, ps, params);
+            if (maxRows > 0) {
+                ps.setMaxRows(maxRows);
+            }
             try (ResultSet rs = ps.executeQuery()) {
-                ResultSetMetaData meta = rs.getMetaData();
+                String[] names = names(rs.getMetaData());
                 List<Map<String, Object>> rows = new ArrayList<>();
                 while (rs.next()) {
-                    Map<String, Object> row = new LinkedHashMap<>();
-                    for (int i = 1; i <= meta.getColumnCount(); i++) {
-                        row.put(camel(meta.getColumnLabel(i)), value(rs, i));
-                    }
-                    rows.add(row);
+                    rows.add(row(rs, names));
                 }
                 return rows;
             }
         }
     }
 
-    /** The first row, or null when there is none. */
+    /**
+     * Runs a query and hands each row to {@code each} as it arrives, without holding the whole result: for large
+     * reads (payroll runs, registers, exports). The driver fetches {@code fetchSize} rows at a time, which needs the
+     * transaction to be open with auto-commit off, as {@link Db} runs them. The row map is only valid inside the call.
+     */
+    public static void each(Connection c, String sql, int fetchSize, RowHandler each, Object... params) throws SQLException {
+        try (PreparedStatement ps = c.prepareStatement(sql)) {
+            bind(c, ps, params);
+            ps.setFetchSize(fetchSize);
+            try (ResultSet rs = ps.executeQuery()) {
+                String[] names = names(rs.getMetaData());
+                while (rs.next()) {
+                    each.accept(row(rs, names));
+                }
+            }
+        }
+    }
+
+    /** Receives one row of {@link #each}. */
+    @FunctionalInterface
+    public interface RowHandler {
+        void accept(Map<String, Object> row) throws SQLException;
+    }
+
+    /** How many rows a query returns, counted by the database rather than by reading them all. */
+    public static long count(Connection c, String sql, Object... params) throws SQLException {
+        Map<String, Object> r = one(c, "select count(*) as n from (" + sql + ") counted", params);
+        return ((Number) r.get("n")).longValue();
+    }
+
+    /** Whether a query returns any row. */
+    public static boolean exists(Connection c, String sql, Object... params) throws SQLException {
+        return one(c, sql, params) != null;
+    }
+
+    /** The column names, worked out once per query rather than once per cell. */
+    private static String[] names(ResultSetMetaData meta) throws SQLException {
+        String[] names = new String[meta.getColumnCount()];
+        for (int i = 0; i < names.length; i++) {
+            names[i] = camel(meta.getColumnLabel(i + 1)).intern();
+        }
+        return names;
+    }
+
+    private static Map<String, Object> row(ResultSet rs, String[] names) throws SQLException {
+        Map<String, Object> row = new LinkedHashMap<>();
+        for (int i = 0; i < names.length; i++) {
+            row.put(names[i], value(rs, i + 1));
+        }
+        return row;
+    }
+
+    /** The first row, or null when there is none. Only one row is asked of the database. */
     public static Map<String, Object> one(Connection c, String sql, Object... params) throws SQLException {
-        List<Map<String, Object>> rows = query(c, sql, params);
+        List<Map<String, Object>> rows = query(c, sql, 1, params);
         return rows.isEmpty() ? null : rows.get(0);
     }
 

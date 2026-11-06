@@ -148,7 +148,6 @@ public final class PayrollRuns {
             LocalDate period = LocalDate.parse((String) r.get("period"));
             r.put("label", monthWords(period));
             r.put("totals", parse(r.get("totals")));
-            r.remove("snapshot");
             r.put("groupName", Sql.one(c, "select name from app.pay_group where id = ?::uuid", r.get("groupId")).get("name"));
             for (String who : List.of("frozenBy", "calculatedBy", "approvedBy", "paidBy", "releasedBy")) {
                 r.put(who + "Name", r.get(who) == null ? null : who(c, AuthService.uuid(r.get(who))));
@@ -196,7 +195,7 @@ public final class PayrollRuns {
             r.put("inputComponents", inputComponents);
             r.put("attendanceOn", Modules.on(c, Modules.ATTENDANCE));
             r.put("leaveOn", Modules.on(c, Modules.LEAVE));
-            long open = Sql.query(c, "select 1 from app.run_exception where run_id = ? and level = 'blocking' and accepted_at is null", runId).size();
+            long open = Sql.count(c, "select 1 from app.run_exception where run_id = ? and level = 'blocking' and accepted_at is null", runId);
             boolean me = ctx.membershipId() != null;
             r.put("openBlocking", open);
             r.put("draftRules", Sql.one(c, "select count(*) as n from app.payroll_rule where status = 'draft' and valid_from <= ? "
@@ -327,8 +326,7 @@ public final class PayrollRuns {
                 throw new ApiException(409, "payroll.state", "Freeze the run before calculating it");
             }
             LocalDate period = LocalDate.parse((String) r.get("period"));
-            @SuppressWarnings("unchecked")
-            Map<String, Object> snapshot = (Map<String, Object>) Json.parse((String) r.get("snapshot"));
+            Map<String, Object> snapshot = snapshotOf(c, runId);
             Map<String, Object> config = PayrollEngine.map(snapshot, "config");
             // Keep accepted exceptions when the same one comes back.
             Map<String, Map<String, Object>> accepted = new HashMap<>();
@@ -423,13 +421,11 @@ public final class PayrollRuns {
                         warnings++;
                     }
                 }
+                if (payslipRows.size() >= WRITE_CHUNK) {
+                    writeRows(c, payslipRows, lineRows, exceptionRows);   // keeps the rows held in memory to a chunk, not the whole run
+                }
             }
-            Sql.batch(c, "insert into app.payslip (id, tenant_id, run_id, employment_id, membership_id, days_in_period, days_paid, lop_days, "
-                    + "gross, deductions, net, employer_cost, held, info) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb)", payslipRows);
-            Sql.batch(c, "insert into app.payslip_line (tenant_id, payslip_id, position, code, name, kind, amount, unrounded, full_month, "
-                    + "rule_id, trace) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?::uuid, ?::jsonb)", lineRows);
-            Sql.batch(c, "insert into app.run_exception (tenant_id, run_id, employment_id, code, level, acceptable, message, link, detail_key, "
-                    + "accepted_by, accepted_reason, accepted_at) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?::uuid, ?, ?::timestamptz)", exceptionRows);
+            writeRows(c, payslipRows, lineRows, exceptionRows);
             int attempt = ((Number) r.get("attempt")).intValue() + 1;
             Map<String, Object> totals = new LinkedHashMap<>();
             totals.put("people", people);
@@ -771,7 +767,7 @@ public final class PayrollRuns {
                 throw new ApiException(409, "payroll.bank_changed", "The bank account of " + moved + (moved == 1 ? " person was" : " people were")
                         + " changed after the run was calculated. Calculate it again so the new account is checked.");
             }
-            long open = Sql.query(c, "select 1 from app.run_exception where run_id = ? and level = 'blocking' and accepted_at is null", runId).size();
+            long open = Sql.count(c, "select 1 from app.run_exception where run_id = ? and level = 'blocking' and accepted_at is null", runId);
             if (open > 0) {
                 throw new ApiException(409, "payroll.blocked", open + " blocking exception" + (open == 1 ? " is" : "s are") + " still open");
             }
@@ -1017,12 +1013,41 @@ public final class PayrollRuns {
         }
     }
 
+    /**
+     * The run, without its snapshot: that is every employee's pay data as JSON, large, and only calculating needs it
+     * (read by {@link #snapshotOf}). Listing the columns keeps it out of the many reads that only check the state.
+     */
     static Map<String, Object> run(Connection c, UUID runId) throws SQLException {
-        Map<String, Object> r = Sql.one(c, "select * from app.payroll_run where id = ?", runId);
+        Map<String, Object> r = Sql.one(c, "select id, tenant_id, group_id, period, state, frozen_at, frozen_by, attempt, calculated_by, calculated_at, "
+                + "approved_by, approved_at, paid_on, paid_reference, paid_by, released_at, released_by, note, totals, created_at "
+                + "from app.payroll_run where id = ?", runId);
         if (r == null) {
             throw ApiException.notFound("The run");
         }
         return r;
+    }
+
+    /** Payslips are written in chunks of this many, so a large run does not hold every row, with its JSON, until the end. */
+    private static final int WRITE_CHUNK = 500;
+
+    /** Writes the collected rows (payslips first, as the lines refer to them) and empties the lists. */
+    private static void writeRows(Connection c, List<Object[]> payslipRows, List<Object[]> lineRows, List<Object[]> exceptionRows) throws SQLException {
+        Sql.batch(c, "insert into app.payslip (id, tenant_id, run_id, employment_id, membership_id, days_in_period, days_paid, lop_days, "
+                + "gross, deductions, net, employer_cost, held, info) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb)", payslipRows);
+        Sql.batch(c, "insert into app.payslip_line (tenant_id, payslip_id, position, code, name, kind, amount, unrounded, full_month, "
+                + "rule_id, trace) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?::uuid, ?::jsonb)", lineRows);
+        Sql.batch(c, "insert into app.run_exception (tenant_id, run_id, employment_id, code, level, acceptable, message, link, detail_key, "
+                + "accepted_by, accepted_reason, accepted_at) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?::uuid, ?, ?::timestamptz)", exceptionRows);
+        payslipRows.clear();
+        lineRows.clear();
+        exceptionRows.clear();
+    }
+
+    /** The frozen snapshot of a run, parsed. */
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> snapshotOf(Connection c, UUID runId) throws SQLException {
+        Map<String, Object> r = Sql.one(c, "select snapshot from app.payroll_run where id = ?", runId);
+        return (Map<String, Object>) Json.parse((String) r.get("snapshot"));
     }
 
     private static Map<String, Object> lockRun(Connection c, UUID runId) throws SQLException {

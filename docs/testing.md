@@ -249,3 +249,32 @@ since the change, so whoever had the new address keeps nothing. Wrong links are 
 login; a wrong password counts toward the sign-in lock. Known and left alone: pending invitations to the old address stay as they
 were, `auth.login_failure` counts stay under the old address, and mail to a suppressed old address (so the undo link) is not sent.
 `EmailChangeTest` and `28-email-change.spec.ts` (project `email-change`) cover it.
+
+
+### More performance checks
+
+- `PayrollScaleTest` also prints a `SCALE2` line on the same 2,000-employee run: opening a run (p95 and the memory it allocates),
+  recalculating (time and memory allocated by the thread), the register and journal downloads, and a payslip PDF (p95).
+  Allocated bytes are used rather than peak heap because the heap's peak depends on when the collector runs.
+- `perf/k6/mixed.js`: a ramp of 30 users doing a realistic mix of People reads, opening a run, payslip PDFs and the register,
+  with a budget per request name.
+- `perf/k6/spike.js`: the request rate jumps to 80 a second for 30 s, then drops; shows whether the pools recover.
+- `perf/k6/soak.js`: 10 users for 30 minutes or more against a memory-limited container, to catch slow leaks (watch `docker stats`).
+- `ImageDecodeTest`: a few-kilobyte file that declares a 144 megapixel picture is refused quickly; large photos still go through,
+  also 20 at once, under a 512 MB heap.
+
+
+First figures (6 Nov 2026, developer container with 2 vCPUs shared by k6, the app and PostgreSQL 16; 1 GB heap; one run each,
+original code against the memory fixes):
+
+| Measure | Original | With the memory fixes |
+| --- | --- | --- |
+| Open a run, p95 | 114 ms | 95 ms |
+| Open a run, memory allocated | 41 MB | 17 MB |
+| Recalculate 2,000 employees | 962 ms, 392 MB | 1,041 ms, 390 MB (unchanged: batching not done yet) |
+| Register download | 191 ms | 154 ms |
+
+On the fixed code over HTTP: `mixed.js` at 30 users met every budget (People list p95 87 ms, open run 192 ms, payslip PDF 33 ms,
+register 569 ms). `reads.js` with no pause between reads gave a People list p95 of 498 ms, over the 300 ms budget, as in the runs
+above. `spike.js` at 80 requests a second on the 1 MB People list gave p95 2.0 s and a maximum of 5.0 s; k6 could not start 96
+requests and none failed. Single runs on a shared machine: use them for direction, not as exact figures.

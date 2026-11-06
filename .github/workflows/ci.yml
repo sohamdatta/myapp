@@ -1,6 +1,6 @@
 # Runs every automated check on each push to main and on each pull request:
 #   backend   Maven build and the JUnit tests against a real PostgreSQL 16
-#   frontend  lint and production build
+#   frontend  lint, unit and component tests (with coverage), and production build
 #   browser   the app started from the backend jar, then the Playwright suites
 #   deploy    the deployment images built and started as on a server, against a
 #             PostgreSQL whose admin login is not a superuser (as on AWS)
@@ -110,6 +110,7 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
       - run: npm ci
       - run: npm run lint
+      - run: npm run test:coverage
       - run: npm run build
 
   e2e-dates:
