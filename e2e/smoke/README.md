@@ -30,3 +30,17 @@ npx playwright test -c playwright.smoke.config.ts
 | `SMOKE_SELFTEST=1` | Forces Set pay → Preview to fail, to prove the sweep notices. The run should then fail |
 
 Use it after every deploy, on a demo or UAT Organization. On production, use a login that can only read.
+
+## The sweep that writes: `actions.spec.ts`
+
+For a **demo Organization only**. It sets pay for one employee (Set pay → Preview → Save), saves and restores their statutory
+profile, then opens or starts a payroll run and goes as far as **Freeze inputs → Calculate**. It never approves or pays.
+It does nothing unless `SMOKE_ALLOW_WRITES=1`, so it cannot run against production by accident. The result is `smoke-report/actions.md`.
+
+```bash
+SMOKE_ALLOW_WRITES=1 SMOKE_EMPLOYEE="Nora Nopay" \
+SMOKE_BASE_URL=https://your-demo-host SMOKE_EMAIL=hr@yourdemo.org SMOKE_PASSWORD='...' \
+npx playwright test -c playwright.smoke.config.ts actions
+```
+
+`SMOKE_EMPLOYEE` names the employee to give pay to (default: the first on the People list). Use someone you do not mind changing.
