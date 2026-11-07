@@ -55,6 +55,10 @@ test('saving pay, the statutory profile and calculating a payroll run work', asy
     await page.fill('#email', EMAIL!);
     await page.fill('#password', PASSWORD!);
     await page.click('button.primary');
+    if (process.env.SMOKE_ORG) {
+      const choose = page.getByRole('button', { name: new RegExp(process.env.SMOKE_ORG, 'i') });
+      if (await choose.count()) await choose.first().click();
+    }
     await expect(page.locator('.topbar')).toBeVisible({ timeout: 30_000 });
   });
 
