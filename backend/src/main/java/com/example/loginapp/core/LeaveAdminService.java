@@ -207,6 +207,7 @@ public final class LeaveAdminService {
                     membershipId, day) != null) {
                 throw new ApiException(409, "request.refused", "Comp-off for " + day + " has already been granted");
             }
+            requireWorkedDayOff(c, ctx.tenantId(), membershipId, day, days);
             LeaveService.requireOpenYear(c, day, day);
             Sql.update(c, "insert into app.leave_ledger (tenant_id, membership_id, leave_type_id, on_date, days, kind, expires_on, "
                             + "entered_by, reason) values (?, ?, ?, ?, ?, 'comp_off_earned', ?, ?, ?)",
@@ -216,6 +217,31 @@ public final class LeaveAdminService {
                     Map.of("date", day.toString(), "days", LeaveService.plain(days)));
             return null;
         });
+    }
+
+    /**
+     * Comp-off is for a weekly off or holiday worked for at least the time it grants: half a day's minutes
+     * for a half day, a full day's for a day, as the candidates list offers. The day is worked out first,
+     * so a grant made before anyone opened that day still sees its punches.
+     */
+    private static void requireWorkedDayOff(Connection c, UUID tenantId, UUID membershipId, LocalDate day, BigDecimal days)
+            throws SQLException {
+        AttendanceDays.Assigned a = AttendanceDays.assigned(c, membershipId, day);
+        if (a == null) {
+            throw ApiException.badRequest("Comp-off is for a weekly off or holiday that was worked");
+        }
+        AttendanceDays.recompute(c, tenantId, membershipId, day);
+        Map<String, Object> d = Sql.one(c, "select status, worked_minutes from app.attendance_day where membership_id = ? and work_date = ?",
+                membershipId, day);
+        if (d == null || !List.of("weekly_off", "holiday").contains((String) d.get("status"))) {
+            throw ApiException.badRequest(day + " was not a weekly off or holiday. Comp-off is for a day off that was worked");
+        }
+        boolean whole = days.compareTo(BigDecimal.ONE) == 0;
+        int needed = whole ? a.schedule().fullDayMinutes() : a.schedule().halfDayMinutes();
+        if (((Number) d.get("workedMinutes")).intValue() < needed) {
+            throw ApiException.badRequest("Comp-off of " + (whole ? "a day" : "half a day") + " needs " + needed
+                    + " minutes worked on " + day + ". Grant less, or check the punches");
+        }
     }
 
     // ── the leave year ──────────────────────────────────────────────────

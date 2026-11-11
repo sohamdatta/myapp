@@ -7,3 +7,4 @@ guide's spec) and copy the files into `img/<module>/`.
 | Module | Guide | Test cases (every setting and screen) | Browser tests |
 | --- | --- | --- | --- |
 | Attendance | [attendance.md](attendance.md) | [attendance-ui-test-cases.xlsx](../testing/attendance-ui-test-cases.xlsx) | `e2e/tests/40` to `43` |
+| Leave | [leave.md](leave.md) | [leave-ui-test-cases.xlsx](../testing/leave-ui-test-cases.xlsx) | `e2e/tests/44-leave-cases`, `45-leave-guide` |

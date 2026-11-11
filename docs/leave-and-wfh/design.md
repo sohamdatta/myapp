@@ -4,7 +4,7 @@ Oct 4, 2026
 
 ## Scope
 
-This design covers the leave and work-from-home features listed in the attendance features document, built on the user and attendance modules as they stand in the repository (sohamdatta/myapp, commit `4eb18e3`). Nothing here is built yet.
+This design covers the leave and work-from-home features listed in the attendance features document, built on the user and attendance modules (sohamdatta/myapp, commit `4eb18e3`). It is built; the customer guide is [docs/user-guide/leave.md](../user-guide/leave.md) and every setting and screen is tested in `e2e/tests/44-leave-cases` ([test cases](../testing/leave-ui-test-cases.xlsx)).
 
 | In | Waits | Waits on |
 | --- | --- | --- |
@@ -99,7 +99,7 @@ Four new permission codes, in the same shape as attendance.
 - `leave.approve`: approve or reject requests within the scope, never one's own.
 - `leave.manage`: leave types and settings, apply on someone's behalf, adjust a balance, run the year end.
 
-As with attendance: team scope returns nobody until employee records carry reporting lines, so HR and the Org Admin approve until then; assigned behaves as All until entity scoping is switched on; an HR Admin who takes leave also needs the Employee role.
+Team scope reaches the people whose employee record names the manager (People); a manager sees and decides only their leave. Assigned behaves as All until entity scoping is switched on. An HR Admin who takes leave also needs the Employee role.
 
 Work from home adds no permissions. Requests use `attendance.punch` and `attendance.approve`; eligibility, limits and remote days are changed with `attendance.manage`.
 
@@ -114,7 +114,7 @@ A pure function, `LeaveDays`, in the style of `DayCalculator`: given the date ra
 3. A request that counts zero days is refused.
 4. A user with no work location and shift on a date in the range is refused with the existing `attendance.not_assigned` error.
 
-The window: a user may apply for dates from 31 days back to 365 days ahead. HR, applying on someone's behalf, may use any date in a leave year that is still open.
+The window: a user may apply for dates from `leave.apply.back_days` back (0 to 90, default 31) to `leave.apply.ahead_days` ahead (30 to 730, default 365), both Organization settings. HR, applying on someone's behalf, may use any date in a leave year that is still open, up to a year ahead. During an exit notice period, only the leave types the exit settings allow can be applied for (`leave.not_during_notice`).
 
 ### Accrual
 
@@ -160,7 +160,7 @@ The leave year starts in January or April, per Organization. A year can be close
 
 ### Comp-off
 
-A comp-off type has no quota. HR grants a day (or half) for work on a weekly off or holiday; the entry carries an expiry date from the type's `expiry_days`. The People view lists days off that were worked for at least a half day and have no comp-off yet, taken from the stored day results.
+A comp-off type has no quota. HR grants a day (or half) for work on a weekly off or holiday; the entry carries an expiry date from the type's `expiry_days`. *Leave → Balances → Days off that were worked* lists, for the last 90 days, days off worked for at least a half day with no comp-off yet. A grant is refused unless the day was a weekly off or holiday worked for at least the time granted (half a day's minutes for 0.5, a full day's for 1).
 
 Comp-off is used oldest first. When a balance is read, any earned entry past its expiry with days still unused gets one `comp_off_expired` entry for the remainder.
 
@@ -302,7 +302,7 @@ Changed: `POST /me/requests` accepts a date range and `half`; `POST /me/requests
 | --- | --- | --- |
 | My leave | Anyone with `leave.apply` | A tile per leave type with the balance; opening a tile lists its ledger entries. "Apply for leave" opens a form that shows, as dates are chosen, how many days count and what will be left. Below, the user's requests with Cancel |
 | Leave → Requests | `leave.approve` | Pending requests with the user's balance and who else is away on those dates; approve or reject with a note |
-| Leave → Calendar | `leave.read` beyond self | A month grid: who is on leave, on duty or remote each day |
+| Leave → Who is away | `leave.read` beyond self | A month's list: who is on leave, on duty or working from home, and when |
 | Leave → Balances | `leave.read` for everyone | Each user's balance per type; with `leave.manage`: adjust, apply on behalf, grant comp-off |
 | Leave → Setup | `leave.manage` | Leave types, the leave year, and the year-end preview and run |
 | My attendance | Existing | "Working from home today" on a remote day; the request form takes a date range and a half day, and shows how many work-from-home days are left this week and month |
@@ -337,6 +337,7 @@ Applying for leave and cancelling a pending request are not audit events; the re
 | `leave.no_days` | 400 | The range has no working days |
 | `leave.insufficient_balance` | 409 | Not enough balance; the message gives available and needed |
 | `leave.window` | 400 | Dates outside the allowed window |
+| `leave.not_during_notice` | 409 | The leave type cannot be taken during an exit notice period |
 | `leave.own_request` | 409 | Deciding, adjusting or applying on behalf for oneself |
 | `leave.started` | 409 | The leave has started; only HR can cancel it |
 | `leave.year_closed` | 409 | The date is in a closed leave year |
@@ -348,7 +349,7 @@ Applying for leave and cancelling a pending request are not audit events; the re
 
 ## Tests
 
-**Done so far:** only the schema. `V4__leave_and_wfh.sql` loads on PostgreSQL 16 on top of the three existing migrations, and 16 checks pass against it: the platform and sign-in roles cannot reach the new tables; one Organization sees nothing of another's and cannot point a request at another's user or leave type; a repeated accrual is refused; ledger entries cannot be updated or deleted; an adjustment needs who and why; overlapping leave is refused; nobody can decide their own leave; the balance is the ledger's sum; a cancelled leave frees its dates; a half day is for one date; an approved work-from-home request can be cancelled; a remote punch and an on-leave day are accepted; a year is closed once; and an HR Admin's role-granting results are unchanged. No application code or application tests exist yet.
+**At the time of writing this design:** only the schema. Built since; see `LeaveTest`, `03-leave` and `44-leave-cases`. `V4__leave_and_wfh.sql` loads on PostgreSQL 16 on top of the three existing migrations, and 16 checks pass against it: the platform and sign-in roles cannot reach the new tables; one Organization sees nothing of another's and cannot point a request at another's user or leave type; a repeated accrual is refused; ledger entries cannot be updated or deleted; an adjustment needs who and why; overlapping leave is refused; nobody can decide their own leave; the balance is the ledger's sum; a cancelled leave frees its dates; a half day is for one date; an approved work-from-home request can be cancelled; a remote punch and an on-leave day are accepted; a year is closed once; and an HR Admin's role-granting results are unchanged. No application code or application tests exist yet.
 
 **To write**, in the pattern of the existing tests (pure tests with no database; service tests on PostgreSQL with a clock the test controls):
 
