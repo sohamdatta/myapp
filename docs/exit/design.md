@@ -32,7 +32,11 @@ and are not covered.
 `proposed` (the app's proposals, and absconding while the notices run) →
 `submitted` (resigned) → `recommended` (the manager agreed a day) →
 `accepted` (the last working day is fixed) → `closed`. Also `withdrawn` and
-`cancelled`. One open exit per employment (a partial unique index).
+`cancelled`; both keep any last day and acceptance time already fixed (V45: an
+accepted exit can be cancelled before its last day). One open exit per employment
+(a partial unique index). On screen: Waiting for your manager, Waiting for HR,
+Serving notice, Absent without leave, On hold. The customer guide is
+[docs/user-guide/exits.md](../user-guide/exits.md).
 
 The employment stays `active` through the notice. The day after the last
 working day the app ends it (`exited`, `exit_date`), moves the reports to the
