@@ -1,5 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
-import { SUPER_ADMIN, signIn, newPage, nav, tab, acceptInvite, api, isoDay, shot as save } from './helpers';
+import { SUPER_ADMIN, signIn, newPage, nav, tab, api, isoDay, shot as save } from './helpers';
+import { join, tokenOf } from './join';
 
 // The screenshots in docs/user-guide/attendance.md, taken in a demo Organization of their own (Northwind Foods)
 // so they show tidy names. Run with E2E_SHOTS=<folder>; without it the steps still run and nothing is saved.
@@ -18,7 +19,7 @@ test('the attendance guide, screen by screen', async ({ browser }) => {
     await expect(admin.getByText('Platform console')).toBeVisible();
     await admin.fill('#org-name', 'Northwind Foods'); await admin.fill('#org-admin', em('owner')); await admin.click('text=Create and invite');
     await expect(admin.getByText(`Invitation for ${em('owner')}.`)).toBeVisible();
-    owner = await acceptInvite(browser, await admin.locator('.copy-row input').inputValue());
+    owner = await join(browser, tokenOf(await admin.locator('.copy-row input').inputValue()), em('owner'));
   }
   const people: [string, string[]][] = [['hr', ['hr_admin']], ['priya', ['employee']], ['arjun', ['employee']], ['kavya', ['employee']], ['rahul', ['employee']], ['neha', ['employee']], ['vikram', ['employee']], ['meera', ['employee', 'manager']]];
   const pg: Record<string, Page> = {};
@@ -26,7 +27,7 @@ test('the attendance guide, screen by screen', async ({ browser }) => {
   for (const [n, roles] of people) {
     if (existing.has(em(n))) { pg[n] = await signIn(browser, em(n)); continue; }
     const b = await ok(api(owner, 'POST', '/org/invitations', { email: em(n), roles }));
-    pg[n] = await acceptInvite(browser, `/?invite=${b.token}`);
+    pg[n] = await join(browser, b.token, em(n));
   }
   const hr = pg.hr;
   const list = (await api(hr, 'GET', '/org/attendance/assignments')).body as any[];

@@ -2,7 +2,8 @@ import { test, expect, type Page } from '@playwright/test';
 import * as fs from 'fs';
 import { dbAdmin, readState, statePath, writeState } from './attendance-cases';
 import AxeBuilder from '@axe-core/playwright';
-import { SUPER_ADMIN, signIn, newPage, nav, tab, acceptInvite, api, isoDay, istWeekday, daysToNextMonday, nowMs } from './helpers';
+import { SUPER_ADMIN, signIn, newPage, nav, tab, api, isoDay, istWeekday, daysToNextMonday, nowMs } from './helpers';
+import { join, tokenOf } from './join';
 
 const DEVICE_URL = 'http://127.0.0.1:8080/iclock';
 const U = (n: string) => `${n}@acme.test`;
@@ -59,7 +60,7 @@ test.describe('attendance test cases, part 2', () => {
     for (const n of NEW) {
       if (emails.has(U(n))) { P[n] = await signIn(browser, U(n)); continue; }
       const b = await ok(api(owner, 'POST', '/org/invitations', { email: U(n), roles: n === 'mgr2' ? ['employee', 'manager'] : ['employee'] }));
-      P[n] = await acceptInvite(browser, `/?invite=${b.token}`);
+      P[n] = await join(browser, b.token, U(n));
     }
     const list = await ok(api(owner, 'GET', '/org/attendance/assignments'));
     ids = Object.fromEntries(list.map((p: any) => [p.email, p.membershipId]));
@@ -549,9 +550,9 @@ test.describe('other organizations', () => {
       await admin.click('text=Create and invite'); await expect(admin.getByText(`Invitation for ${email}.`)).toBeVisible();
       return admin.locator('.copy-row input').inputValue();
     };
-    b = await acceptInvite(browser, await mk('Beta Payroll Co', 'b-owner@beta.test', true));
+    b = await join(browser, tokenOf(await mk('Beta Payroll Co', 'b-owner@beta.test', true)), 'b-owner@beta.test');
     await admin.reload();
-    c = await acceptInvite(browser, await mk('Empty Co', 'c-owner@empty.test', false));
+    c = await join(browser, tokenOf(await mk('Empty Co', 'c-owner@empty.test', false)), 'c-owner@empty.test');
   });
   test('TC-001 attendance menu is present when the module is on', async () => {
     await expect(c.getByRole('link', { name: 'Attendance', exact: true })).toBeVisible();

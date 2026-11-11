@@ -1,7 +1,8 @@
 import { test, expect, type Page } from '@playwright/test';
 import { holidayDay, readState, statePath, writeState } from './attendance-cases';
 import * as fs from 'fs';
-import { currentYear, SUPER_ADMIN, signIn, newPage, nav, tab, acceptInvite, api, isoDay, istWeekday, nowMs, expectNoSidewaysScroll } from './helpers';
+import { currentYear, SUPER_ADMIN, signIn, newPage, nav, tab, api, isoDay, istWeekday, nowMs, expectNoSidewaysScroll } from './helpers';
+import { join } from './join';
 
 const DEVICE_URL = 'http://127.0.0.1:8080/iclock';
 const OWNER = 'owner@acme.test';
@@ -16,7 +17,7 @@ const hol = (n: number) => holidayDay(n, currentYear(), Number(isoDay(0).slice(5
 const off = () => [(istWeekday() + 3) % 7];
 
 async function ok(p: Promise<{ status: number; body: any }>) { const r = await p; expect([200, 204], JSON.stringify(r.body)).toContain(r.status); return r.body; }
-async function invite(email: string, roles: string[]) { const b = await ok(api(owner, 'POST', '/org/invitations', { email, roles })); return `/?invite=${b.token}`; }
+async function invite(email: string, roles: string[]): Promise<string> { const b = await ok(api(owner, 'POST', '/org/invitations', { email, roles })); return b.token; }
 async function openSetup(p: Page) { await p.reload(); await nav(p, 'Attendance'); await tab(p, 'Setup'); }
 async function openPeople(p: Page) { await p.reload(); await nav(p, 'Attendance'); await tab(p, 'People'); }
 async function addLocForm(p: Page) { await openSetup(p); await p.getByRole('button', { name: 'Add a work location' }).click(); }
@@ -45,11 +46,11 @@ test.describe('attendance test cases, part 1', () => {
     await expect(admin.getByText('Platform console')).toBeVisible();
     const org = await ok(api(admin, 'POST', '/platform/organizations', { name: 'Acme Test', slug: 'acme-test', adminEmail: OWNER }));
     await admin.context().close();
-    owner = await acceptInvite(browser, `/?invite=${org.invitationToken}`);
-    hr = await acceptInvite(browser, await invite(U('hr'), ['hr_admin']));
-    aud = await acceptInvite(browser, await invite(U('aud'), ['auditor']));
-    mgr = await acceptInvite(browser, await invite(U('mgr'), ['employee', 'manager']));
-    for (const n of ['e1', 'e2', 'e3', 'e4', 'e5', 'e6', 'e7', 'e8', 'e9']) emp[n] = await acceptInvite(browser, await invite(U(n), ['employee']));
+    owner = await join(browser, org.invitationToken, OWNER);
+    hr = await join(browser, await invite(U('hr'), ['hr_admin']), U('hr'));
+    aud = await join(browser, await invite(U('aud'), ['auditor']), U('aud'));
+    mgr = await join(browser, await invite(U('mgr'), ['employee', 'manager']), U('mgr'));
+    for (const n of ['e1', 'e2', 'e3', 'e4', 'e5', 'e6', 'e7', 'e8', 'e9']) emp[n] = await join(browser, await invite(U(n), ['employee']), U(n));
     const list = await ok(api(owner, 'GET', '/org/attendance/assignments'));
     ids = Object.fromEntries(list.map((p: any) => [p.email, p.membershipId]));
     shift = await ok(api(owner, 'POST', '/org/attendance/shifts', { name: 'General', startTime: '09:30', endTime: '18:30', graceMinutes: 10, fullDayMinutes: 480, halfDayMinutes: 240, active: true }));
