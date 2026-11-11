@@ -89,5 +89,12 @@ export default defineConfig({
     { name: 'settings', testMatch: /22-settings\.spec\.ts/, use: desktop },
     // Negative cases for tax declarations, settings and devices, in an Organization of their own.
     { name: 'neg-tax-settings', testMatch: /23-negative-tax-settings\.spec\.ts/, use: desktop },
+    // Every attendance setting and screen, case by case (docs/testing/attendance-ui-test-cases.xlsx), in an
+    // Organization of their own (Acme Test), plus two of their own for module switches: --project=attendance-cases.
+    { name: 'attendance-cases', testMatch: /40-attendance-cases\.spec\.ts/, use: desktop },
+    { name: 'attendance-cases-more', testMatch: /41-attendance-cases-more\.spec\.ts/, use: desktop, dependencies: ['attendance-cases'] },
+    { name: 'attendance-cases-marks', testMatch: /42-attendance-cases-marks\.spec\.ts/, use: desktop, dependencies: ['attendance-cases-more'] },
+    // The attendance user guide's screenshots (docs/user-guide/attendance.md), in Northwind Foods: E2E_SHOTS=<folder> --project=attendance-guide.
+    { name: 'attendance-guide', testMatch: /43-attendance-guide\.spec\.ts/, use: desktop },
   ],
 });

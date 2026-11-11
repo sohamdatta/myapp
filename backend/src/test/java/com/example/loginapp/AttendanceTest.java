@@ -364,6 +364,47 @@ class AttendanceTest {
     }
 
     @Test
+    void aCorrectionWithTheOutTimeBeforeTheInTimeIsRefusedExceptOnANightShift() {
+        Org org = newOrg();
+        SessionCtx day = join(org, "day", List.of("employee"));
+        SessionCtx night = join(org, "night", List.of("employee"));
+        UUID office = location(org, "Office", "none");
+        assign(org, day, office, shift(org, "General", "09:30", "18:30"));
+        assign(org, night, office, shift(org, "Night", "22:00", "06:00"));
+        now(MONDAY.plusDays(1), "10:00");
+
+        assertError(400, "request.invalid", () -> attendance.createRequest(day, "regularization", MONDAY.toString(),
+                "18:30", "09:30", "Typed the times the wrong way round"));
+        assertError(400, "request.invalid", () -> attendance.createRequest(day, "regularization", MONDAY.toString(),
+                "09:30", "09:30", "Same time twice"));
+        Map<String, Object> made = attendance.createRequest(night, "regularization", MONDAY.toString(), "22:00", "06:00",
+                "Missed both punches on the night shift");
+        assertEquals("pending", made.get("status"));
+    }
+
+    @Test
+    void anApprovedCorrectionForADayBeforeTheJoinDateShowsInTheMonth() throws Exception {
+        Org org = newOrg();
+        SessionCtx emp = join(org, "emp", List.of("employee"));
+        assign(org, emp, location(org, "Office", "none"), shift(org, "General", "09:30", "18:30"));
+        // The login joined after the day it asks to correct, as when people are invited after they start work.
+        try (Connection c = DriverManager.getConnection("jdbc:postgresql://" + env("APP_TEST_DB_HOST", "localhost:5432")
+                + "/hrms_test_attendance", env("APP_DB_OWNER_USER", "postgres"), env("APP_DB_OWNER_PASSWORD", "postgres"));
+             Statement st = c.createStatement()) {
+            st.execute("update app.membership set joined_at = '" + MONDAY.plusDays(1) + " 12:00+05:30' where id = '"
+                    + emp.membershipId() + "'");
+        }
+        now(MONDAY.plusDays(2), "10:00");
+        UUID id = UUID.fromString((String) attendance.createRequest(emp, "regularization", MONDAY.toString(), "09:30",
+                "18:30", "Worked before my login was made").get("id"));
+        attendance.decideRequest(org.admin, id, true, null);
+
+        Map<String, Object> corrected = day(emp, MONDAY);
+        assertEquals("present", corrected.get("status"));
+        assertEquals(540, number(corrected, "workedMinutes"));
+    }
+
+    @Test
     void nobodyDecidesTheirOwnRequest() {
         Org org = newOrg();
         SessionCtx hr = join(org, "hr", List.of("hr_admin", "employee"));

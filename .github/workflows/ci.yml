@@ -148,7 +148,7 @@ jobs:
     name: Browser tests (${{ matrix.zone.name }})
     needs: [backend, frontend]
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30   # the per-module UI test cases (e2e/tests/40 on) add about 6 minutes
     strategy:
       fail-fast: false
       matrix:
