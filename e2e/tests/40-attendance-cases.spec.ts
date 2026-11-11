@@ -604,6 +604,7 @@ test.describe('attendance test cases, part 1', () => {
     await expect(owner.locator('tr', { hasText: 'Main gate' })).toContainText('switched off');
     const r = await request.get(`${DEVICE_URL}/cdata?SN=${SN}`); expect([403, 404]).toContain(r.status());
     await owner.locator('tr', { hasText: 'Main gate' }).getByRole('button', { name: 'Switch on' }).click();
+    await expect(owner.locator('tr', { hasText: 'Main gate' }).getByRole('button', { name: 'Switch off' })).toBeVisible();   // saved before the device calls
     const r2 = await request.get(`${DEVICE_URL}/cdata?SN=${SN}`); expect(r2.status()).toBe(200);
   });
   test('TC-161 TC-162 TC-163 TC-175 TC-176 file import', async () => {
