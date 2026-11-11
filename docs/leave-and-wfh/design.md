@@ -71,7 +71,7 @@ Columns added to existing tables:
 
 | Table | Column | Purpose |
 | --- | --- | --- |
-| `membership` | `wfh_allowed` | Whether this user may work from home |
+| `membership` | `wfh_allowed` | Whether this user may work from home. Defaults to true: once the Organization switches work from home on, every user may request it until HR turns it off for them |
 | `attendance_assignment` | `remote_days` | Regular remote days of the week, dated with the rest of the assignment |
 | `attendance_request` | `half`, `cancelled_at` | Half-day work from home; when an approved request was cancelled |
 | `attendance_day` | `leave_days`, `leave_unpaid`, `remote` | How much of the day is leave, whether it is unpaid, whether it was worked remotely |

@@ -330,7 +330,8 @@ public final class AttendanceService {
     /**
      * Raises a correction (regularization) for one day, or on-duty or work-from-home requests for a range of dates:
      * one request per working day in the range, so each can be decided and cancelled on its own.
-     * Times are local to the work location, as HH:mm; an out time at or before the in time means the next day.
+     * Times are local to the work location, as HH:mm. On a night shift (one that ends the next day) an out time
+     * at or before the in time means the next day; on any other shift it is a mistake and is refused.
      *
      * @param half first or second, for half a day at home on a single date; otherwise null
      */
@@ -427,6 +428,9 @@ public final class AttendanceService {
             if (correction) {
                 LocalTime start = time(inTime);
                 LocalTime end = time(outTime);
+                if (!end.isAfter(start) && !overnight(first.schedule())) {
+                    throw ApiException.badRequest("The out time must be after the in time. Only a night shift can end the next day");
+                }
                 LocalDate endDay = end.isAfter(start) ? from : from.plusDays(1);
                 in = Timestamp.from(from.atTime(start).atZone(first.zone()).toInstant());
                 out = Timestamp.from(endDay.atTime(end).atZone(first.zone()).toInstant());
@@ -557,11 +561,21 @@ public final class AttendanceService {
             }
             if (approve) {
                 forget(c, owner, day, day);
+                // Worked out now rather than on the next read: a month read only fills in days from the
+                // membership's join date, so a day before it would otherwise stay empty.
+                if (!day.isAfter(today())) {
+                    recompute(c, ctx.tenantId(), owner, day);
+                }
             }
             UserService.audit(c, ctx, approve ? "attendance.request_approved" : "attendance.request_rejected",
                     "attendance_request", requestId, Map.of("kind", r.get("kind"), "date", day.toString()));
             return null;
         });
+    }
+
+    /** A shift whose end is at or before its start runs past midnight. */
+    private static boolean overnight(DayCalculator.Schedule schedule) {
+        return !schedule.end().isAfter(schedule.start());
     }
 
     private static void checkHomeLimits(Connection c, UUID membershipId, List<LocalDate> days, double each, Settings settings)

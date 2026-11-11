@@ -68,7 +68,7 @@ Eight new tables in the `app` schema and one new column on `membership`. The ful
 | `attendance_assignment` | Which location, shift and weekly offs apply to a user, from a date | `membership_id`, `work_location_id`, `shift_id`, `weekly_offs`, `effective_from` | Rows are added, never edited, so a past month always recomputes the same way |
 | `punch` | Every punch as it happened | `membership_id`, `at`, `direction`, `source`, `ip`, `latitude`, `longitude`, `accuracy_m`, `check_result` | Add-only: the application role has no update or delete right. `source` is `web`, `import`, `manual` or `request`. A manual punch needs who entered it and a reason. The same imported punch cannot be stored twice |
 | `import_batch` | One uploaded device file | `device_label`, `file_name`, `mapping`, row counts, `rejected_sample` | Add-only. The latest batch per device label supplies the saved column mapping |
-| `attendance_request` | A correction, on-duty or work-from-home request | `kind`, `work_date`, `requested_in`, `requested_out`, `reason`, `status`, `decided_by` | One pending request per user, day and kind. Cannot be decided by its author. A regularization needs both times, out after in |
+| `attendance_request` | A correction, on-duty or work-from-home request | `kind`, `work_date`, `requested_in`, `requested_out`, `reason`, `status`, `decided_by` | One pending request per user, day and kind. Cannot be decided by its author. A regularization needs both times, out after in; only on a night shift may the out time be the next day |
 | `attendance_day` | The worked-out result for one user on one day | `status`, `first_in`, `last_out`, `worked_minutes`, `late_minutes`, `early_minutes`, `overtime_minutes`, `incomplete`, `trail` | Always derived; safe to delete and rebuild. `trail` lists the steps that produced the result and is what the employee sees |
 
 Punches and results are kept apart on purpose. A punch is a fact and is never changed. A day's result is a calculation and can always be redone from the facts, which is the same principle as the payroll run in the solution design.
@@ -140,7 +140,7 @@ A punch belongs to a work date in the location's time zone. For a shift that end
 7. Worked minutes at or above `full_day_minutes`: `present`. At or above `half_day_minutes`: `half_day`. Below that: `absent`.
 8. Late minutes are the first in after shift start plus grace. Early minutes are the last out before shift end. Overtime minutes are worked minutes beyond `full_day_minutes`.
 
-An approved regularization adds two punches with source `request`, linked to the request, and the day is recalculated. The original punches stay. Each step writes one line to the trail, for example "Shift General 09:30 to 18:30, grace 10 min", "First in 09:52, 12 min late", "Worked 7 h 05 min, below full day of 8 h", "Result: half day".
+An approved regularization adds two punches with source `request`, linked to the request, and the day is recalculated at once (also for a day before the user's login joined, which a month read would not fill in). The original punches stay. Each step writes one line to the trail, for example "Shift General 09:30 to 18:30, grace 10 min", "First in 09:52, 12 min late", "Worked 7 h 05 min, below full day of 8 h", "Result: half day".
 
 ### When days are calculated
 
@@ -265,7 +265,7 @@ Only the schema has been tested so far. It was loaded on PostgreSQL 16 after the
 - Punches cannot be updated or deleted.
 - A manual punch without a reason and the person who entered it is rejected.
 - The same imported punch cannot be stored twice.
-- A second pending request for the same day and kind is rejected; a request cannot be approved by its author; a regularization without both times is rejected.
+- A second pending request for the same day and kind is rejected; a request cannot be approved by its author; a regularization without both times, or with the out time at or before the in time on a shift that does not end the next day, is rejected.
 - A day's result can be written and then replaced.
 - An employee code cannot be reused within an Organization, whatever the letter case.
 - An Employee holds punch and read for Self; an HR Admin holds read, approve and manage across the Organization; the role-granting results from the user module are unchanged.

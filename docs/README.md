@@ -25,6 +25,10 @@ The versions here are Markdown exports. The live, editable versions are the clau
 
 [Environments and deployment](deploy/README.md): production on AWS Lightsail and demo / UAT on Oracle Cloud, their status, decisions and a log of changes, with the setup guide for each.
 
+## User guides
+
+[User guides for customers](user-guide/README.md), one per module, with screenshots, and the UI test cases behind each.
+
 ## Tests
 
 [Tests and coverage](testing.md): what each suite covers, coverage figures, the weakest areas and how to measure them.
