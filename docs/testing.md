@@ -22,6 +22,7 @@ those cases from the screens on every pull request. The customer guide for the m
 | Exits | [exit-ui-test-cases.xlsx](testing/exit-ui-test-cases.xlsx) | `48-exit-cases` (Exit Labs), `49-exit-guide` (screenshots) | 49, all automated | 12 Nov 2026, all 49 pass |
 | Performance | [performance-ui-test-cases.xlsx](testing/performance-ui-test-cases.xlsx) | `50-performance-cases` (Perf Labs), `51-performance-guide` (screenshots) | 68, all automated | 12 Nov 2026, all 68 pass |
 | Payroll and tax declarations | [payroll-ui-test-cases.xlsx](testing/payroll-ui-test-cases.xlsx) | `52-payroll-cases` (Pay Labs), `53-payroll-guide` (screenshots) | 71, all automated | 12 Nov 2026, all 71 pass |
+| Getting started, users, security, settings and audit | [access-ui-test-cases.xlsx](testing/access-ui-test-cases.xlsx) | `54-access-cases` (Access Labs), `55-access-guide` (screenshots) | 45, all automated | 12 Nov 2026, all 45 pass |
 
 The cases found two bugs, fixed with JUnit tests in `AttendanceTest`: a correction whose out time was before its in time was
 read as the next day on a day shift, and an approved correction for a day before the login joined left the day empty.

@@ -114,6 +114,10 @@ export default defineConfig({
     { name: 'payroll-cases', testMatch: /52-payroll-cases\.spec\.ts/, use: desktop },
     // The payroll user guide's screenshots (docs/user-guide/payroll.md), in Northwind Textiles: E2E_SHOTS=<folder> --project=payroll-guide.
     { name: 'payroll-guide', testMatch: /53-payroll-guide\.spec\.ts/, use: desktop },
+    // Getting started, users and roles, security, settings, Organization settings, audit and modules, case by case (docs/testing/access-ui-test-cases.xlsx), in Access Labs: --project=access-cases.
+    { name: 'access-cases', testMatch: /54-access-cases\.spec\.ts/, use: desktop },
+    // The administration user guide's screenshots (docs/user-guide/administration.md), in Northwind Holdings: E2E_SHOTS=<folder> --project=access-guide.
+    { name: 'access-guide', testMatch: /55-access-guide\.spec\.ts/, use: desktop },
     // The attendance user guide's screenshots (docs/user-guide/attendance.md), in Northwind Foods: E2E_SHOTS=<folder> --project=attendance-guide.
     { name: 'attendance-guide', testMatch: /43-attendance-guide\.spec\.ts/, use: desktop },
   ],
