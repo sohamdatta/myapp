@@ -44,7 +44,7 @@ export function expectNoConsoleErrors() {
 /** Opens a fresh browser session (its own cookies) at the given width. */
 export async function newPage(browser: Browser, width = 1280): Promise<Page> {
   const context = await browser.newContext({
-    viewport: { width, height: 900 },
+    viewport: { width, height: process.env.E2E_SHOTS ? 1100 : 900 },   // taller for guide shots, so the whole menu shows
     timezoneId: 'Asia/Kolkata',
     locale: 'en-IN',
     acceptDownloads: true,

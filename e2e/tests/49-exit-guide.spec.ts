@@ -5,7 +5,7 @@ import { join } from './join';
 // The screenshots in docs/user-guide/exits.md, taken in a demo Organization of their own (Northwind Logistics),
 // so they show tidy names. Run with E2E_SHOTS=<folder>; without it the steps still run and nothing is saved.
 
-const em = (n: string) => `${n}@logistics.example`;
+const em = (n: string) => `${n}@logistics${process.env.E2E_RUN ?? ''}.example`;
 async function ok(r: Promise<{ status: number; body: any }>) {
   const done = await r;
   expect([200, 204], JSON.stringify(done.body)).toContain(done.status);
@@ -17,7 +17,7 @@ test('the exits guide, screen by screen', async ({ browser }) => {
   const admin = await newPage(browser); await admin.goto('/');
   await admin.fill('#email', SUPER_ADMIN.email); await admin.fill('#password', SUPER_ADMIN.password); await admin.click('button.primary');
   await expect(admin.getByText('Platform console')).toBeVisible();
-  const org = await ok(api(admin, 'POST', '/platform/organizations', { name: 'Northwind Logistics', slug: 'northwind-logistics', adminEmail: em('owner') }));
+  const org = await ok(api(admin, 'POST', '/platform/organizations', { name: 'Northwind Logistics', slug: `northwind-logistics${process.env.E2E_RUN ?? ''}`, adminEmail: em('owner') }));
   await admin.context().close();
   const owner = await join(browser, org.invitationToken, em('owner'));
   const pg: Record<string, Page> = {};
@@ -45,7 +45,7 @@ test('the exits guide, screen by screen', async ({ browser }) => {
   await ok(api(hr, 'POST', '/org/people/exits', { employmentId: sam.id, kind: 'termination', reasonCategory: 'conduct', note: 'After the inquiry', lastWorkingDay: isoDay(3), shortfallAction: 'paid_in_lieu' }));
 
   const shot = async (p: Page, name: string, fn: () => Promise<void>) => { await fn(); await save(p, `exits-${name}`); };
-  for (const p of [hr, pg.neha]) await p.setViewportSize({ width: 1280, height: 860 });
+  for (const p of [hr, pg.neha]) await p.setViewportSize({ width: 1280, height: 1100 });
   await shot(pg.neha, '01-my-exit', async () => { await pg.neha.reload(); await nav(pg.neha, 'My exit'); });
   await shot(hr, '02-list', async () => { await hr.reload(); await nav(hr, 'Exits'); });
   await shot(hr, '03-exit', async () => { await hr.getByRole('button', { name: 'Neha Gupta', exact: true }).click(); await expect(hr.locator('.clearance')).toBeVisible(); });

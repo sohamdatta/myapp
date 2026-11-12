@@ -5,7 +5,7 @@ import { join } from './join';
 // The screenshots in docs/user-guide/leave.md, taken in a demo Organization of their own (Northwind Traders),
 // so they show tidy names. Run with E2E_SHOTS=<folder>; without it the steps still run and nothing is saved.
 
-const em = (n: string) => `${n}@traders.example`;
+const em = (n: string) => `${n}@traders${process.env.E2E_RUN ?? ''}.example`;
 async function ok(r: Promise<{ status: number; body: any }>) {
   const done = await r;
   expect([200, 204], JSON.stringify(done.body)).toContain(done.status);
@@ -17,7 +17,7 @@ test('the leave guide, screen by screen', async ({ browser }) => {
   const admin = await newPage(browser); await admin.goto('/');
   await admin.fill('#email', SUPER_ADMIN.email); await admin.fill('#password', SUPER_ADMIN.password); await admin.click('button.primary');
   await expect(admin.getByText('Platform console')).toBeVisible();
-  const org = await ok(api(admin, 'POST', '/platform/organizations', { name: 'Northwind Traders', slug: 'northwind-traders', adminEmail: em('owner') }));
+  const org = await ok(api(admin, 'POST', '/platform/organizations', { name: 'Northwind Traders', slug: `northwind-traders${process.env.E2E_RUN ?? ''}`, adminEmail: em('owner') }));
   await admin.context().close();
   const owner = await join(browser, org.invitationToken, em('owner'));
   const people: [string, string, string[]][] = [['hr', 'Hema Rao', ['hr_admin']], ['priya', 'Priya Sharma', ['employee']], ['arjun', 'Arjun Mehta', ['employee']],
@@ -52,7 +52,7 @@ test('the leave guide, screen by screen', async ({ browser }) => {
   await ok(api(pg.rahul, 'POST', '/org/leave/me/requests', { leaveTypeId: casual.id, fromDate: next(1), toDate: next(1), reason: 'Bank work in town' }));
 
   const shot = async (p: Page, name: string, fn: () => Promise<void>) => { await fn(); await save(p, `leave-${name}`); };
-  await hr.setViewportSize({ width: 1280, height: 860 }); await pg.priya.setViewportSize({ width: 1280, height: 860 });
+  await hr.setViewportSize({ width: 1280, height: 1100 }); await pg.priya.setViewportSize({ width: 1280, height: 1100 });
   await shot(hr, '01-types', async () => { await hr.reload(); await nav(hr, 'Leave'); await tab(hr, 'Setup'); });
   await shot(hr, '02-type-form', async () => {
     await hr.getByRole('button', { name: 'Add leave type' }).first().click();

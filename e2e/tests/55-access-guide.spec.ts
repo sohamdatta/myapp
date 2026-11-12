@@ -23,7 +23,7 @@ test('the administration guide, screen by screen', async ({ browser }) => {
   const org = await ok(api(admin, 'POST', '/platform/organizations', { name: 'Northwind Holdings', slug: `northwind-holdings${RUN}`, adminEmail: em('owner') }));
   await admin.context().close();
   const owner = await join(browser, org.invitationToken, em('owner'));
-  await owner.setViewportSize({ width: 1280, height: 860 });
+  await owner.setViewportSize({ width: 1280, height: 1100 });
   const shot = async (p: Page, name: string, fn: () => Promise<void>) => { await fn(); await save(p, `admin-${name}`); };
 
   await shot(owner, '01-getting-started', async () => { await owner.reload(); await nav(owner, 'Getting started'); await expect(owner.getByRole('radio')).toHaveCount(3); });
@@ -54,7 +54,7 @@ test('the administration guide, screen by screen', async ({ browser }) => {
   await shot(owner, '06-subscription', async () => { await tab(owner, 'Subscription'); await expect(owner.locator('main')).toContainText('Core HR'); });
 
   // Security: the dialog, and two-step sign-in being set up.
-  await hr.setViewportSize({ width: 1280, height: 860 });
+  await hr.setViewportSize({ width: 1280, height: 1100 });
   await shot(hr, '07-security', async () => { await hr.reload(); await hr.getByRole('button', { name: 'Security', exact: true }).click(); await expect(hr.locator('#cp-current')).toBeVisible(); });
   await shot(hr, '08-two-step', async () => {
     await hr.getByRole('button', { name: 'Set up two-step sign-in' }).click();

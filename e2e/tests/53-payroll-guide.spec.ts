@@ -42,7 +42,7 @@ test('the payroll guide, screen by screen', async ({ browser }) => {
   people.deepa = await add({ legalName: 'Deepa Kulkarni', designation: 'Designer', gender: 'female', membershipId: id[em('deepa')] });
 
   const shot = async (p: Page, name: string, fn: () => Promise<void>) => { await fn(); await save(p, `payroll-${name}`); };
-  for (const p of [owner, hr, kavya]) await p.setViewportSize({ width: 1280, height: 860 });
+  for (const p of [owner, hr, kavya]) await p.setViewportSize({ width: 1280, height: 1100 });
   const payroll = async (p: Page, t?: string, sub?: string) => { await p.reload(); await nav(p, 'Payroll'); if (t) await tab(p, t); if (sub) await tab(p, sub); };
 
   // Employer and registrations.
