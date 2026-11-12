@@ -10,8 +10,8 @@ set lock_timeout = '5s';
 --
 -- The new check is added NOT VALID here and validated by V46, in its own transaction.
 
+-- ban-drop-constraint: the check is dropped only to be added again at once, wider; every row it allowed is still allowed.
 -- squawk-ignore ban-drop-constraint
--- Replaced by a wider check in the next statement: every row the old check allowed, the new one allows too.
 alter table app.exit_case drop constraint exit_case_check;
 alter table app.exit_case add constraint exit_case_check
   check ((status in ('accepted','closed')) = (last_working_day is not null and accepted_at is not null)
