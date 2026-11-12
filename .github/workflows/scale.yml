@@ -34,8 +34,8 @@ jobs:
           --health-cmd "pg_isready -U postgres"
           --health-interval 5s --health-timeout 5s --health-retries 20
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-java@v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6
         with:
           distribution: temurin
           java-version: '21'
@@ -68,7 +68,7 @@ jobs:
           done
           echo "backend did not start"; cat backend.log; exit 1
 
-      - uses: grafana/setup-k6-action@v1
+      - uses: grafana/setup-k6-action@c47136d33d365efbeb9ae7266908b5dcf98cdece # v1
       - name: Read load
         continue-on-error: ${{ !inputs.enforce }}
         env:
@@ -101,7 +101,7 @@ jobs:
         run: |
           { echo '### Scale check'; echo; grep '^SCALE' scale-payroll.log || echo 'no payroll line'; echo; echo '```'; grep -E 'http_req_duration|http_req_failed|checks|✓|✗' scale-reads.log scale-mixed.log scale-spike.log || true; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
 
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         if: always()
         with:
           name: scale-logs

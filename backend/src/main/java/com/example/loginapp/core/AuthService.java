@@ -66,29 +66,44 @@ public final class AuthService {
             throw tooManyFailures();
         }
         String token = Secrets.newToken();
-        String outcome = db.inAuth(c -> {
+        // The password is hashed between two short transactions, not inside one: hashing takes a good part of a second,
+        // and a connection held for it is one every other request cannot use to find its session.
+        Attempt attempt = db.inAuth(c -> {
             lockEmail(c, email);   // one attempt per email at a time, so parallel guesses are counted, not raced past the limit
             // The lock is kept per email address, account or not, so "locked" does not say "exists".
             if (lockedOut(c, email)) {
-                return "locked";
+                return null;
             }
+            // Counted as a failure before the password is checked, and taken back if it turns out right: guesses sent
+            // together are then each counted while the lock is held, although the checking happens after it.
+            long failure = ((Number) Sql.one(c, "insert into auth.login_failure (email) values (?::citext) returning id", email.trim())
+                    .get("id")).longValue();
+            Sql.update(c, "delete from auth.login_failure where email = ?::citext and at < now() - interval '1 day'", email.trim());
+            Map<String, Object> identity = Sql.one(c, "select id, password_hash from auth.identity where email = ?::citext", email.trim());
+            return identity == null ? new Attempt(failure, null, null)
+                    : new Attempt(failure, UUID.fromString((String) identity.get("id")), (String) identity.get("passwordHash"));
+        });
+        if (attempt == null) {
+            throw tooManyFailures();   // the same answer as for an address that has failed too often but has no account
+        }
+        // the password is checked whatever the account or its status, so every refusal takes as long as any other
+        boolean passwordOk = checkPassword(password, attempt.hash() == null ? DUMMY_HASH : attempt.hash());
+        String rehashed = passwordOk && Secrets.needsRehash(attempt.hash()) ? Secrets.hashPassword(password) : null;
+        String outcome = !passwordOk || attempt.identityId() == null ? "invalid" : db.inAuth(c -> {
             Map<String, Object> identity = Sql.one(c,
-                    "select id, password_hash, status, mfa_enrolled_at is not null as mfa from auth.identity where email = ?::citext for update",
-                    email.trim());
-            if (identity == null) {
-                Secrets.verifyPassword(password, DUMMY_HASH);   // same work as a real check
-                recordFailure(c, email);
+                    "select password_hash, status, mfa_enrolled_at is not null as mfa from auth.identity where id = ? for update",
+                    attempt.identityId());
+            // A password changed, or an account suspended, while this one was being checked: the check no longer stands.
+            if (identity == null || !attempt.hash().equals(identity.get("passwordHash")) || !"active".equals(identity.get("status"))) {
                 return "invalid";
             }
-            UUID id = UUID.fromString((String) identity.get("id"));
-            // the password is checked whatever the status, so a suspended account takes as long to refuse as any other
-            boolean passwordOk = Secrets.verifyPassword(password, (String) identity.get("passwordHash"));
-            if (!passwordOk || !"active".equals(identity.get("status"))) {
-                recordFailure(c, email);
-                return "invalid";
+            UUID id = attempt.identityId();
+            if (rehashed != null) {
+                Sql.update(c, "update auth.identity set password_hash = ? where id = ?", rehashed, id);
             }
             if (Boolean.TRUE.equals(identity.get("mfa"))) {
-                // not signed in yet, and the failures stay: guessing codes after a right password must still lock
+                // not signed in yet, and the earlier failures stay: guessing codes after a right password must still lock
+                Sql.update(c, "delete from auth.login_failure where id = ?", attempt.failureId());
                 Sql.update(c, "insert into auth.mfa_challenge (token_hash, identity_id, expires_at) values (?, ?, now() + interval '5 minutes')",
                         Secrets.sha256(token), id);
                 return "mfa";
@@ -98,9 +113,6 @@ public final class AuthService {
             insertSession(c, token, id, "identity", null, null, null, "30 minutes");
             return "ok";
         });
-        if (outcome.equals("locked")) {
-            throw tooManyFailures();   // the same answer as for an address that has failed too often but has no account
-        }
         if (!outcome.equals("ok") && !outcome.equals("mfa")) {
             if (address != null) {
                 limits.hit(RateLimits.LOGIN_FAILURES_PER_ADDRESS, address);
@@ -110,7 +122,27 @@ public final class AuthService {
         return new SignIn(token, outcome.equals("mfa"));
     }
 
-    private static final String DUMMY_HASH = "pbkdf2-sha256$210000$AAAAAAAAAAAAAAAAAAAAAA==$AAAA";
+    /** Checked when the email has no account, so that refusal takes the same work as a wrong password. */
+    private static final String DUMMY_HASH = "pbkdf2-sha256$" + Secrets.ITERATIONS + "$AAAAAAAAAAAAAAAAAAAAAA==$AAAA";
+
+    /** What the first step of a sign-in found: the failure row counted for it, and the account's id and hash (null when there is none). */
+    private record Attempt(long failureId, UUID identityId, String hash) {}
+
+    /**
+     * How many passwords are hashed at once. Hashing is pure processor work and each request has its own virtual
+     * thread, so without a limit a burst of sign-ins would take every core from the rest of the application.
+     */
+    private static final java.util.concurrent.Semaphore HASHING =
+            new java.util.concurrent.Semaphore(Math.max(2, Runtime.getRuntime().availableProcessors()));
+
+    private static boolean checkPassword(String password, String hash) {
+        HASHING.acquireUninterruptibly();
+        try {
+            return Secrets.verifyPassword(password, hash);
+        } finally {
+            HASHING.release();
+        }
+    }
 
     /** Makes the rest of this transaction the only one working on this email address. Released at commit. */
     static void lockEmail(Connection c, String email) throws SQLException {
@@ -255,10 +287,15 @@ public final class AuthService {
         // What the Organization has bought, with any trial end, for its Org Admin to see.
         if (ctx.inOrganization() && ctx.can("tenant.manage")) {
             me.put("subscription", db.inAuth(c -> {
+                // one query for all the modules, not one each
+                Map<String, Map<String, Object>> byModule = new java.util.HashMap<>();
+                for (Map<String, Object> r : Sql.query(c, "select module, status, trial_ends_on from platform.tenant_module where tenant_id = ?",
+                        ctx.tenantId())) {
+                    byModule.put((String) r.get("module"), r);
+                }
                 List<Map<String, Object>> out = new ArrayList<>();
                 for (String module : Modules.ALL) {
-                    Map<String, Object> m = Sql.one(c, "select status, trial_ends_on from platform.tenant_module where tenant_id = ? and module = ?",
-                            ctx.tenantId(), module);
+                    Map<String, Object> m = byModule.get(module);
                     Map<String, Object> row = new LinkedHashMap<>();
                     row.put("module", module);
                     row.put("name", Modules.name(module));

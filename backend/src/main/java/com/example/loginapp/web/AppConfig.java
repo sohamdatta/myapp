@@ -89,17 +89,35 @@ public class AppConfig {
 
     private static final Logger LOG = LoggerFactory.getLogger(AppConfig.class);
 
+    /** The password application.properties gives the application roles when none is set: public, so never for real use. */
+    static final String DEVELOPMENT_ROLE_PASSWORD = "dev-only-change-me";
+    static final String DEVELOPMENT_SUPERADMIN_PASSWORD = "ChangeMe-12345";
+
     @Bean
     public Db db(@Value("${app.db.url}") String url,
                  @Value("${app.db.owner.user}") String ownerUser,
                  @Value("${app.db.owner.password}") String ownerPassword,
-                 @Value("${app.db.role-password}") String rolePassword) {
+                 @Value("${app.db.role-password}") String rolePassword,
+                 @Value("${app.db.role-password.platform:}") String platformPassword,
+                 @Value("${app.db.role-password.auth:}") String authPassword,
+                 @Value("${app.db.role-password.tenant:}") String tenantPassword,
+                 @Value("${app.db.statement-timeout:60s}") String statementTimeout,
+                 @Value("${app.data-key.required:false}") boolean production) {
+        // Each role may have a password of its own, so that one of them leaking does not open the other two.
+        Map<String, String> passwords = new LinkedHashMap<>();
+        passwords.put("app_platform", platformPassword.isBlank() ? rolePassword : platformPassword);
+        passwords.put("app_auth", authPassword.isBlank() ? rolePassword : authPassword);
+        passwords.put("app_tenant", tenantPassword.isBlank() ? rolePassword : tenantPassword);
+        if (production && passwords.containsValue(DEVELOPMENT_ROLE_PASSWORD)) {
+            throw new IllegalStateException("APP_DB_ROLE_PASSWORD is not set (or is the development default), and "
+                    + "APP_REQUIRE_DATA_KEY is true. Set it to a password of its own (openssl rand -base64 24)");
+        }
         Db db = new Db(
-                pool(url, ownerUser, ownerPassword, 2),
-                pool(url, "app_platform", rolePassword, 5),
-                pool(url, "app_auth", rolePassword, 10),
-                pool(url, "app_tenant", rolePassword, 10));
-        Migrator.migrate(db, rolePassword);
+                pool(url, ownerUser, ownerPassword, 2, null),   // migrations and retention purges: no limit on a statement
+                pool(url, "app_platform", passwords.get("app_platform"), 5, statementTimeout),
+                pool(url, "app_auth", passwords.get("app_auth"), 10, statementTimeout),
+                pool(url, "app_tenant", passwords.get("app_tenant"), 10, statementTimeout));
+        Migrator.migrate(db, passwords);
         return db;
     }
 
@@ -447,12 +465,16 @@ public class AppConfig {
                                            @Value("${app.superadmin.email}") String email,
                                            @Value("${app.superadmin.password}") String password) {
         PlatformService platform = new PlatformService(db);
+        if (DEVELOPMENT_SUPERADMIN_PASSWORD.equals(password)) {
+            LOG.warn("APP_SUPERADMIN_PASSWORD is the development default, which is public. "
+                    + "If this start creates the first Super Admin, change that password at once");
+        }
         platform.ensureFirstSuperAdmin(email, password);
         return platform;
     }
 
     /** A pool that connects lazily, so the application roles can be created by the first migration. */
-    private static DataSource pool(String url, String user, String password, int size) {
+    private static DataSource pool(String url, String user, String password, int size, String statementTimeout) {
         HikariDataSource ds = new HikariDataSource();
         ds.setJdbcUrl(url);
         ds.setUsername(user);
@@ -461,6 +483,13 @@ public class AppConfig {
         ds.setMinimumIdle(0);
         ds.setInitializationFailTimeout(-1);
         ds.setPoolName("hrms-" + user);
+        if (statementTimeout != null && !statementTimeout.isBlank() && !statementTimeout.trim().equals("0")) {
+            if (!statementTimeout.trim().matches("\\d+\\s*(ms|s|min)?")) {
+                throw new IllegalStateException("APP_DB_STATEMENT_TIMEOUT must be a time such as 60s, 500ms or 2min (0 for no limit)");
+            }
+            // One statement that runs away would otherwise hold its connection, one of only a few, until it finished.
+            ds.setConnectionInitSql("set statement_timeout = '" + statementTimeout.trim() + "'");
+        }
         return ds;
     }
 }

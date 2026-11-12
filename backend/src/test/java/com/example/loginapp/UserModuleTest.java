@@ -118,6 +118,71 @@ class UserModuleTest {
     }
 
     @Test
+    void aHashMadeWithFewerIterationsIsReplacedAtTheNextSignIn() {
+        Org org = newOrg();
+        // a hash as the application made them before the iteration count was raised
+        String old = oldHash(PASSWORD, 210_000);
+        db.inOwner(c -> Sql.update(c, "update auth.identity set password_hash = ? where email = ?::citext", old, org.adminEmail));
+        assertError(401, "auth.invalid_credentials", () -> auth.login(org.adminEmail, "wrong-password-here"));
+        assertEquals(old, storedHash(org.adminEmail), "a wrong password changes nothing");
+        assertNotNull(auth.login(org.adminEmail, PASSWORD));
+        String now = storedHash(org.adminEmail);
+        assertTrue(now.startsWith("pbkdf2-sha256$600000$"), now);
+        assertNotNull(auth.login(org.adminEmail, PASSWORD), "the new hash still opens with the same password");
+        assertEquals(now, storedHash(org.adminEmail), "an up-to-date hash is left alone");
+    }
+
+    @Test
+    void aRightPasswordTakesBackTheFailureCountedForItsOwnAttempt() {
+        Org org = newOrg();
+        for (int i = 0; i < 4; i++) {
+            assertError(401, "auth.invalid_credentials", () -> auth.login(org.adminEmail, "wrong-password-here"));
+        }
+        assertNotNull(auth.login(org.adminEmail, PASSWORD));   // the fifth attempt, and right: not locked, and the run ends
+        long left = db.inOwner(c -> (Long) Sql.one(c, "select count(*) as n from auth.login_failure where email = ?::citext", org.adminEmail).get("n"));
+        assertEquals(0L, left);
+    }
+
+    @Test
+    void guessesSentTogetherAreEachCounted() throws Exception {
+        Org org = newOrg();
+        List<Thread> threads = new java.util.ArrayList<>();
+        AtomicInteger refused = new AtomicInteger();
+        AtomicInteger locked = new AtomicInteger();
+        for (int i = 0; i < 12; i++) {
+            threads.add(Thread.ofVirtual().start(() -> {
+                try {
+                    auth.login(org.adminEmail, "wrong-password-here");
+                } catch (ApiException e) {
+                    (e.status() == 429 ? locked : refused).incrementAndGet();
+                }
+            }));
+        }
+        for (Thread t : threads) {
+            t.join();
+        }
+        assertEquals(5, refused.get(), "only as many guesses as the limit allows have their password checked");
+        assertEquals(7, locked.get());
+    }
+
+    private static String storedHash(String email) {
+        return db.inOwner(c -> (String) Sql.one(c, "select password_hash from auth.identity where email = ?::citext", email).get("passwordHash"));
+    }
+
+    private static String oldHash(String password, int iterations) {
+        try {
+            byte[] salt = new byte[16];
+            new java.security.SecureRandom().nextBytes(salt);
+            byte[] hash = javax.crypto.SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256")
+                    .generateSecret(new javax.crypto.spec.PBEKeySpec(password.toCharArray(), salt, iterations, 256)).getEncoded();
+            java.util.Base64.Encoder b64 = java.util.Base64.getEncoder();
+            return "pbkdf2-sha256$" + iterations + "$" + b64.encodeToString(salt) + "$" + b64.encodeToString(hash);
+        } catch (java.security.GeneralSecurityException e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
+    @Test
     void emailIsNotCaseSensitive() {
         Org org = newOrg();
         assertNotNull(auth.login(org.adminEmail.toUpperCase(), PASSWORD));

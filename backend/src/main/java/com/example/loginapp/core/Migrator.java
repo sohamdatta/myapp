@@ -6,6 +6,7 @@ import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -54,7 +55,18 @@ public final class Migrator {
 
     private Migrator() {}
 
+    /** As {@link #migrate(Db, Map)}, with one password for all three application roles. */
     public static void migrate(Db db, String rolePassword) {
+        migrate(db, Map.of("app_platform", rolePassword, "app_auth", rolePassword, "app_tenant", rolePassword));
+    }
+
+    /** @param rolePasswords the password of each application role (app_platform, app_auth, app_tenant), by role name */
+    public static void migrate(Db db, Map<String, String> rolePasswords) {
+        for (String role : ROLES) {
+            if (rolePasswords.get(role) == null || rolePasswords.get(role).isBlank()) {
+                throw new IllegalArgumentException("No password for the database role " + role);
+            }
+        }
         Integer baseline = db.inOwner(Migrator::earlierMigratorVersion);
         configure(db.ownerDataSource(), baseline).callbacks(new DefinerPolicies()).load().migrate();
 
@@ -65,15 +77,17 @@ public final class Migrator {
             return null;
         });
         db.inOwner(c -> {
-            String literal = "'" + rolePassword.replace("'", "''") + "'";
             try (Statement st = c.createStatement()) {
-                for (String role : List.of("app_platform", "app_auth", "app_tenant")) {
+                for (String role : ROLES) {
+                    String literal = "'" + rolePasswords.get(role).replace("'", "''") + "'";
                     st.execute("alter role " + role + " with login password " + literal);
                 }
             }
             return null;
         });
     }
+
+    private static final List<String> ROLES = List.of("app_platform", "app_auth", "app_tenant");
 
     /** The Flyway settings shared by migrate() and check(). */
     private static FluentConfiguration configure(DataSource owner, Integer baseline) {
