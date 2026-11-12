@@ -158,7 +158,9 @@ Set these environment variables for anything beyond local development.
 |---|---|---|
 | `APP_DB_URL` | `jdbc:postgresql://localhost:5432/hrms` | The database |
 | `APP_DB_OWNER_USER` / `APP_DB_OWNER_PASSWORD` | `postgres` / `postgres` | Runs the migrations at startup and creates the application's database roles. Needs permission to create roles |
-| `APP_DB_ROLE_PASSWORD` | `dev-only-change-me` | Password given to the three application roles |
+| `APP_DB_ROLE_PASSWORD` | `dev-only-change-me` | Password given to the three application roles. Refused when `APP_REQUIRE_DATA_KEY=true` |
+| `APP_DB_PLATFORM_PASSWORD`, `APP_DB_AUTH_PASSWORD`, `APP_DB_TENANT_PASSWORD` | empty | Optional password of its own for each role; an empty one uses `APP_DB_ROLE_PASSWORD` |
+| `APP_DB_STATEMENT_TIMEOUT` | `60s` | Longest one statement may run on the application's connections; `0` for no limit |
 | `APP_SUPERADMIN_EMAIL` / `APP_SUPERADMIN_PASSWORD` | `admin@example.com` / `ChangeMe-12345` | The first Super Admin, created only when there are no platform users |
 | `APP_DATA_KEY` | none: a fixed development key, with a warning in the log | Encrypts PAN, UAN, bank account numbers and, later, documents. 32 random bytes, base64: `openssl rand -base64 32`. Keep a copy somewhere safe; values encrypted with a lost key cannot be read again |
 | `APP_REQUIRE_DATA_KEY` | `false` | Set to `true` in production, so the app refuses to start without `APP_DATA_KEY` rather than use the development key |

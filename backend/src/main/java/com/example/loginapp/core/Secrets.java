@@ -13,7 +13,8 @@ import javax.crypto.spec.PBEKeySpec;
 public final class Secrets {
 
     private static final SecureRandom RANDOM = new SecureRandom();
-    private static final int ITERATIONS = 210_000;
+    /** OWASP's figure for PBKDF2 with HMAC-SHA256. Hashes made with fewer are replaced at the next sign-in ({@link #needsRehash}). */
+    static final int ITERATIONS = 600_000;
     public static final int MIN_PASSWORD_LENGTH = 12;
 
     private Secrets() {}
@@ -56,6 +57,22 @@ public final class Secrets {
             byte[] actual = pbkdf2(password, salt, Integer.parseInt(parts[1]));
             return MessageDigest.isEqual(expected, actual);
         } catch (IllegalArgumentException e) {
+            return false;
+        }
+    }
+
+    /** Whether a stored hash was made with fewer iterations than new ones are, so it should be replaced now the password is known. */
+    public static boolean needsRehash(String stored) {
+        if (stored == null) {
+            return false;
+        }
+        String[] parts = stored.split("\\$");
+        if (parts.length != 4 || !parts[0].equals("pbkdf2-sha256")) {
+            return false;
+        }
+        try {
+            return Integer.parseInt(parts[1]) < ITERATIONS;
+        } catch (NumberFormatException e) {
             return false;
         }
     }

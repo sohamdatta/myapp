@@ -22,6 +22,12 @@
 		X-Content-Type-Options "nosniff"
 		Referrer-Policy "same-origin"
 		X-Frame-Options "DENY"
+		# What a page of the app may load: its own files only. A script injected into a page (the session token is
+		# in the browser's storage) is then not run, and cannot send anything to another address. Styles allow
+		# inline ones, which the screens set on elements; pictures and viewed documents come as data: and blob:.
+		Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; frame-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
+		# The punch screen asks where the person is; nothing uses the camera, microphone or payment.
+		Permissions-Policy "geolocation=(self), camera=(), microphone=(), payment=()"
 		-Server
 	}
 

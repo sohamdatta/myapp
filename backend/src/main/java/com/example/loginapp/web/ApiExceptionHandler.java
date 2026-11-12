@@ -25,6 +25,17 @@ public class ApiExceptionHandler {
     /** A body that is not JSON, or a value of the wrong type: a plain 400 the screens can show, no parser details. */
     @ExceptionHandler(HttpMessageNotReadableException.class)
     public ResponseEntity<Map<String, String>> unreadable(HttpMessageNotReadableException e) {
+        for (Throwable cause = e; cause != null; cause = cause.getCause()) {
+            if (cause instanceof BodySizeFilter.TooLarge) {
+                return tooLarge((BodySizeFilter.TooLarge) cause);
+            }
+        }
         return handle(ApiException.badRequest("The request could not be read"));
+    }
+
+    /** A body sent in chunks that passed the size limit while being read (see {@link BodySizeFilter}). */
+    @ExceptionHandler(BodySizeFilter.TooLarge.class)
+    public ResponseEntity<Map<String, String>> tooLarge(BodySizeFilter.TooLarge e) {
+        return handle(new ApiException(413, "request.too_large", "The request is too large"));
     }
 }
