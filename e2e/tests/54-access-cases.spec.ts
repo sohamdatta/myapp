@@ -319,7 +319,9 @@ test.describe.serial('access test cases', () => {
     await admin.reload(); await nav(admin, 'Support access');
     await admin.selectOption('#g-org', { label: ORG });
     await admin.fill('#g-reason', 'Ticket 77: check the user list');
-    await admin.click('text=Request access'); await admin.click('text=Start session');
+    await admin.click('text=Request access');
+    // Other suites ask for support access at the same time: start the session on this Organization's grant, by its reason.
+    await admin.locator('tr', { hasText: 'Ticket 77: check the user list' }).filter({ hasText: ORG }).getByRole('button', { name: 'Start session' }).click();
     await expect(admin.locator('.support-banner')).toBeVisible();
     await nav(admin, 'User management');
     await expect(admin.locator('td', { hasText: U('owner') })).toBeVisible();
