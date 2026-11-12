@@ -4,7 +4,7 @@ import { join, tokenOf } from './join';
 
 // The screenshots in docs/user-guide/attendance.md, taken in a demo Organization of their own (Northwind Foods)
 // so they show tidy names. Run with E2E_SHOTS=<folder>; without it the steps still run and nothing is saved.
-const em = (n: string) => `${n}@demo.example`;
+const em = (n: string) => `${n}@demo${process.env.E2E_RUN ?? ''}.example`;
 async function ok(p: Promise<{ status: number; body: any }>) { const r = await p; expect([200, 204], JSON.stringify(r.body)).toContain(r.status); return r.body; }
 async function shot(p: Page, name: string, fn: () => Promise<void>) {
   await fn();
@@ -17,7 +17,7 @@ test('the attendance guide, screen by screen', async ({ browser }) => {
     const admin = await newPage(browser); await admin.goto('/');
     await admin.fill('#email', SUPER_ADMIN.email); await admin.fill('#password', SUPER_ADMIN.password); await admin.click('button.primary');
     await expect(admin.getByText('Platform console')).toBeVisible();
-    await admin.fill('#org-name', 'Northwind Foods'); await admin.fill('#org-admin', em('owner')); await admin.click('text=Create and invite');
+    await admin.fill('#org-name', 'Northwind Foods'); if (process.env.E2E_RUN) await admin.fill('#org-slug', `northwind-foods${process.env.E2E_RUN}`); await admin.fill('#org-admin', em('owner')); await admin.click('text=Create and invite');
     await expect(admin.getByText(`Invitation for ${em('owner')}.`)).toBeVisible();
     owner = await join(browser, tokenOf(await admin.locator('.copy-row input').inputValue()), em('owner'));
   }
@@ -57,7 +57,7 @@ test('the attendance guide, screen by screen', async ({ browser }) => {
   await api(pg.kavya, 'POST', '/org/attendance/me/requests', { kind: 'work_from_home', fromDate: isoDay(1), toDate: isoDay(1), reason: 'Plumber visit at home' });
   await api(pg.neha, 'POST', '/org/attendance/me/requests', { kind: 'on_duty', fromDate: isoDay(0), toDate: isoDay(0), reason: 'Supplier meeting in Mumbai' });
   await api(hr, 'POST', '/org/attendance/devices', { name: 'Plant gate', serialNumber: 'NWFOODS0001', workLocationId: plant.id });
-  await hr.setViewportSize({ width: 1280, height: 860 }); await pg.priya.setViewportSize({ width: 1280, height: 860 });
+  await hr.setViewportSize({ width: 1280, height: 1100 }); await pg.priya.setViewportSize({ width: 1280, height: 1100 });
   await shot(hr, '01-setup', async () => { await nav(hr, 'Attendance'); await tab(hr, 'Setup'); });
   await shot(hr, '02-location-form', async () => { await hr.getByRole('button', { name: 'Add a work location' }).click(); await hr.fill('#loc-name', 'Chennai office'); await hr.selectOption('#loc-check', 'either'); await hr.fill('#loc-ips', '203.0.113.0/24'); await hr.fill('#loc-lat', '13.0827'); await hr.fill('#loc-lon', '80.2707'); await hr.fill('#loc-radius', '200'); await hr.locator('#loc-name').scrollIntoViewIfNeeded(); });
   await shot(hr, '03-shift-form', async () => { await hr.reload(); await nav(hr, 'Attendance'); await tab(hr, 'Setup'); await hr.getByRole('button', { name: 'Add a shift' }).click(); await hr.fill('#sh-name', 'Early'); await hr.fill('#sh-start', '07:00'); await hr.fill('#sh-end', '15:30'); await hr.fill('#sh-grace', '10'); await hr.locator('#sh-name').scrollIntoViewIfNeeded(); });

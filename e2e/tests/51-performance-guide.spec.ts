@@ -5,7 +5,7 @@ import { join } from './join';
 // The screenshots in docs/user-guide/performance.md, taken in a demo Organization of their own (Northwind Sales),
 // so they show tidy names. Run with E2E_SHOTS=<folder>; without it the steps still run and nothing is saved.
 
-const em = (n: string) => `${n}@sales.example`;
+const em = (n: string) => `${n}@sales${process.env.E2E_RUN ?? ''}.example`;
 async function ok(r: Promise<{ status: number; body: any }>) {
   const done = await r;
   expect([200, 204], JSON.stringify(done.body)).toContain(done.status);

@@ -42,7 +42,7 @@ test('the onboarding guide, screen by screen', async ({ browser }) => {
   await ok(api(hr, 'POST', '/org/people/setup/policies', { name: 'Code of conduct', body: 'Be honest, be kind, and keep what you learn here confidential.', due: 'before_activation' }));
 
   const shot = async (p: Page, name: string, fn: () => Promise<void>) => { await fn(); await save(p, `onboarding-${name}`); };
-  for (const p of [hr, pg.mgr]) await p.setViewportSize({ width: 1280, height: 860 });
+  for (const p of [hr, pg.mgr]) await p.setViewportSize({ width: 1280, height: 1100 });
   const setup = async (area: string) => { await hr.reload(); await nav(hr, 'People'); await tab(hr, 'Setup'); await tab(hr, area); };
   const joiners = async (name?: string) => {
     await hr.reload(); await nav(hr, 'People'); await tab(hr, 'Joiners');

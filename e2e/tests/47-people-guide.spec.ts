@@ -5,7 +5,7 @@ import { join } from './join';
 // The screenshots in docs/user-guide/people.md, taken in a demo Organization of their own (Northwind Retail),
 // so they show tidy names. Run with E2E_SHOTS=<folder>; without it the steps still run and nothing is saved.
 
-const em = (n: string) => `${n}@retail.example`;
+const em = (n: string) => `${n}@retail${process.env.E2E_RUN ?? ''}.example`;
 async function ok(r: Promise<{ status: number; body: any }>) {
   const done = await r;
   expect([200, 204], JSON.stringify(done.body)).toContain(done.status);
@@ -17,7 +17,7 @@ test('the people guide, screen by screen', async ({ browser }) => {
   const admin = await newPage(browser); await admin.goto('/');
   await admin.fill('#email', SUPER_ADMIN.email); await admin.fill('#password', SUPER_ADMIN.password); await admin.click('button.primary');
   await expect(admin.getByText('Platform console')).toBeVisible();
-  const org = await ok(api(admin, 'POST', '/platform/organizations', { name: 'Northwind Retail', slug: 'northwind-retail', adminEmail: em('owner'), licensedEmployees: 50 }));
+  const org = await ok(api(admin, 'POST', '/platform/organizations', { name: 'Northwind Retail', slug: `northwind-retail${process.env.E2E_RUN ?? ''}`, adminEmail: em('owner'), licensedEmployees: 50 }));
   await admin.context().close();
   const owner = await join(browser, org.invitationToken, em('owner'));
   const pg: Record<string, Page> = {};
@@ -37,7 +37,7 @@ test('the people guide, screen by screen', async ({ browser }) => {
   await add({ legalName: 'Meena Pillai', designation: 'Accountant', departmentId: fin.id, managerId: md.id, membershipId: id[em('hr')], employeeCode: 'NR-102' });
 
   const shot = async (p: Page, name: string, fn: () => Promise<void>) => { await fn(); await save(p, `people-${name}`); };
-  await hr.setViewportSize({ width: 1280, height: 860 }); await pg.priya.setViewportSize({ width: 1280, height: 860 });
+  await hr.setViewportSize({ width: 1280, height: 1100 }); await pg.priya.setViewportSize({ width: 1280, height: 1100 });
   await shot(hr, '01-employees', async () => { await hr.reload(); await nav(hr, 'People'); });
   await shot(hr, '02-add', async () => {
     await hr.getByRole('button', { name: 'Add employee' }).first().click();
