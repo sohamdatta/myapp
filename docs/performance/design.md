@@ -33,7 +33,7 @@ Probation, Improvement plans, Department goals, Setup) for managers and HR.
 
 | Permission | Lets you | Granted to |
 |---|---|---|
-| `performance.read` | See goals, reviews, probation reviews and plans | Employee (self), Manager (team), HR Admin and Org Admin (tenant), Auditor (tenant) |
+| `performance.read` | See goals, reviews, probation reviews and plans | Employee (self), Manager (team), HR Admin and Org Admin (tenant), Auditor (tenant; no Setup tab, which needs `performance.manage`) |
 | `performance.write` | Set goals, write reviews, check-ins and recommendations, draft plans | Employee (self), Manager (team), HR Admin and Org Admin (tenant) |
 | `performance.manage` | Set up performance, run cycles, calibrate, decide probation and plans, prepare outcomes | HR Admin and Org Admin |
 | `performance.approve` | Approve outcomes | HR Admin and Org Admin, never for outcomes they sent |
@@ -56,6 +56,11 @@ moves the probation end and issues the extension letter; not confirming starts
 a termination through the exit module (`ExitService.startIn`). Reminders are
 worked out when the bell is opened: check-ins due, recommendations due, and
 decisions overdue for HR.
+
+Changing the check-in days in Setup applies to probation reviews made after the
+change; a review already made keeps its check-ins. Extending or not confirming
+needs a reason of at least 20 characters; extending also starts a new review for
+the extension, with check-ins every 30 days.
 
 ## Goals, one-to-ones and feedback (P2)
 
@@ -117,7 +122,8 @@ sends them back with a note. Approving records the pay revision with
 `PayrollPay.reviseIn` and the promotion with `EmployeeService.changeJobIn`,
 inside the same transaction and with every check those make by hand (no date
 in an approved payroll month, nobody's own pay), then issues the increment and
-promotion letters. "Send all" and "Approve all" skip the caller's own outcome
+promotion letters. Both are dated the effective date: the employee's
+designation and pay change on that date, not on approval. "Send all" and "Approve all" skip the caller's own outcome
 and, for approval, the ones they sent.
 
 ## Improvement plans (P5)
@@ -134,6 +140,7 @@ week before they are due.
 HR decides: completed; extended once by 14 to 60 days (the check-ins are
 extended too); or not met, which needs the plan to have ended with at least one
 check-in written, and starts a termination with the last working day given.
+Completed and extended can be chosen at any time.
 A draft or running plan can be cancelled with a reason; one whose employee has
 left is cancelled. Managers are reminded of check-ins due; HR of plans ended
 and undecided.
@@ -157,6 +164,15 @@ see the sign-off.
 themselves, and a manager about someone in their team. The colleague answers
 with the usual feedback form or declines with a reason; the person who asked
 sees which.
+
+## Limits
+
+Rating scale 3 to 7 levels; review forms 1 to 30 questions; the probation
+recommendation is asked for 7 to 90 days before the end; feedback is asked of
+1 to 5 colleagues; peer reviews up to 5; improvement plans run 14 to 120 days
+with a check-in every 7 to 31 days and 1 to 6 objectives, and are extended once
+by 14 to 60 days; override, calibration, plan and probation-decision reasons
+are at least 20 characters; outcomes take effect on the first of a month.
 
 ## Where the build differs from the design
 

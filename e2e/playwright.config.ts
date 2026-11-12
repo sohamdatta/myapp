@@ -106,6 +106,10 @@ export default defineConfig({
     { name: 'exit-cases', testMatch: /48-exit-cases\.spec\.ts/, use: desktop },
     // The exits user guide's screenshots (docs/user-guide/exits.md), in Northwind Logistics: E2E_SHOTS=<folder> --project=exit-guide.
     { name: 'exit-guide', testMatch: /49-exit-guide\.spec\.ts/, use: desktop },
+    // Every performance setting and screen, case by case (docs/testing/performance-ui-test-cases.xlsx), in Perf Labs: --project=performance-cases.
+    { name: 'performance-cases', testMatch: /50-performance-cases\.spec\.ts/, use: desktop },
+    // The performance user guide's screenshots (docs/user-guide/performance.md), in Northwind Sales: E2E_SHOTS=<folder> --project=performance-guide.
+    { name: 'performance-guide', testMatch: /51-performance-guide\.spec\.ts/, use: desktop },
     // The attendance user guide's screenshots (docs/user-guide/attendance.md), in Northwind Foods: E2E_SHOTS=<folder> --project=attendance-guide.
     { name: 'attendance-guide', testMatch: /43-attendance-guide\.spec\.ts/, use: desktop },
   ],
