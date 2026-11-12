@@ -295,6 +295,7 @@ test.describe.serial('performance test cases', () => {
     const review = p.getByTestId('review');
     await expect(review.getByTestId('final-rating')).toContainText('4');
     await p.fill('#ack-comment', 'Thank you.'); await review.getByRole('button', { name: 'Acknowledge' }).click();
+    await expect(review).toContainText('Acknowledged');   // saved before the second one is tried
     await refused(api(p, 'POST', `/org/performance/reviews/${reviewId}/acknowledge`, { comment: 'Again' }), 409, 'acknowledged, once');
   });
 

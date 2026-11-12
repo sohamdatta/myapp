@@ -21,7 +21,7 @@ Leave is the first thing a small company wants from an HR system, and it needs n
 
 The Platform console does it; there is no online payment yet.
 
-- **When creating an Organization,** tick the modules it has bought. All three are ticked by default; Core HR needs nothing.
+- **When creating an Organization,** tick the modules it has bought: the console has one box for Attendance and Leave together and one for Payroll, both ticked by default; Core HR needs nothing. Afterwards each module can still be switched on its own.
 - **Afterwards,** *Modules* on the Organization's row switches each one on or off, with an optional **trial end date**. A module with a trial is on through that date (India time) and off from the next day, without anyone touching it; the console then shows "trial ended".
 - **Independent.** Each module is switched on its own. Switching Attendance on does not bring Leave, and switching Leave off leaves Attendance as it is.
 - **Who:** the Super Admin, or a platform user with the billing role.

@@ -140,7 +140,8 @@ test.describe.serial('users and access', () => {
     await support.fill('#g-reason', 'Ticket 42: check the user list');
     await shot(support, '10-support-request');
     await support.click('text=Request access');
-    await support.click('text=Start session');
+    // Other suites ask for support access at the same time: start the session on this grant, by its reason.
+    await support.locator('tr', { hasText: 'Ticket 42: check the user list' }).getByRole('button', { name: 'Start session' }).click();
     await expect(support.locator('.support-banner')).toBeVisible();
 
     await nav(support, 'User management');
