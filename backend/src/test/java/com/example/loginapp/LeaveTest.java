@@ -333,6 +333,28 @@ class LeaveTest {
     }
 
     @Test
+    void compOffIsOnlyForADayOffWorkedLongEnough() {
+        Org org = newOrg();
+        SessionCtx emp = join(org, "emp", List.of("employee"));
+        SessionCtx idle = join(org, "idle", List.of("employee"));
+        setUp(org, emp);
+        setUp(org, idle);
+        admin.saveType(org.admin, null, new TypeInput("Comp-off", "comp_off", null, null, null, null, null, null, null, null, 30, true));
+        punch(emp, SUNDAY, "10:00");
+        punch(emp, SUNDAY, "15:00");                                      // five hours on a weekly off: half a day
+        punch(emp, MONDAY.plusDays(7), "09:30");
+        punch(emp, MONDAY.plusDays(7), "18:30");                          // a full working day, not a day off
+        now(MONDAY.plusDays(8), "09:00");
+
+        assertError(400, "request.invalid", () -> admin.grantCompOff(org.admin, idle.membershipId(), null, SUNDAY.toString(), BigDecimal.ONE));
+        assertError(400, "request.invalid", () -> admin.grantCompOff(org.admin, emp.membershipId(), null, SUNDAY.toString(), BigDecimal.ONE));
+        assertError(400, "request.invalid", () -> admin.grantCompOff(org.admin, emp.membershipId(), null,
+                MONDAY.plusDays(7).toString(), BigDecimal.ONE));
+        admin.grantCompOff(org.admin, emp.membershipId(), null, SUNDAY.toString(), new BigDecimal("0.5"));
+        assertDays("0.5", leave.balances(emp).get(0).get("balance"));
+    }
+
+    @Test
     void compOffIsGrantedForAWorkedDayOffUsedAndExpires() {
         Org org = newOrg();
         SessionCtx emp = join(org, "emp", List.of("employee"));

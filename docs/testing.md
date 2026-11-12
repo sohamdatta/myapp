@@ -17,9 +17,11 @@ those cases from the screens on every pull request. The customer guide for the m
 | Module | Workbook | Browser tests | Cases | Last run |
 | --- | --- | --- | --- | --- |
 | Attendance | [attendance-ui-test-cases.xlsx](testing/attendance-ui-test-cases.xlsx) | `40-attendance-cases` to `42-attendance-cases-marks` (one Organization, Acme Test, in a chain), `43-attendance-guide` (screenshots) | 274: 270 automated, 4 blocked (trial expiry, support session, two that need approved leave) | 12 Nov 2026, all 270 pass |
+| Leave | [leave-ui-test-cases.xlsx](testing/leave-ui-test-cases.xlsx) | `44-leave-cases` (Leave Labs), `45-leave-guide` (screenshots) | 90, all automated | 12 Nov 2026, all 90 pass |
 
 The cases found two bugs, fixed with JUnit tests in `AttendanceTest`: a correction whose out time was before its in time was
 read as the next day on a day shift, and an approved correction for a day before the login joined left the day empty.
+The leave cases found that comp-off could be granted through the API for a day that was not worked; `LeaveTest` now covers the check.
 
 ## Property tests
 

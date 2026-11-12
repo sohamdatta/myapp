@@ -94,6 +94,10 @@ export default defineConfig({
     { name: 'attendance-cases', testMatch: /40-attendance-cases\.spec\.ts/, use: desktop },
     { name: 'attendance-cases-more', testMatch: /41-attendance-cases-more\.spec\.ts/, use: desktop, dependencies: ['attendance-cases'] },
     { name: 'attendance-cases-marks', testMatch: /42-attendance-cases-marks\.spec\.ts/, use: desktop, dependencies: ['attendance-cases-more'] },
+    // Every leave setting and screen, case by case (docs/testing/leave-ui-test-cases.xlsx), in Leave Labs: --project=leave-cases.
+    { name: 'leave-cases', testMatch: /44-leave-cases\.spec\.ts/, use: desktop },
+    // The leave user guide's screenshots (docs/user-guide/leave.md), in Northwind Traders: E2E_SHOTS=<folder> --project=leave-guide.
+    { name: 'leave-guide', testMatch: /45-leave-guide\.spec\.ts/, use: desktop },
     // The attendance user guide's screenshots (docs/user-guide/attendance.md), in Northwind Foods: E2E_SHOTS=<folder> --project=attendance-guide.
     { name: 'attendance-guide', testMatch: /43-attendance-guide\.spec\.ts/, use: desktop },
   ],
