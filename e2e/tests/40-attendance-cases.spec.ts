@@ -173,7 +173,11 @@ test.describe('attendance test cases, part 1', () => {
     await hr.fill('#loc-ips', '198.51.100.7'); await saveLoc(hr);
     await expect(hr.locator('tr', { hasText: 'Two nets' })).toContainText('198.51.100.7');
     await hr.locator('tr', { hasText: 'Two nets' }).getByRole('button', { name: 'Change', exact: true }).click();
-    await hr.getByLabel('Active (can be assigned to users)').uncheck(); await saveLoc(hr);
+    // The form fills itself in after it opens; untick only once it shows this location, or the fill ticks it again.
+    await expect(hr.locator('#loc-ips')).toHaveValue('198.51.100.7');
+    const active = hr.getByLabel('Active (can be assigned to users)');
+    await expect(active).toBeChecked();
+    await active.uncheck(); await expect(active).not.toBeChecked(); await saveLoc(hr);
     await expect(hr.locator('tr', { hasText: 'Two nets' })).toContainText('inactive');
   });
 

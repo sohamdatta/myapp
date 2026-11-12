@@ -103,7 +103,9 @@ public final class Plans {
         return db.inTenant(ctx.tenantId(), c -> {
             PerformanceDefaults.ensure(c, ctx.tenantId());
             requireWriter(c, ctx, employment, today);
-            Map<String, Object> e = Sql.one(c, "select status from app.employment where id = ?", employment);
+            // Locked, so two plans sent at once take turns: the second then finds the first and is refused, instead of
+            // both passing the check below and the second failing on the database's one-live-plan index.
+            Map<String, Object> e = Sql.one(c, "select status from app.employment where id = ? for update", employment);
             if (!"active".equals(e.get("status"))) {
                 throw new ApiException(409, "employee.not_active", "Only a current employee can be put on a plan");
             }

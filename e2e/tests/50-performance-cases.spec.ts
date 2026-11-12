@@ -338,6 +338,7 @@ test.describe.serial('performance test cases', () => {
     await P.mgr.fill('#obj-title-0', 'Five dealer visits a week'); await P.mgr.fill('#obj-measure-0', 'CRM visit log');
     await P.mgr.fill('#plan-support', 'Weekly ride-alongs with Mohan');
     await P.mgr.getByRole('button', { name: 'Save the draft' }).click();
+    await expect(P.mgr.getByTestId('plan')).toContainText(/Draft/);   // saved before the second one is tried
     await expect(P.mgr.getByTestId('plan').getByRole('button', { name: 'Start the plan' })).toHaveCount(0);   // HR starts it
     await refused(api(P.mgr, 'POST', '/org/performance/plans', plan({})), 409, 'already have a plan');
   });
