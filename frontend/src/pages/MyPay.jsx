@@ -32,12 +32,6 @@ function Slip({ id, onBack }) {
       </div>
       <ErrorNote>{error}</ErrorNote>
       <PayslipView slip={s} />
-      {s.ytd && (
-        <p className="hint">
-          This tax year so far: gross {rupees(s.ytd.gross)}, deductions {rupees(s.ytd.deductions)}
-          {s.ytd.tds !== undefined ? `, income tax ${rupees(s.ytd.tds)}` : ''}.
-        </p>
-      )}
     </>
   )
 }

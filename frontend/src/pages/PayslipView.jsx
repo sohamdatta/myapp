@@ -45,13 +45,19 @@ function Explain({ line }) {
   )
 }
 
-function Lines({ title, lines, explain }) {
+function Lines({ title, lines, explain, total, totalLabel, slots }) {
   const [open, setOpen] = useState(null)
-  if (!lines.length) return null
   return (
     <div className="payslip-block">
-      <h4>{title}</h4>
       <table className="payslip-lines">
+        <thead>
+          <tr>
+            <th scope="col">{title}</th>
+            <th scope="col" className="num">
+              Amount
+            </th>
+          </tr>
+        </thead>
         <tbody>
           {lines.map((l) => (
             <tr key={l.code} data-line={l.code}>
@@ -74,67 +80,196 @@ function Lines({ title, lines, explain }) {
                 )}
                 {open === l.code && <Explain line={l} />}
               </td>
-              <td className="num">{rupees(l.amount, true)}</td>
+              <td className="num">{rupees(l.amount, !Number.isInteger(Number(l.amount)))}</td>
+            </tr>
+          ))}
+          {lines.length === 0 && (
+            <tr>
+              <td colSpan={2} className="hint">
+                None this month
+              </td>
+            </tr>
+          )}
+          {Array.from({ length: Math.max(0, slots - Math.max(lines.length, 1)) }, (_, i) => (
+            <tr key={`pad-${i}`} className="payslip-pad" aria-hidden="true">
+              <td colSpan={2} />
             </tr>
           ))}
         </tbody>
+        {total !== undefined && (
+          <tfoot>
+            <tr>
+              <th scope="row">{totalLabel}</th>
+              <td className="num">{rupees(total)}</td>
+            </tr>
+          </tfoot>
+        )}
       </table>
     </div>
   )
 }
 
-/** A payslip: days, earnings and deductions, net, employer contributions, tax and why it changed. */
+/** A payslip laid out like the PDF: who and when, the days, earnings beside deductions, net pay, the year so far, employer contributions, tax and why it changed. */
 export default function PayslipView({ slip, explain = false }) {
   const lines = slip.lines || []
   const by = (kind) => lines.filter((l) => l.kind === kind)
   const info = slip.info || {}
   const changes = slip.changes || {}
+  const earnings = by('earning')
+  const deductions = by('deduction')
+  const employer = by('employer')
+  const slots = Math.max(earnings.length, deductions.length, 1)
+  const ytd = slip.ytd
+  const tax = info.tax
+  const subtitle = [info.code, info.designation, info.department].filter(Boolean).join(' · ')
   return (
     <div className="payslip" data-testid="payslip">
-      <dl className="facts payslip-days">
-        <dt>Days paid</dt>
-        <dd>
-          {Number(slip.daysPaid)} of {Number(slip.daysInPeriod)}
-          {Number(slip.lopDays) > 0 && <span className="hint"> · {formatDays(slip.lopDays)} loss of pay</span>}
-        </dd>
-        {(info.lopDates?.length > 0 || Number(info.lopEntered) > 0) && (
-          <>
-            <dt>Loss of pay</dt>
-            <dd data-testid="loss-of-pay-days">
-              {(info.lopDates || [])
-                .map((d) => `${formatDay(d.date)} (${Number(d.days) < 1 ? 'half day, ' : ''}${d.source === 'leave' ? 'unpaid leave' : 'absent'})`)
-                .join('; ')}
-              {Number(info.lopEntered) > 0 && `${info.lopDates?.length ? '; and ' : ''}${formatDays(info.lopEntered)} entered by HR`}
-            </dd>
-          </>
-        )}
-        {info.state && (
-          <>
-            <dt>Work location</dt>
-            <dd>
-              {info.location || '—'} ({info.state})
-            </dd>
-          </>
-        )}
-        <dt>Tax regime</dt>
-        <dd>{info.regime === 'old' ? 'Old' : 'New'}</dd>
+      <header className="payslip-head">
+        <div>
+          {info.name && <p className="payslip-name">{info.name}</p>}
+          {subtitle && <p className="hint">{subtitle}</p>}
+        </div>
+        <div className="payslip-when">
+          <p className="payslip-kicker">Payslip</p>
+          {slip.label && <p className="payslip-month">{slip.label}</p>}
+          {slip.paidOn && <p className="hint">Paid on {formatDay(slip.paidOn)}</p>}
+        </div>
+      </header>
+
+      <dl className="payslip-days">
+        <div>
+          <dt>Days paid</dt>
+          <dd>
+            {Number(slip.daysPaid)} <span className="hint">of {Number(slip.daysInPeriod)}</span>
+          </dd>
+        </div>
+        <div>
+          <dt>Loss of pay</dt>
+          <dd>{Number(slip.lopDays) > 0 ? formatDays(slip.lopDays) : 'None'}</dd>
+        </div>
+        <div>
+          <dt>Work location</dt>
+          <dd>{info.location ? `${info.location}${info.state ? ` (${info.state})` : ''}` : info.state || '—'}</dd>
+        </div>
+        <div>
+          <dt>Tax regime</dt>
+          <dd>{info.regime === 'old' ? 'Old' : 'New'}</dd>
+        </div>
       </dl>
-      <div className="payslip-columns">
-        <Lines title="Earnings" lines={by('earning')} explain={explain} />
-        <Lines title="Deductions" lines={by('deduction')} explain={explain} />
-      </div>
-      <div className="payslip-totals">
-        <span>Gross {rupees(slip.gross)}</span>
-        <span>Deductions {rupees(slip.deductions)}</span>
-        <strong data-testid="net">Net pay {rupees(slip.net)}</strong>
-      </div>
-      {by('employer').length > 0 && (
-        <p className="hint">
-          Paid by the employer on top: {by('employer').map((l) => `${l.name} ${rupees(l.amount)}`).join(' · ')}
+      {(info.lopDates?.length > 0 || Number(info.lopEntered) > 0) && (
+        <p className="hint payslip-lop" data-testid="loss-of-pay-days">
+          Loss of pay:{' '}
+          {(info.lopDates || [])
+            .map((d) => `${formatDay(d.date)} (${Number(d.days) < 1 ? 'half day, ' : ''}${d.source === 'leave' ? 'unpaid leave' : 'absent'})`)
+            .join('; ')}
+          {Number(info.lopEntered) > 0 && `${info.lopDates?.length ? '; and ' : ''}${formatDays(info.lopEntered)} entered by HR`}
         </p>
       )}
+
+      <div className="payslip-columns">
+        <Lines title="Earnings" lines={earnings} explain={explain} slots={slots} total={slip.gross} totalLabel="Gross earnings" />
+        <Lines title="Deductions" lines={deductions} explain={explain} slots={slots} total={slip.deductions} totalLabel="Total deductions" />
+      </div>
+
+      <div className="payslip-net">
+        <div>
+          <p className="payslip-kicker">Net pay{slip.label ? ` for ${slip.label}` : ''}</p>
+          <p className="payslip-net-sum">
+            Gross {rupees(slip.gross)} less deductions {rupees(slip.deductions)}
+          </p>
+        </div>
+        <strong data-testid="net" aria-label={`Net pay ${rupees(slip.net)}`}>
+          {rupees(slip.net)}
+        </strong>
+      </div>
+
+      {(ytd || employer.length > 0) && (
+        <div className="payslip-columns">
+          {ytd && (
+            <div className="payslip-block">
+              <table className="payslip-lines">
+                <thead>
+                  <tr>
+                    <th scope="col">This tax year so far</th>
+                    <th scope="col" className="num">
+                      Amount
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td>Gross earnings</td>
+                    <td className="num">{rupees(ytd.gross)}</td>
+                  </tr>
+                  <tr>
+                    <td>Deductions</td>
+                    <td className="num">{rupees(ytd.deductions)}</td>
+                  </tr>
+                  {ytd.tds !== undefined && (
+                    <tr>
+                      <td>Income tax deducted</td>
+                      <td className="num">{rupees(ytd.tds)}</td>
+                    </tr>
+                  )}
+                </tbody>
+                {ytd.net !== undefined && (
+                  <tfoot>
+                    <tr>
+                      <th scope="row">Net pay</th>
+                      <td className="num">{rupees(ytd.net)}</td>
+                    </tr>
+                  </tfoot>
+                )}
+              </table>
+            </div>
+          )}
+          {employer.length > 0 && (
+            <Lines
+              title="Paid by the employer, on top of pay"
+              lines={employer}
+              explain={explain}
+              slots={0}
+              total={employer.reduce((sum, l) => sum + Number(l.amount), 0)}
+              totalLabel="Total"
+            />
+          )}
+        </div>
+      )}
+
+      {tax && (
+        <section className="payslip-section">
+          <h4>Income tax for the year, projected</h4>
+          <dl className="payslip-tax">
+            <div>
+              <dt>Projected income</dt>
+              <dd>{rupees(tax.income)}</dd>
+            </div>
+            <div>
+              <dt>Taxable income</dt>
+              <dd>{rupees(tax.taxableIncome)}</dd>
+            </div>
+            <div>
+              <dt>Tax for the year</dt>
+              <dd>{rupees(tax.annualTax)}</dd>
+            </div>
+            <div>
+              <dt>Deducted before this month</dt>
+              <dd>{rupees(tax.paidSoFar)}</dd>
+            </div>
+            {tax.monthsLeft !== undefined && (
+              <div>
+                <dt>Spread over</dt>
+                <dd>
+                  {tax.monthsLeft} month{tax.monthsLeft === 1 ? '' : 's'}
+                </dd>
+              </div>
+            )}
+          </dl>
+        </section>
+      )}
+
       {changes.items && (
-        <section className="why-changed" data-testid="why-changed">
+        <section className="payslip-section why-changed" data-testid="why-changed">
           <h4>
             Why pay changed from {changes.previousLabel}{' '}
             <span className="hint">
@@ -147,18 +282,12 @@ export default function PayslipView({ slip, explain = false }) {
             <ul>
               {changes.items.map((c) => (
                 <li key={c.cause}>
-                  <span>{c.cause}</span> <strong>{signed(c.amount)}</strong>
+                  <span>{c.cause}</span> <strong className={Number(c.amount) >= 0 ? 'up' : 'down'}>{signed(c.amount)}</strong>
                 </li>
               ))}
             </ul>
           )}
         </section>
-      )}
-      {info.tax && (
-        <p className="hint">
-          Income tax for the year, projected: income {rupees(info.tax.income)}, taxable {rupees(info.tax.taxableIncome)}, tax {rupees(info.tax.annualTax)}, deducted
-          before this month {rupees(info.tax.paidSoFar)}, spread over {info.tax.monthsLeft} month{info.tax.monthsLeft === 1 ? '' : 's'}.
-        </p>
       )}
     </div>
   )

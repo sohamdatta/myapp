@@ -50,26 +50,37 @@ public final class Pdf {
     }
 
     /**
-     * One thing placed on a page: text at a point (right-aligned when asked), or a horizontal rule
-     * when the text is null. y is measured from the top of the page, as people lay out a form.
+     * One thing placed on a page: text at a point (right-aligned when asked), a horizontal rule, a filled band or an
+     * outlined box. y is measured from the top of the page, as people lay out a form. {@code color} is an RGB value
+     * such as 0x4F4AC0, or -1 for the default (black text, grey rules, light grey bands).
      */
-    public record Item(float x, float y, String text, boolean bold, float size, boolean right, float ruleTo, boolean fill) {
+    public record Item(float x, float y, String text, boolean bold, float size, boolean right, float ruleTo, boolean fill, int color, boolean box) {
 
         public static Item text(float x, float y, String text, float size, boolean bold) {
-            return new Item(x, y, text, bold, size, false, 0, false);
+            return new Item(x, y, text, bold, size, false, 0, false, -1, false);
         }
 
         public static Item right(float x, float y, String text, float size, boolean bold) {
-            return new Item(x, y, text, bold, size, true, 0, false);
+            return new Item(x, y, text, bold, size, true, 0, false, -1, false);
         }
 
         public static Item rule(float x, float y, float to) {
-            return new Item(x, y, null, false, 0, false, to, false);
+            return new Item(x, y, null, false, 0, false, to, false, -1, false);
         }
 
         /** A light grey band from x to ruleTo, height size, its top at y. */
         public static Item band(float x, float y, float to, float height) {
-            return new Item(x, y, null, false, height, false, to, true);
+            return new Item(x, y, null, false, height, false, to, true, -1, false);
+        }
+
+        /** A thin outlined rectangle from x to ruleTo, height size, its top at y. */
+        public static Item box(float x, float y, float to, float height) {
+            return new Item(x, y, null, false, height, false, to, false, -1, true);
+        }
+
+        /** The same thing in another colour: the text, the band's fill, or the rule's or box's line. */
+        public Item color(int rgb) {
+            return new Item(x, y, text, bold, size, right, ruleTo, fill, rgb, box);
         }
     }
 
@@ -87,17 +98,22 @@ public final class Pdf {
         }
         for (Item it : items) {
             float y = HEIGHT - it.y();
-            if (it.text() == null && it.fill()) {
-                put(c, "0.94 0.95 0.96 rg " + num(it.x()) + " " + num(y - it.size()) + " " + num(it.ruleTo() - it.x()) + " " + num(it.size())
-                        + " re f 0 0 0 rg\n");
+            if (it.text() == null && it.box()) {
+                put(c, rgb(it.color(), 0xD5DAE1, "RG") + " 0.6 w " + num(it.x()) + " " + num(y - it.size()) + " " + num(it.ruleTo() - it.x()) + " "
+                        + num(it.size()) + " re S 0 0 0 RG\n");
+            } else if (it.text() == null && it.fill()) {
+                put(c, rgb(it.color(), 0xF0F2F5, "rg") + " " + num(it.x()) + " " + num(y - it.size()) + " " + num(it.ruleTo() - it.x()) + " "
+                        + num(it.size()) + " re f 0 0 0 rg\n");
             } else if (it.text() == null) {
-                put(c, "0.75 0.78 0.82 RG 0.6 w " + num(it.x()) + " " + num(y) + " m " + num(it.ruleTo()) + " " + num(y) + " l S 0 0 0 RG\n");
+                put(c, rgb(it.color(), 0xBFC7D1, "RG") + " 0.6 w " + num(it.x()) + " " + num(y) + " m " + num(it.ruleTo()) + " " + num(y)
+                        + " l S 0 0 0 RG\n");
             } else {
                 String text = clean(it.text());
                 float x = it.right() ? it.x() - width(text, it.size(), it.bold()) : it.x();
-                put(c, "BT /" + (it.bold() ? "F2 " : "F1 ") + num(it.size()) + " Tf " + num(x) + " " + num(y) + " Td ");
+                put(c, (it.color() < 0 ? "" : rgb(it.color(), 0, "rg") + " ") + "BT /" + (it.bold() ? "F2 " : "F1 ") + num(it.size()) + " Tf "
+                        + num(x) + " " + num(y) + " Td ");
                 c.writeBytes(string(text));
-                put(c, " Tj ET\n");
+                put(c, " Tj ET" + (it.color() < 0 ? "" : " 0 0 0 rg") + "\n");
             }
         }
         return writeContents(title, List.of(c.toByteArray()), image);
@@ -384,6 +400,12 @@ public final class Pdf {
 
     private static void put(ByteArrayOutputStream out, String s) {
         out.writeBytes(s.getBytes(StandardCharsets.ISO_8859_1));
+    }
+
+    /** A colour operator: the RGB value given, or the fallback when it is -1. */
+    private static String rgb(int color, int fallback, String op) {
+        int v = color < 0 ? fallback : color;
+        return num(((v >> 16) & 0xFF) / 255f) + " " + num(((v >> 8) & 0xFF) / 255f) + " " + num((v & 0xFF) / 255f) + " " + op;
     }
 
     private static String num(float f) {

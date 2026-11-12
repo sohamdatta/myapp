@@ -166,7 +166,7 @@ final class PayrollOutputs {
     static DocumentService.Content pdf(Connection c, UUID payslipId, String org) throws SQLException {
         Map<String, Object> ps = payslip(c, payslipId, false);
         Map<String, Object> s = Sql.one(c, "select entity_name, address from app.payroll_settings");
-        byte[] bytes = PayslipPdf.render(s, org, ps);
+        byte[] bytes = PayslipPdf.render(s, org, ps, PayslipPdf.logo(CertificateLayout.logo(c)));
         String month = LocalDate.parse((String) ps.get("period")).format(DateTimeFormatter.ofPattern("yyyy-MM"));
         return new DocumentService.Content("application/pdf", "Payslip " + month + ".pdf", bytes);
     }
