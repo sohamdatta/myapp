@@ -102,6 +102,10 @@ export default defineConfig({
     { name: 'people-cases', testMatch: /46-people-cases\.spec\.ts/, use: desktop },
     // The people user guide's screenshots (docs/user-guide/people.md), in Northwind Retail: E2E_SHOTS=<folder> --project=people-guide.
     { name: 'people-guide', testMatch: /47-people-guide\.spec\.ts/, use: desktop },
+    // Every exit setting and screen, case by case (docs/testing/exit-ui-test-cases.xlsx), in Exit Labs: --project=exit-cases.
+    { name: 'exit-cases', testMatch: /48-exit-cases\.spec\.ts/, use: desktop },
+    // The exits user guide's screenshots (docs/user-guide/exits.md), in Northwind Logistics: E2E_SHOTS=<folder> --project=exit-guide.
+    { name: 'exit-guide', testMatch: /49-exit-guide\.spec\.ts/, use: desktop },
     // The attendance user guide's screenshots (docs/user-guide/attendance.md), in Northwind Foods: E2E_SHOTS=<folder> --project=attendance-guide.
     { name: 'attendance-guide', testMatch: /43-attendance-guide\.spec\.ts/, use: desktop },
   ],

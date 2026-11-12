@@ -248,6 +248,21 @@ class ExitTest {
     // ── HR-started exits and the last working day ───────────────────────
 
     @Test
+    void anAcceptedExitCanBeCancelledBeforeItsLastDay() {
+        Setup s = setup();
+        // An exit HR starts is accepted at once; talks then keep the person, and HR cancels it.
+        Map<String, Object> x = exits.start(s.hr, new StartInput(s.bossRecord.toString(), "termination", "performance",
+                "Agreed after the review", TODAY.plusDays(7).toString(), "waived", null));
+        assertEquals("accepted", x.get("status"));
+        UUID id = UUID.fromString((String) x.get("id"));
+        Map<String, Object> cancelled = exits.cancel(s.hr, id, new WithdrawInput("Agreed to stay after talks"));
+        assertEquals("cancelled", cancelled.get("status"));
+        assertTrue(exits.list(s.hr, "open").isEmpty());
+        assertEquals("active", employees.get(s.hr, s.bossRecord).get("status"));
+        assertEquals(1L, count(s.org, "select count(*) from app.audit_event where action = 'exit.cancelled'"));
+    }
+
+    @Test
     void afterTheLastWorkingDayTheEmploymentEndsAndTheReportsMoveToTheSuccessor() {
         Setup s = setup();
         // The boss is terminated with their last day in a week; their report moves to the colleague.
