@@ -8,3 +8,4 @@ guide's spec) and copy the files into `img/<module>/`.
 | --- | --- | --- | --- |
 | Attendance | [attendance.md](attendance.md) | [attendance-ui-test-cases.xlsx](../testing/attendance-ui-test-cases.xlsx) | `e2e/tests/40` to `43` |
 | Leave | [leave.md](leave.md) | [leave-ui-test-cases.xlsx](../testing/leave-ui-test-cases.xlsx) | `e2e/tests/44-leave-cases`, `45-leave-guide` |
+| People and org chart | [people.md](people.md) | [people-ui-test-cases.xlsx](../testing/people-ui-test-cases.xlsx) | `e2e/tests/46-people-cases`, `47-people-guide` |
