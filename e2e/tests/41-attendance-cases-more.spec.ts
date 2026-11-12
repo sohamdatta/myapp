@@ -527,6 +527,8 @@ test.describe('attendance test cases, part 2', () => {
   });
   test('TC-273 keyboard reaches and operates the punch button', async () => {
     const p = P.n1; await p.reload(); await nav(p, 'My attendance');
+    // The button is drawn once today's record has loaded; Tab pressed before then goes round the menu and can run out.
+    await expect(p.getByRole('button', { name: /Punch (in|out)/ })).toBeVisible();
     let hit = false;
     for (let i = 0; i < 60 && !hit; i++) { await p.keyboard.press('Tab'); hit = await p.evaluate(() => /Punch (in|out)/.test(document.activeElement?.textContent || '')); }
     expect(hit).toBe(true);
