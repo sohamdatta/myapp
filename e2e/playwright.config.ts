@@ -118,6 +118,10 @@ export default defineConfig({
     { name: 'access-cases', testMatch: /54-access-cases\.spec\.ts/, use: desktop },
     // The administration user guide's screenshots (docs/user-guide/administration.md), in Northwind Holdings: E2E_SHOTS=<folder> --project=access-guide.
     { name: 'access-guide', testMatch: /55-access-guide\.spec\.ts/, use: desktop },
+    // Onboarding: setup, joiners, the joiner's form, checking, the checklist, offers and activation, case by case (docs/testing/onboarding-ui-test-cases.xlsx), in Join Labs: --project=onboarding-cases.
+    { name: 'onboarding-cases', testMatch: /56-onboarding-cases\.spec\.ts/, use: desktop },
+    // The onboarding user guide's screenshots (docs/user-guide/onboarding.md), in Northwind Pharma: E2E_SHOTS=<folder> --project=onboarding-guide.
+    { name: 'onboarding-guide', testMatch: /57-onboarding-guide\.spec\.ts/, use: desktop },
     // The attendance user guide's screenshots (docs/user-guide/attendance.md), in Northwind Foods: E2E_SHOTS=<folder> --project=attendance-guide.
     { name: 'attendance-guide', testMatch: /43-attendance-guide\.spec\.ts/, use: desktop },
   ],

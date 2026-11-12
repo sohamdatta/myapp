@@ -13,3 +13,4 @@ guide's spec) and copy the files into `img/<module>/`.
 | Performance | [performance.md](performance.md) | [performance-ui-test-cases.xlsx](../testing/performance-ui-test-cases.xlsx) | `e2e/tests/50-performance-cases`, `51-performance-guide` |
 | Payroll and tax declarations | [payroll.md](payroll.md) | [payroll-ui-test-cases.xlsx](../testing/payroll-ui-test-cases.xlsx) | `e2e/tests/52-payroll-cases`, `53-payroll-guide` |
 | Administration: getting started, users and roles, security, settings, branding, audit | [administration.md](administration.md) | [access-ui-test-cases.xlsx](../testing/access-ui-test-cases.xlsx) | `e2e/tests/54-access-cases`, `55-access-guide` |
+| Onboarding: joiners, offers, checking, checklists | [onboarding.md](onboarding.md) | [onboarding-ui-test-cases.xlsx](../testing/onboarding-ui-test-cases.xlsx) | `e2e/tests/56-onboarding-cases`, `57-onboarding-guide` |
