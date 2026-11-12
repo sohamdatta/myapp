@@ -84,7 +84,7 @@ public final class PayrollConfig {
             Map<String, Object> out = new LinkedHashMap<>();
             out.put("settings", Sql.one(c, "select entity_name, pan, tan, address, debit_account, debit_ifsc, proration, absence_is_lop, "
                     + "pf_restrict, metro_locations, variance_pct, variance_amount, large_one_time, release_auto, updated_at, "
-                    + Names.of("updated_by") + " as updated_by_name from app.payroll_settings"));
+                    + Names.orEmail("updated_by") + " as updated_by_name from app.payroll_settings"));
             out.put("registrations", Sql.query(c, "select id, statute, state, number from app.payroll_registration order by statute, state"));
             out.put("components", components(c, today));
             out.put("tables", tables(c));
@@ -209,7 +209,7 @@ public final class PayrollConfig {
     public List<Map<String, Object>> componentHistory(SessionCtx ctx, UUID id) {
         needRead(ctx);
         return db.inTenant(ctx.tenantId(), c -> Sql.query(c, "select v.valid_from, v.amount_type, v.formula, v.wage, v.esi_wage, v.taxable, "
-                + "v.prorate, v.rounding, v.one_time, v.created_at, " + Names.of("v.created_by") + " as created_by_name "
+                + "v.prorate, v.rounding, v.one_time, v.created_at, " + Names.orEmail("v.created_by") + " as created_by_name "
                 + "from app.pay_component_version v where v.component_id = ? order by v.valid_from desc", id));
     }
 
@@ -419,7 +419,7 @@ public final class PayrollConfig {
 
     static List<Map<String, Object>> structures(Connection c, LocalDate asOf) throws SQLException {
         List<Map<String, Object>> out = Sql.query(c, "select s.id, s.name, s.basis, s.active, v.valid_from, v.lines, v.balancing, "
-                + Names.of("v.created_by") + " as changed_by_name, v.created_at as changed_at, "
+                + Names.orEmail("v.created_by") + " as changed_by_name, v.created_at as changed_at, "
                 + "(select count(distinct x.employment_id) from app.compensation x where x.structure_id = s.id and x.superseded_at is null) as people, "
                 + "(select min(x.valid_from) from app.salary_structure_version x where x.structure_id = s.id and x.valid_from > ?) as next_from "
                 + "from app.salary_structure s join lateral (select * from app.salary_structure_version v where v.structure_id = s.id "

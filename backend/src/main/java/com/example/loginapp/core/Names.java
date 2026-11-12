@@ -10,4 +10,13 @@ final class Names {
         return "(select coalesce(p.preferred_name, p.legal_name) from app.membership nm join app.person p on p.id = nm.person_id "
                 + "where nm.id = " + membershipColumn + ")";
     }
+
+    /**
+     * As {@link #of}, falling back to the user's email when no employee record is linked, for "by whom" columns: an Org Admin or
+     * an operator often has no record, and "Accepted by :" with nothing after it says nothing.
+     */
+    static String orEmail(String membershipColumn) {
+        return "coalesce(" + of(membershipColumn) + ", (select ne.email::text from app.member_directory() ne where ne.membership_id = "
+                + membershipColumn + "))";
+    }
 }

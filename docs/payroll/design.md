@@ -26,6 +26,10 @@ Statutory rules live in `app.payroll_rule`, one row per statute, state and date 
 
 ## Where the build differs from the design
 
+- **Who did it.** Screens name who accepted an exception, calculated or approved a run, or changed the setup by their employee record, and by their email when they have none (an Org Admin or operator often has none).
+- **Registrations by state.** A professional tax or labour welfare fund registration names its state; pick the state of the work location (the form starts at Karnataka).
+- **Tables need every key.** A `table()` lookup with no row for someone's key (a designation not in the table) stops their pay from being set or worked out, with a message naming the key.
+
 - **Holds are read when the run is calculated**, not from the frozen snapshot, so pay can be held after the inputs are frozen; recalculating applies it.
 - **Someone whose accepted exit ends before the month starts is not in that month's run.** Their last month is paid through the exit settlement.
 - **Exceptions are accepted by the approver**, not by the person who prepared the run, which keeps the decision with the second person.

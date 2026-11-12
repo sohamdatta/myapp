@@ -178,11 +178,11 @@ public final class PayrollRuns {
                     + "from app.pay_hold h join app.employment e on e.id = h.employment_id join app.person p on p.id = e.person_id "
                     + "where h.run_id = ?", runId));
             r.put("exceptions", Sql.query(c, "select x.id, x.employment_id, coalesce(p.preferred_name, p.legal_name) as name, x.code, x.level, "
-                    + "x.acceptable, x.message, x.link, x.accepted_reason, x.accepted_at, " + Names.of("x.accepted_by") + " as accepted_by_name "
+                    + "x.acceptable, x.message, x.link, x.accepted_reason, x.accepted_at, " + Names.orEmail("x.accepted_by") + " as accepted_by_name "
                     + "from app.run_exception x left join app.employment e on e.id = x.employment_id left join app.person p on p.id = e.person_id "
                     + "where x.run_id = ? order by (x.level = 'blocking') desc, x.accepted_at nulls first, lower(coalesce(p.legal_name, '')), x.code",
                     runId));
-            r.put("attempts", Sql.query(c, "select number, at, totals, " + Names.of("by_id") + " as by_name from app.run_attempt where run_id = ? "
+            r.put("attempts", Sql.query(c, "select number, at, totals, " + Names.orEmail("by_id") + " as by_name from app.run_attempt where run_id = ? "
                     + "order by number desc", runId));
             for (Map<String, Object> a : PayrollEngine.list(r, "attempts")) {
                 a.put("totals", parse(a.get("totals")));
