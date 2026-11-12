@@ -417,17 +417,29 @@ function FormEditor({ form, onDone }) {
 
 function MeritSettings() {
   const settings = useLoad(performance.merit)
+  // Held here, not in the form: saving reloads the settings, which starts the form afresh, and the notice must outlast that.
+  const [saved, setSaved] = useState(false)
   if (settings.loading) return <p className="muted">Loading…</p>
   if (settings.error) return <ErrorNote>{settings.error}</ErrorNote>
-  return <MeritForm key={JSON.stringify(settings.data)} settings={settings.data} onSaved={settings.reload} />
+  return (
+    <MeritForm
+      key={JSON.stringify(settings.data)}
+      settings={settings.data}
+      saved={saved}
+      onSaving={() => setSaved(false)}
+      onSaved={() => {
+        setSaved(true)
+        settings.reload()
+      }}
+    />
+  )
 }
 
 /** The guide distribution and the merit table, one row per rating. */
-function MeritForm({ settings, onSaved }) {
+function MeritForm({ settings, saved, onSaving, onSaved }) {
   const start = (table) => Object.fromEntries(settings.scale.map((l) => [l.value, String(table[l.value] ?? 0)]))
   const [guide, setGuide] = useState(() => start(settings.distributionGuide))
   const [merit, setMerit] = useState(() => start(settings.meritTable))
-  const [saved, setSaved] = useState(false)
   const { busy, error, run } = useAction()
   const total = Object.values(guide).reduce((n, v) => n + (Number(v) || 0), 0)
   return (
@@ -436,9 +448,8 @@ function MeritForm({ settings, onSaved }) {
       noValidate
       onSubmit={async (e) => {
         e.preventDefault()
-        setSaved(false)
+        onSaving()
         if (await run(() => performance.saveMerit({ distributionGuide: guide, meritTable: merit }))) {
-          setSaved(true)
           onSaved()
         }
       }}

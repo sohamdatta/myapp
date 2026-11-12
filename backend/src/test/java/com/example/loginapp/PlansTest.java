@@ -217,6 +217,40 @@ class PlansTest {
         assertError(403, "permission.denied", () -> plans.list(s.colleague, null));
     }
 
+    @Test
+    void twoPlansSentAtOnceGiveOnePlanAndARefusalNotAServerError() throws Exception {
+        Setup s = setup(false);
+        String worker = s.workerRecord.toString();
+        // A double click, or the screen and another tab: both pass the "no plan yet" check unless the second waits for the first.
+        java.util.concurrent.CountDownLatch go = new java.util.concurrent.CountDownLatch(1);
+        java.util.concurrent.ExecutorService pool = java.util.concurrent.Executors.newFixedThreadPool(2);
+        try {
+            List<java.util.concurrent.Future<Integer>> tries = new java.util.ArrayList<>();
+            for (int i = 0; i < 2; i++) {
+                tries.add(pool.submit(() -> {
+                    go.await();
+                    try {
+                        plans.create(s.boss, plan(worker, 60, 14));
+                        return 200;
+                    } catch (ApiException e) {
+                        assertEquals("plan.exists", e.code(), e.getMessage());
+                        return e.status();
+                    }
+                }));
+            }
+            go.countDown();
+            List<Integer> statuses = new java.util.ArrayList<>();
+            for (java.util.concurrent.Future<Integer> f : tries) {
+                statuses.add(f.get());
+            }
+            statuses.sort(null);
+            assertEquals(List.of(200, 409), statuses);
+        } finally {
+            pool.shutdownNow();
+        }
+        assertEquals(1, plans.list(s.boss, null).size());
+    }
+
     private static final String REASON = "Monthly reports have been late or wrong for three months running";
 
     private static PlanInput plan(String employment, int length, int every) {
