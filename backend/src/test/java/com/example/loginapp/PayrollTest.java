@@ -791,8 +791,13 @@ class PayrollTest {
         assertEquals("blocking", recent.get(0).get("level"));
         assertError(409, "payroll.one_by_one", () -> runs.acceptMany(org.admin, run, List.of(UUID.fromString((String) recent.get(0).get("id"))), "Confirmed with Asha"));
         runs.accept(org.admin, run, UUID.fromString((String) recent.get(0).get("id")), "Confirmed with Asha by phone");
+        // Neither the Org Admin nor the operator has an employee record: the run names them by their email, not by nothing.
+        assertEquals("admin@" + org.slug + ".test", flags(runs.get(operator, run), "bank_changed_recent").get(0).get("acceptedByName"));
         runs.calculate(operator, run);
         assertTrue(flags(runs.get(operator, run), "bank_changed_recent").get(0).get("acceptedAt") != null, "same account: still accepted");
+        for (Object attempt : (List<?>) runs.get(operator, run).get("attempts")) {
+            assertEquals("payroll@" + org.slug + ".test", ((Map<?, ?>) attempt).get("byName"));
+        }
         assertTrue(flags(runs.get(operator, run), "bank_changed_recent").size() == 1);
 
         // Someone outside the run (added after it was frozen; another pay group or a leaver is the same) with Asha's new account is found

@@ -96,7 +96,7 @@ public final class PayrollPay {
             Map<String, Object> e = Sql.one(c, "select employment_type, joining_date, status from app.employment where id = ?", employmentId);
             Map<String, Object> out = new LinkedHashMap<>();
             out.put("history", Sql.query(c, "select x.id, x.valid_from, x.structure_id, s.name as structure_name, s.basis, x.annual_amount, x.reason, "
-                    + "x.recorded_at, " + Names.of("x.recorded_by") + " as recorded_by_name from app.compensation x "
+                    + "x.recorded_at, " + Names.orEmail("x.recorded_by") + " as recorded_by_name from app.compensation x "
                     + "join app.salary_structure s on s.id = x.structure_id where x.employment_id = ? and x.superseded_at is null "
                     + "order by x.valid_from desc", employmentId));
             out.put("overrides", Sql.query(c, "select o.id, o.component_code, pc.name as component_name, o.monthly_amount, o.valid_from, o.valid_to, "

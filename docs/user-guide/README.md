@@ -11,3 +11,4 @@ guide's spec) and copy the files into `img/<module>/`.
 | People and org chart | [people.md](people.md) | [people-ui-test-cases.xlsx](../testing/people-ui-test-cases.xlsx) | `e2e/tests/46-people-cases`, `47-people-guide` |
 | Exits | [exits.md](exits.md) | [exit-ui-test-cases.xlsx](../testing/exit-ui-test-cases.xlsx) | `e2e/tests/48-exit-cases`, `49-exit-guide` |
 | Performance | [performance.md](performance.md) | [performance-ui-test-cases.xlsx](../testing/performance-ui-test-cases.xlsx) | `e2e/tests/50-performance-cases`, `51-performance-guide` |
+| Payroll and tax declarations | [payroll.md](payroll.md) | [payroll-ui-test-cases.xlsx](../testing/payroll-ui-test-cases.xlsx) | `e2e/tests/52-payroll-cases`, `53-payroll-guide` |

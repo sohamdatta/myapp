@@ -21,12 +21,14 @@ those cases from the screens on every pull request. The customer guide for the m
 | People and org chart | [people-ui-test-cases.xlsx](testing/people-ui-test-cases.xlsx) | `46-people-cases` (People Labs), `47-people-guide` (screenshots) | 49, all automated | 12 Nov 2026, all 49 pass |
 | Exits | [exit-ui-test-cases.xlsx](testing/exit-ui-test-cases.xlsx) | `48-exit-cases` (Exit Labs), `49-exit-guide` (screenshots) | 49, all automated | 12 Nov 2026, all 49 pass |
 | Performance | [performance-ui-test-cases.xlsx](testing/performance-ui-test-cases.xlsx) | `50-performance-cases` (Perf Labs), `51-performance-guide` (screenshots) | 68, all automated | 12 Nov 2026, all 68 pass |
+| Payroll and tax declarations | [payroll-ui-test-cases.xlsx](testing/payroll-ui-test-cases.xlsx) | `52-payroll-cases` (Pay Labs), `53-payroll-guide` (screenshots) | 71, all automated | 12 Nov 2026, all 71 pass |
 
 The cases found two bugs, fixed with JUnit tests in `AttendanceTest`: a correction whose out time was before its in time was
 read as the next day on a day shift, and an approved correction for a day before the login joined left the day empty.
 The leave cases found that comp-off could be granted through the API for a day that was not worked; `LeaveTest` now covers the check.
 The exit cases found that an accepted exit (every exit HR starts) could not be cancelled: a database check refused it. V45 fixes the check; `ExitTest` covers it.
 The performance cases found that saving the merit table never said "Saved.": the reload remounted the form and dropped the notice. `PerformanceSetup.jsx` keeps it; `TC-F009` covers it.
+The payroll cases found that whoever accepted an exception, calculated a run or changed the setup showed as nothing when they had no employee record (an Org Admin, often). `Names.orEmail` falls back to the email; `PayrollTest` covers it.
 
 ## Property tests
 
