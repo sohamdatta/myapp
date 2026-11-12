@@ -1,0 +1,201 @@
+name: Smoke sweep
+
+# Opens every screen, tab and the first employees in a running app and fails on any error note, 4xx/5xx API call or
+# browser error. See e2e/smoke/README.md.
+#
+# - On pull requests that touch the sweep or the demo data, and by hand: builds the app here, seeds a small
+#   Organization, loads demo-data/ on top, then runs the read sweep and the write sweep against it. Needs no secrets.
+# - By hand with "url" filled in: runs the read sweep (and, only if "allow_writes" is on, the write sweep) against that
+#   deployed app. Needs the repository secrets SMOKE_EMAIL and SMOKE_PASSWORD. Never point the write sweep at production.
+on:
+  pull_request:
+    paths:
+      - 'e2e/smoke/**'
+      - 'e2e/playwright.smoke.config.ts'
+      - 'demo-data/**'
+      - '.github/workflows/smoke.yml'
+  workflow_dispatch:
+    inputs:
+      url:
+        description: 'Deployed app to test, e.g. https://demo.example.org (empty = build and test here)'
+        default: ''
+      allow_writes:
+        description: 'Also run the write sweep (demo Organizations only)'
+        type: boolean
+        default: false
+      organization:
+        description: 'Organization name, if the login has several'
+        default: ''
+
+permissions:
+  contents: read
+
+jobs:
+  local:
+    name: Smoke sweep (built here)
+    if: github.event_name == 'pull_request' || inputs.url == ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: hrms
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: |
+            frontend/package-lock.json
+            e2e/package-lock.json
+
+      # A small Organization (login hr@scale.test / correct-horse-battery) with payroll set up, left in the database.
+      - name: Seed an Organization
+        working-directory: backend
+        env:
+          SCALE_TEST: 'true'
+          SCALE_EMPLOYEES: '60'
+          SCALE_WARN_ONLY: 'true'
+        run: mvn -B -ntp test -Dtest=PayrollScaleTest -Djacoco.skip=true
+
+      - name: Build the application
+        working-directory: backend
+        run: mvn -B -ntp -DskipTests -Djacoco.skip=true package
+
+      - name: Start the application
+        env:
+          APP_DB_URL: jdbc:postgresql://localhost:5432/hrms_test_scale
+          APP_DB_OWNER_USER: postgres
+          APP_DB_OWNER_PASSWORD: postgres
+          APP_DB_ROLE_PASSWORD: test-role-password
+          APP_PUBLIC_URL: http://localhost:5173
+        run: |
+          nohup java -jar backend/target/login-app-*.jar > backend.log 2>&1 &
+          for i in $(seq 1 60); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8080/api/auth/me || true)
+            if [ "$code" = "401" ]; then echo "backend is up"; exit 0; fi
+            sleep 2
+          done
+          echo "backend did not start"; cat backend.log; exit 1
+
+      - name: Start the frontend
+        working-directory: frontend
+        run: |
+          npm ci
+          nohup npx vite --port 5173 > ../frontend.log 2>&1 &
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:5173/ > /dev/null; then echo "frontend is up"; exit 0; fi
+            sleep 1
+          done
+          echo "frontend did not start"; cat ../frontend.log; exit 1
+
+      # Also proves the demo-data loader still works.
+      - name: Load the demo data
+        env:
+          DEMO_PASSWORD: correct-horse-battery
+        run: python3 demo-data/load_demo.py --base http://localhost:8080 --email hr@scale.test --run
+
+      - name: Install Playwright
+        working-directory: e2e
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+
+      - name: Read sweep
+        working-directory: e2e
+        env:
+          SMOKE_BASE_URL: http://localhost:5173
+          SMOKE_EMAIL: hr@scale.test
+          SMOKE_PASSWORD: correct-horse-battery
+          SMOKE_PEOPLE: Sanjay
+        run: npx playwright test -c playwright.smoke.config.ts sweep
+
+      - name: Write sweep
+        if: ${{ !cancelled() }}
+        working-directory: e2e
+        env:
+          SMOKE_BASE_URL: http://localhost:5173
+          SMOKE_EMAIL: hr@scale.test
+          SMOKE_PASSWORD: correct-horse-battery
+          SMOKE_ALLOW_WRITES: '1'
+          SMOKE_EMPLOYEE: Sanjay
+        run: npx playwright test -c playwright.smoke.config.ts actions
+
+      - name: Report
+        if: ${{ !cancelled() }}
+        run: |
+          for f in e2e/smoke-report/*.md; do [ -f "$f" ] && { cat "$f"; echo; } >> "$GITHUB_STEP_SUMMARY"; done
+          true
+      - uses: actions/upload-artifact@v7
+        if: ${{ !cancelled() }}
+        with:
+          name: smoke-report
+          path: |
+            e2e/smoke-report
+            backend.log
+          if-no-files-found: ignore
+
+  remote:
+    name: Smoke sweep (deployed app)
+    if: github.event_name == 'workflow_dispatch' && inputs.url != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: e2e/package-lock.json
+      - name: Install Playwright
+        working-directory: e2e
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+
+      - name: Read sweep
+        working-directory: e2e
+        env:
+          SMOKE_BASE_URL: ${{ inputs.url }}
+          SMOKE_EMAIL: ${{ secrets.SMOKE_EMAIL }}
+          SMOKE_PASSWORD: ${{ secrets.SMOKE_PASSWORD }}
+          SMOKE_ORG: ${{ inputs.organization }}
+        run: |
+          [ -n "$SMOKE_EMAIL" ] && [ -n "$SMOKE_PASSWORD" ] || { echo "Add the repository secrets SMOKE_EMAIL and SMOKE_PASSWORD"; exit 1; }
+          npx playwright test -c playwright.smoke.config.ts sweep
+
+      - name: Write sweep
+        if: ${{ !cancelled() && inputs.allow_writes }}
+        working-directory: e2e
+        env:
+          SMOKE_BASE_URL: ${{ inputs.url }}
+          SMOKE_EMAIL: ${{ secrets.SMOKE_EMAIL }}
+          SMOKE_PASSWORD: ${{ secrets.SMOKE_PASSWORD }}
+          SMOKE_ORG: ${{ inputs.organization }}
+          SMOKE_ALLOW_WRITES: '1'
+        run: npx playwright test -c playwright.smoke.config.ts actions
+
+      - name: Report
+        if: ${{ !cancelled() }}
+        run: |
+          for f in e2e/smoke-report/*.md; do [ -f "$f" ] && { cat "$f"; echo; } >> "$GITHUB_STEP_SUMMARY"; done
+          true
+      - uses: actions/upload-artifact@v7
+        if: ${{ !cancelled() }}
+        with:
+          name: smoke-report
+          path: e2e/smoke-report
+          if-no-files-found: ignore
