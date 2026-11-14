@@ -437,6 +437,13 @@ export const expenses = {
   review: (lineId, status, note, version) => post(`/org/expenses/lines/${lineId}/review`, { status, note, version }),
   verify: (id, version, note) => post(`/org/expenses/claims/${id}/verify`, { version, note }),
   financeReject: (id, version, note) => post(`/org/expenses/claims/${id}/finance-reject`, { version, note }),
+  payable: () => get('/org/expenses/payable'),
+  batches: () => get('/org/expenses/batches'),
+  batchClaims: (id) => get(`/org/expenses/batches/${id}/claims`),
+  createBatch: (claims) => post('/org/expenses/batches', { claims }),
+  bankFile: (id) => fetchFile(`/org/expenses/batches/${id}/bank-file`),
+  markPaid: (id, paidOn, reference) => post(`/org/expenses/batches/${id}/paid`, { paidOn, reference }),
+  cancelBatch: (id) => post(`/org/expenses/batches/${id}/cancel`),
 }
 
 // ── people: employee records and departments ────────────────────────

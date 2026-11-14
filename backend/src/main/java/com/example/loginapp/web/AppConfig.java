@@ -33,6 +33,7 @@ import com.example.loginapp.core.SmtpMailSender;
 import com.example.loginapp.core.Db;
 import com.example.loginapp.core.DeviceService;
 import com.example.loginapp.core.DocumentService;
+import com.example.loginapp.core.ExpensePayouts;
 import com.example.loginapp.core.ExpenseService;
 import com.example.loginapp.core.RoleService;
 import com.example.loginapp.core.EmployeeImport;
@@ -250,6 +251,11 @@ public class AppConfig {
     @Bean
     public RoleService roleService(Db db) {
         return new RoleService(db);
+    }
+
+    @Bean
+    public ExpensePayouts expensePayouts(Db db, Crypto crypto) {
+        return new ExpensePayouts(db, crypto);
     }
 
     @Bean

@@ -28,6 +28,7 @@ import com.example.loginapp.core.Crypto;
 import com.example.loginapp.core.Db;
 import com.example.loginapp.core.EmployeeService;
 import com.example.loginapp.core.EmployeeService.NewEmployee;
+import com.example.loginapp.core.ExpensePayouts;
 import com.example.loginapp.core.ExpenseService;
 import com.example.loginapp.core.ExpenseService.CategoryInput;
 import com.example.loginapp.core.ExpenseService.Cut;
@@ -60,6 +61,8 @@ class ExpensesTest {
     private static PlatformService platform;
     private static EmployeeService employees;
     private static ExpenseService expenses;
+    private static ExpensePayouts payouts;
+    private static Crypto crypto;
     private static SessionCtx superAdmin;
 
     /** One Organization: a manager with one report, a finance user, and someone with no manager. */
@@ -90,13 +93,14 @@ class ExpensesTest {
                 source(url, "app_auth", ROLE_PASSWORD), source(url, "app_tenant", ROLE_PASSWORD));
         Migrator.migrate(db, ROLE_PASSWORD);
         Migrator.migrate(db, ROLE_PASSWORD);   // a second run must change nothing
-        Crypto crypto = Crypto.withKey(Crypto.DEVELOPMENT_KEY);
+        crypto = Crypto.withKey(Crypto.DEVELOPMENT_KEY);
         auth = new AuthService(db);
         users = new UserService(db);
         invitations = new InvitationService(db);
         platform = new PlatformService(db);
         employees = new EmployeeService(db, crypto);
         expenses = new ExpenseService(db, crypto);
+        payouts = new ExpensePayouts(db, crypto);
         platform.ensureFirstSuperAdmin("root@platform.test", PASSWORD);
         superAdmin = auth.resolve(auth.enterConsole(auth.resolve(auth.login("root@platform.test", PASSWORD))));
     }
@@ -498,6 +502,97 @@ class ExpensesTest {
     }
 
     // ── helpers ─────────────────────────────────────────────────────────
+
+    // ── payout by bank file ─────────────────────────────────────────────
+
+    @Test
+    void verifiedClaimsArePaidByABatchAndItsBankFile() {
+        Setup s = setup();
+        UUID claim = verified(s, s.solo, "Stationery", "450.00");
+        UUID mine = claim(s.finance, "Finance's own");
+        line(s.finance, mine, s.meals, 1, "200.00");
+        expenses.submit(s.finance, mine, version(s.finance, mine));
+        expenses.verify(s.admin, mine, version(s.finance, mine), null);
+
+        assertEquals(2, payouts.payable(s.finance).size());
+        assertFalse((Boolean) payouts.payable(s.finance).stream().filter(p -> claim.equals(UUID.fromString(p.get("id").toString()))).findFirst().orElseThrow().get("hasBank"));
+        assertError(403, "permission.denied", () -> payouts.payable(s.emp));
+        assertError(409, "expense.no_bank", () -> payouts.createBatch(s.finance, List.of(claim)));
+        assertError(403, "expense.own_claim", () -> payouts.createBatch(s.finance, List.of(mine)));
+        assertError(400, "request.invalid", () -> payouts.createBatch(s.finance, List.of()));
+
+        bank(s, "Sol Solo", "123456789012", "HDFC0001234");
+        ExpensePayouts.BatchMade batch = payouts.createBatch(s.finance, List.of(claim));
+        assertTrue(batch.number().startsWith("EXB-"), batch.number());
+        assertEquals(0, new BigDecimal("450.00").compareTo(batch.total()));
+        assertEquals("scheduled", status(s.solo, claim));
+        assertError(409, "expense.not_payable", () -> payouts.createBatch(s.finance, List.of(claim)));
+        assertEquals(1, payouts.payable(s.finance).size());
+
+        String file = new String(payouts.bankFile(s.finance, batch.id()).bytes(), StandardCharsets.UTF_8);
+        assertTrue(file.contains("123456789012") && file.contains("HDFC0001234") && file.contains("450.00"), file);
+        assertTrue(file.contains("Expense claim " + expenses.claim(s.solo, claim).number()), file);
+
+        assertError(400, "request.invalid", () -> payouts.markPaid(s.finance, batch.id(), new ExpensePayouts.PaidInput(null, " ")));
+        payouts.markPaid(s.finance, batch.id(), new ExpensePayouts.PaidInput(null, "UTR123456"));
+        ExpenseService.ClaimView seen = expenses.claim(s.solo, claim);
+        assertEquals("paid", seen.status());
+        assertEquals(batch.number(), seen.batchNumber());
+        assertEquals("UTR123456", seen.bankReference());
+        assertError(409, "expense.batch_state", () -> payouts.cancel(s.finance, batch.id()));
+        assertError(409, "expense.batch_state", () -> payouts.markPaid(s.finance, batch.id(), new ExpensePayouts.PaidInput(null, "UTR999999")));
+        assertTrue(actions(s).containsAll(List.of("expense.batch_created", "expense.bank_file_downloaded", "expense.batch_paid")), actions(s).toString());
+    }
+
+    @Test
+    void cancellingABatchReturnsItsClaimsToVerified() {
+        Setup s = setup();
+        UUID claim = verified(s, s.solo, "Courier", "300.00");
+        bank(s, "Sol Solo", "222233334444", "SBIN0004321");
+        ExpensePayouts.BatchMade batch = payouts.createBatch(s.finance, List.of(claim));
+        payouts.cancel(s.finance, batch.id());
+        assertEquals("verified", status(s.solo, claim));
+        assertError(409, "expense.batch_state", () -> payouts.bankFile(s.finance, batch.id()));
+        ExpensePayouts.BatchMade again = payouts.createBatch(s.finance, List.of(claim));
+        assertEquals("scheduled", status(s.solo, claim));
+        assertEquals(1, payouts.batches(s.finance).stream().filter(b -> "open".equals(b.get("status"))).count());
+        assertEquals(1, payouts.batchClaims(s.finance, again.id()).size());
+    }
+
+    @Test
+    void aPersonWithNoApproverCanBeRefusedInsteadOfGoingToFinance() {
+        Setup s = setup();
+        UUID claim = claim(s.solo, "No boss");
+        line(s.solo, claim, s.meals, 1, "200.00");
+        new com.example.loginapp.core.SettingsService(db).change(s.admin, "expenses.when_no_approver",
+                new com.example.loginapp.core.SettingsService.ChangeInput("organization", null, null, "refuse", false, "Leavers need an approver", PASSWORD));
+        assertError(409, "expense.no_approver", () -> expenses.submit(s.solo, claim, version(s.solo, claim)));
+        // a person who has a manager is unaffected
+        UUID other = claim(s.emp, "Has boss");
+        line(s.emp, other, s.meals, 1, "200.00");
+        assertEquals("submitted", expenses.submit(s.emp, other, version(s.emp, other)).status());
+    }
+
+    private static UUID verified(Setup s, SessionCtx who, String title, String amount) {
+        UUID claim = claim(who, title);
+        line(who, claim, s.meals, 1, amount);
+        String next = expenses.submit(who, claim, version(who, claim)).status();
+        if ("submitted".equals(next)) {
+            expenses.decide(s.manager, claim, "approve", "ok", version(who, claim), null);
+        }
+        expenses.verify(s.finance, claim, version(who, claim), null);
+        return claim;
+    }
+
+    /** Gives the person with this name a bank account, as the employee record would. */
+    private static void bank(Setup s, String name, String account, String ifsc) {
+        db.inOwner(c -> {
+            Map<String, Object> person = Sql.one(c, "select p.id from app.person p where p.tenant_id = ? and p.legal_name = ?", s.orgId, name);
+            Sql.update(c, "insert into app.bank_account (tenant_id, person_id, holder_name, account_enc, account_last4, ifsc, effective_from) values (?, ?, ?, ?, ?, ?, ?)",
+                    s.orgId, UUID.fromString(person.get("id").toString()), name, crypto.encrypt(s.orgId, account), account.substring(account.length() - 4), ifsc, TODAY.minusYears(1));
+            return null;
+        });
+    }
 
     private static Setup setup() {
         String slug = "exp-" + SEQUENCE.incrementAndGet();

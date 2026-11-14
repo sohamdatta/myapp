@@ -89,6 +89,12 @@ public final class Settings {
             .help("A claim whose total is above this needs two different people to verify it. 0 means never.")
             .defaultValue(0).range(0, 100000000).weakens(Weakens.ANY, Approval.PASSWORD).since("V48"));
 
+    public static final Setting EXPENSE_NO_APPROVER = define(Setting.choice("expenses.when_no_approver", "refuse", "finance")
+            .group("expenses").owner("expense.setup").module(Modules.EXPENSES)
+            .label("A person with no approver or manager")
+            .help("finance: the claim goes straight to finance. refuse: it cannot be submitted until HR sets a manager or a designated approver for them.")
+            .defaultValue("finance").weakens(Weakens.UP, Approval.PASSWORD).since("V50"));
+
     public static final Setting LEAVE_BACK_DAYS = define(Setting.integer("leave.apply.back_days")
             .group("attendance").owner("attendance.manage").module(Modules.ATTENDANCE)
             .label("Employees may apply for leave this far back").unit("days")

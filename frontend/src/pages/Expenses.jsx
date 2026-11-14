@@ -31,6 +31,7 @@ export default function Expenses({ me }) {
     can('expense.claim') && { id: 'mine', label: 'My claims' },
     can('expense.approve') && { id: 'approvals', label: 'Approvals' },
     can('expense.finance') && { id: 'finance', label: 'Finance' },
+    can('expense.finance') && { id: 'payments', label: 'Payments' },
     can('expense.setup') && { id: 'categories', label: 'Categories' },
     can('expense.setup') && { id: 'approvers', label: 'Approvers' },
   ].filter(Boolean)
@@ -43,6 +44,7 @@ export default function Expenses({ me }) {
       {tab === 'mine' && <MyClaims />}
       {tab === 'approvals' && <Queue load={expenses.approvals} empty="Nothing is waiting for you." mode="manager" />}
       {tab === 'finance' && <Queue load={expenses.queue} empty="No claims are waiting for finance." mode="finance" />}
+      {tab === 'payments' && <Payments />}
       {tab === 'categories' && <Categories />}
       {tab === 'approvers' && <Approvers />}
     </>
@@ -127,6 +129,187 @@ function Queue({ load, empty, mode }) {
   )
 }
 
+/** Verified claims waiting to be paid, and the batches that pay them by bank file. */
+function Payments() {
+  const payable = useLoad(expenses.payable)
+  const batches = useLoad(expenses.batches)
+  const { busy, error, run } = useAction()
+  const toast = useToast()
+  const [chosen, setChosen] = useState([])
+  const [paying, setPaying] = useState(null)
+  const [reference, setReference] = useState('')
+
+  function reload() {
+    payable.reload()
+    batches.reload()
+  }
+
+  async function make() {
+    const made = await run(() => expenses.createBatch(chosen))
+    if (made) {
+      toast(`Batch ${made.number} made for ${rupees(made.total)}.`)
+      setChosen([])
+      reload()
+    }
+  }
+
+  async function download(batch) {
+    await run(async () => {
+      saveBlob(await expenses.bankFile(batch.id), `Expense payments ${batch.number}.csv`)
+      return true
+    })
+  }
+
+  async function markPaid(event) {
+    event.preventDefault()
+    const done = await run(async () => {
+      await expenses.markPaid(paying.id, null, reference)
+      return true
+    })
+    if (done) {
+      toast(`Batch ${paying.number} marked paid.`)
+      setPaying(null)
+      setReference('')
+      reload()
+    }
+  }
+
+  async function cancel(batch) {
+    const done = await run(async () => {
+      await expenses.cancelBatch(batch.id)
+      return true
+    })
+    if (done) {
+      toast(`Batch ${batch.number} cancelled. Its claims are waiting again.`)
+      reload()
+    }
+  }
+
+  const rows = payable.data || []
+  const total = rows.filter((r) => chosen.includes(r.id)).reduce((sum, r) => sum + Number(r.payable), 0)
+  return (
+    <>
+      <ErrorNote>{error || payable.error || batches.error}</ErrorNote>
+      <h2>Waiting for payment</h2>
+      {rows.length === 0 ? (
+        <Empty>No verified claims are waiting.</Empty>
+      ) : (
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>
+                  <span className="sr-only">Include</span>
+                </th>
+                <th>Claim</th>
+                <th>Claimant</th>
+                <th className="num">To pay</th>
+                <th>Bank account</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r) => (
+                <tr key={r.id}>
+                  <td>
+                    <input
+                      type="checkbox"
+                      aria-label={`Include ${r.number}`}
+                      checked={chosen.includes(r.id)}
+                      disabled={!r.hasBank}
+                      onChange={() => setChosen(chosen.includes(r.id) ? chosen.filter((x) => x !== r.id) : [...chosen, r.id])}
+                    />
+                  </td>
+                  <td>
+                    {r.number} <span className="hint">{r.title}</span>
+                  </td>
+                  <td>{r.claimant}</td>
+                  <td className="num">{rupees(r.payable)}</td>
+                  <td>{r.hasBank ? 'On record' : <Badge tone="warn">Missing</Badge>}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {chosen.length > 0 && (
+        <p>
+          <button type="button" disabled={busy} onClick={make}>
+            Make a batch of {chosen.length} for {rupees(total)}
+          </button>
+        </p>
+      )}
+      <h2>Batches</h2>
+      {(batches.data || []).length === 0 ? (
+        <Empty>No batches yet.</Empty>
+      ) : (
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Batch</th>
+                <th>Status</th>
+                <th className="num">Claims</th>
+                <th className="num">Total</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {batches.data.map((b) => (
+                <tr key={b.id}>
+                  <td>
+                    {b.number}
+                    {b.paidOn && <div className="hint">Paid {formatDay(b.paidOn)}, ref {b.bankReference}</div>}
+                  </td>
+                  <td>
+                    <Badge tone={b.status === 'paid' ? 'ok' : b.status === 'open' ? 'info' : 'neutral'}>
+                      {b.status === 'open' ? 'Waiting for the bank' : b.status === 'paid' ? 'Paid' : 'Cancelled'}
+                    </Badge>
+                  </td>
+                  <td className="num">{b.claims}</td>
+                  <td className="num">{rupees(b.total)}</td>
+                  <td>
+                    {b.status !== 'cancelled' && (
+                      <button type="button" className="secondary" disabled={busy} onClick={() => download(b)}>
+                        Bank file
+                      </button>
+                    )}{' '}
+                    {b.status === 'open' && (
+                      <>
+                        <button type="button" disabled={busy} onClick={() => setPaying(b)}>
+                          Mark paid
+                        </button>{' '}
+                        <button type="button" className="secondary" disabled={busy} onClick={() => cancel(b)}>
+                          Cancel
+                        </button>
+                      </>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {paying && (
+        <form className="card stack" onSubmit={markPaid}>
+          <h3>Mark {paying.number} paid</h3>
+          <p className="hint">Do this after the bank has paid. Every claim in the batch becomes paid.</p>
+          <label htmlFor="bank-reference">Bank reference</label>
+          <input id="bank-reference" value={reference} onChange={(e) => setReference(e.target.value)} required minLength={3} maxLength={60} />
+          <div className="actions">
+            <button type="submit" disabled={busy}>
+              Mark paid
+            </button>
+            <button type="button" className="secondary" onClick={() => setPaying(null)}>
+              Cancel
+            </button>
+          </div>
+        </form>
+      )}
+    </>
+  )
+}
+
 const KINDS = {
   receipt: 'Receipt',
   travel_proof: 'Proof of travel',
@@ -162,6 +345,11 @@ function ClaimView({ id, mine, mode, onClose }) {
     <section aria-label={c.number}>
       <p><button type="button" className="link" onClick={onClose}>← All claims</button></p>
       <h2>{c.number}: {c.title} <ClaimStatus status={c.status} /></h2>
+      {c.batchNumber && (
+        <p className="hint">
+          {c.status === 'paid' ? `Paid on ${formatDay(c.paidOn)}, bank reference ${c.bankReference}` : 'Scheduled for payment'} (batch {c.batchNumber}).
+        </p>
+      )}
       {c.decisionNote && <p className="hint">Note: {c.decisionNote}</p>}
       {c.financeApprovals === 2 && ['approved', 'verified'].includes(c.status) && (
         <p className="hint">{c.status === 'verified' ? 'Verified by two people.' : c.firstVerified ? 'Verified once. A second person must verify it.' : 'This claim is large: two different people must verify it.'}</p>

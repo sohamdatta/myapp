@@ -58,7 +58,7 @@ public final class ExpenseService {
     public record ClaimView(UUID id, UUID membershipId, String number, String title, String status, Object submittedAt,
                             String decisionNote, String managerNote, String financeNote, Object limits, int version,
                             String claimant, BigDecimal total, BigDecimal payable, int financeApprovals, boolean firstVerified,
-                            List<Map<String, Object>> lines) {}
+                            String batchNumber, Object paidOn, String bankReference, List<Map<String, Object>> lines) {}
 
     /** A reviewer's change to one line: the amount approved and why it is lower. */
     public record Cut(String lineId, BigDecimal amount, String reason) {}
@@ -171,7 +171,13 @@ public final class ExpenseService {
             + "k.membership_id, " + Names.orEmail("k.membership_id") + " as claimant, "
             + "(select count(*) from app.expense_line l where l.claim_id = k.id) as lines, "
             + "(select coalesce(sum(l.amount), 0) from app.expense_line l where l.claim_id = k.id) as total, "
-            + "(select coalesce(sum(coalesce(l.approved_amount, l.amount)), 0) from app.expense_line l where l.claim_id = k.id) as payable "
+            + "(select coalesce(sum(coalesce(l.approved_amount, l.amount)), 0) from app.expense_line l where l.claim_id = k.id) as payable, "
+            + "(select b.number from app.expense_payment p join app.expense_batch b on b.id = p.batch_id "
+            + "  where p.claim_id = k.id and p.status in ('scheduled','paid')) as batch_number, "
+            + "(select b.paid_on from app.expense_payment p join app.expense_batch b on b.id = p.batch_id "
+            + "  where p.claim_id = k.id and p.status = 'paid') as paid_on, "
+            + "(select b.bank_reference from app.expense_payment p join app.expense_batch b on b.id = p.batch_id "
+            + "  where p.claim_id = k.id and p.status = 'paid') as bank_reference "
             + "from app.expense_claim k ";
 
     /** One claim with its lines, files and the latest review of each line; for its owner, the approver who reaches them, or finance. */
@@ -200,7 +206,7 @@ public final class ExpenseService {
                     (String) k.get("managerNote"), (String) k.get("financeNote"), Json.parse((String) k.get("limits")),
                     ((Number) k.get("version")).intValue(), (String) k.get("claimant"), (BigDecimal) k.get("total"),
                     (BigDecimal) k.get("payable"), ((Number) k.get("financeApprovals")).intValue(),
-                    Boolean.TRUE.equals(k.get("firstVerified")), lines);
+                    Boolean.TRUE.equals(k.get("firstVerified")), (String) k.get("batchNumber"), k.get("paidOn"), (String) k.get("bankReference"), lines);
         });
     }
 
@@ -433,6 +439,10 @@ public final class ExpenseService {
             snapshot.put("warnings", warnings);
             snapshot.put("declaration", declaration);
             UUID manager = Settings.get(c, Settings.EXPENSE_MANAGER_STEP).asBoolean() ? approverFor(c, ctx.membershipId()) : null;
+            if (manager == null && Settings.get(c, Settings.EXPENSE_MANAGER_STEP).asBoolean()
+                    && "refuse".equals(Settings.get(c, Settings.EXPENSE_NO_APPROVER).asString())) {
+                throw new ApiException(409, "expense.no_approver", "No manager or approver is set for you, so this claim cannot be submitted yet. Ask HR to set one");
+            }
             String next = manager == null ? "approved" : "submitted";
             long above = Settings.get(c, Settings.EXPENSE_SECOND_APPROVER_ABOVE).asInt();
             BigDecimal total = (BigDecimal) Sql.one(c, "select coalesce(sum(amount), 0) as s from app.expense_line where claim_id = ?", claimId).get("s");

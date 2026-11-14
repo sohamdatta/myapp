@@ -16,6 +16,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.example.loginapp.core.ExpensePayouts;
 import com.example.loginapp.core.ExpenseService;
 import com.example.loginapp.core.Modules;
 import com.example.loginapp.core.SessionCtx;
@@ -36,10 +37,53 @@ public class ExpenseController {
 
     public record Verify(Integer version, String note) {}
 
-    private final ExpenseService expenses;
+    public record NewBatch(List<String> claims) {}
 
-    public ExpenseController(ExpenseService expenses) {
+    private final ExpenseService expenses;
+    private final ExpensePayouts payouts;
+
+    public ExpenseController(ExpenseService expenses, ExpensePayouts payouts) {
         this.expenses = expenses;
+        this.payouts = payouts;
+    }
+
+    // ── payment ─────────────────────────────────────────────────────────
+
+    @GetMapping("/payable")
+    public List<Map<String, Object>> payable(SessionCtx ctx) {
+        return payouts.payable(ctx);
+    }
+
+    @GetMapping("/batches")
+    public List<Map<String, Object>> batches(SessionCtx ctx) {
+        return payouts.batches(ctx);
+    }
+
+    @GetMapping("/batches/{id}/claims")
+    public List<Map<String, Object>> batchClaims(SessionCtx ctx, @PathVariable("id") String id) {
+        return payouts.batchClaims(ctx, Requests.id(id));
+    }
+
+    @PostMapping("/batches")
+    public ExpensePayouts.BatchMade createBatch(SessionCtx ctx, @RequestBody NewBatch body) {
+        return payouts.createBatch(ctx, (body.claims() == null ? List.<String>of() : body.claims()).stream().map(Requests::id).toList());
+    }
+
+    @GetMapping("/batches/{id}/bank-file")
+    public ResponseEntity<byte[]> bankFile(SessionCtx ctx, @PathVariable("id") String id) {
+        return DocumentController.file(payouts.bankFile(ctx, Requests.id(id)));
+    }
+
+    @PostMapping("/batches/{id}/paid")
+    public ResponseEntity<Void> markPaid(SessionCtx ctx, @PathVariable("id") String id, @RequestBody ExpensePayouts.PaidInput body) {
+        payouts.markPaid(ctx, Requests.id(id), body);
+        return ResponseEntity.noContent().build();
+    }
+
+    @PostMapping("/batches/{id}/cancel")
+    public ResponseEntity<Void> cancelBatch(SessionCtx ctx, @PathVariable("id") String id) {
+        payouts.cancel(ctx, Requests.id(id));
+        return ResponseEntity.noContent().build();
     }
 
     // ── setup ───────────────────────────────────────────────────────────
