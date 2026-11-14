@@ -5,6 +5,7 @@ import { Badge, ErrorNote } from '../ui.jsx'
 import { KINDS, RESIGN_REASONS, SHORTFALL, STAGES } from './exitText.js'
 import { MyInterview, MyLetters } from './ExitLetters.jsx'
 import { ExitProgress } from './ExitProgress.jsx'
+import MyTaxCertificates from './MyTaxCertificates.jsx'
 import { MySettlement } from './Settlement.jsx'
 import { TaskRow } from './TaskList.jsx'
 
@@ -12,7 +13,7 @@ import { TaskRow } from './TaskList.jsx'
  * My exit: resigning, and everything about leaving once it has started: the notice, the last
  * working day, withdrawing, and later the clearance, interview, letters and settlement.
  */
-export default function MyExit() {
+export default function MyExit({ me }) {
   const mine = useLoad(exits.mine)
   if (mine.loading) return <p className="muted">Loading…</p>
   if (mine.error) return <ErrorNote>{mine.error}</ErrorNote>
@@ -43,6 +44,7 @@ export default function MyExit() {
       {open && <MyLetters letters={x.letters} />}
       {open && <MySettlement settlement={x.settlement} />}
       {!open && m.employed && <Resign mine={m} previous={x} onDone={mine.reload} />}
+      {!m.employed && me?.modules?.includes('payroll') && <MyTaxCertificates />}
       {!open && !m.employed && <p className="muted">There is nothing about leaving to show.</p>}
     </div>
   )

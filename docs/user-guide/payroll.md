@@ -157,6 +157,43 @@ While proofs are open, upload a PDF, JPEG or PNG on each claim. Each shows **Pro
 
 ![Where everyone stands](img/payroll/20-tax-overview.png)
 
+### Earlier employers (Form 122)
+
+If you joined part-way through the year, **My pay → Tax declaration → Declare an employer** takes what your previous employer paid and deducted this tax year: the employer's name and TAN (optional), months worked, taxable salary, PF, professional tax and the tax already deducted. Payroll counts it as income and tax already paid, so your remaining months are not under-deducted. It counts under both regimes. HR checks it against your relieving statement or last payslips and either accepts it or returns it with a note you can read on the entry; change it and it goes back to HR. An accepted entry can no longer be changed or removed; ask HR to return it first.
+
+On an employee's page under **Tax declarations**, HR sees the same entries with **Accept…** and **Return…** (a note of 3 to 400 characters). You cannot accept your own.
+
+## 9. Tax filing (Payroll → Tax filing)
+
+For people who prepare and approve payroll. Pick the **tax year** at the top; the three tabs share it.
+
+### Deposits
+
+One row for each month: tax deducted, tax deposited (approved deposits only), the due date and whether it is overdue. Open a month to see its challans.
+
+- **Record deposit…** (payroll operator) is for a month with tax deducted and no complete deposit. Tick the runs it covers, then give the BSR code (7 digits), the challan serial number (5 digits), the date deposited and the amounts. Tax, surcharge and cess must add up to the tax deducted in those runs, or the screen says what the sum should be. The tax box starts at what is still undeposited.
+- **Approve** (payroll approver) confirms a recorded deposit. The person who recorded it cannot approve it; they see no Approve button, and an approver who recorded one is told another person approves it.
+- **Remove** takes back a recorded deposit that has not been approved, to correct a typing mistake. An approved deposit stays.
+
+### Statements (Form 138)
+
+One tab for each quarter. **Build statement** collects the quarter's approved runs and deposits. Each version lists its checks: a blocking check stops the file until someone with approval rights accepts it with a reason (**Accept…**) or the cause is fixed and the statement built again. **Download review spreadsheet** and **Record filing…** (the token number from the department's utility and the date filed) become available once nothing is unresolved. The spreadsheet is for review; you file with the department's own tools. Once a quarter is filed, **Build a correction** makes a new version holding only what changed.
+
+### Certificates (Form 130 Part B)
+
+**Build certificates** makes each employee's Part B from the year's approved payslips and checked claims. It works once the year's pay is final (after March's run is approved); before that it builds none and lists each person left out and why. A draft shows **Draft rules** while the tax rules behind it await the payroll consultant. **Release…** sends it to the employee; the person who built the certificates cannot release them, and a certificate built on draft rules asks you to confirm that you accept this. A released certificate never changes. Employees download it from **My pay → Tax certificates**, and people who have left find it under **My exit** while they still have access.
+
+## 10. Statutory filing (Payroll → Statutory filing)
+
+Choose the **month**. There is one panel for the PF return (ECR) and one for ESI, each with its registration and due date (the 15th of the next month).
+
+1. **Build and check** makes the next version from the month's approved run. Its checks are listed with blocking ones first, for example a member with no UAN.
+2. **Download file** is available when nothing blocking is left. Fix the cause (add the UAN, say) and **Build again**.
+3. After filing on the EPFO or ESIC portal, **Record filing…** takes the reference number (TRRN or challan number), the date paid and the amount.
+4. A payroll approver then **Approves** it; the person who recorded it cannot. The month shows as filed, and a late filing shows its days late.
+
+A new version replaces the old one in the log; earlier versions stay under **Earlier versions**. **ESI reason codes** below sets the ESIC code used in the file for each way of leaving.
+
 ## Common questions
 
 | Problem | What to check |
@@ -171,4 +208,7 @@ While proofs are open, upload a PDF, JPEG or PNG on each claim. Each shows **Pro
 | A pay change is refused for a month | That month is approved; arrears come in a later release. |
 | "Declarations are not open yet" | HR opens the window under Tax declarations. |
 | A claim needs the landlord's PAN | Rent is above ₹1,00,000 a year. |
+| A deposit is refused: "add up to …" | Tax, surcharge and cess must equal the tax deducted in the runs you ticked. |
+| No **Release…** on a certificate | You built it; another person with approval rights releases it. |
+| The PF or ESI file cannot be downloaded | A blocking check is listed on the version; fix it and build again. |
 | "Only PDF, JPEG and PNG" | Save the proof in one of those formats. |

@@ -3,6 +3,7 @@ import { tax } from '../api.js'
 import { useConfirm, useToast } from '../feedbackContext.js'
 import { formatDate, formatDay, localToday, useLoad } from '../hooks.js'
 import { Badge, ErrorNote } from '../ui.jsx'
+import { OtherEmployers } from './OtherEmployers.jsx'
 import { ClaimRow } from './TaxClaims.jsx'
 import { rupees } from './payrollText.js'
 import { HEADS, KINDS, limitWords } from './taxText.js'
@@ -149,6 +150,7 @@ export default function MyTax() {
         )
       })}
       {!d.canEdit && d.items.length === 0 && <p className="empty">Nothing declared for {d.taxYear}.</p>}
+      <OtherEmployers taxYear={d.taxYear} />
     </>
   )
 }

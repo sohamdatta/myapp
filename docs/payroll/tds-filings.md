@@ -18,7 +18,7 @@ Proof files are not attached to these entries yet (the existing proof storage ha
 ## Not built yet
 - The text file in the return preparation utility's layout (layout and version are an open question for the consultant), and Q4 annual salary detail.
 - Form 122 Part C (house-property loss, other income), proof files for Part B, Form 130 Part B and Part A matching.
-- Screens and browser tests.
+- Form 122 Part C and proof files are still not built. The screens and browser tests are (Payroll → Tax filing, My pay, `58-tax-filing.spec.ts`); see the [user guide](../user-guide/payroll.md).
 
 ## Review notes (Opus review of the first two commits)
 

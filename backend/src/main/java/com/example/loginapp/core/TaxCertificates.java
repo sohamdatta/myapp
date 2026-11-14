@@ -34,7 +34,7 @@ public final class TaxCertificates {
     /** A certificate in the list for a tax year. */
     public record Row(String id, String employmentId, String code, String name, String taxYear, String status, boolean draftRules,
                       BigDecimal taxableIncome, BigDecimal annualTax, BigDecimal taxDeducted, String generatedAt, String releasedAt,
-                      Integer layoutVersion) {}
+                      Integer layoutVersion, boolean builtByMe) {}
 
     public record Skipped(String code, String name, String reason) {}
 
@@ -63,14 +63,14 @@ public final class TaxCertificates {
     // ── payroll side ────────────────────────────────────────────────────
 
     public Year year(SessionCtx ctx, String taxYear) {
-        PayrollConfig.need(ctx, "payroll.prepare");
+        needAny(ctx, "payroll.read", "payroll.prepare", "payroll.approve");
         String year = TaxYears.check(taxYear, TaxYears.of(LocalDate.now(clock)));
         return db.inTenant(ctx.tenantId(), c -> {
             List<Row> rows = new ArrayList<>();
             int released = 0;
             for (Map<String, Object> t : Sql.query(c, "select t.id, t.employment_id, t.status, t.draft_rules, t.part_b, t.generated_at, t.released_at, "
-                    + "t.layout_version, e.employee_code from app.tax_certificate t join app.employment e on e.id = t.employment_id where t.tax_year = ? "
-                    + "order by lower(t.part_b->>'name')", year)) {
+                    + "t.layout_version, t.generated_by, e.employee_code from app.tax_certificate t join app.employment e on e.id = t.employment_id "
+                    + "where t.tax_year = ? order by lower(t.part_b->>'name')", year)) {
                 Map<String, Object> b = parse(t.get("partB"));
                 boolean done = "released".equals(t.get("status"));
                 released += done ? 1 : 0;
@@ -78,7 +78,7 @@ public final class TaxCertificates {
                         String.valueOf(b.get("name")), year, (String) t.get("status"), Boolean.TRUE.equals(t.get("draftRules")),
                         PayrollEngine.dec(b, "taxableIncome"), PayrollEngine.dec(b, "annualTax"), PayrollEngine.dec(b, "taxDeducted"),
                         String.valueOf(t.get("generatedAt")), t.get("releasedAt") == null ? null : String.valueOf(t.get("releasedAt")),
-                        t.get("layoutVersion") == null ? null : ((Number) t.get("layoutVersion")).intValue()));
+                        t.get("layoutVersion") == null ? null : ((Number) t.get("layoutVersion")).intValue(), builtBy(ctx, t)));
             }
             return new Year(year, rows, released, ctx.reachesEveryone("payroll.approve"), CertificateLayout.current(c).version());
         });
@@ -155,13 +155,13 @@ public final class TaxCertificates {
             Sql.update(c, "update app.tax_certificate set status = 'released', released_by = ?, released_at = now() where id = ?", ctx.membershipId(), id);
             UserService.audit(c, ctx, "tax_certificate.released", "tax_certificate", id,
                     Map.of("taxYear", String.valueOf(t.get("taxYear")), "draftRulesAcknowledged", draft));
-            return row(c, id);
+            return row(c, ctx, id);
         });
     }
 
     /** The file for payroll to check before release. */
     public DocumentService.Content file(SessionCtx ctx, UUID id) {
-        PayrollConfig.need(ctx, "payroll.prepare");
+        needAny(ctx, "payroll.prepare", "payroll.approve");
         return db.inTenant(ctx.tenantId(), c -> content(c, ctx, id, null));
     }
 
@@ -213,14 +213,32 @@ public final class TaxCertificates {
         return new DocumentService.Content("application/pdf", (String) t.get("fileName"), crypto.decrypt(ctx.tenantId(), sealed));
     }
 
-    private Row row(Connection c, UUID id) throws SQLException {
+    /** Whether the person looking built this certificate, so the screen can hide the release button from them. */
+    private static boolean builtBy(SessionCtx ctx, Map<String, Object> t) {
+        return ctx.membershipId() != null && ctx.membershipId().toString().equals(String.valueOf(t.get("generatedBy")));
+    }
+
+    /** Any one of these, for everyone: a releaser must be able to see and open what they release, not only the person who builds it. */
+    private static void needAny(SessionCtx ctx, String... permissions) {
+        if (!ctx.inOrganization()) {
+            throw new ApiException(403, "tenant.required", "Choose an Organization first");
+        }
+        for (String p : permissions) {
+            if (ctx.reachesEveryone(p)) {
+                return;
+            }
+        }
+        throw ApiException.denied(permissions[0]);
+    }
+
+    private Row row(Connection c, SessionCtx ctx, UUID id) throws SQLException {
         Map<String, Object> t = Sql.one(c, "select t.id, t.employment_id, t.tax_year, t.status, t.draft_rules, t.part_b, t.generated_at, t.released_at, t.layout_version, "
-                + "e.employee_code from app.tax_certificate t join app.employment e on e.id = t.employment_id where t.id = ?", id);
+                + "t.generated_by, e.employee_code from app.tax_certificate t join app.employment e on e.id = t.employment_id where t.id = ?", id);
         Map<String, Object> b = parse(t.get("partB"));
         return new Row(String.valueOf(t.get("id")), String.valueOf(t.get("employmentId")), (String) t.get("employeeCode"), String.valueOf(b.get("name")),
                 (String) t.get("taxYear"), (String) t.get("status"), Boolean.TRUE.equals(t.get("draftRules")), PayrollEngine.dec(b, "taxableIncome"),
                 PayrollEngine.dec(b, "annualTax"), PayrollEngine.dec(b, "taxDeducted"), String.valueOf(t.get("generatedAt")),
                 t.get("releasedAt") == null ? null : String.valueOf(t.get("releasedAt")),
-                t.get("layoutVersion") == null ? null : ((Number) t.get("layoutVersion")).intValue());
+                t.get("layoutVersion") == null ? null : ((Number) t.get("layoutVersion")).intValue(), builtBy(ctx, t));
     }
 }

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { lazy, Suspense, useState } from 'react'
 import { payroll } from '../api.js'
 import { formatDate, formatDay, localToday, useAction, useLoad, numeric } from '../hooks.js'
 import { Badge, Empty, ErrorNote, Tabs } from '../ui.jsx'
@@ -6,7 +6,10 @@ import { useConfirm, useToast } from '../feedbackContext.js'
 import WageCheck from './WageCheck.jsx'
 import PayrollSetup from './PayrollSetup.jsx'
 import PayslipView from './PayslipView.jsx'
-import { RUN_STATES, RUN_STEPS, rupees } from './payrollText.js'
+import { RUN_STATES, RUN_STEPS, canDo, rupees } from './payrollText.js'
+
+const TaxFiling = lazy(() => import('./TaxFiling.jsx'))
+const StatutoryFiling = lazy(() => import('./StatutoryFiling.jsx'))
 
 /**
  * Payroll: the monthly runs and the setup behind them. A run goes from inputs to frozen, calculated,
@@ -15,6 +18,7 @@ import { RUN_STATES, RUN_STEPS, rupees } from './payrollText.js'
 export default function Payroll({ me }) {
   const [tab, setTab] = useState('runs')
   const [open, setOpen] = useState(null)
+  const filesReturns = canDo(me, 'payroll.read') || canDo(me, 'payroll.prepare') || canDo(me, 'payroll.approve')
   if (open) return <RunPage id={open} me={me} onBack={() => setOpen(null)} />
   return (
     <>
@@ -22,6 +26,7 @@ export default function Payroll({ me }) {
         tabs={[
           { id: 'runs', label: 'Runs' },
           { id: 'wages', label: 'Wages' },
+          ...(filesReturns ? [{ id: 'tax-filing', label: 'Tax filing' }, { id: 'filing', label: 'Statutory filing' }] : []),
           { id: 'setup', label: 'Setup' },
         ]}
         current={tab}
@@ -29,6 +34,10 @@ export default function Payroll({ me }) {
       />
       {tab === 'runs' && <RunList onOpen={setOpen} onSetup={() => setTab('setup')} />}
       {tab === 'wages' && <WageCheck me={me} />}
+      <Suspense fallback={<p className="muted">Loading…</p>}>
+        {tab === 'tax-filing' && filesReturns && <TaxFiling me={me} onSetup={() => setTab('setup')} />}
+        {tab === 'filing' && filesReturns && <StatutoryFiling me={me} />}
+      </Suspense>
       {tab === 'setup' && <PayrollSetup />}
     </>
   )

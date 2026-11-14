@@ -110,6 +110,8 @@ export default defineConfig({
     { name: 'performance-cases', testMatch: /50-performance-cases\.spec\.ts/, use: desktop },
     // The performance user guide's screenshots (docs/user-guide/performance.md), in Northwind Sales: E2E_SHOTS=<folder> --project=performance-guide.
     { name: 'performance-guide', testMatch: /51-performance-guide\.spec\.ts/, use: desktop },
+    // The filing screens (other employers, deposits, statements, PF and ESI files, certificates), in Filing Labs: --project=tax-filing.
+    { name: 'tax-filing', testMatch: /58-tax-filing\.spec\.ts/, use: desktop },
     // Every payroll and tax-declaration setting and screen, case by case (docs/testing/payroll-ui-test-cases.xlsx), in Pay Labs: --project=payroll-cases.
     { name: 'payroll-cases', testMatch: /52-payroll-cases\.spec\.ts/, use: desktop },
     // The payroll user guide's screenshots (docs/user-guide/payroll.md), in Northwind Textiles: E2E_SHOTS=<folder> --project=payroll-guide.

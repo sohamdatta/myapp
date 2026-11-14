@@ -784,6 +784,51 @@ export const tax = {
   returnProof: (id, note) => post(`/org/payroll/tax/items/${id}/return`, { note }),
 }
 
+/** Form 122: salary from earlier employers this tax year, declared by the employee and checked by HR. */
+export const otherEmployers = {
+  mine: (taxYear) => get(`/org/tax/other-employers${query({ taxYear })}`),
+  add: (body) => post('/org/tax/other-employers', body),
+  update: (id, body) => put(`/org/tax/other-employers/${id}`, body),
+  remove: (id) => del(`/org/tax/other-employers/${id}`).then((r) => r ?? true),
+  ofEmployee: (employmentId, taxYear) => get(`/org/people/employees/${employmentId}/tax/other-employers${query({ taxYear })}`),
+  accept: (id, updatedAt) => post(`/org/tax/other-employers/${id}/accept`, { updatedAt }),
+  sendBack: (id, note, updatedAt) => post(`/org/tax/other-employers/${id}/return`, { note, updatedAt }),
+}
+
+/** Form 130 Part B certificates: built and released by payroll, downloaded by the employee. */
+export const taxCertificates = {
+  year: (taxYear) => get(`/org/payroll/tax-certificates${query({ taxYear })}`),
+  build: (taxYear) => post(`/org/payroll/tax-certificates/build/${taxYear}`),
+  release: (id, acknowledgeDraftRules) => post(`/org/payroll/tax-certificates/${id}/release`, { acknowledgeDraftRules }),
+  pdf: (id, name) => downloadFile(`/org/payroll/tax-certificates/${id}/pdf`, name),
+  mine: () => get('/org/me/tax-certificates'),
+  myPdf: (id, name) => downloadFile(`/org/me/tax-certificates/${id}/pdf`, name),
+}
+
+/** TDS deposits (challans) and the quarterly Form 138 statements. */
+export const tds = {
+  year: (taxYear) => get(`/org/payroll/tds/challans${query({ taxYear })}`),
+  record: (body) => post('/org/payroll/tds/challans', body),
+  approve: (id) => post(`/org/payroll/tds/challans/${id}/approve`),
+  remove: (id) => del(`/org/payroll/tds/challans/${id}`).then((r) => r ?? true),
+  quarter: (taxYear, quarter) => get(`/org/payroll/tds/statements${query({ taxYear, quarter })}`),
+  build: (taxYear, quarter) => post(`/org/payroll/tds/statements/${taxYear}/${quarter}`),
+  accept: (id, code, who, reason) => post(`/org/payroll/tds/statements/${id}/accept`, { code, who, reason }),
+  file: (id, name) => downloadFile(`/org/payroll/tds/statements/${id}/file`, name),
+  filed: (id, tokenNumber, filedOn) => post(`/org/payroll/tds/statements/${id}/filed`, { tokenNumber, filedOn }),
+}
+
+/** The monthly PF (ECR) and ESI return files, and the log of when each was filed. */
+export const filings = {
+  month: (month) => get(`/org/payroll/filings${query({ month })}`),
+  build: (kind, month) => post(`/org/payroll/filings/${kind}/${month}`),
+  file: (id, name) => downloadFile(`/org/payroll/filings/${id}/file`, name),
+  record: (id, body) => post(`/org/payroll/filings/${id}/filed`, body),
+  approve: (id) => post(`/org/payroll/filings/${id}/approve`),
+  reasons: () => get('/org/payroll/filings/esi-reasons'),
+  setReason: (exitKind, code) => put(`/org/payroll/filings/esi-reasons/${exitKind}`, { code }),
+}
+
 /** The payroll calls; one that answers with no content resolves to true, so callers can test for success. */
 export const payroll = Object.fromEntries(
   Object.entries(payrollCalls).map(([name, call]) => [name, (...args) => Promise.resolve(call(...args)).then((r) => r ?? true)]),

@@ -3,6 +3,7 @@ import { payroll } from '../api.js'
 import { formatDay, useAction, useLoad } from '../hooks.js'
 import { Empty, ErrorNote, Tabs } from '../ui.jsx'
 import MyTax from './MyTax.jsx'
+import MyTaxCertificates from './MyTaxCertificates.jsx'
 import PayslipView from './PayslipView.jsx'
 import { rupees } from './payrollText.js'
 
@@ -45,11 +46,14 @@ export default function MyPay() {
         tabs={[
           { id: 'payslips', label: 'Payslips' },
           { id: 'tax', label: 'Tax declaration' },
+          { id: 'certificates', label: 'Tax certificates' },
         ]}
         current={tab}
         onChange={setTab}
       />
-      {tab === 'payslips' ? <Payslips /> : <MyTax />}
+      {tab === 'payslips' && <Payslips />}
+      {tab === 'tax' && <MyTax />}
+      {tab === 'certificates' && <MyTaxCertificates />}
     </>
   )
 }
