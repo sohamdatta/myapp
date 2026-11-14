@@ -91,7 +91,11 @@ test('set up an Organization through the screens', async ({ browser }) => {
     owner = await acceptInvite(browser, link, cfg.org.adminPassword);
     return `created ${cfg.org.name}; ${cfg.org.adminEmail} accepted the invitation`;
   });
-  if (!owner!) throw new Error('Could not get into the Organization, so nothing else can be set up. See the report.');
+  if (!owner!) {
+    const why = rows.find((r) => r.section === 'Organization')?.note || 'unknown';
+    writeFileSync(`${OUT}/report.md`, `# Organization setup stopped\n\nOrganization: ${why}\n`);
+    throw new Error(`Could not get into the Organization, so nothing else can be set up. Reason: ${why}`);
+  }
 
   // ---------- 2. Getting started: locations, shifts, leave types and holidays in one go ----------
   await section('Getting started', async () => {
