@@ -304,6 +304,18 @@ public final class PayrollEngine {
                 taxable = taxable.add(a);
             }
         }
+        // The interest benefit of a loan from the employer is taxed as a perquisite: it joins the taxable amount, and shows as an information line.
+        BigDecimal perquisite = dec(emp, "loanPerquisite");
+        if (perquisite.signum() > 0 && components.containsKey(LoanService.PERQUISITE)) {
+            taxable = taxable.add(perquisite);
+            Map<String, Object> pt = new LinkedHashMap<>();
+            pt.put("source", "Interest the employer's loan would have cost at the State Bank rate, less what is charged");
+            addLineRounded(out, map(components, LoanService.PERQUISITE), perquisite, "none", null, pt, position++);
+        }
+        if (Boolean.TRUE.equals(emp.get("loanPerqRateMissing"))) {
+            out.exception("loan_perq_rate_missing", "warning", false, "A loan from the employer is charged less than the market rate, but no rate is set to work "
+                    + "out the taxable benefit. Set it under Expenses settings (loans.perquisite_rate_bp).", null);
+        }
         BigDecimal half = remuneration.divide(BigDecimal.valueOf(2), MC);
         BigDecimal addBack = wages.compareTo(half) < 0 ? conditional.min(half.subtract(wages)) : ZERO;
         BigDecimal pfWage = wages.add(addBack);
@@ -313,6 +325,9 @@ public final class PayrollEngine {
         bases.put("pfWage", scale(pfWage));
         bases.put("esiWage", scale(esiWage));
         bases.put("taxable", scale(taxable));
+        if (perquisite.signum() > 0) {
+            bases.put("loanPerquisite", scale(perquisite));
+        }
         out.info.put("bases", bases);
 
         // 6. PF, ESI, PT, LWF.
@@ -832,7 +847,7 @@ public final class PayrollEngine {
             }
         }
         BigDecimal later = BigDecimal.valueOf(left - 1L);
-        BigDecimal annualIncome = dec(ytd, "taxable").add(taxableNow).add(recurring.multiply(later));
+        BigDecimal annualIncome = dec(ytd, "taxable").add(taxableNow).add(recurring.multiply(later)).add(dec(emp, "loanPerquisite").multiply(later));
         BigDecimal deductions = dec(r, "standardDeduction");
         List<String> deductionWords = new ArrayList<>(List.of("standard deduction " + rupees(dec(r, "standardDeduction"))));
         Map<String, Object> declared = map(emp, "declarations");

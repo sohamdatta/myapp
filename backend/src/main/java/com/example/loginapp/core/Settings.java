@@ -95,6 +95,14 @@ public final class Settings {
             .help("finance: the claim goes straight to finance. refuse: it cannot be submitted until HR sets a manager or a designated approver for them.")
             .defaultValue("finance").weakens(Weakens.UP, Approval.PASSWORD).since("V50"));
 
+    public static final Setting LOAN_MARKET_RATE = define(Setting.integer("loans.perquisite_rate_bp")
+            .group("expenses").owner("loan.manage").module(Modules.EXPENSES)
+            .label("Interest rate to measure the loan perquisite against").unit("hundredths of a percent")
+            .help("The State Bank of India rate for a loan of the same purpose on the first day of the tax year (940 means 9.40%). A loan charged less than this "
+                    + "is taxed on the difference once the employee's loans together pass ₹2,00,000. 0 works out no perquisite. Ask the payroll consultant "
+                    + "for the figure, and set it from 1 April.")
+            .defaultValue(0).range(0, 3000).dated().weakens(Weakens.DOWN, Approval.PASSWORD).since("V52"));
+
     public static final Setting LEAVE_BACK_DAYS = define(Setting.integer("leave.apply.back_days")
             .group("attendance").owner("attendance.manage").module(Modules.ATTENDANCE)
             .label("Employees may apply for leave this far back").unit("days")

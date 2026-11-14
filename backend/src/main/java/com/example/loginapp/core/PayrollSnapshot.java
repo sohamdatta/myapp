@@ -129,6 +129,13 @@ final class PayrollSnapshot {
                     inputs.merge(LoanService.COMPONENT, due.get("amount"), (a, b) -> ((java.math.BigDecimal) a).add((java.math.BigDecimal) b));
                     out.put("loanInstalments", due.get("ids"));
                 }
+                Map<String, Object> perq = LoanService.perquisite(c, AuthService.uuid(e.get("membershipId")), period);
+                if (((java.math.BigDecimal) perq.get("amount")).signum() > 0) {
+                    out.put("loanPerquisite", perq.get("amount"));
+                }
+                if (Boolean.TRUE.equals(perq.get("rateMissing"))) {
+                    out.put("loanPerqRateMissing", true);
+                }
             }
         }
         // Loss-of-pay days entered for the month are not a pay component: they go to the day count below.

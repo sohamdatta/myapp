@@ -1052,6 +1052,51 @@ class PayrollTest {
     }
 
     @Test
+    void aCheapLoanOverTwoLakhIsTaxedOnTheInterestBenefitAndWarnsWhenNoRateIsSet() {
+        assumeTrue(reachable, "PostgreSQL is not reachable");
+        for (boolean rateSet : new boolean[] {false, true}) {
+            Org org = newOrg();
+            SessionCtx operator = join(org, "payroll", List.of("payroll_operator"));
+            SessionCtx asha = join(org, "asha", List.of("employee"));
+            String loc = (String) settings.saveLocation(org.admin, null,
+                    new LocationInput("Bengaluru office", "Asia/Kolkata", "KA", null, null, null, null, "none", true)).get("id");
+            String shift = (String) settings.saveShift(org.admin, null, new ShiftInput("General", "09:30", "18:30", 10, 480, 240, true)).get("id");
+            settings.assign(org.admin, List.of(asha.membershipId().toString()), UUID.fromString(loc), UUID.fromString(shift), List.of(0), TODAY.minusDays(120).toString());
+            UUID ashaId = UUID.fromString((String) employees.add(org.admin, person("Asha Rao", "ABCPR1234F", asha)).get("id"));
+            for (String[] r : List.of(new String[] {"pf", null, "KABLR0012345000"}, new String[] {"esi", null, "53000123450001001"},
+                    new String[] {"pt", "KA", "PTKA-123456"}, new String[] {"lwf", "KA", "LWF-KA-998"})) {
+                config.addRegistration(operator, new PayrollConfig.RegistrationInput(r[0], r[1], r[2]));
+            }
+            String staff = (String) ((Map<?, ?>) ((List<?>) config.setup(operator).get("structures")).get(0)).get("id");
+            LocalDate period = TODAY.withDayOfMonth(1).plusMonths(1);
+            pay.revise(org.admin, ashaId, new PayrollPay.ReviseInput(TODAY.withDayOfMonth(1).toString(), staff, new BigDecimal("900000"), "Joining salary"));
+            if (rateSet) {
+                LocalDate yearStart = LocalDate.of(period.getMonthValue() >= 4 ? period.getYear() : period.getYear() - 1, 4, 1);
+                new com.example.loginapp.core.SettingsService(db).change(org.admin, "loans.perquisite_rate_bp",
+                        new com.example.loginapp.core.SettingsService.ChangeInput("organization", null, yearStart.toString(), 1000, false, "SBI rate", PASSWORD));
+            }
+            UUID big = loans.saveType(org.admin, null, new LoanService.TypeInput("Staff loan", "loan", new BigDecimal("500000"), 24,
+                    BigDecimal.ZERO, 0, 1, true)).id();
+            LoanService.Created l = loans.request(asha, new LoanService.RequestInput(big.toString(), new BigDecimal("300000"), 24, "House deposit"));
+            loans.financeDecide(org.admin, l.id(), "approve", null, 1);
+            loans.disburse(org.admin, l.id(), TODAY.toString(), null, "UTR-" + l.number(), 2);
+
+            String group = (String) ((Map<?, ?>) ((List<?>) runs.list(operator).get("groups")).get(0)).get("id");
+            UUID run = UUID.fromString((String) runs.open(operator, UUID.fromString(group), period.toString()).get("id"));
+            runs.freeze(operator, run);
+            runs.calculate(operator, run);
+            boolean warned = ((List<?>) runs.get(operator, run).get("exceptions")).stream().anyMatch(x -> "loan_perq_rate_missing".equals(((Map<?, ?>) x).get("code")));
+            if (rateSet) {
+                BigDecimal perq = lineAmount(runs.employee(operator, run, ashaId), "LOAN_PERQ");
+                assertTrue(perq.signum() > 0 && perq.compareTo(new BigDecimal("2500.00")) <= 0, "benefit: " + perq);
+                assertTrue(!warned);
+            } else {
+                assertTrue(warned, "no rate set, loan is cheap and big");
+            }
+        }
+    }
+
+    @Test
     void scheduleInstalmentsAddUpToThePrincipalAtAnyRate() {
         for (String rate : List.of("0", "6", "9.5", "12.75")) {
             for (int months : List.of(1, 3, 7, 24, 60)) {

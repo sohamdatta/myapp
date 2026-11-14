@@ -60,7 +60,7 @@ final class AnnualTax {
         Map<String, List<Map<String, Object>>> slips = new LinkedHashMap<>();
         for (Map<String, Object> p : Sql.query(c, "select ps.id, ps.employment_id, ps.membership_id, e.person_id, r.period, "
                 // Only the last payslip's whole info is read (its name, code and flags); the others give just the taxable amount.
-                + "(ps.info->'bases'->>'taxable') as taxable, "
+                + "(ps.info->'bases'->>'taxable') as taxable, (ps.info->'bases'->>'loanPerquisite') as perquisite, "
                 + "case when row_number() over (partition by ps.employment_id order by r.period desc, ps.id desc) = 1 then ps.info end as info, "
                 + "coalesce((r.snapshot->'config'->'rules'->'drafts'->>'income_tax:IN')::boolean, true) as draft_rules from app.payslip ps "
                 + "join app.employment e on e.id = ps.employment_id "
@@ -95,7 +95,12 @@ final class AnnualTax {
             for (Map<String, Object> p : list) {
                 taxable = taxable.add(p.get("taxable") == null ? BigDecimal.ZERO : new BigDecimal(String.valueOf(p.get("taxable"))));
             }
+            BigDecimal perquisite = BigDecimal.ZERO;
+            for (Map<String, Object> p : list) {
+                perquisite = perquisite.add(p.get("perquisite") == null ? BigDecimal.ZERO : new BigDecimal(String.valueOf(p.get("perquisite"))));
+            }
             Map<String, Object> partB = partB(info, settings, year, taxable, t == null ? BigDecimal.ZERO : PayrollEngine.dec(t, "amount"));
+            partB.put("loanPerquisite", PayrollEngine.scale(perquisite));
             people.add(new Person(e.getKey(), String.valueOf(last.get("personId")), last.get("membershipId"), code, name, partB,
                     Boolean.TRUE.equals(last.get("draftRules"))));   // the rules the last payslip's run was frozen with
         }

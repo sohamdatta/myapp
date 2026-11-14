@@ -41,6 +41,12 @@ public final class LoanService {
     /** The component payroll deducts instalments under. */
     public static final String COMPONENT = "LOAN_EMI";
 
+    /** The component the taxable interest benefit is shown under on the payslip. */
+    public static final String PERQUISITE = "LOAN_PERQ";
+
+    /** Loans from the employer count for the perquisite only once they pass this together (Income-tax Rules 2026, Table IV). */
+    public static final BigDecimal PERQUISITE_THRESHOLD = new BigDecimal("200000");
+
     /** Deductions of a month may not take more than this share of the month's pay (Code on Wages s.18(4)). */
     public static final BigDecimal DEDUCTION_CAP = new BigDecimal("0.50");
 
@@ -540,6 +546,58 @@ public final class LoanService {
                 closeIfDone(c, loan);
             }
         }
+    }
+
+    // ── the interest perquisite ─────────────────────────────────────────
+
+    /**
+     * The taxable benefit of a month: for each loan charged less than the State Bank rate, the balance at the start of the month times
+     * the difference, a twelfth of a year. It counts only when the person's loans together are above ₹2,00,000 (all of it, not the
+     * excess), and not for a loan finance has marked exempt (a medical loan). The rate is the setting in force on the first day of the
+     * tax year. With no rate set nothing is worked out, and {@code rateMissing} says a warning is due.
+     */
+    static Map<String, Object> perquisite(Connection c, UUID membershipId, LocalDate period) throws SQLException {
+        LocalDate yearStart = LocalDate.of(period.getMonthValue() >= 4 ? period.getYear() : period.getYear() - 1, 4, 1);
+        int bp = Settings.get(c, Settings.LOAN_MARKET_RATE, Settings.Context.ORGANIZATION, yearStart).asInt();
+        BigDecimal market = BigDecimal.valueOf(bp).movePointLeft(2);
+        BigDecimal total = BigDecimal.ZERO;
+        BigDecimal benefit = BigDecimal.ZERO;
+        boolean cheaper = false;
+        for (Map<String, Object> l : Sql.query(c, "select l.annual_rate, (select coalesce(sum(i.principal), 0) from app.loan_instalment i where i.loan_id = l.id "
+                + "and i.status in ('due','taken') and i.month >= ?) as balance from app.loan l where l.membership_id = ? and l.status in ('active','closed') "
+                + "and l.disbursed_on < ? and l.perq_exempt_reason is null", period, membershipId, period.plusMonths(1))) {
+            BigDecimal balance = (BigDecimal) l.get("balance");
+            BigDecimal rate = (BigDecimal) l.get("annualRate");
+            if (balance.signum() <= 0 || (bp > 0 && rate.compareTo(market) >= 0)) {
+                continue;
+            }
+            cheaper = true;
+            total = total.add(balance);
+            benefit = benefit.add(balance.multiply(market.subtract(rate).max(BigDecimal.ZERO)).divide(BigDecimal.valueOf(1200), 2, RoundingMode.HALF_UP));
+        }
+        boolean over = total.compareTo(PERQUISITE_THRESHOLD) > 0;
+        Map<String, Object> out = new java.util.LinkedHashMap<>();
+        out.put("amount", over && bp > 0 ? benefit : BigDecimal.ZERO);
+        out.put("rateMissing", over && cheaper && bp == 0);
+        return out;
+    }
+
+    /** Marks a loan as one whose interest benefit is not taxed (a loan for the treatment of a specified illness). */
+    public void exempt(SessionCtx ctx, UUID id, String reason) {
+        ctx.require("loan.manage");
+        String why = reason == null ? "" : reason.trim();
+        if (why.length() < 10) {
+            throw ApiException.badRequest("Say what makes the loan exempt, and where the evidence is kept, in at least 10 characters");
+        }
+        db.inTenant(ctx.tenantId(), c -> {
+            Map<String, Object> l = lock(c, id);
+            if (ctx.membershipId().equals(AuthService.uuid(l.get("membershipId")))) {
+                throw new ApiException(403, "loan.own", "You cannot decide your own loan");
+            }
+            Sql.update(c, "update app.loan set perq_exempt_reason = ?, updated_at = now() where id = ?", why, id);
+            UserService.audit(c, ctx, "loan.perquisite_exempt", "loan", id, Map.of("number", l.get("number"), "reason", why));
+            return null;
+        });
     }
 
     // ── helpers ─────────────────────────────────────────────────────────

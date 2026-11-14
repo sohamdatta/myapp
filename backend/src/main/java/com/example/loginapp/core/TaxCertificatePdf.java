@@ -82,6 +82,9 @@ final class TaxCertificatePdf {
         y += 18;
 
         y = line(items, y, "Salary from this employer", b.get("salaryThisEmployer"), false);
+        if (PayrollEngine.dec(b, "loanPerquisite").signum() > 0) {
+            y = line(items, y, "  of which perquisite: interest benefit on loans from the employer", b.get("loanPerquisite"), false);
+        }
         if (PayrollEngine.dec(b, "incomeOtherEmployers").signum() > 0) {
             y = line(items, y, "Salary from other employers this year (Form 122)", b.get("incomeOtherEmployers"), false);
         }
