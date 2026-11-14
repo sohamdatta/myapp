@@ -343,6 +343,7 @@ class StatutoryFilingsTest {
         List<StatutoryFilings.ReasonRow> after = filings.setReason(m.operator, "retirement", 4);
         assertTrue(after.contains(new StatutoryFilings.ReasonRow("retirement", 4)));
         assertEquals(400, assertThrows(ApiException.class, () -> filings.setReason(m.operator, "retirement", 100)).status());
+        assertEquals(400, assertThrows(ApiException.class, () -> filings.setReason(m.operator, "nonsense", 4)).status(), "only a real way of leaving");
         assertTrue(filings.reasonMap(newOperator()).contains(new StatutoryFilings.ReasonRow("retirement", 3)), "another Organization keeps the default");
     }
 

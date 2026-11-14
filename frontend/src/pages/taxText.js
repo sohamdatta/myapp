@@ -88,3 +88,10 @@ export function detailWords(item) {
       return d.note || ''
   }
 }
+
+/** Form 122 entries: tone, the employee's words, HR's words. */
+export const OTHER_EMPLOYER = {
+  declared: ['warn', 'Waiting for HR', 'To check'],
+  accepted: ['good', 'Accepted', 'Accepted'],
+  returned: ['warn', 'Returned', 'Returned'],
+}

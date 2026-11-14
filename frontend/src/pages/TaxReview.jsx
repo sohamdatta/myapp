@@ -3,6 +3,7 @@ import { tax } from '../api.js'
 import { useToast } from '../feedbackContext.js'
 import { formatDate, formatDay, localToday, useLoad } from '../hooks.js'
 import { Badge, Empty, ErrorNote } from '../ui.jsx'
+import { OtherEmployerReview } from './OtherEmployers.jsx'
 import { ClaimRow } from './TaxClaims.jsx'
 import { rupees } from './payrollText.js'
 import { HEADS, STATES } from './taxText.js'
@@ -248,6 +249,7 @@ function Employee({ id, onBack }) {
           </section>
         )
       })}
+      <OtherEmployerReview employmentId={id} taxYear={d.taxYear} canReview={d.canReview} />
     </>
   )
 }

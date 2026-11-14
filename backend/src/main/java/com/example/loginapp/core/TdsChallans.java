@@ -31,11 +31,14 @@ public final class TdsChallans {
 
     public record Challan(String id, String month, String deductorType, String minorHead, String bsrCode, String serial, String depositedOn,
                           BigDecimal tax, BigDecimal surcharge, BigDecimal cess, BigDecimal interest, BigDecimal fee, BigDecimal total,
-                          String status, List<String> runIds, Long daysLate) {}
+                          String status, List<String> runIds, Long daysLate, boolean recordedByMe) {}
 
     /** One month of deducted tax against deposited tax. Status: none, part, deposited or over. */
     public record MonthRow(String month, BigDecimal deducted, BigDecimal deposited, String status, String dueOn, boolean overdue,
-                           List<Challan> challans) {}
+                           List<Challan> challans, List<RunRef> runs) {}
+
+    /** An approved run of the month, the TDS in it, and the challan that already covers it (null when none does). */
+    public record RunRef(String id, String groupName, String state, BigDecimal tds, String challanId) {}
 
     public record YearView(String taxYear, List<MonthRow> months) {}
 
@@ -67,15 +70,15 @@ public final class TdsChallans {
             List<MonthRow> months = new ArrayList<>();
             for (int i = 0; i < 12; i++) {
                 LocalDate month = start.plusMonths(i);
-                months.add(monthRow(c, month));
+                months.add(monthRow(c, ctx, month));
             }
             return new YearView(ty, months);
         });
     }
 
-    private MonthRow monthRow(Connection c, LocalDate month) throws SQLException {
+    private MonthRow monthRow(Connection c, SessionCtx ctx, LocalDate month) throws SQLException {
         BigDecimal deducted = deducted(c, month);
-        List<Challan> challans = challans(c, month);
+        List<Challan> challans = challans(c, ctx, month);
         BigDecimal deposited = BigDecimal.ZERO;
         for (Challan ch : challans) {
             if ("approved".equals(ch.status())) {
@@ -87,7 +90,18 @@ public final class TdsChallans {
                 : deposited.compareTo(deducted) == 0 ? "deposited" : "over";
         LocalDate due = due(c, month);
         boolean overdue = due != null && deducted.signum() > 0 && !"deposited".equals(status) && !"over".equals(status) && today().isAfter(due);
-        return new MonthRow(month.toString(), deducted, deposited, status, due == null ? null : due.toString(), overdue, challans);
+        return new MonthRow(month.toString(), deducted, deposited, status, due == null ? null : due.toString(), overdue, challans, runs(c, month));
+    }
+
+    private static List<RunRef> runs(Connection c, LocalDate month) throws SQLException {
+        List<RunRef> out = new ArrayList<>();
+        for (Map<String, Object> r : Sql.query(c, "select r.id, g.name, r.state, (select challan_id from app.tds_challan_run x where x.run_id = r.id) as challan_id "
+                + "from app.payroll_run r join app.pay_group g on g.id = r.group_id where r.period = ? and r.state in ('approved','paid','released') "
+                + "order by lower(g.name)", month)) {
+            out.add(new RunRef(String.valueOf(r.get("id")), (String) r.get("name"), (String) r.get("state"), runTds(c, AuthService.uuid(r.get("id"))),
+                    r.get("challanId") == null ? null : String.valueOf(r.get("challanId"))));
+        }
+        return out;
     }
 
     // ── record and approve ──────────────────────────────────────────────
@@ -160,7 +174,7 @@ public final class TdsChallans {
             }
             UserService.audit(c, ctx, "tds.challan_recorded", "tds_challan", id,
                     Map.of("month", month.toString(), "bsr", bsr, "serial", serial, "total", paid.add(interest).add(fee)));
-            return one(c, id);
+            return one(c, ctx, id);
         });
     }
 
@@ -216,17 +230,17 @@ public final class TdsChallans {
         return PayrollEngine.dec(r, "tds");
     }
 
-    private List<Challan> challans(Connection c, LocalDate month) throws SQLException {
+    private List<Challan> challans(Connection c, SessionCtx ctx, LocalDate month) throws SQLException {
         List<Challan> out = new ArrayList<>();
         for (Map<String, Object> r : Sql.query(c, "select id from app.tds_challan where period = ? order by deposited_on, serial", month)) {
-            out.add(one(c, AuthService.uuid(r.get("id"))));
+            out.add(one(c, ctx, AuthService.uuid(r.get("id"))));
         }
         return out;
     }
 
-    private Challan one(Connection c, UUID id) throws SQLException {
+    private Challan one(Connection c, SessionCtx ctx, UUID id) throws SQLException {
         Map<String, Object> r = Sql.one(c, "select id, period, deductor_type, minor_head, bsr_code, serial, deposited_on, tax, surcharge, cess, interest, "
-                + "fee, total, status from app.tds_challan where id = ?", id);
+                + "fee, total, status, recorded_by from app.tds_challan where id = ?", id);
         if (r == null) {
             throw ApiException.notFound("That challan");
         }
@@ -241,7 +255,8 @@ public final class TdsChallans {
         return new Challan(String.valueOf(r.get("id")), month.toString(), (String) r.get("deductorType"), (String) r.get("minorHead"),
                 (String) r.get("bsrCode"), (String) r.get("serial"), deposited.toString(), PayrollEngine.dec(r, "tax"),
                 PayrollEngine.dec(r, "surcharge"), PayrollEngine.dec(r, "cess"), PayrollEngine.dec(r, "interest"), PayrollEngine.dec(r, "fee"),
-                PayrollEngine.dec(r, "total"), (String) r.get("status"), runs, late);
+                PayrollEngine.dec(r, "total"), (String) r.get("status"), runs, late,
+                ctx.membershipId() != null && ctx.membershipId().toString().equals(String.valueOf(r.get("recordedBy"))));
     }
 
     /**

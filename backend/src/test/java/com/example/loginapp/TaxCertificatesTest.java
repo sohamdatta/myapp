@@ -249,6 +249,13 @@ class TaxCertificatesTest {
         assertEquals(409, assertThrows(ApiException.class, () -> certificates.release(k.org.admin, UUID.fromString(asha.id()), true)).status(),
                 "the builder cannot release");
         SessionCtx approver = join(k.org, "approver", List.of("payroll_approver"));
+        // The releaser sees and opens what they release, and each row says whether the viewer built it.
+        TaxCertificates.Year seenByApprover = certificates.year(approver, YEAR);
+        assertEquals(certificates.year(k.org.admin, YEAR).certificates().size(), seenByApprover.certificates().size(), "an approver sees the certificates they release");
+        assertFalse(seenByApprover.certificates().isEmpty());
+        assertTrue(seenByApprover.certificates().stream().noneMatch(TaxCertificates.Row::builtByMe));
+        assertTrue(certificates.year(k.org.admin, YEAR).certificates().stream().allMatch(TaxCertificates.Row::builtByMe));
+        assertEquals("application/pdf", certificates.file(approver, UUID.fromString(asha.id())).contentType());
         assertEquals(403, assertThrows(ApiException.class, () -> certificates.build(k.asha, YEAR)).status());
         ApiException draft = assertThrows(ApiException.class, () -> certificates.release(approver, UUID.fromString(asha.id()), false));
         assertEquals(409, draft.status());
@@ -262,9 +269,9 @@ class TaxCertificatesTest {
         DocumentService.Content pdf = certificates.mine(k.asha, UUID.fromString(asha.id()));
         assertEquals("application/pdf", pdf.contentType());
         assertTrue(new String(pdf.bytes(), 0, 5, java.nio.charset.StandardCharsets.ISO_8859_1).startsWith("%PDF"));
-        assertEquals(2L, ((Number) db.inOwner(c -> Sql.one(c, "select count(*) as n from app.audit_event where action = 'tax_certificate.viewed' and target_id = ?::uuid",
+        assertEquals(3L, ((Number) db.inOwner(c -> Sql.one(c, "select count(*) as n from app.audit_event where action = 'tax_certificate.viewed' and target_id = ?::uuid",
                 asha.id()).get("n"))).longValue());
-        // (two openings are on record: payroll's check of the draft, and the employee's own)
+        // (three openings are on record: the preparer's and the approver's checks of the draft, and the employee's own)
         assertEquals(404, assertThrows(ApiException.class, () -> certificates.mine(k.ravi, UUID.fromString(asha.id()))).status());
         assertEquals(0, certificates.mine(k.ravi).size(), "Ravi's own is still a draft");
 

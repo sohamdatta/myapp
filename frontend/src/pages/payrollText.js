@@ -73,3 +73,59 @@ export const STATUTES = {
 export const STATE_NAMES = { GA: 'Goa', KA: 'Karnataka', MH: 'Maharashtra', IN: 'All India' }
 
 export const monthLabel = (iso) => new Date(`${iso}T00:00:00`).toLocaleDateString('en-IN', { month: 'long', year: 'numeric' })
+
+// ── tax filing, statutory filing and certificates ────────────────────
+
+/** Whether the person can do this permission for everyone (not only for themselves). */
+export const canDo = (me, permission) => ['tenant', 'assigned'].includes(me?.scopes?.[permission])
+
+/** The tax year (April to March) a date falls in, as "2026-27". */
+export function taxYearOf(iso) {
+  const [y, m] = iso.split('-').map(Number)
+  const start = m >= 4 ? y : y - 1
+  return `${start}-${String(start + 1).slice(2)}`
+}
+
+/** The latest tax years, newest first, counting from today. */
+export function recentTaxYears(n, today = new Date().toISOString().slice(0, 10)) {
+  const start = Number(taxYearOf(today).slice(0, 4))
+  return Array.from({ length: n }, (_, i) => `${start - i}-${String(start - i + 1).slice(2)}`)
+}
+
+export const QUARTERS = { 1: 'Apr–Jun', 2: 'Jul–Sep', 3: 'Oct–Dec', 4: 'Jan–Mar' }
+
+export const CHALLAN_STATES = {
+  recorded: ['warn', 'Recorded, to approve'],
+  approved: ['good', 'Approved'],
+}
+
+export const DEPOSIT_STATES = {
+  none: ['neutral', 'Not deposited'],
+  part: ['warn', 'Part deposited'],
+  deposited: ['good', 'Deposited'],
+  over: ['warn', 'Over-deposited'],
+}
+
+export const CERTIFICATE_STATES = {
+  draft: ['warn', 'Draft'],
+  released: ['good', 'Released'],
+}
+
+export const FILING_STATES = {
+  draft: ['neutral', 'Built'],
+  downloaded: ['warn', 'Downloaded, to record'],
+  recorded: ['warn', 'Recorded, to approve'],
+  filed: ['good', 'Filed'],
+}
+
+export const FILING_KINDS = { pf_ecr: 'PF (ECR)', esi: 'ESI' }
+
+/** ESIC's reason codes for a person with no wages, until the server sends its own labels. */
+export const ESI_CODES = {
+  1: 'On leave without pay',
+  2: 'Left service',
+  3: 'Retired',
+  4: 'Out of coverage',
+  5: 'Expired',
+  11: 'Without work',
+}

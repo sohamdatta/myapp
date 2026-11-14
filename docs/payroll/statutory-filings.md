@@ -21,9 +21,12 @@ Built from an approved payroll month; see `docs/roadmap/next-releases.md` sectio
 | `POST /api/org/payroll/filings/{id}/approve` | `payroll.approve`, not the person who recorded |
 | `GET`, `PUT /api/org/payroll/filings/esi-reasons[/{exitKind}]` | read, `payroll.prepare` |
 
+## Screens
+
+Payroll → Statutory filing: a month picker, a panel for the PF return and one for ESI (build and check, download, record, approve, earlier versions) and the ESI reason codes. The records say whether the viewer recorded a filing (`recordedByMe`), so the screen does not offer Approve to them. Browser test: `58-tax-filing.spec.ts`. See the [user guide](../user-guide/payroll.md).
+
 ## Not built yet
 
-- The screens (Payroll → Statutory filing) and a browser test.
 - Attaching the portal's receipt PDF to a filing.
 - Arrear ECRs (needs revised pay for past months), and ECR refund of advances (always 0).
 - Golden ECR and ESI files for a fixed sample Organization; the tests check each field against the payslips instead.

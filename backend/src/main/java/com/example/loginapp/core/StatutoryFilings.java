@@ -87,7 +87,7 @@ public final class StatutoryFilings {
     /** One built version of a return, as the filing log shows it. */
     public record Filing(String id, int version, String status, String fileName, Totals totals,
                          List<Check> checks, String generatedAt, String downloadedAt, String referenceNumber,
-                         String paidOn, BigDecimal amountPaid, String recordedAt, String approvedAt, Long daysLate) {}
+                         String paidOn, BigDecimal amountPaid, String recordedAt, String approvedAt, Long daysLate, boolean recordedByMe) {}
 
     /** A return for the month (PF or ESI), its registration, when it falls due, and its versions, newest first. */
     public record Slot(String kind, String registration, String dueOn, List<Filing> versions) {}
@@ -125,7 +125,7 @@ public final class StatutoryFilings {
                 LocalDate due = due(period, rule(c, statute(kind), period));
                 List<Filing> versions = new ArrayList<>();
                 for (Map<String, Object> f : Sql.query(c, "select id, version, status, file_name, totals, checks, generated_at, downloaded_at, "
-                        + "reference_number, paid_on, amount_paid, recorded_at, approved_at from app.statutory_filing "
+                        + "reference_number, paid_on, amount_paid, recorded_at, approved_at, recorded_by from app.statutory_filing "
                         + "where kind = ? and period = ? order by version desc", kind, period)) {
                     Long late = f.get("paidOn") == null || due == null ? null
                             : Math.max(0, ChronoUnit.DAYS.between(due, LocalDate.parse(String.valueOf(f.get("paidOn")))));
@@ -133,7 +133,8 @@ public final class StatutoryFilings {
                             (String) f.get("fileName"), Totals.of(parse(f.get("totals"))), checksOf(f.get("checks")), text(f.get("generatedAt")),
                             text(f.get("downloadedAt")), (String) f.get("referenceNumber"), text(f.get("paidOn")),
                             f.get("amountPaid") == null ? null : new BigDecimal(String.valueOf(f.get("amountPaid"))),
-                            text(f.get("recordedAt")), text(f.get("approvedAt")), late));
+                            text(f.get("recordedAt")), text(f.get("approvedAt")), late,
+                            ctx.membershipId() != null && ctx.membershipId().toString().equals(String.valueOf(f.get("recordedBy")))));
                 }
                 slots.add(new Slot(kind, reg == null ? null : (String) reg.get("number"), due == null ? null : due.toString(), versions));
             }
@@ -328,6 +329,9 @@ public final class StatutoryFilings {
         PayrollConfig.need(ctx, "payroll.prepare");
         if (code < 0 || code > 99) {
             throw ApiException.badRequest("An ESIC reason code is a number from 0 to 99");
+        }
+        if (!ExitService.KINDS.contains(exitKind)) {
+            throw ApiException.badRequest("That is not a way of leaving: " + exitKind);
         }
         db.inTenant(ctx.tenantId(), c -> {
             Sql.update(c, "insert into app.esi_reason_map (tenant_id, exit_kind, esic_code) values (?, ?, ?) "

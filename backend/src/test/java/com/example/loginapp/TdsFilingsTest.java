@@ -196,6 +196,10 @@ class TdsFilingsTest {
         TdsChallans.Challan recorded = tds.record(m.operator, input(m, paidOn, deducted, "00001"));
         assertEquals("recorded", recorded.status());
         assertEquals(3, recorded.daysLate());
+        assertTrue(recorded.recordedByMe(), "the recorder is told it is theirs, so the screen can hide Approve from them");
+        TdsChallans.RunRef covered = monthRow(tds, m).runs().stream().filter(r -> r.id().equals(m.run.toString())).findFirst().orElseThrow();
+        assertEquals(recorded.id(), covered.challanId(), "a run says which challan covers it");
+        assertEquals(0, deducted.compareTo(covered.tds()));
         assertEquals(0, deducted.compareTo(recorded.total()));
         assertEquals("challan.run_covered", assertThrows(ApiException.class, () -> tds.record(m.operator, input(m, paidOn, deducted, "00002"))).code());
 

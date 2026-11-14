@@ -574,9 +574,14 @@ employee → Pay for HR, and My pay for everyone paid. The design, as built, is
 - **My pay.** Each released payslip with its PDF, and why pay changed from the
   month before.
 
-Not yet: importing salaries and year-to-date history, a parallel run, PF and
-ESI return files, Form 130, loans, tax declarations, and arrears for a month
-already approved.
+Tax filing and statutory filing (Payroll → Tax filing and Statutory filing):
+TDS deposits and Form 138 statements, the PF ECR and ESI files with their
+filing log, and Form 130 certificates, plus Form 122 earlier-employer income
+under My pay → Tax declaration. See `docs/user-guide/payroll.md`.
+
+Not yet: importing salaries and year-to-date history, a parallel run, Form 130
+Part A (TRACES), the department utility's text file for Form 138, loans, and
+arrears for a month already approved.
 
 ## Performance
 
