@@ -8,7 +8,8 @@
     "report": "playwright show-report",
     "coverage": "node coverage-report.mjs",
     "check": "playwright test --config feature-check.config.ts",
-    "check:report": "playwright show-report feature-check-report"
+    "check:report": "playwright show-report feature-check-report",
+    "setup-org": "playwright test --config setup-org.config.ts"
   },
   "devDependencies": {
     "@axe-core/playwright": "4.14.0",
