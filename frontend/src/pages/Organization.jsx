@@ -434,43 +434,195 @@ function InvitationsTab({ me }) {
   )
 }
 
-function RolesTab() {
+/** Splits "Approve leave (tenant)" style entries into a code-free label and scope. */
+function parsePermission(text) {
+  const m = /^(.*) \((\w+)\)$/.exec(text)
+  return m ? { label: m[1], scope: m[2] } : { label: text, scope: 'tenant' }
+}
+
+/** Make or change a role of the Organization's own, from the permissions its maker holds. */
+function RoleForm({ role, onDone }) {
+  const catalogue = useLoad(org.rolePermissions)
+  const { busy, error, run } = useAction()
+  const toast = useToast()
+  const [name, setName] = useState(role?.name || '')
+  const [description, setDescription] = useState(role?.description || '')
+  // code -> scope for each ticked permission. Existing roles list "description (scope)", matched to the catalogue by description.
+  const [chosen, setChosen] = useState(null)
+
+  if (catalogue.loading) return <p className="muted">Loading…</p>
+  if (catalogue.error) return <ErrorNote>{catalogue.error}</ErrorNote>
+  const available = catalogue.data.filter((p) => p.held != null)
+  const current =
+    chosen ||
+    Object.fromEntries(
+      (role?.permissions || [])
+        .map(parsePermission)
+        .map((p) => [available.find((a) => a.description === p.label)?.code, p.scope])
+        .filter(([code]) => code),
+    )
+
+  function toggle(code) {
+    const next = { ...current }
+    if (next[code]) delete next[code]
+    else next[code] = 'tenant'
+    setChosen(next)
+  }
+
+  async function save(event) {
+    event.preventDefault()
+    const body = {
+      name,
+      description,
+      permissions: Object.entries(current).map(([code, scope]) => ({ code, scope })),
+    }
+    const saved = await run(() => (role ? org.changeRole(role.id, body) : org.createRole(body)))
+    if (saved) {
+      toast(role ? 'Role saved. People who hold it get the change on their next request.' : 'Role created.')
+      onDone()
+    }
+  }
+
+  return (
+    <form className="card stack" onSubmit={save}>
+      <h3>{role ? `Change ${role.name}` : 'New role'}</h3>
+      <p className="hint">
+        You can only include permissions you hold yourself. Payroll, user and role administration, and billing stay with the built-in roles.
+      </p>
+      <label htmlFor="role-name">Name</label>
+      <input id="role-name" value={name} maxLength={60} onChange={(e) => setName(e.target.value)} required />
+      <label htmlFor="role-description">What it is for (optional)</label>
+      <input id="role-description" value={description} onChange={(e) => setDescription(e.target.value)} />
+      <fieldset>
+        <legend>Permissions</legend>
+        {available.map((p) => (
+          <div key={p.code} className="check-row">
+            <label className="check">
+              <input type="checkbox" checked={Boolean(current[p.code])} onChange={() => toggle(p.code)} />
+              {p.description}
+            </label>
+            {current[p.code] && (
+              <select
+                aria-label={`Scope for ${p.description}`}
+                value={current[p.code]}
+                onChange={(e) => setChosen({ ...current, [p.code]: e.target.value })}
+              >
+                {Object.entries(SCOPES).map(([value, label]) => (
+                  <option key={value} value={value}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+            )}
+          </div>
+        ))}
+      </fieldset>
+      {error && <ErrorNote>{error}</ErrorNote>}
+      <div className="actions">
+        <button type="submit" disabled={busy}>
+          {role ? 'Save role' : 'Create role'}
+        </button>
+        <button type="button" className="secondary" onClick={onDone}>
+          Cancel
+        </button>
+      </div>
+    </form>
+  )
+}
+
+function RolesTab({ me }) {
   const roles = useLoad(org.roles)
+  const { error, run } = useAction()
+  const confirm = useConfirm()
+  const toast = useToast()
+  const [editing, setEditing] = useState(null) // null, 'new' or a role
+  const canManage = me.permissions.includes('role.manage') && me.kind === 'tenant'
   if (roles.loading) return <p className="muted">Loading…</p>
   if (roles.error) return <ErrorNote>{roles.error}</ErrorNote>
+
+  function finished() {
+    setEditing(null)
+    roles.reload()
+  }
+
+  async function remove(role) {
+    const sure = await confirm({
+      title: `Delete the ${role.name} role?`,
+      body: 'This cannot be undone. A role that people still hold cannot be deleted.',
+      confirmLabel: 'Delete role',
+      cancelLabel: 'Keep it',
+    })
+    if (!sure) return
+    const done = await run(async () => {
+      await org.deleteRole(role.id)
+      return true
+    })
+    if (done) {
+      toast('Role deleted.')
+      roles.reload()
+    }
+  }
+
+  if (editing) return <RoleForm role={editing === 'new' ? null : editing} onDone={finished} />
   return (
-    <div className="table-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th>Role</th>
-            <th>What it is for</th>
-          </tr>
-        </thead>
-        <tbody>
-          {roles.data.map((r) => (
-            <tr key={r.code}>
-              <td>
-                {r.name}
-                {!r.assignable && <div className="hint">Set by the system</div>}
-              </td>
-              <td>
-                {ROLE_SUMMARIES[r.code] || '—'}
-                <details className="permissions">
-                  <summary>Exact permissions</summary>
-                  {r.permissions
-                    .map((p) => {
-                      const m = /^(.*) \((\w+)\)$/.exec(p)
-                      return m ? `${m[1]} (${SCOPES[m[2]] || m[2]})` : p
-                    })
-                    .join(', ')}
-                </details>
-              </td>
+    <>
+      {canManage && (
+        <p>
+          <button type="button" onClick={() => setEditing('new')}>
+            New role
+          </button>
+        </p>
+      )}
+      {error && <ErrorNote>{error}</ErrorNote>}
+      <div className="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Role</th>
+              <th>What it is for</th>
+              {canManage && <th>Actions</th>}
             </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+          </thead>
+          <tbody>
+            {roles.data.map((r) => (
+              <tr key={r.code}>
+                <td>
+                  {r.name}
+                  {!r.assignable && <div className="hint">Set by the system</div>}
+                  {!r.isSystem && <div className="hint">Your Organization&apos;s own</div>}
+                </td>
+                <td>
+                  {r.description || ROLE_SUMMARIES[r.code] || '—'}
+                  <details className="permissions">
+                    <summary>Exact permissions</summary>
+                    {r.permissions
+                      .map((p) => {
+                        const m = parsePermission(p)
+                        return `${m.label} (${SCOPES[m.scope] || m.scope})`
+                      })
+                      .join(', ')}
+                  </details>
+                </td>
+                {canManage && (
+                  <td>
+                    {!r.isSystem && (
+                      <>
+                        <button type="button" className="secondary" onClick={() => setEditing(r)}>
+                          Change
+                        </button>{' '}
+                        <button type="button" className="secondary" onClick={() => remove(r)}>
+                          Delete
+                        </button>
+                      </>
+                    )}
+                  </td>
+                )}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </>
   )
 }
 
@@ -631,7 +783,7 @@ export function UserManagement({ me }) {
       <Tabs tabs={tabs} current={tab} onChange={setTab} />
       {tab === 'users' && <UsersTab me={me} onInvite={() => setTab('invitations')} />}
       {tab === 'invitations' && <InvitationsTab me={me} />}
-      {tab === 'roles' && <RolesTab />}
+      {tab === 'roles' && <RolesTab me={me} />}
       {tab === 'subscription' && <SubscriptionTab me={me} />}
     </>
   )

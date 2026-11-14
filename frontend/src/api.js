@@ -322,6 +322,10 @@ export const invitationLink = (token) =>
 export const org = {
   users: () => get('/org/users'),
   roles: () => get('/org/roles'),
+  rolePermissions: () => get('/org/roles/permissions'),
+  createRole: (body) => post('/org/roles', body),
+  changeRole: (id, body) => put(`/org/roles/${id}`, body),
+  deleteRole: (id) => del(`/org/roles/${id}`),
   invitations: () => get('/org/invitations'),
   audit: () => get('/org/audit'),
   invite: (email, roles) => post('/org/invitations', { email, roles }),

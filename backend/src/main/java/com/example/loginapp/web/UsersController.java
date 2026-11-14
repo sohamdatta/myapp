@@ -29,9 +29,36 @@ public class UsersController {
     private final AuthService auth;
     private final UserService users;
 
-    public UsersController(AuthService auth, UserService users) {
+    private final com.example.loginapp.core.RoleService roleService;
+
+    public UsersController(AuthService auth, UserService users, com.example.loginapp.core.RoleService roleService) {
         this.auth = auth;
         this.users = users;
+        this.roleService = roleService;
+    }
+
+    /** The permissions that can go in a role of the Organization's own. */
+    @GetMapping("/roles/permissions")
+    public List<Map<String, Object>> rolePermissions(SessionCtx ctx) {
+        return roleService.catalogue(ctx);
+    }
+
+    @org.springframework.web.bind.annotation.PostMapping("/roles")
+    public com.example.loginapp.core.RoleService.RoleSaved createRole(SessionCtx ctx,
+            @org.springframework.web.bind.annotation.RequestBody com.example.loginapp.core.RoleService.RoleInput body) {
+        return roleService.create(ctx, body);
+    }
+
+    @org.springframework.web.bind.annotation.PutMapping("/roles/{id}")
+    public com.example.loginapp.core.RoleService.RoleSaved changeRole(SessionCtx ctx, @PathVariable("id") String id,
+            @org.springframework.web.bind.annotation.RequestBody com.example.loginapp.core.RoleService.RoleInput body) {
+        return roleService.update(ctx, Requests.id(id), body);
+    }
+
+    @org.springframework.web.bind.annotation.DeleteMapping("/roles/{id}")
+    public ResponseEntity<Void> deleteRole(SessionCtx ctx, @PathVariable("id") String id) {
+        roleService.delete(ctx, Requests.id(id));
+        return ResponseEntity.noContent().build();
     }
 
     @GetMapping("/users")
