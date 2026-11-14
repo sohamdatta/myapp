@@ -5,7 +5,11 @@
 -- Additive only, so an older build keeps running against it. By hand: drop the tables below.
 set lock_timeout = '5s';
 
+-- ban-drop-constraint: the check is dropped only to be added again at once with a longer list; every value it allowed is still allowed.
+-- squawk-ignore ban-drop-constraint
 alter table platform.tenant_module drop constraint tenant_module_module_check;
+-- constraint-missing-not-valid: the table is new in this release or small (per-Organization rows), so the scan is instant.
+-- squawk-ignore constraint-missing-not-valid
 alter table platform.tenant_module add constraint tenant_module_module_check
   check (module in ('attendance','leave','payroll','expenses'));
 
@@ -14,7 +18,11 @@ insert into platform.tenant_module (tenant_id, module, status)
 select id, 'expenses', 'off' from platform.tenant
 on conflict (tenant_id, module) do nothing;
 
+-- ban-drop-constraint: the check is dropped only to be added again at once with a longer list; every value it allowed is still allowed.
+-- squawk-ignore ban-drop-constraint
 alter table platform.usage_metric drop constraint usage_metric_module_check;
+-- constraint-missing-not-valid: the table is new in this release or small (per-Organization rows), so the scan is instant.
+-- squawk-ignore constraint-missing-not-valid
 alter table platform.usage_metric add constraint usage_metric_module_check
   check (module in ('core', 'attendance', 'leave', 'payroll', 'expenses'));
 

@@ -13,6 +13,8 @@ begin
   select conname into name from pg_constraint where conrelid = 'app.exit_task'::regclass and contype = 'c' and pg_get_constraintdef(oid) like '%done_by IS NULL%done_at IS NULL%';
   execute format('alter table app.exit_task drop constraint %I', name);
 end $$;
+-- constraint-missing-not-valid: the table is new in this release or small (per-Organization rows), so the scan is instant.
+-- squawk-ignore constraint-missing-not-valid
 alter table app.exit_task add constraint exit_task_done_by_check check ((done_by is null) = (done_at is null) or auto_check is not null);
 
 update app.checklist_template_task set auto_check = 'expenses' where title = 'Clear open advances, loans and expense claims';

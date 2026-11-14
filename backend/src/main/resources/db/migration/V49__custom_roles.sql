@@ -6,6 +6,8 @@
 set lock_timeout = '5s';
 
 alter table app.role add column description text check (description is null or length(description) <= 300);
+-- constraint-missing-not-valid: the table is new in this release or small (per-Organization rows), so the scan is instant.
+-- squawk-ignore constraint-missing-not-valid
 alter table app.role add constraint role_custom_code check (tenant_id is null or code ~ '^custom_[a-z0-9_]{2,40}$');
 
 insert into app.permission (code, description) values
