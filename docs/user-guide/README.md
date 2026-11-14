@@ -14,4 +14,4 @@ guide's spec) and copy the files into `img/<module>/`.
 | Payroll and tax declarations | [payroll.md](payroll.md) | [payroll-ui-test-cases.xlsx](../testing/payroll-ui-test-cases.xlsx) | `e2e/tests/52-payroll-cases`, `53-payroll-guide` |
 | Administration: getting started, users and roles, security, settings, branding, audit | [administration.md](administration.md) | [access-ui-test-cases.xlsx](../testing/access-ui-test-cases.xlsx) | `e2e/tests/54-access-cases`, `55-access-guide` |
 | Onboarding: joiners, offers, checking, checklists | [onboarding.md](onboarding.md) | [onboarding-ui-test-cases.xlsx](../testing/onboarding-ui-test-cases.xlsx) | `e2e/tests/56-onboarding-cases`, `57-onboarding-guide` |
-| Expenses, advances and loans | [expenses.md](expenses.md) | not yet | not yet (JUnit: `ExpensesTest`, `ExitTest`, `PayrollTest`) |
+| Expenses, advances and loans | [expenses.md](expenses.md) | not yet | `e2e/tests/59-expenses-guide` (project `expenses-guide`); JUnit: `ExpensesTest`, `ExitTest`, `PayrollTest` |
