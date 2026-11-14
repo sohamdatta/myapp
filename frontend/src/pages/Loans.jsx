@@ -82,7 +82,7 @@ function LoanDetail({ id, mode, onClose }) {
   }
 
   return (
-    <div className="card stack">
+    <div className="card wide stack">
       <p><button type="button" className="secondary" onClick={onClose}>Back</button></p>
       <h2>{l.number}: {l.type} <LoanStatus status={l.status} /></h2>
       <p>

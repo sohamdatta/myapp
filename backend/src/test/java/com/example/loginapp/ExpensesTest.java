@@ -153,6 +153,20 @@ class ExpensesTest {
     }
 
     @Test
+    void aNewOrganizationStartsWithFiveCategoriesAndOnlyOnce() {
+        String slug = "exp-" + SEQUENCE.incrementAndGet();
+        Map<String, Object> created = platform.createOrganization(superAdmin, "Org " + slug, slug, "admin@" + slug + ".test");
+        SessionCtx admin = auth.resolve(invitations.accept((String) created.get("invitationToken"), PASSWORD, null));
+        List<Map<String, Object>> first = expenses.categories(admin, true);
+        assertEquals(List.of("Internet and phone", "Local conveyance", "Meals", "Other", "Travel"),
+                first.stream().map(c -> (String) c.get("name")).toList());
+        UUID meals = UUID.fromString(String.valueOf(first.stream().filter(c -> "Meals".equals(c.get("name"))).findFirst().orElseThrow().get("id")));
+        expenses.saveCategory(admin, meals, new CategoryInput("Meals", null, null, new BigDecimal("300"), null, false, false, "Staff welfare", false));
+        assertEquals(5, expenses.categories(admin, true).size(), "turning one off does not bring it back, or add a sixth");
+        assertEquals(4, expenses.categories(admin, false).size());
+    }
+
+    @Test
     void aClaimWithNoManagerGoesStraightToFinance() {
         Setup s = setup();
         UUID claim = claim(s.solo, "Stationery");

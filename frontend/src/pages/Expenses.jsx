@@ -45,7 +45,6 @@ export default function Expenses({ me }) {
   if (tabs.length === 0) return <Empty>You do not have anything to do in Expenses.</Empty>
   return (
     <>
-      <h1>Expenses</h1>
       {tabs.length > 1 && <Tabs tabs={tabs} current={tab} onChange={setTab} />}
       {tab === 'mine' && <MyClaims />}
       {tab === 'approvals' && <Queue load={expenses.approvals} empty="Nothing is waiting for you." mode="manager" />}

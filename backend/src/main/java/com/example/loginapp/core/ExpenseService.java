@@ -91,10 +91,25 @@ public final class ExpenseService {
         } else if (!ctx.can("expense.claim") && !ctx.can("expense.setup") && !ctx.can("expense.finance")) {
             throw ApiException.denied("expense.claim");
         }
-        return db.inTenant(ctx.tenantId(), c -> Sql.query(c,
-                "select id, name, limit_per_expense, limit_per_month, receipt_above, per_km_rate, needs_travel_proof, "
-                        + "needs_approval_first, ledger, active from app.expense_category "
-                        + (all ? "" : "where active ") + "order by active desc, lower(name)"));
+        return db.inTenant(ctx.tenantId(), c -> {
+            seedCategories(c, ctx.tenantId());
+            return Sql.query(c,
+                    "select id, name, limit_per_expense, limit_per_month, receipt_above, per_km_rate, needs_travel_proof, "
+                            + "needs_approval_first, ledger, active from app.expense_category "
+                            + (all ? "" : "where active ") + "order by active desc, lower(name)");
+        });
+    }
+
+    /** An Organization that has never had a category starts with five, with no limits: it sets those. Categories are switched off, never deleted, so an empty table means never set up. */
+    private static void seedCategories(Connection c, UUID tenantId) throws SQLException {
+        if (Sql.exists(c, "select 1 from app.expense_category")) {
+            return;
+        }
+        for (String[] d : new String[][] {{"Travel", "Travel and conveyance", "true"}, {"Local conveyance", "Travel and conveyance", "false"},
+                {"Meals", "Staff welfare", "false"}, {"Internet and phone", "Communication", "false"}, {"Other", "Miscellaneous expenses", "false"}}) {
+            Sql.update(c, "insert into app.expense_category (tenant_id, name, ledger, needs_travel_proof) values (?, ?, ?, ?)",
+                    tenantId, d[0], d[1], Boolean.parseBoolean(d[2]));
+        }
     }
 
     /** Creates a category, or changes one when an id is given. */

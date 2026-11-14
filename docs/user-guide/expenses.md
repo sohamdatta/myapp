@@ -86,7 +86,7 @@ A loan charged less than the State Bank of India rate gives the employee a taxab
 
 | Where | What |
 | --- | --- |
-| **Categories** | Name, ledger, receipt-above amount, per-kilometre rate, limits, and which evidence is needed |
+| **Categories** | A new Organization starts with Travel, Local conveyance, Meals, Internet and phone and Other, with no limits: set them here. Each has a name, ledger, receipt-above amount, per-kilometre rate, limits, and which evidence is needed |
 | **Approvers** | A named approver for a person or a department. The approver must be allowed to approve; a rule that makes someone approve their own claims is refused |
 | **Loan types** | Largest amount, longest term, rate, months of service, how many open |
 | **Settings** | See below |

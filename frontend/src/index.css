@@ -395,6 +395,10 @@ td .hint {
   gap: 10px;
 }
 
+.card.wide {
+  max-width: 760px;
+}
+
 .card {
   width: 100%;
   max-width: 400px;
