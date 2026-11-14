@@ -314,7 +314,7 @@ Each stage ships behind the module switch and leaves the build green.
 3. **X3 — Payout.** The `reimbursement` kind, claims in the payroll run at freeze, reopen, holds, off-cycle batches and the bank file, journal lines.
 4. **X4 — Advances and loans.** Types, request, approvals, disbursal, schedules, EMIs in the run, the 50% cap, skips, carry-forward, prepayment, write-off, and advances set against claims.
 5. **X5 — Tax and exit.** The SBI rate rule rows, `LOAN_PERQ` into `AnnualTax` and Form 130, settlement lines in `ExitSettlement`, and live exit tasks.
-6. **X6 — User guide.** `docs/user-guide/expenses.md` with screenshots and the browser tests behind it.
+6. **X6 — User guide.** `docs/user-guide/expenses.md` with screenshots and the browser tests behind it. Written without screenshots or browser tests so far.
 
 ### Tests
 
