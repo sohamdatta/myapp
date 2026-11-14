@@ -41,6 +41,7 @@ public final class Settings {
     static {
         GROUPS.put("security", "Security");
         GROUPS.put("attendance", "Attendance and leave");
+        GROUPS.put("expenses", "Expenses");
         GROUPS.put("signin", "Sign-in (platform)");
     }
 
@@ -69,6 +70,45 @@ public final class Settings {
             .help("none: nobody. admins: Org Admin, HR Admin and IT Admin. admins_payroll: those and the payroll roles. everyone: all members. "
                     + "Someone who must use it and has not set it up is asked to before entering the Organization.")
             .defaultValue("none").weakens(Weakens.DOWN, Approval.PASSWORD).since("V31"));
+
+    public static final Setting EXPENSE_SUBMIT_DAYS = define(Setting.integer("expenses.submit_within_days")
+            .group("expenses").owner("expense.setup").module(Modules.EXPENSES)
+            .label("Expenses may be claimed this long after they were made").unit("days")
+            .help("Older lines are refused when a claim is submitted.")
+            .defaultValue(60).range(1, 365).weakens(Weakens.UP, Approval.PASSWORD).since("V47"));
+
+    public static final Setting EXPENSE_MANAGER_STEP = define(Setting.bool("expenses.manager_step")
+            .group("expenses").owner("expense.setup").module(Modules.EXPENSES)
+            .label("Claims go to the manager first")
+            .help("When off, claims go straight to finance. A designated approver (Expenses, Approvers) still applies when on.")
+            .defaultValue(true).weakens(Weakens.DOWN, Approval.SECOND_PERSON).since("V48"));
+
+    public static final Setting EXPENSE_SECOND_APPROVER_ABOVE = define(Setting.integer("expenses.second_finance_above")
+            .group("expenses").owner("expense.setup").module(Modules.EXPENSES)
+            .label("A second finance approver is needed above").unit("rupees")
+            .help("A claim whose total is above this needs two different people to verify it. 0 means never.")
+            .defaultValue(0).range(0, 100000000).weakens(Weakens.ANY, Approval.PASSWORD).since("V48"));
+
+    public static final Setting EXPENSE_NO_APPROVER = define(Setting.choice("expenses.when_no_approver", "refuse", "finance")
+            .group("expenses").owner("expense.setup").module(Modules.EXPENSES)
+            .label("A person with no approver or manager")
+            .help("finance: the claim goes straight to finance. refuse: it cannot be submitted until HR sets a manager or a designated approver for them.")
+            .defaultValue("finance").weakens(Weakens.UP, Approval.PASSWORD).since("V50"));
+
+    public static final Setting LOAN_SECOND_APPROVER_ABOVE = define(Setting.integer("loans.second_finance_above")
+            .group("expenses").owner("loan.manage").module(Modules.EXPENSES)
+            .label("A second finance approver is needed for a loan above").unit("rupees")
+            .help("A loan or advance asked for above this amount needs two different people in finance to approve it. 0 means never. "
+                    + "It applies to requests made after the change.")
+            .defaultValue(0).range(0, 100000000).weakens(Weakens.ANY, Approval.PASSWORD).since("V55"));
+
+    public static final Setting LOAN_MARKET_RATE = define(Setting.integer("loans.perquisite_rate_bp")
+            .group("expenses").owner("loan.manage").module(Modules.EXPENSES)
+            .label("Interest rate to measure the loan perquisite against").unit("hundredths of a percent")
+            .help("The State Bank of India rate for a loan of the same purpose on the first day of the tax year (940 means 9.40%). A loan charged less than this "
+                    + "is taxed on the difference once the employee's loans together pass ₹2,00,000. 0 works out no perquisite. Ask the payroll consultant "
+                    + "for the figure, and set it from 1 April.")
+            .defaultValue(0).range(0, 3000).dated().weakens(Weakens.DOWN, Approval.PASSWORD).since("V52"));
 
     public static final Setting LEAVE_BACK_DAYS = define(Setting.integer("leave.apply.back_days")
             .group("attendance").owner("attendance.manage").module(Modules.ATTENDANCE)

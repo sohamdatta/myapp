@@ -412,6 +412,75 @@ class ExitTest {
         assertEquals(1L, count(s.org, "select count(*) from app.issued_letter where kind = 'settlement'"));
     }
 
+    @Test
+    @SuppressWarnings("unchecked")
+    void theSettlementReadsClaimsAndLoansFromExpensesAndRefreshesThem() {
+        Setup s = setup();
+        exits.saveSettings(s.hr, settings(false));
+        UUID id = UUID.fromString((String) exits.resign(s.worker, new ResignInput("pay", null, null)).get("id"));
+        exits.accept(s.hr, id, new AcceptInput(TODAY.plusDays(20).toString(), "owed", null));
+        assertTrue(((List<Map<String, Object>>) settlements.prepare(s.hr, id).get("lines")).stream()
+                .noneMatch(l -> "reimbursement".equals(l.get("code")) && l.get("taskId") == null), "nothing owed yet");
+
+        UUID worker = s.worker.membershipId();
+        db.inTenant(s.org.id, c -> {
+            UUID cat = UUID.fromString(String.valueOf(Sql.one(c, "insert into app.expense_category (tenant_id, name) values (?, 'Travel') returning id", s.org.id).get("id")));
+            UUID claim = UUID.fromString(String.valueOf(Sql.one(c, "insert into app.expense_claim (tenant_id, membership_id, number, title, status) "
+                    + "values (?, ?, 'EXP-2026-9001', 'Client trip', 'verified') returning id", s.org.id, worker).get("id")));
+            Sql.update(c, "insert into app.expense_line (tenant_id, claim_id, category_id, spent_on, amount) values (?, ?, ?, ?, 2500)", s.org.id, claim, cat, TODAY);
+            UUID type = UUID.fromString(String.valueOf(Sql.one(c, "insert into app.loan_type (tenant_id, name, kind, max_amount, max_months) values (?, 'Advance', 'salary_advance', 9000, 3) returning id", s.org.id).get("id")));
+            UUID loan = UUID.fromString(String.valueOf(Sql.one(c, "insert into app.loan (tenant_id, number, membership_id, type_id, amount, months, annual_rate, purpose, status, disbursed_on, first_month) "
+                    + "values (?, 'LN-2026-9001', ?, ?, 6000, 3, 0, 'Medical', 'active', current_date, date_trunc('month', current_date + interval '1 month')) returning id", s.org.id, worker, type).get("id")));
+            for (int m = 1; m <= 3; m++) {
+                Sql.update(c, "insert into app.loan_instalment (tenant_id, loan_id, month, principal) values (?, ?, date_trunc('month', current_date + make_interval(months => ?)), 2000)",
+                        s.org.id, loan, m);
+            }
+            return null;
+        });
+        List<Map<String, Object>> lines = (List<Map<String, Object>>) settlements.prepare(s.hr, id).get("lines");
+        Map<String, Object> claims = lines.stream().filter(l -> "reimbursement".equals(l.get("code")) && l.get("taskId") == null).findFirst().orElseThrow();
+        assertEquals(0, new java.math.BigDecimal("2500").compareTo((java.math.BigDecimal) claims.get("amount")));
+        assertEquals("earning", claims.get("direction"));
+        Map<String, Object> owed = lines.stream().filter(l -> "recovery".equals(l.get("code")) && l.get("taskId") == null).findFirst().orElseThrow();
+        assertEquals(0, new java.math.BigDecimal("6000").compareTo((java.math.BigDecimal) owed.get("amount")));
+        assertEquals("demand", owed.get("direction"), "asked for separately, not deducted from final wages");
+
+        // Part of the loan is repaid: preparing again shows what is owed now.
+        db.inTenant(s.org.id, c -> Sql.update(c, "update app.loan_instalment set status = 'cancelled' where id = (select id from app.loan_instalment order by month limit 1)"));
+        lines = (List<Map<String, Object>>) settlements.prepare(s.hr, id).get("lines");
+        owed = lines.stream().filter(l -> "recovery".equals(l.get("code")) && l.get("taskId") == null).findFirst().orElseThrow();
+        assertEquals(0, new java.math.BigDecimal("4000").compareTo((java.math.BigDecimal) owed.get("amount")));
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void theClearanceTaskForAdvancesAndClaimsCompletesItselfWhenNothingIsOpen() {
+        Setup s = setup();
+        exits.saveSettings(s.hr, settings(false));
+        UUID id = UUID.fromString((String) exits.resign(s.worker, new ResignInput("pay", null, null)).get("id"));
+        exits.accept(s.hr, id, new AcceptInput(TODAY.plusDays(20).toString(), "owed", null));
+        String title = "Clear open advances, loans and expense claims";
+        assertEquals("done", task((List<Map<String, Object>>) exits.get(s.hr, id).get("tasks"), title).get("state"), "nothing is open at the start");
+        UUID worker = s.worker.membershipId();
+        db.inTenant(s.org.id, c -> {
+            UUID type = UUID.fromString(String.valueOf(Sql.one(c, "insert into app.loan_type (tenant_id, name, kind, max_amount, max_months) values (?, 'Advance', 'salary_advance', 9000, 3) returning id", s.org.id).get("id")));
+            UUID loan = UUID.fromString(String.valueOf(Sql.one(c, "insert into app.loan (tenant_id, number, membership_id, type_id, amount, months, annual_rate, purpose, status, disbursed_on, first_month) "
+                    + "values (?, 'LN-2026-9002', ?, ?, 4000, 2, 0, 'Medical', 'active', current_date, date_trunc('month', current_date + interval '1 month')) returning id", s.org.id, worker, type).get("id")));
+            for (int m = 1; m <= 2; m++) {
+                Sql.update(c, "insert into app.loan_instalment (tenant_id, loan_id, month, principal) values (?, ?, date_trunc('month', current_date + make_interval(months => ?)), 2000)", s.org.id, loan, m);
+            }
+            return null;
+        });
+        Map<String, Object> open = task((List<Map<String, Object>>) exits.get(s.hr, id).get("tasks"), title);
+        assertEquals("open", open.get("state"), "it opens again when something comes up");
+        assertTrue(String.valueOf(open.get("liveNote")).contains("4000.00 principal"), String.valueOf(open.get("liveNote")));
+
+        db.inTenant(s.org.id, c -> Sql.update(c, "update app.loan set status = 'closed' where number = 'LN-2026-9002'"));
+        Map<String, Object> done = task((List<Map<String, Object>>) exits.get(s.hr, id).get("tasks"), title);
+        assertEquals("done", done.get("state"));
+        assertTrue(String.valueOf(done.get("amountNote")).startsWith("Cleared automatically"));
+    }
+
     // ── letters and the interview ───────────────────────────────────────
 
     @Test

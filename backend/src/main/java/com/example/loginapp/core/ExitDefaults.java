@@ -239,5 +239,7 @@ final class ExitDefaults {
             Sql.update(c, "insert into app.checklist_template_task (tenant_id, template_id, title, owner, trigger_event, offset_days, position) "
                     + "values (?, ?, ?, ?, ?, ?, ?)", tenantId, checklist, t[0], t[1], t[2], ((Integer) t[3]).shortValue(), position++);
         }
+        // This one checks itself against Expenses: it completes when the leaver has nothing open there.
+        Sql.update(c, "update app.checklist_template_task set auto_check = 'expenses' where template_id = ? and title = 'Clear open advances, loans and expense claims'", checklist);
     }
 }

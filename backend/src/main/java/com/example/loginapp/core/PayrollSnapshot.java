@@ -42,12 +42,18 @@ final class PayrollSnapshot {
         LocalDate end = period.plusMonths(1).minusDays(1);
         Map<String, Object> config = PayrollConfig.load(c, end);
         List<Map<String, Object>> employees = new ArrayList<>();
-        for (Map<String, Object> m : members(c, groupId, period)) {
+        List<Map<String, Object>> members = members(c, groupId, period);
+        UUID[] ids = members.stream().map(m -> AuthService.uuid(m.get("id"))).toArray(UUID[]::new);
+        // Verified claims and instalments due are taken up for this run before anything is read, so nothing else can take them meanwhile.
+        ExpenseRunClaims.reserve(c, runId, ids);
+        LoanService.reserve(c, runId, ids, period);
+        for (Map<String, Object> m : members) {
             Map<String, Object> e = employee(c, config, AuthService.uuid(m.get("id")), period, today, runId, false);
             if (e != null) {
                 employees.add(e);
             }
         }
+        attachExpenses(c, runId, ids, period, employees);
         Map<String, Object> snap = new LinkedHashMap<>();
         snap.put("period", period.toString());
         snap.put("frozenOn", today.toString());
@@ -56,6 +62,38 @@ final class PayrollSnapshot {
         @SuppressWarnings("unchecked")
         Map<String, Object> normal = (Map<String, Object>) Json.parse(Json.write(snap));
         return normal;
+    }
+
+    /** Adds each person's reimbursements, loan instalments and loan perquisite, from three queries for the whole run. */
+    @SuppressWarnings("unchecked")
+    private static void attachExpenses(Connection c, UUID runId, UUID[] ids, LocalDate period, List<Map<String, Object>> employees) throws SQLException {
+        Map<String, List<Map<String, Object>>> claims = ExpenseRunClaims.reserved(c, runId);
+        Map<String, Map<String, Object>> due = LoanService.reserved(c, runId);
+        Map<String, Map<String, Object>> perquisites = LoanService.perquisites(c, ids, period);
+        java.util.Set<String> seen = new java.util.HashSet<>();   // someone with two employments in the run has their loan on the first only
+        for (Map<String, Object> e : employees) {
+            List<Map<String, Object>> items = claims.get(String.valueOf(e.get("employmentId")));
+            if (items != null) {
+                e.put("reimbursements", items);
+            }
+            String membership = e.get("membershipId") == null ? null : String.valueOf(e.get("membershipId"));
+            if (membership == null || !seen.add(membership)) {
+                continue;
+            }
+            Map<String, Object> loan = due.get(membership);
+            if (loan != null) {
+                ((Map<String, Object>) e.get("inputs")).merge(LoanService.COMPONENT, loan.get("amount"), (a, b) -> ((BigDecimal) a).add((BigDecimal) b));
+                e.put("loanInstalments", loan.get("ids"));
+                e.put("loanDue", loan.get("amount"));
+            }
+            Map<String, Object> perq = perquisites.get(membership);
+            if (perq != null && ((BigDecimal) perq.get("amount")).signum() > 0) {
+                e.put("loanPerquisite", perq.get("amount"));
+            }
+            if (perq != null && Boolean.TRUE.equals(perq.get("rateMissing"))) {
+                e.put("loanPerqRateMissing", true);
+            }
+        }
     }
 
     /**

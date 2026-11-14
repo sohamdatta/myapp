@@ -136,13 +136,24 @@ final class PayslipPdf {
         table(items, LEFT, LEFT + HALF, y, "EARNINGS", "AMOUNT", earnings, n, new String[] {"Gross earnings", money(ps.get("gross"))});
         y = table(items, col2, RIGHT, y, "DEDUCTIONS", "AMOUNT", deductions, n, new String[] {"Total deductions", money(ps.get("deductions"))});
         y += 12;
+        List<String[]> reimbursed = rows(lines, "reimbursement");
+        if (!reimbursed.isEmpty()) {
+            BigDecimal reimbursedTotal = BigDecimal.ZERO;
+            for (Map<String, Object> l : lines) {
+                if ("reimbursement".equals(l.get("kind"))) {
+                    reimbursedTotal = reimbursedTotal.add(PayrollEngine.dec(l, "amount"));
+                }
+            }
+            y = table(items, LEFT, RIGHT, y, "EXPENSES PAID BACK, NOT PART OF PAY", "AMOUNT", reimbursed, reimbursed.size(),
+                    new String[] {"Total paid back", money(reimbursedTotal)}) + 12;
+        }
 
         // Net pay, the figure people look for, in a brand band with the amount in words.
         items.add(Pdf.Item.band(LEFT, y, RIGHT, 52).color(ACCENT));
         items.add(Pdf.Item.text(LEFT + 14, y + 19, "NET PAY FOR " + PayrollEngine.str(ps.get("label")).toUpperCase(java.util.Locale.ROOT), 8, true).color(WHITE));
         items.add(Pdf.Item.text(LEFT + 14, y + 38, fit(words(PayrollEngine.dec(ps, "net")), RIGHT - LEFT - 190, 9, false), 9, false).color(WHITE));
         items.add(Pdf.Item.right(RIGHT - 14, y + 33, money(ps.get("net")), 18, true).color(WHITE));
-        items.add(Pdf.Item.right(RIGHT - 14, y + 45, "Gross " + money(ps.get("gross")) + " less deductions " + money(ps.get("deductions")), 7, false).color(WHITE));
+        items.add(Pdf.Item.right(RIGHT - 14, y + 45, "Gross " + money(ps.get("gross")) + " less deductions " + money(ps.get("deductions")) + (reimbursed.isEmpty() ? "" : " plus expenses"), 7, false).color(WHITE));
         y += 52 + 14;
 
         // The tax year to date beside the employer's contributions.

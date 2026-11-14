@@ -36,6 +36,7 @@ export function navFor(me) {
   const hasAttendance = (me.modules || []).includes('attendance')
   const hasLeave = (me.modules || []).includes('leave')
   const hasPayroll = (me.modules || []).includes('payroll')
+  const hasExpenses = (me.modules || []).includes('expenses')
   // Punching is for users of the Organization, never for a support session.
   const canPunch = hasAttendance && me.permissions.includes('attendance.punch') && me.kind === 'tenant'
   const seesOthersAttendance = Boolean(scopes['attendance.read']) && scopes['attendance.read'] !== 'self'
@@ -52,6 +53,8 @@ export function navFor(me) {
         hasOwnLeave && { id: 'my-leave', label: 'My leave' },
         me.openTasks > 0 && { id: 'my-tasks', label: 'My tasks' },
         hasPayroll && me.employment && me.kind === 'tenant' && { id: 'my-pay', label: 'My pay' },
+        // Claims are the person's own, so a support session has none; managers and finance reach their queues from the same page.
+        hasExpenses && me.kind === 'tenant' && ['expense.claim', 'expense.approve', 'expense.finance', 'expense.setup'].some((p) => me.permissions.includes(p)) && { id: 'expenses', label: 'Expenses' },
         me.employment && me.kind === 'tenant' && Boolean(scopes['performance.read']) && { id: 'my-performance', label: 'My performance' },
         me.employment && me.kind === 'tenant' && { id: 'my-profile', label: 'My profile' },
         me.employment && me.kind === 'tenant' && { id: 'my-exit', label: 'My exit' },

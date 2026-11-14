@@ -22,6 +22,7 @@ const ORGANIZATION = {
   'my-leave': page(() => import('./pages/MyLeave.jsx'), ({ me }) => ({ me })),
   'my-tasks': page(() => import('./pages/MyTasks.jsx')),
   'my-pay': page(() => import('./pages/MyPay.jsx')),
+  expenses: page(() => import('./pages/Expenses.jsx'), ({ me }) => ({ me })),
   'my-profile': page(named(() => import('./pages/People.jsx'), 'MyProfile'), ({ me }) => ({ id: me.employment?.id })),
   'my-exit': page(() => import('./pages/MyExit.jsx'), ({ me }) => ({ me })),
   'my-onboarding': page(() => import('./pages/MyOnboarding.jsx'), ({ me }) => ({ me })),

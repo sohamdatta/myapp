@@ -16,6 +16,7 @@ The versions here are Markdown exports. The live, editable versions are the clau
 | Employee exit | Built (stages E1 to E6) | [Design, as built](exit/design.md) | [Design](https://claude.ai/code/artifact/7afa54a6-7167-4814-b837-4e05cd6dc72a) |
 | Payroll | Release 1 built: setup, pay, monthly runs, PF, ESI, PT and LWF for Goa, Karnataka and Maharashtra, income tax | [Design, as built](payroll/design.md) · [Tax declarations and proofs (V17)](payroll/tax-declarations.md) · [Feature checklist](notes/payroll-feature-checklist.md) · [Implementation plan](notes/payroll-module-implementation-plan.md) | [Design](https://claude.ai/code/artifact/0af98c52-4583-4973-ac9d-be1a41213738) |
 | Performance | Built (stages P1 to P6, V20 to V25) | [Design, as built](performance/design.md) | [Design](https://claude.ai/code/artifact/6a10ae6f-f1cc-40de-9ea5-f7b36d28fad8) |
+| Expenses, reimbursements and advances | X1 and X2 built (claims, evidence, approval; V47). X3 to X6 designed, not built | [Design](expenses/design.md): claims with per-item evidence review, payout through payroll or bank file, salary advances and loans with EMI recovery and the loan perquisite, recovery at exit | [Design](https://claude.ai/artifact/SCLwr2gcdk2d6C46EoP4Nn) |
 
 ## Configuration
 

@@ -39,7 +39,7 @@ Tax declarations and proofs (Form 124) are built in V17: see [tax-declarations.m
 
 ## Deferred to later releases
 
-Spreadsheet import of salaries and year-to-date history; a parallel run against the old payroll; Ask for help on a payslip; the PF ECR and ESI return files; Form 130 (the Form 16 replacement) and quarterly TDS returns; loans and advances; arrears when pay is revised for a month already approved (refused today with "arrears come in the next release").
+Spreadsheet import of salaries and year-to-date history; a parallel run against the old payroll; Ask for help on a payslip; the PF ECR and ESI return files; Form 130 (the Form 16 replacement) and quarterly TDS returns; loans and advances (designed in [the Expenses module](../expenses/design.md)); arrears when pay is revised for a month already approved (refused today with "arrears come in the next release").
 
 ## Open items before real salaries are paid
 

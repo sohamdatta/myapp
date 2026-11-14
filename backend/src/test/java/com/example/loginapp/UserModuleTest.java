@@ -304,8 +304,11 @@ class UserModuleTest {
         assertError(403, "grant.not_allowed", () -> users.end(hr, admin));
         Map<String, Boolean> grantable = new java.util.HashMap<>();
         users.roles(hr).forEach(r -> grantable.put((String) r.get("code"), (Boolean) r.get("grantable")));
-        assertEquals(Map.of("auditor", false, "employee", true, "ex_employee", false, "hr_admin", true, "it_admin", true, "joiner", false, "manager", true,
-                "owner", false, "payroll_approver", false, "payroll_operator", false), grantable);
+        // Finance holds the permission to verify claims, which an HR Admin does not, so only an Org Admin grants it.
+        assertEquals(Map.ofEntries(Map.entry("auditor", false), Map.entry("employee", true), Map.entry("ex_employee", false),
+                Map.entry("hr_admin", true), Map.entry("it_admin", true), Map.entry("joiner", false), Map.entry("manager", true),
+                Map.entry("owner", false), Map.entry("payroll_approver", false), Map.entry("payroll_operator", false),
+                Map.entry("finance", false)), grantable);
     }
 
     @Test
@@ -492,7 +495,7 @@ class UserModuleTest {
         java.time.LocalDate today = java.time.LocalDate.now(java.time.ZoneId.of("Asia/Kolkata"));
         // Created without saying: everything, as Organizations made before modules existed.
         Org all = newOrg();
-        assertEquals(java.util.Set.of("attendance", "leave", "payroll"), all.admin().modules());
+        assertEquals(java.util.Set.of("attendance", "leave", "payroll", "expenses"), all.admin().modules());
 
         String slug = "mod-" + SEQUENCE.incrementAndGet();
         Map<String, Object> created = platform.createOrganization(superAdmin, "Payroll only " + slug, slug,
@@ -508,7 +511,7 @@ class UserModuleTest {
         Map<String, Object> row = platform.organizations(superAdmin).stream()
                 .filter(o -> o.get("id").equals(id.toString())).findFirst().orElseThrow();
         List<?> modules = (List<?>) row.get("modules");
-        assertEquals(List.of("attendance", "leave", "payroll"), modules.stream().map(m -> ((Map<?, ?>) m).get("module")).toList());
+        assertEquals(List.of("attendance", "leave", "payroll", "expenses"), modules.stream().map(m -> ((Map<?, ?>) m).get("module")).toList());
         assertEquals("off", ((Map<?, ?>) modules.get(0)).get("status"));
         assertEquals("off", ((Map<?, ?>) modules.get(1)).get("status"));
         assertEquals("on", ((Map<?, ?>) modules.get(2)).get("status"));
@@ -555,7 +558,7 @@ class UserModuleTest {
         assertFalse(admin.hasModule("payroll"));
         assertEquals(List.of("leave"), auth.me(admin).get("modules"));
         List<?> subscription = (List<?>) auth.me(admin).get("subscription");
-        assertEquals(List.of("Attendance", "Leave", "Payroll"), subscription.stream().map(m -> ((Map<?, ?>) m).get("name")).toList());
+        assertEquals(List.of("Attendance", "Leave", "Payroll", "Expenses"), subscription.stream().map(m -> ((Map<?, ?>) m).get("name")).toList());
         assertEquals(true, ((Map<?, ?>) subscription.get(1)).get("active"));
 
         // Switched on and off independently: Attendance does not bring Leave with it, nor take it away.

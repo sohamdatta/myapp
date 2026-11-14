@@ -174,9 +174,10 @@ public final class ExitSettlement {
                             (short) line.position(), line.code(), line.label(), line.direction(), line.quantity(), line.unit(), line.amount(),
                             line.dueDate(), line.taskId(), line.note());
                 } else {
-                    Sql.update(c, "update app.exit_settlement_line set quantity = ?, due_date = ?, note = coalesce(note, ?), "
-                            + "amount = coalesce(amount, ?) where id = ?::uuid and paid_on is null", line.quantity(), line.dueDate(), line.note(),
-                            line.amount(), existing.get("id"));
+                    boolean live = line.note() != null && line.note().startsWith(LIVE);   // what Expenses says now, not something HR typed
+                    Sql.update(c, "update app.exit_settlement_line set quantity = ?, due_date = ?, note = " + (live ? "?" : "coalesce(note, ?)") + ", "
+                            + "amount = " + (live ? "?" : "coalesce(amount, ?)") + " where id = ?::uuid and paid_on is null", line.quantity(), line.dueDate(),
+                            line.note(), line.amount(), existing.get("id"));
                 }
             }
             if ("none".equals(x.get("settlementState"))) {
@@ -187,6 +188,9 @@ public final class ExitSettlement {
             return view(c, ctx, load(c, caseId), false);
         });
     }
+
+    /** A line that begins with this is read from Expenses and refreshed whenever the draft is prepared. */
+    private static final String LIVE = "From Expenses, now: ";
 
     private record Computed(int position, String code, String label, String direction, BigDecimal quantity, String unit, BigDecimal amount,
                             LocalDate dueDate, UUID taskId, String note) {}
@@ -259,6 +263,27 @@ public final class ExitSettlement {
             out.add(new Computed(position++, toEmployee ? "reimbursement" : "recovery", label.length() > 120 ? label.substring(0, 120) : label,
                     toEmployee ? "earning" : "demand", null, null, (BigDecimal) t.get("amount"), toEmployee ? wagesDue : null,
                     AuthService.uuid(t.get("id")), toEmployee ? null : "Asked for separately unless the law allows a deduction"));
+        }
+
+        // Expense claims verified and not yet paid are owed to the employee; advances and loans still being repaid are owed by them.
+        // Both are read live from Expenses each time the draft is prepared. Money owed by the employee is asked for separately,
+        // like a notice shortfall; the law limits what may be deducted from final wages.
+        if (membership != null) {
+            Map<String, Object> claims = Sql.one(c, "select count(*) as n, coalesce(sum((select coalesce(sum(coalesce(l.approved_amount, l.amount)), 0) "
+                    + "from app.expense_line l where l.claim_id = k.id)), 0) as total from app.expense_claim k where k.membership_id = ? and k.status = 'verified'",
+                    membership);
+            if (((BigDecimal) claims.get("total")).signum() > 0) {
+                out.add(new Computed(8, "reimbursement", "Expense claims verified and not yet paid", "earning", null, null, (BigDecimal) claims.get("total"),
+                        wagesDue, null, LIVE + claims.get("n") + (((Number) claims.get("n")).intValue() == 1 ? " claim" : " claims")
+                        + ". Pay them here, not in an expense batch"));
+            }
+            Map<String, Object> loanOwed = Sql.one(c, "select count(distinct l.id) as n, coalesce(sum(i.principal), 0) as total from app.loan l "
+                    + "join app.loan_instalment i on i.loan_id = l.id and i.status = 'due' where l.membership_id = ? and l.status = 'active'", membership);
+            if (((BigDecimal) loanOwed.get("total")).signum() > 0) {
+                out.add(new Computed(9, "recovery", "Advances and loans still owed", "demand", null, null, (BigDecimal) loanOwed.get("total"), null, null,
+                        LIVE + loanOwed.get("n") + (((Number) loanOwed.get("n")).intValue() == 1 ? " loan" : " loans") + ", principal only. Finance records "
+                        + "what is repaid or written off under Expenses, Loans"));
+            }
         }
 
         // The final income tax of the year: worked out by payroll, typed by HR until then.

@@ -304,6 +304,18 @@ public final class PayrollEngine {
                 taxable = taxable.add(a);
             }
         }
+        // The interest benefit of a loan from the employer is taxed as a perquisite: it joins the taxable amount, and shows as an information line.
+        BigDecimal perquisite = dec(emp, "loanPerquisite");
+        if (perquisite.signum() > 0 && components.containsKey(LoanService.PERQUISITE)) {
+            taxable = taxable.add(perquisite);
+            Map<String, Object> pt = new LinkedHashMap<>();
+            pt.put("source", "Interest the employer's loan would have cost at the State Bank rate, less what is charged");
+            addLineRounded(out, map(components, LoanService.PERQUISITE), perquisite, "none", null, pt, position++);
+        }
+        if (Boolean.TRUE.equals(emp.get("loanPerqRateMissing"))) {
+            out.exception("loan_perq_rate_missing", "warning", false, "A loan from the employer is charged less than the market rate, but no rate is set to work "
+                    + "out the taxable benefit. Set it under Expenses settings (loans.perquisite_rate_bp).", null);
+        }
         BigDecimal half = remuneration.divide(BigDecimal.valueOf(2), MC);
         BigDecimal addBack = wages.compareTo(half) < 0 ? conditional.min(half.subtract(wages)) : ZERO;
         BigDecimal pfWage = wages.add(addBack);
@@ -313,6 +325,9 @@ public final class PayrollEngine {
         bases.put("pfWage", scale(pfWage));
         bases.put("esiWage", scale(esiWage));
         bases.put("taxable", scale(taxable));
+        if (perquisite.signum() > 0) {
+            bases.put("loanPerquisite", scale(perquisite));
+        }
         out.info.put("bases", bases);
 
         // 6. PF, ESI, PT, LWF.
@@ -340,10 +355,12 @@ public final class PayrollEngine {
         tds(out, rules, emp, components, full, order, taxable, period, position++);
 
         // 8. Totals and checks.
+        capLoanRecovery(out);
+        reimbursements(out, emp, components, position++);
         out.gross = sumKind(out, "earning");
         out.deductions = sumKind(out, "deduction");
         out.employer = sumKind(out, "employer");
-        out.net = out.gross.subtract(out.deductions);
+        out.net = out.gross.subtract(out.deductions).add(sumKind(out, "reimbursement"));
         out.calculated = true;
         if (out.net.signum() < 0) {
             out.exception("net_negative", "blocking", false, "Net pay would be " + rupees(out.net)
@@ -831,7 +848,7 @@ public final class PayrollEngine {
             }
         }
         BigDecimal later = BigDecimal.valueOf(left - 1L);
-        BigDecimal annualIncome = dec(ytd, "taxable").add(taxableNow).add(recurring.multiply(later));
+        BigDecimal annualIncome = dec(ytd, "taxable").add(taxableNow).add(recurring.multiply(later)).add(dec(emp, "loanPerquisite").multiply(later));
         BigDecimal deductions = dec(r, "standardDeduction");
         List<String> deductionWords = new ArrayList<>(List.of("standard deduction " + rupees(dec(r, "standardDeduction"))));
         Map<String, Object> declared = map(emp, "declarations");
@@ -1084,6 +1101,54 @@ public final class PayrollEngine {
         t.put("source", sources.get(statute + ":" + jurisdiction));
         t.put("draft", map(rules, "drafts").get(statute + ":" + jurisdiction));
         return t;
+    }
+
+    /**
+     * Deductions of a month may not take more than half the month's pay (Code on Wages s.18(4)). The loan instalment is the part that
+     * gives way: it takes what fits, and what is left stays due for the next run. Statutory and tax deductions are never reduced.
+     */
+    private static void capLoanRecovery(Calc out) {
+        Map<String, Object> emi = null;
+        for (Map<String, Object> l : out.lines) {
+            if (LoanService.COMPONENT.equals(l.get("code"))) {
+                emi = l;
+            }
+        }
+        if (emi == null) {
+            return;
+        }
+        BigDecimal asked = (BigDecimal) emi.get("amount");
+        BigDecimal others = sumKind(out, "deduction").subtract(asked);
+        BigDecimal room = sumKind(out, "earning").multiply(LoanService.DEDUCTION_CAP).setScale(2, RoundingMode.DOWN).subtract(others).max(ZERO);
+        if (asked.compareTo(room) <= 0) {
+            return;
+        }
+        out.exception("loan_emi_capped", "warning", false, "The loan instalment of " + rupees(asked) + " would take deductions above half of pay. "
+                + rupees(room) + " is taken and " + rupees(asked.subtract(room)) + " stays due.", null);
+        if (room.signum() == 0) {
+            out.lines.remove(emi);
+        } else {
+            emi.put("amount", room);
+            ((Map<String, Object>) emi.get("trace")).put("capped", "Half of pay is the most deductions may take; " + rupees(asked.subtract(room)) + " stays due");
+        }
+    }
+
+    /** Verified expense claims paid with the salary: one line a category, outside gross and not taxable. */
+    @SuppressWarnings("unchecked")
+    private static void reimbursements(Calc out, Map<String, Object> emp, Map<String, Object> components, int position) {
+        Object items = emp.get("reimbursements");
+        if (!(items instanceof List<?> list) || list.isEmpty() || !components.containsKey(ExpenseRunClaims.COMPONENT)) {
+            return;
+        }
+        Map<String, Object> base = map(components, ExpenseRunClaims.COMPONENT);
+        for (Object o : list) {
+            Map<String, Object> item = (Map<String, Object>) o;
+            Map<String, Object> component = new LinkedHashMap<>(base);
+            component.put("name", ExpenseRunClaims.PREFIX + item.get("name"));
+            Map<String, Object> trace = new LinkedHashMap<>();
+            trace.put("source", "Verified expense claims, paid with the salary. Not taxable, and not part of gross");
+            addLineRounded(out, component, dec(item, "amount"), "none", null, trace, position);
+        }
     }
 
     private static BigDecimal sumKind(Calc out, String kind) {

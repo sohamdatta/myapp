@@ -308,6 +308,7 @@ public final class PayrollRuns {
                 throw new ApiException(409, "payroll.state", "Only a run being prepared can be frozen");
             }
             LocalDate period = LocalDate.parse((String) r.get("period"));
+            LoanComponent.ensure(c, ctx.tenantId());   // the library the run is frozen with has the loan deduction
             Map<String, Object> snapshot = snapshot(c, crypto, AuthService.uuid(r.get("groupId")), runId, period, today);
             Sql.update(c, "update app.payroll_run set state = 'frozen', snapshot = ?::jsonb, frozen_at = now(), frozen_by = ?, note = null where id = ?",
                     Json.write(snapshot), ctx.membershipId(), runId);
@@ -357,9 +358,11 @@ public final class PayrollRuns {
             List<Object[]> exceptionRows = new ArrayList<>();
             Map<UUID, LocalDate> lastDays = currentLastDays(c, PayrollEngine.list(snapshot, "employees"));
             BankRead bank = bankChecks(c, ctx.tenantId(), PayrollEngine.list(snapshot, "employees"), period);
-            for (Map<String, Object> emp : PayrollEngine.list(snapshot, "employees")) {
+            for (Map<String, Object> frozen : PayrollEngine.list(snapshot, "employees")) {
+                UUID employment = AuthService.uuid(frozen.get("employmentId"));
+                // Held pay carries no expense claims and no loan instalment: those are settled only on pay that goes out, in a later run.
+                Map<String, Object> emp = onHold.contains(employment) ? LoanService.withoutExpenses(frozen) : frozen;
                 PayrollEngine.Calc calc = PayrollEngine.calculate(config, emp, period);
-                UUID employment = AuthService.uuid(emp.get("employmentId"));
                 lastDayCheck(calc, emp, lastDays.get(employment), period);
                 if (calc.calculated()) {
                     calc.exceptions().addAll(bank.flags.getOrDefault(employment, List.of()));
@@ -372,6 +375,9 @@ public final class PayrollRuns {
                     info.put("structure", PayrollEngine.map(PayrollEngine.map(config, "structures"), (String) emp.get("structureId")).get("name"));
                     info.put("compensationFrom", emp.get("compensationFrom"));
                     info.put("proration", PayrollEngine.map(config, "settings").get("proration"));
+                    if (emp.get("loanInstalments") != null) {
+                        info.put("loanInstalments", emp.get("loanInstalments"));
+                    }
                     if (bank.current.get(employment) != null) {
                         info.put("bankAccountId", bank.current.get(employment));   // the account this payslip is paid to; approval checks it is unchanged
                     }
@@ -718,6 +724,8 @@ public final class PayrollRuns {
     }
 
     private static void back(Connection c, UUID runId, String note) throws SQLException {
+        ExpenseRunClaims.release(c, runId);
+        LoanService.release(c, runId);
         Sql.update(c, "delete from app.payslip where run_id = ?", runId);
         Sql.update(c, "delete from app.run_exception where run_id = ?", runId);
         Sql.update(c, "update app.payroll_run set state = 'draft', snapshot = null, totals = null, note = ? where id = ?", note, runId);
@@ -767,11 +775,25 @@ public final class PayrollRuns {
                 throw new ApiException(409, "payroll.bank_changed", "The bank account of " + moved + (moved == 1 ? " person was" : " people were")
                         + " changed after the run was calculated. Calculate it again so the new account is checked.");
             }
+            // Held pay carries no expense claims and no loan instalment. If pay was held or released after the calculation, a payslip
+            // shows what will not be paid (or leaves out what will): calculate again.
+            if (Sql.exists(c, "select 1 from app.payslip ps where ps.run_id = ? and ("
+                    + "(ps.held and (jsonb_exists(ps.info, 'loanInstalments') or exists (select 1 from app.payslip_line l where l.payslip_id = ps.id and l.kind = 'reimbursement'))) "
+                    + "or (not ps.held and exists (select 1 from app.expense_run_claim rc where rc.run_id = ps.run_id and rc.employment_id = ps.employment_id and rc.status = 'reserved') "
+                    + "  and not exists (select 1 from app.payslip_line l where l.payslip_id = ps.id and l.kind = 'reimbursement')) "
+                    + "or (not ps.held and exists (select 1 from app.loan_instalment i join app.loan l2 on l2.id = i.loan_id where i.reserved_run_id = ps.run_id and l2.membership_id = ps.membership_id) "
+                    + "  and not exists (select 1 from app.payslip p2 where p2.run_id = ps.run_id and p2.membership_id = ps.membership_id and jsonb_exists(p2.info, 'loanInstalments'))))", runId)) {
+                throw new ApiException(409, "payroll.recalculate", "Pay was held or released after the run was calculated, for someone with expense claims or a loan "
+                        + "instalment in it. Calculate it again so their payslip shows what will be paid.");
+            }
             long open = Sql.count(c, "select 1 from app.run_exception where run_id = ? and level = 'blocking' and accepted_at is null", runId);
             if (open > 0) {
                 throw new ApiException(409, "payroll.blocked", open + " blocking exception" + (open == 1 ? " is" : "s are") + " still open");
             }
             Sql.update(c, "update app.payroll_run set state = 'approved', approved_by = ?, approved_at = now() where id = ?", ctx.membershipId(), runId);
+            ExpenseRunClaims.settleRun(c, ctx.tenantId(), runId);   // claims on a payslip that goes out are paid
+            LoanService.settleRun(c, ctx.tenantId(), runId);   // what was deducted settles the instalments; an approved run is not reopened
+            LoanService.alertCarried(c, ctx.tenantId(), runId, LocalDate.parse(String.valueOf(r.get("period"))));   // finance hears of instalments left over
             UserService.audit(c, ctx, "payroll.run_approved", "payroll_run", runId, Map.of("period", r.get("period")));
             return null;
         });

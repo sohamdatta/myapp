@@ -11,6 +11,7 @@ Oct 24, 2026 · Markdown export of the [live document](https://claude.ai/artifac
 - **3 Income tax: built except Form 130 Part A.** Form 122, challans, quarterly Form 138 statements (a review spreadsheet, with the fourth quarter's salary detail), and Form 130 Part B with a per-Organization layout (V35, V36, V38). Not built: Part A (TRACES upload, match by PAN, join into one PDF) and the department utility's text file layout. The screens (Payroll → Tax filing, Statutory filing, My pay → Tax certificates, Form 122 under Tax declaration) were built on 14 Nov.
 - **4 PF and ESI returns: built** (V34): the ECR and ESI files, pre-checks and the filing log, with a second person approving. The layouts and ceilings are draft data awaiting the consultant.
 - **5 Installable app: not started.** No service worker or web manifest.
+- **Expenses (not one of the five): claims built, payout not.** Claims, evidence review, routing, the Finance role and Organization-defined roles are built (V47 to V49, PR #113). Payout through payroll or a bank file (X3), advances and loans (X4), exit and tax (X5) are designed in [the Expenses design](../expenses/design.md), not built.
 - **All of it runs on draft tax and statutory rules** until the payroll consultant signs them off, so certificates and statements say provisional.
 
 ## Summary

@@ -38,7 +38,7 @@ public final class UserService {
     public List<Map<String, Object>> roles(SessionCtx ctx) {
         ctx.require("user.read");
         return db.inTenant(ctx.tenantId(), c -> Sql.query(c,
-                "select r.code, r.name, r.assignable, "
+                "select r.id, r.code, r.name, r.assignable, r.is_system, r.description, "
                         + "coalesce(app.can_grant(?, r.id), false) as grantable, "
                         + "array(select rp.permission_code || ' (' || rp.scope || ')' from app.role_permission rp "
                         + "       where rp.role_id = r.id order by rp.permission_code) as permissions "
@@ -152,7 +152,7 @@ public final class UserService {
             }
             for (String code : added) {
                 Sql.update(c, "insert into app.membership_role (tenant_id, membership_id, role_id, granted_by) "
-                                + "select ?, ?, r.id, ? from app.role r where r.code = ? and r.tenant_id is null",
+                                + "select ?, ?, r.id, ? from app.role r where r.code = ? and (r.tenant_id is null or r.tenant_id = app.current_tenant())",
                         ctx.tenantId(), membershipId, ctx.membershipId(), code);
                 audit(c, ctx, "role.granted", "membership", membershipId, Map.of("role", code));
             }
@@ -296,7 +296,7 @@ public final class UserService {
         for (String code : new LinkedHashSet<>(roleCodes)) {
             Map<String, Object> role = Sql.one(c,
                     "select r.id, r.name, coalesce(app.can_grant(?, r.id), false) as grantable "
-                            + "from app.role r where r.code = ? and r.tenant_id is null", ctx.membershipId(), code);
+                            + "from app.role r where r.code = ? and (r.tenant_id is null or r.tenant_id = app.current_tenant())", ctx.membershipId(), code);
             if (role == null) {
                 throw ApiException.badRequest("Unknown role: " + code);
             }

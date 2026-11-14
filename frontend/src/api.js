@@ -322,6 +322,10 @@ export const invitationLink = (token) =>
 export const org = {
   users: () => get('/org/users'),
   roles: () => get('/org/roles'),
+  rolePermissions: () => get('/org/roles/permissions'),
+  createRole: (body) => post('/org/roles', body),
+  changeRole: (id, body) => put(`/org/roles/${id}`, body),
+  deleteRole: (id) => del(`/org/roles/${id}`),
   invitations: () => get('/org/invitations'),
   audit: () => get('/org/audit'),
   invite: (email, roles) => post('/org/invitations', { email, roles }),
@@ -405,6 +409,62 @@ export const leave = {
   yearEndPreview: (year) => get(`/org/leave/year-end/preview${query({ year })}`),
   yearEndRun: (year) => post('/org/leave/year-end', { year }),
   saveYear: (startMonth) => put('/org/leave/year', { startMonth }),
+}
+
+// ── expenses: claims, evidence, approval and verification ───────────
+
+export const expenses = {
+  categories: (all) => get(`/org/expenses/categories${query({ all: all ? 'true' : undefined })}`),
+  saveCategory: (id, body) => (id ? put(`/org/expenses/categories/${id}`, body) : post('/org/expenses/categories', body)),
+  approvers: () => get('/org/expenses/approvers'),
+  saveApprover: (body) => post('/org/expenses/approvers', body),
+  removeApprover: (id) => del(`/org/expenses/approvers/${id}`),
+  mine: () => get('/org/expenses/claims'),
+  create: (title) => post('/org/expenses/claims', { title }),
+  claim: (id) => get(`/org/expenses/claims/${id}`),
+  remove: (id) => del(`/org/expenses/claims/${id}`),
+  addLine: (id, body) => post(`/org/expenses/claims/${id}/lines`, body),
+  removeLine: (id) => del(`/org/expenses/lines/${id}`),
+  upload: (lineId, kind, file, statement) => uploadFile(`/org/expenses/lines/${lineId}/files${query({ kind, name: file?.name, statement })}`, file || new Blob([])),
+  file: (id) => fetchFile(`/org/expenses/files/${id}`),
+  submit: (id, version) => post(`/org/expenses/claims/${id}/submit`, { version }),
+  withdraw: (id, version) => post(`/org/expenses/claims/${id}/withdraw`, { version }),
+  reopen: (id, version) => post(`/org/expenses/claims/${id}/reopen`, { version }),
+  sendBack: (id, version) => post(`/org/expenses/claims/${id}/send-back`, { version }),
+  approvals: () => get('/org/expenses/approvals'),
+  decide: (id, body) => post(`/org/expenses/claims/${id}/decision`, body),
+  queue: () => get('/org/expenses/verify'),
+  review: (lineId, status, note, version) => post(`/org/expenses/lines/${lineId}/review`, { status, note, version }),
+  verify: (id, version, note) => post(`/org/expenses/claims/${id}/verify`, { version, note }),
+  financeReject: (id, version, note) => post(`/org/expenses/claims/${id}/finance-reject`, { version, note }),
+  payable: () => get('/org/expenses/payable'),
+  batches: () => get('/org/expenses/batches'),
+  batchClaims: (id) => get(`/org/expenses/batches/${id}/claims`),
+  createBatch: (claims) => post('/org/expenses/batches', { claims }),
+  bankFile: (id) => fetchFile(`/org/expenses/batches/${id}/bank-file`),
+  markPaid: (id, paidOn, reference) => post(`/org/expenses/batches/${id}/paid`, { paidOn, reference }),
+  cancelBatch: (id) => post(`/org/expenses/batches/${id}/cancel`),
+}
+
+// ── advances and loans ──────────────────────────────────────────────
+
+export const loans = {
+  types: (all) => get(`/org/loans/types${query({ all: all ? 'true' : undefined })}`),
+  saveType: (id, body) => (id ? put(`/org/loans/types/${id}`, body) : post('/org/loans/types', body)),
+  preview: (type, amount, months) => get(`/org/loans/preview${query({ type, amount, months })}`),
+  mine: () => get('/org/loans'),
+  request: (body) => post('/org/loans', body),
+  loan: (id) => get(`/org/loans/${id}`),
+  withdraw: (id, version) => post(`/org/loans/${id}/withdraw`, { version }),
+  approvals: () => get('/org/loans/approvals'),
+  queue: () => get('/org/loans/queue'),
+  managerDecide: (id, action, note, version) => post(`/org/loans/${id}/manager`, { action, note, version }),
+  financeDecide: (id, action, note, version) => post(`/org/loans/${id}/finance`, { action, note, version }),
+  disburse: (id, body) => post(`/org/loans/${id}/disburse`, body),
+  skip: (instalmentId, note) => post(`/org/loans/instalments/${instalmentId}/skip`, { note }),
+  prepay: (id, amount, note) => post(`/org/loans/${id}/prepay`, { amount, note }),
+  writeOff: (id, note) => post(`/org/loans/${id}/write-off`, { note }),
+  exempt: (id, note) => post(`/org/loans/${id}/exempt`, { note }),
 }
 
 // ── people: employee records and departments ────────────────────────
