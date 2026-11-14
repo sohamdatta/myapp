@@ -129,6 +129,11 @@ final class PayrollSnapshot {
                     inputs.merge(LoanService.COMPONENT, due.get("amount"), (a, b) -> ((java.math.BigDecimal) a).add((java.math.BigDecimal) b));
                     out.put("loanInstalments", due.get("ids"));
                 }
+                Map<String, Object> due2 = ExpenseRunClaims.dueFor(c, AuthService.uuid(e.get("membershipId")));
+                if (!((List<?>) due2.get("claims")).isEmpty()) {
+                    out.put("reimbursements", due2.get("items"));
+                    out.put("reimbursementClaims", due2.get("claims"));
+                }
                 Map<String, Object> perq = LoanService.perquisite(c, AuthService.uuid(e.get("membershipId")), period);
                 if (((java.math.BigDecimal) perq.get("amount")).signum() > 0) {
                     out.put("loanPerquisite", perq.get("amount"));

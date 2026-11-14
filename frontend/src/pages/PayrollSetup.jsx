@@ -289,6 +289,7 @@ function Components({ s, onChanged }) {
     ['earning', 'Earnings'],
     ['deduction', 'Deductions'],
     ['employer', 'Employer contributions'],
+    ['reimbursement', 'Paid back, outside pay'],
     ['info', 'For information'],
   ]
   return (

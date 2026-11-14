@@ -118,6 +118,8 @@ export default function PayslipView({ slip, explain = false }) {
   const earnings = by('earning')
   const deductions = by('deduction')
   const employer = by('employer')
+  const reimbursed = by('reimbursement')
+  const reimbursedTotal = reimbursed.reduce((sum, l) => sum + Number(l.amount), 0)
   const slots = Math.max(earnings.length, deductions.length, 1)
   const ytd = slip.ytd
   const tax = info.tax
@@ -171,11 +173,16 @@ export default function PayslipView({ slip, explain = false }) {
         <Lines title="Deductions" lines={deductions} explain={explain} slots={slots} total={slip.deductions} totalLabel="Total deductions" />
       </div>
 
+      {reimbursed.length > 0 && (
+        <Lines title="Expenses paid back, not part of pay" lines={reimbursed} explain={explain} slots={reimbursed.length} total={reimbursedTotal} totalLabel="Total paid back" />
+      )}
+
       <div className="payslip-net">
         <div>
           <p className="payslip-kicker">Net pay{slip.label ? ` for ${slip.label}` : ''}</p>
           <p className="payslip-net-sum">
             Gross {rupees(slip.gross)} less deductions {rupees(slip.deductions)}
+            {reimbursed.length > 0 && ' plus expenses'}
           </p>
         </div>
         <strong data-testid="net" aria-label={`Net pay ${rupees(slip.net)}`}>

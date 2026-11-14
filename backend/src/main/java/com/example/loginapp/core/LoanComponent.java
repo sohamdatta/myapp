@@ -14,6 +14,7 @@ final class LoanComponent {
         PayrollDefaults.ensure(c, tenantId);
         add(c, tenantId, LoanService.COMPONENT, "Loan or advance recovery", "deduction", 155, "none");
         add(c, tenantId, LoanService.PERQUISITE, "Loan interest perquisite (taxable)", "info", 156, "none");
+        add(c, tenantId, ExpenseRunClaims.COMPONENT, "Expense reimbursement", "reimbursement", 157, "none");
     }
 
     private static void add(Connection c, UUID tenantId, String code, String name, String kind, int position, String rounding) throws SQLException {

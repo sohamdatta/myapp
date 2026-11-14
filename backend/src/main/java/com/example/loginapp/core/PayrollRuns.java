@@ -312,6 +312,11 @@ public final class PayrollRuns {
             Map<String, Object> snapshot = snapshot(c, crypto, AuthService.uuid(r.get("groupId")), runId, period, today);
             Sql.update(c, "update app.payroll_run set state = 'frozen', snapshot = ?::jsonb, frozen_at = now(), frozen_by = ?, note = null where id = ?",
                     Json.write(snapshot), ctx.membershipId(), runId);
+            for (Map<String, Object> emp : PayrollEngine.list(snapshot, "employees")) {   // verified claims ride with the salary
+                if (emp.get("reimbursementClaims") != null) {
+                    ExpenseRunClaims.reserve(c, ctx.tenantId(), runId, AuthService.uuid(emp.get("employmentId")), PayrollEngine.list(emp, "reimbursementClaims"));
+                }
+            }
             UserService.audit(c, ctx, "payroll.run_frozen", "payroll_run", runId,
                     Map.of("period", period.toString(), "people", PayrollEngine.list(snapshot, "employees").size()));
             return Map.of("people", PayrollEngine.list(snapshot, "employees").size());
@@ -722,6 +727,7 @@ public final class PayrollRuns {
     }
 
     private static void back(Connection c, UUID runId, String note) throws SQLException {
+        ExpenseRunClaims.release(c, runId);
         Sql.update(c, "delete from app.payslip where run_id = ?", runId);
         Sql.update(c, "delete from app.run_exception where run_id = ?", runId);
         Sql.update(c, "update app.payroll_run set state = 'draft', snapshot = null, totals = null, note = ? where id = ?", note, runId);
@@ -776,6 +782,7 @@ public final class PayrollRuns {
                 throw new ApiException(409, "payroll.blocked", open + " blocking exception" + (open == 1 ? " is" : "s are") + " still open");
             }
             Sql.update(c, "update app.payroll_run set state = 'approved', approved_by = ?, approved_at = now() where id = ?", ctx.membershipId(), runId);
+            ExpenseRunClaims.settleRun(c, runId);   // claims on a payslip that goes out are paid
             LoanService.settleRun(c, ctx.tenantId(), runId);   // what was deducted settles the instalments; an approved run is not reopened
             UserService.audit(c, ctx, "payroll.run_approved", "payroll_run", runId, Map.of("period", r.get("period")));
             return null;

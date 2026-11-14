@@ -126,13 +126,17 @@ final class PayrollOutputs {
         BigDecimal debits = BigDecimal.ZERO;
         BigDecimal credits = BigDecimal.ZERO;
         for (Map<String, Object> g : Sql.query(c, "select l.kind, l.code, l.name, coalesce(ps.info->>'department', 'No department') as dept, "
-                + "sum(l.amount) as amount, (select v.ledger_code from app.pay_component pc join app.pay_component_version v on v.component_id = pc.id "
+                + "sum(l.amount) as amount, (select g2.ledger from app.expense_category g2 where 'Reimbursement: ' || g2.name = l.name limit 1) as category_ledger, "
+                + "(select v.ledger_code from app.pay_component pc join app.pay_component_version v on v.component_id = pc.id "
                 + "  where pc.code = l.code and v.valid_from <= ? order by v.valid_from desc limit 1) as ledger "
                 + "from app.payslip_line l join app.payslip ps on ps.id = l.payslip_id where ps.run_id = ? "
                 + "group by l.kind, l.code, l.name, dept order by min(l.position), dept", end, runId)) {
             String kind = (String) g.get("kind");
             BigDecimal a = PayrollEngine.dec(g, "amount");
             String ledger = g.get("ledger") == null ? (String) g.get("name") : (String) g.get("ledger");
+            if ("reimbursement".equals(kind) && g.get("categoryLedger") != null) {
+                ledger = (String) g.get("categoryLedger");   // the expense lands on the category's own ledger
+            }
             switch (kind) {
                 case "earning" -> {
                     rows.add(List.of(end.format(DMY), ledger, (String) g.get("dept"), money(a), "", narration));
@@ -143,6 +147,10 @@ final class PayrollOutputs {
                     rows.add(List.of(end.format(DMY), ledger + " payable", (String) g.get("dept"), "", money(a), narration));
                     debits = debits.add(a);
                     credits = credits.add(a);
+                }
+                case "reimbursement" -> {
+                    rows.add(List.of(end.format(DMY), ledger, (String) g.get("dept"), money(a), "", narration));
+                    debits = debits.add(a);
                 }
                 case "deduction" -> {
                     rows.add(List.of(end.format(DMY), ledger + " payable", (String) g.get("dept"), "", money(a), narration));

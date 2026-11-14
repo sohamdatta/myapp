@@ -956,6 +956,16 @@ class PayrollTest {
         throw new AssertionError("no line " + code);
     }
 
+    private static BigDecimal lineAmount(Map<String, Object> slip, String code, String name) {
+        for (Object o : (List<?>) slip.get("lines")) {
+            Map<?, ?> l = (Map<?, ?>) o;
+            if (code.equals(l.get("code")) && name.equals(l.get("name"))) {
+                return (BigDecimal) l.get("amount");
+            }
+        }
+        throw new AssertionError("No line " + code + " / " + name);
+    }
+
     private static BigDecimal lineAmount(Map<String, Object> slip, String code) {
         for (Object o : (List<?>) slip.get("lines")) {
             if (code.equals(((Map<?, ?>) o).get("code"))) {
@@ -1097,6 +1107,76 @@ class PayrollTest {
     }
 
     @Test
+    void verifiedClaimsRideWithTheSalaryAndAHeldPayslipGivesThemBack() {
+        assumeTrue(reachable, "PostgreSQL is not reachable");
+        for (boolean hold : new boolean[] {false, true}) {
+            Org org = newOrg();
+            SessionCtx operator = join(org, "payroll", List.of("payroll_operator"));
+            SessionCtx asha = join(org, "asha", List.of("employee"));
+            String loc = (String) settings.saveLocation(org.admin, null,
+                    new LocationInput("Bengaluru office", "Asia/Kolkata", "KA", null, null, null, null, "none", true)).get("id");
+            String shift = (String) settings.saveShift(org.admin, null, new ShiftInput("General", "09:30", "18:30", 10, 480, 240, true)).get("id");
+            settings.assign(org.admin, List.of(asha.membershipId().toString()), UUID.fromString(loc), UUID.fromString(shift), List.of(0), TODAY.minusDays(120).toString());
+            UUID ashaId = UUID.fromString((String) employees.add(org.admin, person("Asha Rao", "ABCPR1234F", asha)).get("id"));
+            for (String[] r : List.of(new String[] {"pf", null, "KABLR0012345000"}, new String[] {"esi", null, "53000123450001001"},
+                    new String[] {"pt", "KA", "PTKA-123456"}, new String[] {"lwf", "KA", "LWF-KA-998"})) {
+                config.addRegistration(operator, new PayrollConfig.RegistrationInput(r[0], r[1], r[2]));
+            }
+            String staff = (String) ((Map<?, ?>) ((List<?>) config.setup(operator).get("structures")).get(0)).get("id");
+            LocalDate period = TODAY.withDayOfMonth(1).plusMonths(1);
+            pay.revise(org.admin, ashaId, new PayrollPay.ReviseInput(TODAY.withDayOfMonth(1).toString(), staff, new BigDecimal("900000"), "Joining salary"));
+            // Two verified claims: Travel 2,500 and Meals 400.
+            db.inTenant(org.id, c -> {
+                UUID travel = UUID.fromString(String.valueOf(Sql.one(c, "insert into app.expense_category (tenant_id, name, ledger) values (?, 'Travel', 'Travel and conveyance') returning id", org.id).get("id")));
+                UUID meals = UUID.fromString(String.valueOf(Sql.one(c, "insert into app.expense_category (tenant_id, name) values (?, 'Meals') returning id", org.id).get("id")));
+                int n = 9001;
+                for (Object[] cl : new Object[][] {{travel, 2500}, {meals, 400}}) {
+                    UUID claim = UUID.fromString(String.valueOf(Sql.one(c, "insert into app.expense_claim (tenant_id, membership_id, number, title, status) "
+                            + "values (?, ?, ?, 'Trip', 'verified') returning id", org.id, asha.membershipId(), "EXP-2026-" + (n++)).get("id")));
+                    Sql.update(c, "insert into app.expense_line (tenant_id, claim_id, category_id, spent_on, amount) values (?, ?, ?, ?, ?)", org.id, claim, cl[0], TODAY, cl[1]);
+                }
+                return null;
+            });
+            String group = (String) ((Map<?, ?>) ((List<?>) runs.list(operator).get("groups")).get(0)).get("id");
+            UUID run = UUID.fromString((String) runs.open(operator, UUID.fromString(group), period.toString()).get("id"));
+            runs.freeze(operator, run);
+            assertEquals(2, claimsWith(org, "scheduled"), "frozen: both claims are taken up, so no bank batch can have them");
+            runs.reopen(operator, run, "Check again");
+            assertEquals(0, claimsWith(org, "scheduled"), "reopened: they go back to finance");
+            runs.freeze(operator, run);
+            if (hold) {
+                runs.hold(operator, run, ashaId, "Pending clearance", true);
+            }
+            runs.calculate(operator, run);
+            Map<String, Object> slip = runs.employee(operator, run, ashaId);
+            assertEquals(0, new BigDecimal("2500.00").compareTo(lineAmount(slip, "REIMB", "Reimbursement: Travel")));
+            assertEquals(0, new BigDecimal("400.00").compareTo(lineAmount(slip, "REIMB", "Reimbursement: Meals")));
+            BigDecimal gross = (BigDecimal) slip.get("gross");
+            BigDecimal deductions = (BigDecimal) slip.get("deductions");
+            assertEquals(0, gross.subtract(deductions).add(new BigDecimal("2900")).compareTo((BigDecimal) slip.get("net")), "net is pay plus the expenses, and gross is untouched");
+            for (Object o : (List<?>) runs.get(operator, run).get("exceptions")) {
+                Map<?, ?> x = (Map<?, ?>) o;
+                if ("blocking".equals(x.get("level")) && Boolean.TRUE.equals(x.get("acceptable"))) {
+                    runs.accept(org.admin, run, UUID.fromString((String) x.get("id")), "Checked");
+                }
+            }
+            runs.approve(org.admin, run);
+            long paid = claimsWith(org, "paid");
+            long back = claimsWith(org, "verified");
+            if (hold) {
+                assertEquals(0, paid);
+                assertEquals(2, back, "held pay: the claims wait for the run after release");
+            } else {
+                assertEquals(2, paid);
+                assertEquals(0, back);
+                String journal = new String(runs.output(org.admin, run, "journal").bytes(), StandardCharsets.UTF_8);
+                assertTrue(journal.contains("Travel and conveyance"), "the expense is debited to the category's ledger: " + journal);
+                assertEquals("%PDF", new String(runs.payslipPdf(operator, run, ashaId).bytes(), 0, 4, StandardCharsets.ISO_8859_1), "the payslip prints with the expenses on it");
+            }
+        }
+    }
+
+    @Test
     void scheduleInstalmentsAddUpToThePrincipalAtAnyRate() {
         for (String rate : List.of("0", "6", "9.5", "12.75")) {
             for (int months : List.of(1, 3, 7, 24, 60)) {
@@ -1107,6 +1187,10 @@ class PayrollTest {
                 assertTrue(new BigDecimal(rate).signum() > 0 || rows.stream().allMatch(r -> r.interest().signum() == 0));
             }
         }
+    }
+
+    private static long claimsWith(Org org, String status) {
+        return db.inTenant(org.id(), c -> Sql.count(c, "select 1 from app.expense_claim where status = ?", status));
     }
 
     private record Org(UUID id, String slug, SessionCtx admin) {}

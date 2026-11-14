@@ -48,7 +48,11 @@ The approver sees claims waiting for them with the lines, the evidence and any w
 
 ![Marking a batch paid](img/expenses/11-mark-paid.png)
 
-**Cancel** an open batch to return its claims to verified. Paying claims through the salary run is not built yet; use batches.
+**Cancel** an open batch to return its claims to verified.
+
+### Paying with the salary
+
+The other way is to let payroll pay them. When the payroll operator freezes a month's run, every claim that is verified by then goes into it, and the payslip shows an **Expenses paid back, not part of pay** table with one line for each category. The money is not taxed and is not part of gross pay, and it goes to the same bank account as the salary. The claim reads **Scheduled for payment** until the run is approved, then **Paid**, with "Salary of" and the month. If the run is reopened, the claims go back to finance. If someone's pay is held, their claims are not paid with the run: they go back to finance and are taken up by the next run. Claims verified after a run is frozen wait for the next run, or can go in a bank batch.
 
 ## 4. Advances and loans
 
@@ -115,4 +119,4 @@ Settings (Organization level, changed with your password; weakening some needs a
 
 ## Still to come
 
-Payment of claims through the salary run; a second finance approver for large loans; expense advances set against claims; alerts for instalments carried two months.
+A second finance approver for large loans; expense advances set against claims; alerts for instalments carried two months.

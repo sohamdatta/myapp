@@ -356,10 +356,11 @@ public final class PayrollEngine {
 
         // 8. Totals and checks.
         capLoanRecovery(out);
+        reimbursements(out, emp, components, position++);
         out.gross = sumKind(out, "earning");
         out.deductions = sumKind(out, "deduction");
         out.employer = sumKind(out, "employer");
-        out.net = out.gross.subtract(out.deductions);
+        out.net = out.gross.subtract(out.deductions).add(sumKind(out, "reimbursement"));
         out.calculated = true;
         if (out.net.signum() < 0) {
             out.exception("net_negative", "blocking", false, "Net pay would be " + rupees(out.net)
@@ -1129,6 +1130,24 @@ public final class PayrollEngine {
         } else {
             emi.put("amount", room);
             ((Map<String, Object>) emi.get("trace")).put("capped", "Half of pay is the most deductions may take; " + rupees(asked.subtract(room)) + " stays due");
+        }
+    }
+
+    /** Verified expense claims paid with the salary: one line a category, outside gross and not taxable. */
+    @SuppressWarnings("unchecked")
+    private static void reimbursements(Calc out, Map<String, Object> emp, Map<String, Object> components, int position) {
+        Object items = emp.get("reimbursements");
+        if (!(items instanceof List<?> list) || list.isEmpty() || !components.containsKey(ExpenseRunClaims.COMPONENT)) {
+            return;
+        }
+        Map<String, Object> base = map(components, ExpenseRunClaims.COMPONENT);
+        for (Object o : list) {
+            Map<String, Object> item = (Map<String, Object>) o;
+            Map<String, Object> component = new LinkedHashMap<>(base);
+            component.put("name", ExpenseRunClaims.PREFIX + item.get("name"));
+            Map<String, Object> trace = new LinkedHashMap<>();
+            trace.put("source", "Verified expense claims, paid with the salary. Not taxable, and not part of gross");
+            addLineRounded(out, component, dec(item, "amount"), "none", null, trace, position);
         }
     }
 
