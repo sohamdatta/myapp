@@ -17,6 +17,8 @@ public final class Modules {
     /** Balances, leave requests, who is away, leave types and the year end. Not work from home. */
     public static final String LEAVE = "leave";
     public static final String PAYROLL = "payroll";
+    /** Expense claims with receipts and approval; advances and loans follow (docs/expenses/design.md). */
+    public static final String EXPENSES = "expenses";
 
     /** In the order the console shows them, with the words people see. */
     public static final Map<String, String> NAMES = new LinkedHashMap<>();
@@ -25,6 +27,7 @@ public final class Modules {
         NAMES.put(ATTENDANCE, "Attendance");
         NAMES.put(LEAVE, "Leave");
         NAMES.put(PAYROLL, "Payroll");
+        NAMES.put(EXPENSES, "Expenses");
     }
 
     public static final List<String> ALL = List.copyOf(NAMES.keySet());

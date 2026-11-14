@@ -41,6 +41,7 @@ public final class Settings {
     static {
         GROUPS.put("security", "Security");
         GROUPS.put("attendance", "Attendance and leave");
+        GROUPS.put("expenses", "Expenses");
         GROUPS.put("signin", "Sign-in (platform)");
     }
 
@@ -69,6 +70,12 @@ public final class Settings {
             .help("none: nobody. admins: Org Admin, HR Admin and IT Admin. admins_payroll: those and the payroll roles. everyone: all members. "
                     + "Someone who must use it and has not set it up is asked to before entering the Organization.")
             .defaultValue("none").weakens(Weakens.DOWN, Approval.PASSWORD).since("V31"));
+
+    public static final Setting EXPENSE_SUBMIT_DAYS = define(Setting.integer("expenses.submit_within_days")
+            .group("expenses").owner("expense.setup").module(Modules.EXPENSES)
+            .label("Expenses may be claimed this long after they were made").unit("days")
+            .help("Older lines are refused when a claim is submitted.")
+            .defaultValue(60).range(1, 365).weakens(Weakens.UP, Approval.PASSWORD).since("V47"));
 
     public static final Setting LEAVE_BACK_DAYS = define(Setting.integer("leave.apply.back_days")
             .group("attendance").owner("attendance.manage").module(Modules.ATTENDANCE)

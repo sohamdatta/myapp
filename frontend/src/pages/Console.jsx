@@ -9,6 +9,7 @@ import { useConfirm } from '../feedbackContext.js'
 const MODULES = [
   { id: 'attendance_leave', label: 'Attendance & Leave', about: 'punching, devices, the daily board, work from home, balances, leave requests and the leave year' },
   { id: 'payroll', label: 'Payroll', about: 'salaries, monthly runs, statutory deductions and payslips' },
+  { id: 'expenses', label: 'Expenses', about: 'expense claims with receipts, manager approval and finance verification' },
 ]
 const ALL_MODULES = MODULES.map((m) => m.id)
 

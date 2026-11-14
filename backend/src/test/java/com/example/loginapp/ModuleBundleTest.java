@@ -94,19 +94,19 @@ class ModuleBundleTest {
     @Test
     void choosingAttendanceWithLeaveCreatesBoth() {
         Map<String, Boolean> on = active(create(List.of("attendance_leave")));
-        assertEquals(Map.of("attendance", true, "leave", true, "payroll", false), on);
+        assertEquals(Map.of("attendance", true, "leave", true, "payroll", false, "expenses", false), on);
     }
 
     @Test
     void switchingTheChoiceAppliesToBothAndEachStillWorksAlone() {
         UUID org = create(List.of("payroll"));
-        assertEquals(Map.of("attendance", false, "leave", false, "payroll", true), active(org));
+        assertEquals(Map.of("attendance", false, "leave", false, "payroll", true, "expenses", false), active(org));
         platform.setModule(superAdmin, org, "attendance_leave", true, null);
-        assertEquals(Map.of("attendance", true, "leave", true, "payroll", true), active(org));
+        assertEquals(Map.of("attendance", true, "leave", true, "payroll", true, "expenses", false), active(org));
         platform.setModule(superAdmin, org, "attendance_leave", false, null);
-        assertEquals(Map.of("attendance", false, "leave", false, "payroll", true), active(org));
+        assertEquals(Map.of("attendance", false, "leave", false, "payroll", true, "expenses", false), active(org));
         platform.setModule(superAdmin, org, "leave", true, null);
-        assertEquals(Map.of("attendance", false, "leave", true, "payroll", true), active(org));
+        assertEquals(Map.of("attendance", false, "leave", true, "payroll", true, "expenses", false), active(org));
     }
 
     @Test

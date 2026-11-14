@@ -1,6 +1,23 @@
 # Expenses, reimbursements and advances: design
 
-Designed, not built. Exported on 14 Nov 2026 from the live claude.ai document, which is the version to edit: [Expenses, reimbursements and advances: design](https://claude.ai/artifact/SCLwr2gcdk2d6C46EoP4Nn).
+Stages X1 and X2 are built (see Build status below); X3 to X6 are designed, not built. Exported on 14 Nov 2026 from the live claude.ai document, which is the version to edit: [Expenses, reimbursements and advances: design](https://claude.ai/artifact/SCLwr2gcdk2d6C46EoP4Nn).
+
+## Build status
+
+Built on 14 Nov 2026 (`V47__expenses_claims.sql`, `ExpenseService`, `ExpenseController`, the Expenses page):
+
+- **X1.** The `expenses` module, the four permissions, the Finance role, categories with limits, and the `expenses.submit_within_days` setting.
+- **X2.** Claims, lines, receipts and other evidence, the policy checks at submission, the manager's decision with cuts, per-item evidence review, and finance verification.
+
+Where the build differs from the design above:
+
+- Endpoints live under `/api/org/expenses/...`, like the other modules. Evidence review takes the claim's version.
+- Claims belong to a membership (as leave does), not an employment.
+- V47 holds only what X1 and X2 use. The payment, advance and loan tables arrive in later migrations.
+- HR Admin also holds `expense.approve` at Organization scope, as it holds `leave.approve`. A role can only be granted by someone who holds all its permissions, so without it HR could no longer grant Manager. Only an Org Admin can grant Finance.
+- The database keeps a submitted claim, its lines and files (a delete trigger), and evidence reviews can only be added.
+- Each line records at submission whether it needs evidence, so a later change to a category never alters a claim already submitted.
+- Not built yet: the second finance approver over the claim total, audit sampling, the yearly count of missing-receipt statements, notifications, and the whole of X3 to X6. A claim from someone with no active manager goes straight to finance, which for a leaver is probably not what is wanted before exit integration (X5).
 
 ## Purpose and scope
 

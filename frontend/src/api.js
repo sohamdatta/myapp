@@ -407,6 +407,31 @@ export const leave = {
   saveYear: (startMonth) => put('/org/leave/year', { startMonth }),
 }
 
+// ── expenses: claims, evidence, approval and verification ───────────
+
+export const expenses = {
+  categories: (all) => get(`/org/expenses/categories${query({ all: all ? 'true' : undefined })}`),
+  saveCategory: (id, body) => (id ? put(`/org/expenses/categories/${id}`, body) : post('/org/expenses/categories', body)),
+  mine: () => get('/org/expenses/claims'),
+  create: (title) => post('/org/expenses/claims', { title }),
+  claim: (id) => get(`/org/expenses/claims/${id}`),
+  remove: (id) => del(`/org/expenses/claims/${id}`),
+  addLine: (id, body) => post(`/org/expenses/claims/${id}/lines`, body),
+  removeLine: (id) => del(`/org/expenses/lines/${id}`),
+  upload: (lineId, kind, file, statement) => uploadFile(`/org/expenses/lines/${lineId}/files${query({ kind, name: file?.name, statement })}`, file || new Blob([])),
+  file: (id) => fetchFile(`/org/expenses/files/${id}`),
+  submit: (id, version) => post(`/org/expenses/claims/${id}/submit`, { version }),
+  withdraw: (id, version) => post(`/org/expenses/claims/${id}/withdraw`, { version }),
+  reopen: (id, version) => post(`/org/expenses/claims/${id}/reopen`, { version }),
+  sendBack: (id, version) => post(`/org/expenses/claims/${id}/send-back`, { version }),
+  approvals: () => get('/org/expenses/approvals'),
+  decide: (id, body) => post(`/org/expenses/claims/${id}/decision`, body),
+  queue: () => get('/org/expenses/verify'),
+  review: (lineId, status, note, version) => post(`/org/expenses/lines/${lineId}/review`, { status, note, version }),
+  verify: (id, version, note) => post(`/org/expenses/claims/${id}/verify`, { version, note }),
+  financeReject: (id, version, note) => post(`/org/expenses/claims/${id}/finance-reject`, { version, note }),
+}
+
 // ── people: employee records and departments ────────────────────────
 
 export const people = {
