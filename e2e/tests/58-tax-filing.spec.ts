@@ -51,7 +51,8 @@ test.describe.serial('tax filing screens', () => {
     const loc = await ok(api(owner, 'POST', '/org/attendance/locations', { name: 'Bengaluru office', timezone: 'Asia/Kolkata', stateCode: 'KA', active: true, punchCheck: 'none' }));
     await ok(api(owner, 'POST', '/org/attendance/assignments', { membershipIds: Object.values(ids), workLocationId: loc.id, shiftId: shift.id, weeklyOffs: [0], remoteDays: [], effectiveFrom: isoDay(-5) }));
     const added = await ok(api(owner, 'POST', '/org/people/employees', {
-      legalName: 'Asha Rao', joiningDate: isoDay(-400), designation: 'Associate', employmentType: 'permanent', gender: 'female', dateOfBirth: '1992-04-10',
+      legalName: 'Asha Rao', joiningDate: isoDay(-400),   // date-safe: joined long ago
+      designation: 'Associate', employmentType: 'permanent', gender: 'female', dateOfBirth: '1992-04-10',
       membershipId: ids[U('asha')], pan: 'ABCPR5678L', bankAccount: '50100033334444', ifsc: 'HDFC0000123',
     }));
     ashaEmployment = added.id;
