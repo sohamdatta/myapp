@@ -36,7 +36,8 @@ public final class LoanService {
 
     public record LoanView(UUID id, UUID membershipId, String number, String person, String type, String status, BigDecimal amount, int months,
                            BigDecimal annualRate, String purpose, String decisionNote, Object disbursedOn, String disbursalRef,
-                           BigDecimal outstanding, int version, List<Map<String, Object>> schedule, List<Map<String, Object>> settlements) {}
+                           BigDecimal outstanding, int version, List<Map<String, Object>> schedule, List<Map<String, Object>> settlements,
+                           int financeApprovals, boolean firstApproved, boolean iApprovedFirst) {}
 
     /** The component payroll deducts instalments under. */
     public static final String COMPONENT = "LOAN_EMI";
@@ -222,9 +223,11 @@ public final class LoanService {
                     + "on conflict (tenant_id, year) do update set last = app.loan_counter.last + 1 returning last", ctx.tenantId(), year);
             String number = "LN-" + year + "-" + String.format("%04d", ((Number) n.get("last")).intValue());
             String status = approver == null ? "manager_approved" : "requested";
+            int above = Settings.get(c, Settings.LOAN_SECOND_APPROVER_ABOVE).asInt();
+            int financeApprovals = above > 0 && amount.compareTo(BigDecimal.valueOf(above)) > 0 ? 2 : 1;
             UUID id = AuthService.uuid(Sql.one(c, "insert into app.loan (tenant_id, number, membership_id, type_id, amount, months, annual_rate, purpose, status, "
-                    + "approver_membership_id) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) returning id", ctx.tenantId(), number, ctx.membershipId(), typeId,
-                    amount, months, type.get("annualRate"), purpose, status, approver).get("id"));
+                    + "approver_membership_id, finance_approvals) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) returning id", ctx.tenantId(), number, ctx.membershipId(), typeId,
+                    amount, months, type.get("annualRate"), purpose, status, approver, financeApprovals).get("id"));
             UserService.audit(c, ctx, "loan.requested", "loan", id, Map.of("number", number, "amount", amount.toPlainString(), "months", months));
             return new Created(id, number, status, 1);
         });
@@ -278,7 +281,8 @@ public final class LoanService {
 
     private static final String LIST = "select l.id, l.number, l.status, l.amount, l.months, l.annual_rate, l.purpose, l.version, l.membership_id, "
             + Names.orEmail("l.membership_id") + " as person, t.name as type, "
-            + "(select coalesce(sum(i.principal), 0) from app.loan_instalment i where i.loan_id = l.id and i.status = 'due') as outstanding "
+            + "(select coalesce(sum(i.principal), 0) from app.loan_instalment i where i.loan_id = l.id and i.status = 'due') as outstanding, "
+            + "l.finance_approvals, (l.finance_by is not null) as first_approved "
             + "from app.loan l join app.loan_type t on t.id = l.type_id ";
 
     /** The manager approves or rejects. Rejecting needs a reason. */
@@ -312,7 +316,21 @@ public final class LoanService {
             }
             requireStatus(l, "manager_approved");
             requireVersion(l, version);
-            decide(c, ctx, id, l, action, note, "approved", "finance_by", "finance_at");
+            boolean first = l.get("financeBy") == null;
+            if ("approve".equals(action) && ((Number) l.get("financeApprovals")).intValue() == 2) {
+                if (first) {   // the first of two: the loan stays with finance until someone else approves too
+                    Sql.update(c, "update app.loan set finance_by = ?, finance_at = now(), version = version + 1, updated_at = now() where id = ?", ctx.membershipId(), id);
+                    UserService.audit(c, ctx, "loan.approve_first", "loan", id, Map.of("number", l.get("number")));
+                    return null;
+                }
+                if (ctx.membershipId().equals(AuthService.uuid(l.get("financeBy")))) {
+                    throw new ApiException(409, "loan.second_person", "A loan this large needs a second person in finance to approve it");
+                }
+                decide(c, ctx, id, l, action, note, "approved", "finance2_by", "finance2_at");
+                return null;
+            }
+            boolean firstPerson = first || ctx.membershipId().equals(AuthService.uuid(l.get("financeBy")));   // the person who approved first may still reject
+            decide(c, ctx, id, l, action, note, "approved", firstPerson ? "finance_by" : "finance2_by", firstPerson ? "finance_at" : "finance2_at");
             return null;
         });
     }
@@ -396,7 +414,9 @@ public final class LoanService {
             return new LoanView(id, owner, (String) l.get("number"), (String) l.get("person"), (String) l.get("type"), (String) l.get("status"),
                     (BigDecimal) l.get("amount"), ((Number) l.get("months")).intValue(), (BigDecimal) l.get("annualRate"), (String) l.get("purpose"),
                     (String) l.get("decisionNote"), l.get("disbursedOn"), (String) l.get("disbursalRef"), (BigDecimal) l.get("outstanding"),
-                    ((Number) l.get("version")).intValue(), schedule, settlements);
+                    ((Number) l.get("version")).intValue(), schedule, settlements,
+                    ((Number) l.get("financeApprovals")).intValue(), Boolean.TRUE.equals(l.get("firstApproved")),
+                    Sql.exists(c, "select 1 from app.loan where id = ? and finance_by = ?", id, ctx.membershipId()));
         });
     }
 
@@ -618,7 +638,7 @@ public final class LoanService {
     }
 
     private static Map<String, Object> lock(Connection c, UUID id) throws SQLException {
-        Map<String, Object> l = Sql.one(c, "select id, number, membership_id, status, version, amount, months, annual_rate, approver_membership_id, disbursed_by "
+        Map<String, Object> l = Sql.one(c, "select id, number, membership_id, status, version, amount, months, annual_rate, approver_membership_id, disbursed_by, finance_by, finance_approvals "
                 + "from app.loan where id = ? for update", id);
         if (l == null) {
             throw ApiException.notFound("The loan");

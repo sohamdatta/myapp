@@ -593,6 +593,36 @@ class ExpensesTest {
     // ── advances and loans ──────────────────────────────────────────────
 
     @Test
+    void aLoanAboveTheLimitNeedsTwoDifferentPeopleInFinance() {
+        Setup s = setup();
+        new com.example.loginapp.core.SettingsService(db).change(s.admin, "loans.second_finance_above",
+                new com.example.loginapp.core.SettingsService.ChangeInput("organization", null, null, 10000, false, "Large loans need two", PASSWORD));
+        UUID type = loans.saveType(s.finance, null, new LoanService.TypeInput("Personal loan", "loan", new BigDecimal("100000"), 12,
+                BigDecimal.ZERO, 0, 3, true)).id();
+        LoanService.Created small = loans.request(s.solo, new LoanService.RequestInput(type.toString(), new BigDecimal("9000"), 3, "Fees"));
+        loans.financeDecide(s.finance, small.id(), "approve", null, 1);
+        assertEquals("approved", loans.loan(s.solo, small.id()).status(), "under the limit one approval is enough");
+
+        LoanService.Created big = loans.request(s.solo, new LoanService.RequestInput(type.toString(), new BigDecimal("20000"), 4, "Deposit"));
+        assertEquals(2, loans.loan(s.solo, big.id()).financeApprovals());
+        loans.financeDecide(s.finance, big.id(), "approve", null, 1);
+        LoanService.LoanView afterFirst = loans.loan(s.admin, big.id());
+        assertEquals("manager_approved", afterFirst.status(), "still with finance after the first approval");
+        assertTrue(afterFirst.firstApproved());
+        assertError(409, "loan.second_person", () -> loans.financeDecide(s.finance, big.id(), "approve", null, 2));
+        assertError(403, "permission.denied", () -> loans.financeDecide(s.solo, big.id(), "approve", null, 2));
+        assertError(409, "loan.state", () -> loans.disburse(s.admin, big.id(), TODAY.toString(), null, "UTR1234", 2));
+        loans.financeDecide(s.admin, big.id(), "approve", null, 2);
+        assertEquals("approved", loans.loan(s.solo, big.id()).status());
+
+        // The first approver may still reject, with a reason.
+        LoanService.Created other = loans.request(s.solo, new LoanService.RequestInput(type.toString(), new BigDecimal("30000"), 4, "Trip"));
+        loans.financeDecide(s.finance, other.id(), "approve", null, 1);
+        loans.financeDecide(s.finance, other.id(), "reject", "Not this year", 2);
+        assertEquals("rejected", loans.loan(s.solo, other.id()).status());
+    }
+
+    @Test
     void aLoanGoesThroughManagerAndFinanceThenRepaysWithSkipPrepayAndWriteOff() {
         Setup s = setup();
         UUID type = loans.saveType(s.finance, null, new LoanService.TypeInput("Personal loan", "loan", new BigDecimal("100000"), 12,

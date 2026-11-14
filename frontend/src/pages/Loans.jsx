@@ -137,8 +137,18 @@ function LoanDetail({ id, mode, onClose }) {
           onReject={() => act(() => loans.managerDecide(id, 'reject', note, l.version), 'Rejected')} />
       )}
       {l.status === 'manager_approved' && mode === 'finance' && (
-        <Decision busy={busy} note={note} setNote={setNote} onApprove={() => act(() => loans.financeDecide(id, 'approve', note, l.version), 'Approved')}
-          onReject={() => act(() => loans.financeDecide(id, 'reject', note, l.version), 'Rejected')} />
+        <>
+          {l.financeApprovals === 2 && (
+            <p className="hint">
+              {l.firstApproved
+                ? (l.iApprovedFirst ? 'You approved this first. A second person in finance must approve it too.' : 'One person in finance has approved. Your approval completes it.')
+                : 'A loan this large needs two different people in finance to approve it. This is the first approval.'}
+            </p>
+          )}
+          <Decision busy={busy} approveDisabled={l.financeApprovals === 2 && l.iApprovedFirst} note={note} setNote={setNote}
+            onApprove={() => act(() => loans.financeDecide(id, 'approve', note, l.version), l.financeApprovals === 2 && !l.firstApproved ? 'First approval recorded' : 'Approved')}
+            onReject={() => act(() => loans.financeDecide(id, 'reject', note, l.version), 'Rejected')} />
+        </>
       )}
       {l.status === 'approved' && mode === 'finance' && (
         <form className="stack" onSubmit={(e) => { e.preventDefault(); act(() => loans.disburse(id, { reference, version: l.version }), 'Payout recorded and the schedule is set') }}>
@@ -172,13 +182,13 @@ function LoanDetail({ id, mode, onClose }) {
   )
 }
 
-function Decision({ busy, note, setNote, onApprove, onReject }) {
+function Decision({ busy, note, setNote, onApprove, onReject, approveDisabled }) {
   return (
     <div className="stack">
       <label htmlFor="loan-decision-note">Note (needed to reject)</label>
       <input id="loan-decision-note" value={note} onChange={(e) => setNote(e.target.value)} />
       <div className="actions">
-        <button type="button" disabled={busy} onClick={onApprove}>Approve</button>
+        <button type="button" disabled={busy || approveDisabled} onClick={onApprove}>Approve</button>
         <button type="button" className="secondary" disabled={busy || note.trim().length < 3} onClick={onReject}>Reject</button>
       </div>
     </div>

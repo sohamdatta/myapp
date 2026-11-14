@@ -95,6 +95,13 @@ public final class Settings {
             .help("finance: the claim goes straight to finance. refuse: it cannot be submitted until HR sets a manager or a designated approver for them.")
             .defaultValue("finance").weakens(Weakens.UP, Approval.PASSWORD).since("V50"));
 
+    public static final Setting LOAN_SECOND_APPROVER_ABOVE = define(Setting.integer("loans.second_finance_above")
+            .group("expenses").owner("loan.manage").module(Modules.EXPENSES)
+            .label("A second finance approver is needed for a loan above").unit("rupees")
+            .help("A loan or advance asked for above this amount needs two different people in finance to approve it. 0 means never. "
+                    + "It applies to requests made after the change.")
+            .defaultValue(0).range(0, 100000000).weakens(Weakens.ANY, Approval.PASSWORD).since("V55"));
+
     public static final Setting LOAN_MARKET_RATE = define(Setting.integer("loans.perquisite_rate_bp")
             .group("expenses").owner("loan.manage").module(Modules.EXPENSES)
             .label("Interest rate to measure the loan perquisite against").unit("hundredths of a percent")

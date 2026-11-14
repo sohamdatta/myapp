@@ -64,7 +64,7 @@ Choose a type, an amount and the number of months, and give a reason. **Preview*
 
 ### Approval and payout
 
-The manager (or named approver) decides first, then Finance (**Loan approvals**, **Loans**). Then Finance records the payout with the bank reference. The schedule is fixed then: equal principal each month plus that month's interest, starting no earlier than the month after the payout.
+The manager (or named approver) decides first, then Finance (**Loan approvals**, **Loans**). Where the Organization has set a second finance approver above an amount (`loans.second_finance_above`), a larger request needs two different people in Finance: the first approval keeps it with Finance, and someone else completes it. Then Finance records the payout with the bank reference. The schedule is fixed then: equal principal each month plus that month's interest, starting no earlier than the month after the payout.
 
 ![A paid-out advance and its schedule](img/expenses/17-loan-schedule.png)
 
@@ -109,6 +109,7 @@ Settings (Organization level, changed with your password; weakening some needs a
 | `expenses.manager_step` | on | Claims go to the manager before Finance |
 | `expenses.second_finance_above` | 0 (never) | A second finance approver above this many rupees |
 | `expenses.when_no_approver` | refuse | What to do for a person with no manager or approver: refuse, or send to finance |
+| `loans.second_finance_above` | 0 (never) | A second finance approver for a loan or advance above this many rupees |
 | `loans.perquisite_rate_bp` | 0 | State Bank rate in hundredths of a percent (940 is 9.40%), from 1 April. Ask your payroll consultant for the figure |
 
 ## Questions to settle with your payroll consultant
@@ -119,4 +120,4 @@ Settings (Organization level, changed with your password; weakening some needs a
 
 ## Still to come
 
-A second finance approver for large loans; expense advances set against claims; alerts for instalments carried two months.
+Expense advances set against claims; alerts for instalments carried two months.
