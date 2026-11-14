@@ -77,6 +77,18 @@ public final class Settings {
             .help("Older lines are refused when a claim is submitted.")
             .defaultValue(60).range(1, 365).weakens(Weakens.UP, Approval.PASSWORD).since("V47"));
 
+    public static final Setting EXPENSE_MANAGER_STEP = define(Setting.bool("expenses.manager_step")
+            .group("expenses").owner("expense.setup").module(Modules.EXPENSES)
+            .label("Claims go to the manager first")
+            .help("When off, claims go straight to finance. A designated approver (Expenses, Approvers) still applies when on.")
+            .defaultValue(true).weakens(Weakens.DOWN, Approval.SECOND_PERSON).since("V48"));
+
+    public static final Setting EXPENSE_SECOND_APPROVER_ABOVE = define(Setting.integer("expenses.second_finance_above")
+            .group("expenses").owner("expense.setup").module(Modules.EXPENSES)
+            .label("A second finance approver is needed above").unit("rupees")
+            .help("A claim whose total is above this needs two different people to verify it. 0 means never.")
+            .defaultValue(0).range(0, 100000000).weakens(Weakens.ANY, Approval.PASSWORD).since("V48"));
+
     public static final Setting LEAVE_BACK_DAYS = define(Setting.integer("leave.apply.back_days")
             .group("attendance").owner("attendance.manage").module(Modules.ATTENDANCE)
             .label("Employees may apply for leave this far back").unit("days")

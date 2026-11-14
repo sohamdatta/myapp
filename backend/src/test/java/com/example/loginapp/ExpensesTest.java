@@ -358,6 +358,61 @@ class ExpensesTest {
                 BigDecimal.ONE, new BigDecimal("10.25"), null, null, null)));
     }
 
+
+    @Test
+    void aDesignatedApproverReplacesTheManagerAndTheManagerStepCanBeSwitchedOff() {
+        Setup s = setup();
+        SessionCtx other = join(s.admin, "other-" + SEQUENCE.get(), "other", List.of("manager", "employee"));
+        // an approver must be able to approve; an employee cannot be one
+        assertError(409, "expense.approver_cannot", () -> expenses.saveApprover(s.finance, s.emp.membershipId(), null, s.solo.membershipId()));
+        assertError(409, "expense.own_claim", () -> expenses.saveApprover(s.finance, s.emp.membershipId(), null, s.emp.membershipId()));
+        assertError(403, "permission.denied", () -> expenses.saveApprover(s.emp, s.emp.membershipId(), null, other.membershipId()));
+        UUID rule = expenses.saveApprover(s.finance, s.emp.membershipId(), null, other.membershipId()).id();
+        assertEquals(1, expenses.approvers(s.finance).rules().size());
+
+        UUID claim = claim(s.emp, "Routed");
+        line(s.emp, claim, s.meals, 1, "200.00");
+        expenses.submit(s.emp, claim, version(s.emp, claim));
+        // the usual manager no longer sees it; the designated person and the Org Admin do
+        assertTrue(expenses.approvals(s.manager).isEmpty());
+        assertEquals(1, expenses.approvals(other).size());
+        assertEquals(1, expenses.approvals(s.admin).size());
+        assertError(404, "not_found", () -> expenses.decide(s.manager, claim, "approve", null, version(s.emp, claim), null));
+        expenses.decide(other, claim, "approve", null, version(s.emp, claim), null);
+        assertEquals("approved", status(s.emp, claim));
+
+        // removing the rule sends the next claim to the manager again
+        expenses.removeApprover(s.finance, rule);
+        UUID next = claim(s.emp, "Back to manager");
+        line(s.emp, next, s.meals, 1, "200.00");
+        expenses.submit(s.emp, next, version(s.emp, next));
+        assertEquals(1, expenses.approvals(s.manager).size());
+    }
+
+    @Test
+    void aClaimOverTheSetAmountNeedsTwoDifferentFinanceApprovers() {
+        Setup s = setup();
+        SessionCtx second = join(s.admin, "second-" + SEQUENCE.get(), "fin2", List.of("finance"));
+        new com.example.loginapp.core.SettingsService(db).change(s.admin, "expenses.second_finance_above",
+                new com.example.loginapp.core.SettingsService.ChangeInput("organization", null, null, 1000, false, "Large claims need two", PASSWORD));
+        UUID claim = claim(s.solo, "Large");
+        UUID l = line(s.solo, claim, s.meals, 1, "900.00");
+        expenses.uploadEvidence(s.solo, l, "receipt", "r.pdf", pdf("big"), null);
+        UUID l2 = line(s.solo, claim, s.travel, 1, "400.00");
+        expenses.uploadEvidence(s.solo, l2, "receipt", "r2.pdf", pdf("big2"), null);
+        expenses.uploadEvidence(s.solo, l2, "travel_proof", "p2.pdf", pdf("big3"), null);
+        expenses.submit(s.solo, claim, version(s.solo, claim));
+        assertEquals(2, expenses.claim(s.solo, claim).financeApprovals());
+        expenses.reviewEvidence(s.finance, l, "accepted", null, version(s.solo, claim));
+        expenses.reviewEvidence(s.finance, l2, "accepted", null, version(s.solo, claim));
+        expenses.verify(s.finance, claim, version(s.solo, claim), null);
+        assertEquals("approved", status(s.solo, claim));
+        assertTrue(expenses.claim(s.solo, claim).firstVerified());
+        assertError(409, "expense.second_person", () -> expenses.verify(s.finance, claim, version(s.solo, claim), null));
+        expenses.verify(second, claim, version(s.solo, claim), null);
+        assertEquals("verified", status(s.solo, claim));
+    }
+
     // ── who may do what ─────────────────────────────────────────────────
 
     @Test

@@ -32,6 +32,7 @@ export default function Expenses({ me }) {
     can('expense.approve') && { id: 'approvals', label: 'Approvals' },
     can('expense.finance') && { id: 'finance', label: 'Finance' },
     can('expense.setup') && { id: 'categories', label: 'Categories' },
+    can('expense.setup') && { id: 'approvers', label: 'Approvers' },
   ].filter(Boolean)
   const [tab, setTab] = useState(tabs[0]?.id)
   if (tabs.length === 0) return <Empty>You do not have anything to do in Expenses.</Empty>
@@ -43,6 +44,7 @@ export default function Expenses({ me }) {
       {tab === 'approvals' && <Queue load={expenses.approvals} empty="Nothing is waiting for you." mode="manager" />}
       {tab === 'finance' && <Queue load={expenses.queue} empty="No claims are waiting for finance." mode="finance" />}
       {tab === 'categories' && <Categories />}
+      {tab === 'approvers' && <Approvers />}
     </>
   )
 }
@@ -161,6 +163,9 @@ function ClaimView({ id, mine, mode, onClose }) {
       <p><button type="button" className="link" onClick={onClose}>← All claims</button></p>
       <h2>{c.number}: {c.title} <ClaimStatus status={c.status} /></h2>
       {c.decisionNote && <p className="hint">Note: {c.decisionNote}</p>}
+      {c.financeApprovals === 2 && ['approved', 'verified'].includes(c.status) && (
+        <p className="hint">{c.status === 'verified' ? 'Verified by two people.' : c.firstVerified ? 'Verified once. A second person must verify it.' : 'This claim is large: two different people must verify it.'}</p>
+      )}
       <ErrorNote>{error}</ErrorNote>
       <div className="table-wrap">
         <table className="stack">
@@ -440,6 +445,90 @@ function Categories() {
         </div>
         <div><button type="submit" disabled={busy || !f.name.trim()}>Add category</button></div>
       </form>
+    </>
+  )
+}
+
+/** Who decides whose claims. With no rule, a claim goes to the person's reporting manager. */
+function Approvers() {
+  const data = useLoad(expenses.approvers)
+  const { busy, error, run } = useAction()
+  const toast = useToast()
+  const [kind, setKind] = useState('person')
+  const [who, setWho] = useState('')
+  const [approver, setApprover] = useState('')
+  const d = data.data
+  async function save(e) {
+    e.preventDefault()
+    const done = await run(async () => {
+      await expenses.saveApprover({ membershipId: kind === 'person' ? who : null, departmentId: kind === 'department' ? who : null, approverId: approver })
+      return true
+    })
+    if (done) {
+      setWho('')
+      setApprover('')
+      data.reload()
+      toast('Approver saved')
+    }
+  }
+  async function remove(id) {
+    const done = await run(async () => {
+      await expenses.removeApprover(id)
+      return true
+    })
+    if (done) data.reload()
+  }
+  return (
+    <>
+      <p className="hint">
+        By default a claim goes to the person's manager, then to finance. A rule here sends a person's or a department's claims to someone else instead.
+        Whether the manager step exists at all, and the amount above which two finance people must verify, are under Settings → Expenses.
+      </p>
+      <ErrorNote>{error || data.error}</ErrorNote>
+      {d && d.rules.length === 0 && <Empty>No rules. Every claim goes to the reporting manager.</Empty>}
+      {d && d.rules.length > 0 && (
+        <div className="table-wrap">
+          <table className="stack">
+            <thead><tr><th>Claims of</th><th>Go to</th><th /></tr></thead>
+            <tbody>
+              {d.rules.map((r) => (
+                <tr key={r.id}>
+                  <td data-label="Claims of">{r.person || `Department: ${r.department}`}</td>
+                  <td data-label="Go to">{r.approver}</td>
+                  <td><button type="button" disabled={busy} onClick={() => remove(r.id)}>Remove</button></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {d && (
+        <form onSubmit={save} className="grid">
+          <div>
+            <label htmlFor="ap-kind">Rule for</label>
+            <select id="ap-kind" value={kind} onChange={(e) => { setKind(e.target.value); setWho('') }}>
+              <option value="person">A person</option>
+              <option value="department">A department</option>
+            </select>
+          </div>
+          <div>
+            <label htmlFor="ap-who">{kind === 'person' ? 'Person' : 'Department'}</label>
+            <select id="ap-who" value={who} onChange={(e) => setWho(e.target.value)}>
+              <option value="">Choose…</option>
+              {(kind === 'person' ? d.people : d.departments).map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
+            </select>
+          </div>
+          <div>
+            <label htmlFor="ap-approver">Approver</label>
+            <select id="ap-approver" value={approver} onChange={(e) => setApprover(e.target.value)}>
+              <option value="">Choose…</option>
+              {d.people.filter((p) => p.canApprove).map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </select>
+            <div className="hint">Only people who hold the Manager role (or HR Admin) can be approvers.</div>
+          </div>
+          <div><button type="submit" disabled={busy || !who || !approver}>Save rule</button></div>
+        </form>
+      )}
     </>
   )
 }

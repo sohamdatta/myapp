@@ -60,6 +60,27 @@ public class ExpenseController {
         return expenses.saveCategory(ctx, Requests.id(id), body);
     }
 
+    // ── who approves ────────────────────────────────────────────────────
+
+    public record ApproverRule(String membershipId, String departmentId, String approverId) {}
+
+    @GetMapping("/approvers")
+    public ExpenseService.ApproverSetup approvers(SessionCtx ctx) {
+        return expenses.approvers(ctx);
+    }
+
+    @PostMapping("/approvers")
+    public ExpenseService.Saved saveApprover(SessionCtx ctx, @RequestBody ApproverRule body) {
+        return expenses.saveApprover(ctx, body.membershipId() == null ? null : Requests.id(body.membershipId()),
+                body.departmentId() == null ? null : Requests.id(body.departmentId()), body.approverId() == null ? null : Requests.id(body.approverId()));
+    }
+
+    @DeleteMapping("/approvers/{id}")
+    public ResponseEntity<Void> removeApprover(SessionCtx ctx, @PathVariable("id") String id) {
+        expenses.removeApprover(ctx, Requests.id(id));
+        return ResponseEntity.noContent().build();
+    }
+
     // ── the caller's own claims ─────────────────────────────────────────
 
     @GetMapping("/claims")

@@ -17,7 +17,8 @@ Where the build differs from the design above:
 - HR Admin also holds `expense.approve` at Organization scope, as it holds `leave.approve`. A role can only be granted by someone who holds all its permissions, so without it HR could no longer grant Manager. Only an Org Admin can grant Finance.
 - The database keeps a submitted claim, its lines and files (a delete trigger), and evidence reviews can only be added.
 - Each line records at submission whether it needs evidence, so a later change to a category never alters a claim already submitted.
-- Not built yet: the second finance approver over the claim total, audit sampling, the yearly count of missing-receipt statements, notifications, and the whole of X3 to X6. A claim from someone with no active manager goes straight to finance, which for a leaver is probably not what is wanted before exit integration (X5).
+- Approval routing is configurable (V48): a designated approver for a person or a department (Expenses, Approvers), a setting to switch the manager step off (`expenses.manager_step`), and a setting for a second finance approver above an amount (`expenses.second_finance_above`, 0 for never). The approver must hold `expense.approve`; a rule that would make someone approve their own claims is refused. The claim records the approver and the number of finance approvals it needs at submission.
+- Not built yet: Organization-defined roles (a platform-wide change to how roles work), audit sampling, the yearly count of missing-receipt statements, notifications, and the whole of X3 to X6. A claim from someone with no active manager goes straight to finance, which for a leaver is probably not what is wanted before exit integration (X5).
 
 ## Purpose and scope
 

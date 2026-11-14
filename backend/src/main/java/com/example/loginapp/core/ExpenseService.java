@@ -44,6 +44,8 @@ public final class ExpenseService {
 
     public record Saved(UUID id) {}
 
+    public record ApproverSetup(List<Map<String, Object>> rules, List<Map<String, Object>> people, List<Map<String, Object>> departments) {}
+
     public record Created(UUID id, String number, String status, int version) {}
 
     public record LineAdded(UUID id, BigDecimal amount) {}
@@ -55,7 +57,8 @@ public final class ExpenseService {
     /** One claim with its lines, each with its files and the latest review. */
     public record ClaimView(UUID id, UUID membershipId, String number, String title, String status, Object submittedAt,
                             String decisionNote, String managerNote, String financeNote, Object limits, int version,
-                            String claimant, BigDecimal total, BigDecimal payable, List<Map<String, Object>> lines) {}
+                            String claimant, BigDecimal total, BigDecimal payable, int financeApprovals, boolean firstVerified,
+                            List<Map<String, Object>> lines) {}
 
     /** A reviewer's change to one line: the amount approved and why it is lower. */
     public record Cut(String lineId, BigDecimal amount, String reason) {}
@@ -175,7 +178,7 @@ public final class ExpenseService {
     public ClaimView claim(SessionCtx ctx, UUID claimId) {
         return db.inTenant(ctx.tenantId(), c -> {
             Map<String, Object> k = Sql.one(c, CLAIM_LIST.replace("(select count(*) from app.expense_line l where l.claim_id = k.id) as lines, ", "")
-                    .replace("k.decision_note,", "k.decision_note, k.manager_note, k.finance_note, k.limits::text as limits, ")
+                    .replace("k.decision_note,", "k.decision_note, k.manager_note, k.finance_note, k.limits::text as limits, k.finance_approvals, (k.finance_by is not null) as first_verified, ")
                     + "where k.id = ?", claimId);
             if (k == null || !canSee(c, ctx, AuthService.uuid(k.get("membershipId")))) {
                 throw ApiException.notFound("The claim");
@@ -196,7 +199,8 @@ public final class ExpenseService {
                     (String) k.get("title"), (String) k.get("status"), k.get("submittedAt"), (String) k.get("decisionNote"),
                     (String) k.get("managerNote"), (String) k.get("financeNote"), Json.parse((String) k.get("limits")),
                     ((Number) k.get("version")).intValue(), (String) k.get("claimant"), (BigDecimal) k.get("total"),
-                    (BigDecimal) k.get("payable"), lines);
+                    (BigDecimal) k.get("payable"), ((Number) k.get("financeApprovals")).intValue(),
+                    Boolean.TRUE.equals(k.get("firstVerified")), lines);
         });
     }
 
@@ -428,10 +432,15 @@ public final class ExpenseService {
             snapshot.put("categories", cats);
             snapshot.put("warnings", warnings);
             snapshot.put("declaration", declaration);
-            UUID manager = managerOf(c, ctx.membershipId());
+            UUID manager = Settings.get(c, Settings.EXPENSE_MANAGER_STEP).asBoolean() ? approverFor(c, ctx.membershipId()) : null;
             String next = manager == null ? "approved" : "submitted";
+            long above = Settings.get(c, Settings.EXPENSE_SECOND_APPROVER_ABOVE).asInt();
+            BigDecimal total = (BigDecimal) Sql.one(c, "select coalesce(sum(amount), 0) as s from app.expense_line where claim_id = ?", claimId).get("s");
+            int financeApprovals = above > 0 && total.compareTo(BigDecimal.valueOf(above)) > 0 ? 2 : 1;
+            snapshot.put("financeApprovals", financeApprovals);
             Sql.update(c, "update app.expense_claim set status = ?, submitted_at = now(), limits = ?::jsonb, decision_note = null, "
-                    + "version = version + 1, updated_at = now() where id = ?", next, Json.write(snapshot), claimId);
+                    + "approver_membership_id = ?, finance_approvals = ?, finance_by = null, finance_at = null, "
+                    + "version = version + 1, updated_at = now() where id = ?", next, Json.write(snapshot), manager, financeApprovals, claimId);
             UserService.audit(c, ctx, "expense.submitted", "expense_claim", claimId,
                     Map.of("number", k.get("number"), "warnings", warnings, "route", manager == null ? "finance" : "manager"));
             return new Submitted(next, warnings, version + 1);
@@ -483,9 +492,11 @@ public final class ExpenseService {
         }
         return db.inTenant(ctx.tenantId(), c -> {
             UUID[] team = Team.reach(c, ctx, "expense.approve", today());
+            // Claims routed to this person, and (for the legacy route) those of their team; everyone's for HR and the Org Admin.
             return Sql.query(c, CLAIM_LIST + "where k.status = 'submitted' and k.membership_id <> ? "
-                    + (team == null ? "" : "and k.membership_id = any(?) ") + "order by k.submitted_at limit 200",
-                    team == null ? new Object[] {ctx.membershipId()} : new Object[] {ctx.membershipId(), team});
+                    + (team == null ? "" : "and (k.approver_membership_id = ? or (k.approver_membership_id is null and k.membership_id = any(?))) ")
+                    + "order by k.submitted_at limit 200",
+                    team == null ? new Object[] {ctx.membershipId()} : new Object[] {ctx.membershipId(), ctx.membershipId(), team});
         });
     }
 
@@ -502,7 +513,7 @@ public final class ExpenseService {
         db.inTenant(ctx.tenantId(), c -> {
             Map<String, Object> k = lock(c, claimId);
             UUID owner = k == null ? null : AuthService.uuid(k.get("membershipId"));
-            if (k == null || !"submitted".equals(k.get("status")) || !Team.reaches(c, ctx, "expense.approve", owner, today())) {
+            if (k == null || !"submitted".equals(k.get("status")) || !mayDecide(c, ctx, k, owner)) {
                 throw ApiException.notFound("The submitted claim");
             }
             if (owner.equals(ctx.membershipId())) {
@@ -587,7 +598,7 @@ public final class ExpenseService {
             if (status.equals("rejected")) {
                 Sql.update(c, "update app.expense_line set approved_amount = 0, cut_reason = ? where id = ?", "Evidence rejected: " + why, lineId);
             }
-            Sql.update(c, "update app.expense_claim set status = ?, version = version + 1, updated_at = now() where id = ?",
+            Sql.update(c, "update app.expense_claim set status = ?, finance_by = null, finance_at = null, version = version + 1, updated_at = now() where id = ?",
                     status.equals("more_needed") ? "evidence_requested" : k.get("status"), claimId);
             UserService.audit(c, ctx, "expense.evidence_" + status, "expense_line", lineId, Map.of("claim", k.get("number")));
             return null;
@@ -632,6 +643,21 @@ public final class ExpenseService {
             if (payable.signum() <= 0) {
                 throw new ApiException(409, "expense.nothing_payable", "Every line is cut to zero: reject the claim instead");
             }
+            if (((Number) k.get("financeApprovals")).intValue() == 2) {
+                if (k.get("financeBy") == null) {
+                    Sql.update(c, "update app.expense_claim set finance_by = ?, finance_at = now(), finance_note = ?, "
+                            + "version = version + 1, updated_at = now() where id = ?", ctx.membershipId(), blankToNull(note), claimId);
+                    UserService.audit(c, ctx, "expense.verified_first", "expense_claim", claimId, Map.of("number", k.get("number")));
+                    return null;
+                }
+                if (ctx.membershipId().equals(AuthService.uuid(k.get("financeBy")))) {
+                    throw new ApiException(409, "expense.second_person", "A claim this large needs a second person to verify it");
+                }
+                Sql.update(c, "update app.expense_claim set status = 'verified', finance2_by = ?, finance2_at = now(), "
+                        + "version = version + 1, updated_at = now() where id = ?", ctx.membershipId(), claimId);
+                UserService.audit(c, ctx, "expense.verified", "expense_claim", claimId, Map.of("number", k.get("number"), "payable", payable.toPlainString()));
+                return null;
+            }
             Sql.update(c, "update app.expense_claim set status = 'verified', finance_by = ?, finance_at = now(), finance_note = ?, "
                     + "version = version + 1, updated_at = now() where id = ?", ctx.membershipId(), blankToNull(note), claimId);
             UserService.audit(c, ctx, "expense.verified", "expense_claim", claimId, Map.of("number", k.get("number"), "payable", payable.toPlainString()));
@@ -667,7 +693,7 @@ public final class ExpenseService {
 
     // ── helpers ─────────────────────────────────────────────────────────
 
-    private static final String LOCK = "select id, membership_id, status, version, number, manager_by from app.expense_claim where id = ? for update";
+    private static final String LOCK = "select id, membership_id, status, version, number, manager_by, approver_membership_id, finance_by, finance_approvals from app.expense_claim where id = ? for update";
 
     private static Map<String, Object> lock(Connection c, UUID claimId) throws SQLException {
         return Sql.one(c, LOCK, claimId);
@@ -717,7 +743,92 @@ public final class ExpenseService {
             return true;
         }
         String scope = ctx.scopeOf("expense.approve");
-        return scope != null && !scope.equals("self") && Team.reaches(c, ctx, "expense.approve", owner, today());
+        return scope != null && !scope.equals("self") && ctx.membershipId() != null
+                && (Team.reaches(c, ctx, "expense.approve", owner, today())
+                    || Sql.exists(c, "select 1 from app.expense_claim where membership_id = ? and approver_membership_id = ?", owner, ctx.membershipId()));
+    }
+
+    /** The claim's own approver, anyone whose permission reaches everyone, or (for a claim routed before approvers) the manager. */
+    private boolean mayDecide(Connection c, SessionCtx ctx, Map<String, Object> claim, UUID owner) throws SQLException {
+        UUID approver = claim.get("approverMembershipId") == null ? null : AuthService.uuid(claim.get("approverMembershipId"));
+        if (approver != null && approver.equals(ctx.membershipId())) {
+            return true;
+        }
+        return ctx.reachesEveryone("expense.approve") || (approver == null && Team.reaches(c, ctx, "expense.approve", owner, today()));
+    }
+
+    /**
+     * Who decides a person's claim: the approver set for them, else for their department, else their reporting manager.
+     * Null when there is none, or when it would be the claimant: the claim then goes straight to finance.
+     */
+    private UUID approverFor(Connection c, UUID membershipId) throws SQLException {
+        Map<String, Object> own = Sql.one(c, "select approver_membership_id from app.expense_approver where membership_id = ?", membershipId);
+        UUID found = own == null ? null : AuthService.uuid(own.get("approverMembershipId"));
+        if (found == null) {
+            Map<String, Object> dept = Sql.one(c, "select a.approver_membership_id from app.employment e "
+                    + "join lateral (select j.department_id from app.job_assignment j where j.employment_id = e.id and j.effective_from <= ? "
+                    + "  order by j.effective_from desc, j.created_at desc limit 1) cur on true "
+                    + "join app.expense_approver a on a.department_id = cur.department_id "
+                    + "where e.membership_id = ? and e.status = 'active' limit 1", today(), membershipId);
+            found = dept == null ? null : AuthService.uuid(dept.get("approverMembershipId"));
+        }
+        if (found == null) {
+            found = managerOf(c, membershipId);
+        }
+        return found == null || found.equals(membershipId) ? null : found;
+    }
+
+    // ── who approves ────────────────────────────────────────────────────
+
+    /** The designated approvers, and the people and departments to choose from. */
+    public ApproverSetup approvers(SessionCtx ctx) {
+        ctx.require("expense.setup");
+        return db.inTenant(ctx.tenantId(), c -> {
+            List<Map<String, Object>> rules = Sql.query(c, "select a.id, a.membership_id, a.department_id, a.approver_membership_id, "
+                    + Names.orEmail("a.membership_id") + " as person, d.name as department, " + Names.orEmail("a.approver_membership_id") + " as approver "
+                    + "from app.expense_approver a left join app.department d on d.id = a.department_id order by person nulls last, department");
+            List<Map<String, Object>> people = Sql.query(c, "select m.id, " + Names.orEmail("m.id") + " as name, exists (select 1 from app.effective_permissions(m.id) p "
+                    + "where p.permission_code = 'expense.approve') as can_approve from app.membership m where m.status = 'active' order by name");
+            List<Map<String, Object>> departments = Sql.query(c, "select id, name from app.department where active order by lower(name)");
+            return new ApproverSetup(rules, people, departments);
+        });
+    }
+
+    /** Routes a person's or a department's claims to an approver, replacing any earlier rule for them. */
+    public Saved saveApprover(SessionCtx ctx, UUID membershipId, UUID departmentId, UUID approverId) {
+        ctx.require("expense.setup");
+        if ((membershipId == null) == (departmentId == null)) {
+            throw ApiException.badRequest("Choose either a person or a department");
+        }
+        if (approverId == null) {
+            throw ApiException.badRequest("Choose who approves");
+        }
+        if (approverId.equals(membershipId)) {
+            throw new ApiException(409, "expense.own_claim", "Nobody approves their own claims");
+        }
+        return db.inTenant(ctx.tenantId(), c -> {
+            if (!Sql.exists(c, "select 1 from app.effective_permissions(?) p where p.permission_code = 'expense.approve'", approverId)) {
+                throw new ApiException(409, "expense.approver_cannot", "That person cannot approve claims. Give them the Manager role first");
+            }
+            Sql.update(c, "delete from app.expense_approver where " + (membershipId != null ? "membership_id = ?" : "department_id = ?"),
+                    membershipId != null ? membershipId : departmentId);
+            Map<String, Object> saved = Sql.one(c, "insert into app.expense_approver (tenant_id, membership_id, department_id, approver_membership_id, created_by) "
+                    + "values (?, ?, ?, ?, ?) returning id", ctx.tenantId(), membershipId, departmentId, approverId, ctx.membershipId());
+            UserService.audit(c, ctx, "expense.approver_set", "expense_approver", AuthService.uuid(saved.get("id")),
+                    Map.of("approver", approverId.toString()));
+            return new Saved(AuthService.uuid(saved.get("id")));
+        });
+    }
+
+    public void removeApprover(SessionCtx ctx, UUID id) {
+        ctx.require("expense.setup");
+        db.inTenant(ctx.tenantId(), c -> {
+            if (Sql.update(c, "delete from app.expense_approver where id = ?", id) == 0) {
+                throw ApiException.notFound("The rule");
+            }
+            UserService.audit(c, ctx, "expense.approver_removed", "expense_approver", id, Map.of());
+            return null;
+        });
     }
 
     private static Map<String, Object> category(Connection c, String id) throws SQLException {
