@@ -68,12 +68,59 @@ public final class ExitTasks {
                     continue;
                 }
                 Sql.update(c, "insert into app.exit_task (tenant_id, exit_case_id, template_task_id, title, instructions, owner, required, "
-                        + "remind_days_before, repeat_every_days, position) select tenant_id, ?, ?::uuid, ?, ?, ?, ?, ?, ?, ? "
+                        + "remind_days_before, repeat_every_days, position, auto_check) select tenant_id, ?, ?::uuid, ?, ?, ?, ?, ?, ?, ?, ? "
                         + "from app.exit_case where id = ?", caseId, t.get("id"), t.get("title"), t.get("instructions"), t.get("owner"),
-                        t.get("required"), shortOf(t.get("remindDaysBefore")), shortOf(t.get("repeatEveryDays")), position++, caseId);
+                        t.get("required"), shortOf(t.get("remindDaysBefore")), shortOf(t.get("repeatEveryDays")), position++, t.get("autoCheck"), caseId);
             }
         }
         schedule(c, caseId);
+    }
+
+    /** What the leaver still has open in Expenses: claims not yet paid or closed, and advances or loans with instalments still due. */
+    static Map<String, Object> openInExpenses(Connection c, UUID caseId) throws SQLException {
+        Map<String, Object> claims = Sql.one(c, "select count(*) as n, coalesce(sum((select coalesce(sum(coalesce(l.approved_amount, l.amount)), 0) "
+                + "from app.expense_line l where l.claim_id = k.id)), 0) as total from app.expense_claim k join app.employment e on e.membership_id = k.membership_id "
+                + "join app.exit_case x on x.employment_id = e.id where x.id = ? and k.status in ('submitted','returned','evidence_requested','approved','verified','scheduled')", caseId);
+        Map<String, Object> loans = Sql.one(c, "select count(distinct l.id) as n, coalesce(sum(i.principal), 0) as total from app.loan l "
+                + "join app.employment e on e.membership_id = l.membership_id join app.exit_case x on x.employment_id = e.id "
+                + "join app.loan_instalment i on i.loan_id = l.id and i.status = 'due' where x.id = ? and l.status = 'active'", caseId);
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("claims", claims.get("n"));
+        out.put("claimsAmount", claims.get("total"));
+        out.put("loans", loans.get("n"));
+        out.put("loansAmount", loans.get("total"));
+        out.put("clear", ((Number) claims.get("n")).intValue() == 0 && ((Number) loans.get("n")).intValue() == 0);
+        return out;
+    }
+
+    /**
+     * Keeps the exit's self-checking tasks true to Expenses: one completes itself when nothing is open, and one it completed itself
+     * opens again if something comes up later. A task a person did, or skipped, is left alone. Safe to run again.
+     */
+    static void sync(Connection c, UUID caseId) throws SQLException {
+        if (Sql.one(c, "select 1 from app.exit_task where exit_case_id = ? and auto_check = 'expenses' limit 1", caseId) == null) {
+            return;
+        }
+        if (Boolean.TRUE.equals(openInExpenses(c, caseId).get("clear"))) {
+            Sql.update(c, "update app.exit_task set done_at = now(), amount_note = 'Cleared automatically: no open claim or loan in Expenses' "
+                    + "where exit_case_id = ? and auto_check = 'expenses' and done_at is null and skipped_reason is null", caseId);
+        } else {
+            Sql.update(c, "update app.exit_task set done_at = null, amount_note = null "
+                    + "where exit_case_id = ? and auto_check = 'expenses' and done_at is not null and done_by is null and skipped_reason is null", caseId);
+        }
+    }
+
+    private static String openText(Map<String, Object> b) {
+        List<String> parts = new ArrayList<>();
+        int claims = ((Number) b.get("claims")).intValue();
+        int loans = ((Number) b.get("loans")).intValue();
+        if (claims > 0) {
+            parts.add(claims + (claims == 1 ? " claim" : " claims") + " worth ₹" + ((BigDecimal) b.get("claimsAmount")).setScale(2, java.math.RoundingMode.HALF_UP).toPlainString());
+        }
+        if (loans > 0) {
+            parts.add(loans + (loans == 1 ? " advance or loan" : " advances or loans") + ", ₹" + ((BigDecimal) b.get("loansAmount")).setScale(2, java.math.RoundingMode.HALF_UP).toPlainString() + " principal");
+        }
+        return "Open in Expenses now: " + String.join("; ", parts) + ". This task completes itself when both are clear.";
     }
 
     /** Sets due dates from the acceptance and the last working day, and assigns tasks nobody has yet. Safe to run again. */
@@ -161,7 +208,7 @@ public final class ExitTasks {
 
     private static final String TASK_SELECT = "select t.id, t.exit_case_id, t.title, t.instructions, t.owner, t.assignee_id, "
             + "ad.email as assignee_email, ap.legal_name as assignee_name, t.due_date, t.required, t.amount, t.amount_direction, "
-            + "t.amount_note, t.done_at, dd.email as done_by, t.skipped_reason, t.position, (t.template_task_id is null) as one_off, "
+            + "t.amount_note, t.auto_check, t.done_at, dd.email as done_by, t.skipped_reason, t.position, (t.template_task_id is null) as one_off, "
             + "x.status as exit_status, x.last_working_day, p.legal_name as leaver_name, p.preferred_name as leaver_preferred_name "
             + "from app.exit_task t join app.exit_case x on x.id = t.exit_case_id join app.person p on p.id = x.person_id "
             + "left join app.member_directory() ad on ad.membership_id = t.assignee_id "
@@ -171,8 +218,15 @@ public final class ExitTasks {
     /** The checklist of one exit, for whoever can see the exit. */
     static List<Map<String, Object>> forCase(Connection c, SessionCtx ctx, UUID caseId, LocalDate today) throws SQLException {
         List<Map<String, Object>> out = new ArrayList<>();
+        sync(c, caseId);
+        Map<String, Object> open = null;
         for (Map<String, Object> t : Sql.query(c, TASK_SELECT + " where t.exit_case_id = ? order by t.due_date nulls last, t.position", caseId)) {
-            out.add(decorate(t, ctx, today));
+            Map<String, Object> row = decorate(t, ctx, today);
+            if ("expenses".equals(t.get("autoCheck")) && t.get("doneAt") == null) {
+                open = open == null ? openInExpenses(c, caseId) : open;
+                row.put("liveNote", openText(open));
+            }
+            out.add(row);
         }
         return out;
     }
@@ -185,6 +239,10 @@ public final class ExitTasks {
         LocalDate today = today();
         return db.inTenant(ctx.tenantId(), c -> {
             List<Map<String, Object>> out = new ArrayList<>();
+            for (Map<String, Object> k : Sql.query(c, "select distinct exit_case_id from app.exit_task where assignee_id = ? and done_at is null and auto_check = 'expenses'",
+                    ctx.membershipId())) {
+                sync(c, AuthService.uuid(k.get("exitCaseId")));
+            }
             for (Map<String, Object> t : Sql.query(c, TASK_SELECT + " where t.assignee_id = ? and t.done_at is null "
                     + "and x.status in ('accepted','closed') order by t.due_date nulls last, x.last_working_day, t.position limit 200",
                     ctx.membershipId())) {

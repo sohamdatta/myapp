@@ -80,7 +80,7 @@ Finance can also:
 
 ### When an employee leaves
 
-The exit settlement shows verified claims not yet paid as an amount to pay, and the loan principal still due as an amount to ask back. These come from Expenses at the time, and refresh when the settlement is prepared again. Amounts HR has typed by hand are kept.
+The exit settlement shows verified claims not yet paid as an amount to pay, and the loan principal still due as an amount to ask back. These come from Expenses at the time, and refresh when the settlement is prepared again. Amounts HR has typed by hand are kept. The exit task **Clear open advances, loans and expense claims** shows what is still open and completes itself when nothing is.
 
 ### Tax on cheap loans
 

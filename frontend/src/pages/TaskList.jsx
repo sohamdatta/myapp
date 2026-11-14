@@ -112,6 +112,7 @@ export function TaskRow({ task, hr, users = [], onChanged, showJoiner, taskApi =
             {task.amountNote && ` (${task.amountNote})`}
           </div>
           {task.instructions && <div className="hint">{task.instructions}</div>}
+          {task.liveNote && <div className="hint">{task.liveNote}</div>}
         </div>
         <Badge tone={tone}>{label}</Badge>
       </div>

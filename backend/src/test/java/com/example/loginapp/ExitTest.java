@@ -452,6 +452,35 @@ class ExitTest {
         assertEquals(0, new java.math.BigDecimal("4000").compareTo((java.math.BigDecimal) owed.get("amount")));
     }
 
+    @Test
+    @SuppressWarnings("unchecked")
+    void theClearanceTaskForAdvancesAndClaimsCompletesItselfWhenNothingIsOpen() {
+        Setup s = setup();
+        exits.saveSettings(s.hr, settings(false));
+        UUID id = UUID.fromString((String) exits.resign(s.worker, new ResignInput("pay", null, null)).get("id"));
+        exits.accept(s.hr, id, new AcceptInput(TODAY.plusDays(20).toString(), "owed", null));
+        String title = "Clear open advances, loans and expense claims";
+        assertEquals("done", task((List<Map<String, Object>>) exits.get(s.hr, id).get("tasks"), title).get("state"), "nothing is open at the start");
+        UUID worker = s.worker.membershipId();
+        db.inTenant(s.org.id, c -> {
+            UUID type = UUID.fromString(String.valueOf(Sql.one(c, "insert into app.loan_type (tenant_id, name, kind, max_amount, max_months) values (?, 'Advance', 'salary_advance', 9000, 3) returning id", s.org.id).get("id")));
+            UUID loan = UUID.fromString(String.valueOf(Sql.one(c, "insert into app.loan (tenant_id, number, membership_id, type_id, amount, months, annual_rate, purpose, status, disbursed_on, first_month) "
+                    + "values (?, 'LN-2026-9002', ?, ?, 4000, 2, 0, 'Medical', 'active', current_date, date_trunc('month', current_date + interval '1 month')) returning id", s.org.id, worker, type).get("id")));
+            for (int m = 1; m <= 2; m++) {
+                Sql.update(c, "insert into app.loan_instalment (tenant_id, loan_id, month, principal) values (?, ?, date_trunc('month', current_date + make_interval(months => ?)), 2000)", s.org.id, loan, m);
+            }
+            return null;
+        });
+        Map<String, Object> open = task((List<Map<String, Object>>) exits.get(s.hr, id).get("tasks"), title);
+        assertEquals("open", open.get("state"), "it opens again when something comes up");
+        assertTrue(String.valueOf(open.get("liveNote")).contains("4000.00 principal"), String.valueOf(open.get("liveNote")));
+
+        db.inTenant(s.org.id, c -> Sql.update(c, "update app.loan set status = 'closed' where number = 'LN-2026-9002'"));
+        Map<String, Object> done = task((List<Map<String, Object>>) exits.get(s.hr, id).get("tasks"), title);
+        assertEquals("done", done.get("state"));
+        assertTrue(String.valueOf(done.get("amountNote")).startsWith("Cleared automatically"));
+    }
+
     // ── letters and the interview ───────────────────────────────────────
 
     @Test
