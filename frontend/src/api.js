@@ -464,6 +464,7 @@ export const loans = {
   skip: (instalmentId, note) => post(`/org/loans/instalments/${instalmentId}/skip`, { note }),
   prepay: (id, amount, note) => post(`/org/loans/${id}/prepay`, { amount, note }),
   writeOff: (id, note) => post(`/org/loans/${id}/write-off`, { note }),
+  exempt: (id, note) => post(`/org/loans/${id}/exempt`, { note }),
 }
 
 // ── people: employee records and departments ────────────────────────

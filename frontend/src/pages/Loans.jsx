@@ -26,6 +26,8 @@ function LoanStatus({ status }) {
 function LoanTable({ rows, onOpen, empty, showWho }) {
   if (!rows.length) return <Empty>{empty}</Empty>
   return (
+    <>
+    {rows[0].totalRows > rows.length && <p className="hint" role="status">Showing the first {rows.length} of {rows[0].totalRows}. The rest appear as these are dealt with.</p>}
     <div className="table-wrap">
       <table className="stack">
         <thead>
@@ -52,6 +54,7 @@ function LoanTable({ rows, onOpen, empty, showWho }) {
         </tbody>
       </table>
     </div>
+    </>
   )
 }
 
@@ -172,6 +175,16 @@ function LoanDetail({ id, mode, onClose }) {
               onClick={() => act(() => loans.writeOff(id, note), 'Written off')}>
               Write off what is owed
             </button>
+          </div>
+          <p className="hint">
+            {l.perqExemptReason
+              ? `The interest benefit of this loan is not taxed: ${l.perqExemptReason}`
+              : 'A loan for treating a specified illness is not taxed on its interest benefit. To mark this one, write the reason and where the evidence is kept above (10 characters or more).'}
+          </p>
+          <div className="actions">
+            {l.perqExemptReason
+              ? <button type="button" className="secondary" disabled={busy} onClick={() => act(() => loans.exempt(id, ''), 'The loan is taxed as usual again')}>Remove the exemption</button>
+              : <button type="button" className="secondary" disabled={busy || note.trim().length < 10} onClick={() => act(() => loans.exempt(id, note), 'Marked as exempt')}>Mark exempt from perquisite tax</button>}
           </div>
         </div>
       )}

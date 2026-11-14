@@ -639,7 +639,7 @@ class ExpensesTest {
             }
             return null;
         });
-        int told = db.inTenant(s.orgId, c -> LoanService.alertCarried(c, s.orgId, thisMonth));
+        int told = db.inTenant(s.orgId, c -> LoanService.alertCarried(c, s.orgId, null, thisMonth));
         assertEquals(1, told, "only the loan with an instalment from two or more months back");
         long mine = db.inTenant(s.orgId, c -> Sql.count(c, "select 1 from app.notification where membership_id = ? and event = 'loan_instalment_carried'", s.finance.membershipId()));
         assertEquals(1, mine);
@@ -693,6 +693,20 @@ class ExpensesTest {
     private static List<String> notes(Setup s, SessionCtx who) {
         return db.inTenant(s.orgId, c -> Sql.query(c, "select body from app.notification where membership_id = ? order by created_at, id", who.membershipId()))
                 .stream().map(r -> (String) r.get("body")).toList();
+    }
+
+    @Test
+    void financeMarksALoanExemptFromThePerquisiteAndCanTakeTheMarkOff() {
+        Setup s = setup();
+        UUID type = loans.saveType(s.finance, null, new LoanService.TypeInput("Medical loan", "loan", new BigDecimal("500000"), 12, BigDecimal.ZERO, 0, 1, true)).id();
+        LoanService.Created ln = loans.request(s.solo, new LoanService.RequestInput(type.toString(), new BigDecimal("300000"), 12, "Surgery"));
+        loans.financeDecide(s.finance, ln.id(), "approve", null, 1);
+        assertError(403, "permission.denied", () -> loans.exempt(s.solo, ln.id(), "Treatment of a specified illness"));
+        assertError(400, "request.invalid", () -> loans.exempt(s.finance, ln.id(), "short"));
+        loans.exempt(s.finance, ln.id(), "Treatment of a specified illness; hospital letter in the loan file");
+        assertTrue(loans.loan(s.finance, ln.id()).perqExemptReason().startsWith("Treatment"));
+        loans.exempt(s.finance, ln.id(), "");
+        assertEquals(null, loans.loan(s.finance, ln.id()).perqExemptReason());
     }
 
     @Test

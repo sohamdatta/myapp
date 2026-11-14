@@ -1062,6 +1062,62 @@ class PayrollTest {
     }
 
     @Test
+    void aLoanCannotBeChangedWhileARunHoldsItsInstalmentAndHeldPayDeductsNothing() {
+        assumeTrue(reachable, "PostgreSQL is not reachable");
+        Org org = newOrg();
+        SessionCtx operator = join(org, "payroll", List.of("payroll_operator"));
+        SessionCtx asha = join(org, "asha", List.of("employee"));
+        String loc = (String) settings.saveLocation(org.admin, null,
+                new LocationInput("Bengaluru office", "Asia/Kolkata", "KA", null, null, null, null, "none", true)).get("id");
+        String shift = (String) settings.saveShift(org.admin, null, new ShiftInput("General", "09:30", "18:30", 10, 480, 240, true)).get("id");
+        settings.assign(org.admin, List.of(asha.membershipId().toString()), UUID.fromString(loc), UUID.fromString(shift), List.of(0), TODAY.minusDays(120).toString());
+        UUID ashaId = UUID.fromString((String) employees.add(org.admin, person("Asha Rao", "ABCPR1234F", asha)).get("id"));
+        for (String[] r : List.of(new String[] {"pf", null, "KABLR0012345000"}, new String[] {"esi", null, "53000123450001001"},
+                new String[] {"pt", "KA", "PTKA-123456"}, new String[] {"lwf", "KA", "LWF-KA-998"})) {
+            config.addRegistration(operator, new PayrollConfig.RegistrationInput(r[0], r[1], r[2]));
+        }
+        String staff = (String) ((Map<?, ?>) ((List<?>) config.setup(operator).get("structures")).get(0)).get("id");
+        LocalDate period = TODAY.withDayOfMonth(1).plusMonths(1);
+        pay.revise(org.admin, ashaId, new PayrollPay.ReviseInput(TODAY.withDayOfMonth(1).toString(), staff, new BigDecimal("900000"), "Joining salary"));
+        UUID adv = loans.saveType(org.admin, null, new LoanService.TypeInput("Salary advance", "salary_advance", new BigDecimal("20000"), 3, BigDecimal.ZERO, 0, 1, true)).id();
+        LoanService.Created l = loans.request(asha, new LoanService.RequestInput(adv.toString(), new BigDecimal("6000"), 3, "Medical bill"));
+        loans.financeDecide(org.admin, l.id(), "approve", null, 1);
+        loans.disburse(org.admin, l.id(), TODAY.toString(), null, "UTR-1234", 2);
+        String group = (String) ((Map<?, ?>) ((List<?>) runs.list(operator).get("groups")).get(0)).get("id");
+        UUID run = UUID.fromString((String) runs.open(operator, UUID.fromString(group), period.toString()).get("id"));
+        runs.freeze(operator, run);
+        // The run has the first instalment: a repayment, a skip or a write-off now would leave the payslip deducting what is no longer owed.
+        UUID first = UUID.fromString((String) loans.loan(asha, l.id()).schedule().get(0).get("id"));
+        assertError(409, "loan.in_run", () -> loans.prepay(org.admin, l.id(), new BigDecimal("3000"), "Bank transfer UTR5544"));
+        assertError(409, "loan.in_run", () -> loans.skip(org.admin, first, "Unpaid leave"));
+        assertError(409, "loan.in_run", () -> loans.writeOff(operator2(org), l.id(), "Agreed by the directors"));
+        // Reopening gives the instalment back; then the repayment goes in and the run takes the smaller instalment.
+        runs.reopen(operator, run, "A repayment came in");
+        loans.prepay(org.admin, l.id(), new BigDecimal("3000"), "Bank transfer UTR5544");
+        runs.freeze(operator, run);
+        runs.hold(operator, run, ashaId, "Pending clearance", true);
+        runs.calculate(operator, run);
+        assertTrue(((List<?>) runs.employee(operator, run, ashaId).get("lines")).stream().noneMatch(x -> "LOAN_EMI".equals(((Map<?, ?>) x).get("code"))), "held pay deducts no instalment");
+        runs.hold(operator, run, ashaId, null, false);
+        assertError(409, "payroll.recalculate", () -> runs.approve(org.admin, run));
+        runs.calculate(operator, run);
+        assertEquals(0, new BigDecimal("1000.00").compareTo(lineAmount(runs.employee(operator, run, ashaId), "LOAN_EMI")));
+        for (Object o : (List<?>) runs.get(operator, run).get("exceptions")) {
+            Map<?, ?> x = (Map<?, ?>) o;
+            if ("blocking".equals(x.get("level")) && Boolean.TRUE.equals(x.get("acceptable"))) {
+                runs.accept(org.admin, run, UUID.fromString((String) x.get("id")), "Checked");
+            }
+        }
+        runs.approve(org.admin, run);
+        assertEquals(0, new BigDecimal("2000.00").compareTo(loans.loan(asha, l.id()).outstanding()), "6,000 less 3,000 repaid and 1,000 deducted");
+        loans.prepay(org.admin, l.id(), new BigDecimal("500"), "Cash, receipt 12");   // free again once the run is approved
+    }
+
+    private static SessionCtx operator2(Org org) {
+        return join(org, "finance2", List.of("finance"));
+    }
+
+    @Test
     void aCheapLoanOverTwoLakhIsTaxedOnTheInterestBenefitAndWarnsWhenNoRateIsSet() {
         assumeTrue(reachable, "PostgreSQL is not reachable");
         for (boolean rateSet : new boolean[] {false, true}) {
@@ -1149,11 +1205,20 @@ class PayrollTest {
             }
             runs.calculate(operator, run);
             Map<String, Object> slip = runs.employee(operator, run, ashaId);
-            assertEquals(0, new BigDecimal("2500.00").compareTo(lineAmount(slip, "REIMB", "Reimbursement: Travel")));
-            assertEquals(0, new BigDecimal("400.00").compareTo(lineAmount(slip, "REIMB", "Reimbursement: Meals")));
             BigDecimal gross = (BigDecimal) slip.get("gross");
             BigDecimal deductions = (BigDecimal) slip.get("deductions");
-            assertEquals(0, gross.subtract(deductions).add(new BigDecimal("2900")).compareTo((BigDecimal) slip.get("net")), "net is pay plus the expenses, and gross is untouched");
+            if (hold) {   // held pay carries no expenses: they are paid with pay that goes out
+                assertTrue(((List<?>) slip.get("lines")).stream().noneMatch(l -> "REIMB".equals(((Map<?, ?>) l).get("code"))));
+                assertEquals(0, gross.subtract(deductions).compareTo((BigDecimal) slip.get("net")));
+            } else {
+                assertEquals(0, new BigDecimal("2500.00").compareTo(lineAmount(slip, "REIMB", "Reimbursement: Travel")));
+                assertEquals(0, new BigDecimal("400.00").compareTo(lineAmount(slip, "REIMB", "Reimbursement: Meals")));
+                assertEquals(0, gross.subtract(deductions).add(new BigDecimal("2900")).compareTo((BigDecimal) slip.get("net")), "net is pay plus the expenses, and gross is untouched");
+                // Holding pay after the sums are done must be followed by a new calculation, so a payslip never shows expenses it will not pay.
+                runs.hold(operator, run, ashaId, "Second thoughts", true);
+                assertError(409, "payroll.recalculate", () -> runs.approve(org.admin, run));
+                runs.hold(operator, run, ashaId, null, false);
+            }
             for (Object o : (List<?>) runs.get(operator, run).get("exceptions")) {
                 Map<?, ?> x = (Map<?, ?>) o;
                 if ("blocking".equals(x.get("level")) && Boolean.TRUE.equals(x.get("acceptable"))) {

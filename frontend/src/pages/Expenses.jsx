@@ -95,6 +95,8 @@ function MyClaims() {
 function ClaimTable({ rows, onOpen, empty, showWho }) {
   if (rows.length === 0) return <Empty>{empty}</Empty>
   return (
+    <>
+    {rows[0].totalRows > rows.length && <p className="hint" role="status">Showing the first {rows.length} of {rows[0].totalRows}. The rest appear as these are dealt with.</p>}
     <div className="table-wrap">
       <table className="stack">
         <thead>
@@ -123,6 +125,7 @@ function ClaimTable({ rows, onOpen, empty, showWho }) {
         </tbody>
       </table>
     </div>
+    </>
   )
 }
 
@@ -203,6 +206,8 @@ function Payments() {
       {rows.length === 0 ? (
         <Empty>No verified claims are waiting.</Empty>
       ) : (
+        <>
+        {rows[0].totalRows > rows.length && <p className="hint" role="status">Showing the first {rows.length} of {rows[0].totalRows}. Make a batch of these to see the rest.</p>}
         <div className="table-wrap">
           <table>
             <thead>
@@ -239,6 +244,7 @@ function Payments() {
             </tbody>
           </table>
         </div>
+        </>
       )}
       {chosen.length > 0 && (
         <p>

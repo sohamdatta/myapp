@@ -37,7 +37,7 @@ public final class LoanService {
     public record LoanView(UUID id, UUID membershipId, String number, String person, String type, String status, BigDecimal amount, int months,
                            BigDecimal annualRate, String purpose, String decisionNote, Object disbursedOn, String disbursalRef,
                            BigDecimal outstanding, int version, List<Map<String, Object>> schedule, List<Map<String, Object>> settlements,
-                           int financeApprovals, boolean firstApproved, boolean iApprovedFirst) {}
+                           int financeApprovals, boolean firstApproved, boolean iApprovedFirst, String perqExemptReason) {}
 
     /** The component payroll deducts instalments under. */
     public static final String COMPONENT = "LOAN_EMI";
@@ -266,18 +266,20 @@ public final class LoanService {
         }
         return db.inTenant(ctx.tenantId(), c -> {
             UUID[] team = Team.reach(c, ctx, "expense.approve", today());
-            return Sql.query(c, LIST + "where l.status = 'requested' and l.membership_id <> ? "
-                    + (team == null ? "" : "and (l.approver_membership_id = ? or (l.approver_membership_id is null and l.membership_id = any(?))) ")
-                    + "order by l.created_at limit 200",
-                    team == null ? new Object[] {ctx.membershipId()} : new Object[] {ctx.membershipId(), ctx.membershipId(), team});
+            String where = "where l.status = 'requested' and l.membership_id <> ? "
+                    + (team == null ? "" : "and (l.approver_membership_id = ? or (l.approver_membership_id is null and l.membership_id = any(?))) ");
+            Object[] params = team == null ? new Object[] {ctx.membershipId()} : new Object[] {ctx.membershipId(), ctx.membershipId(), team};
+            return Lists.withTotal(Sql.query(c, LIST + where + "order by l.created_at limit 200", params),
+                    Sql.count(c, "select 1 from app.loan l " + where, params));
         });
     }
 
     /** Finance's list: what waits for approval or payout, and what is being repaid. */
     public List<Map<String, Object>> queue(SessionCtx ctx) {
         ctx.require("loan.manage");
-        return db.inTenant(ctx.tenantId(), c -> Sql.query(c, LIST + "where l.status in ('manager_approved','approved','active') "
-                + "order by case l.status when 'manager_approved' then 0 when 'approved' then 1 else 2 end, l.created_at limit 300"));
+        return db.inTenant(ctx.tenantId(), c -> Lists.withTotal(Sql.query(c, LIST + "where l.status in ('manager_approved','approved','active') "
+                + "order by case l.status when 'manager_approved' then 0 when 'approved' then 1 else 2 end, l.created_at limit 300"),
+                Sql.count(c, "select 1 from app.loan l where l.status in ('manager_approved','approved','active')")));
     }
 
     public List<Map<String, Object>> mine(SessionCtx ctx) {
@@ -288,7 +290,7 @@ public final class LoanService {
     private static final String LIST = "select l.id, l.number, l.status, l.amount, l.months, l.annual_rate, l.purpose, l.version, l.membership_id, "
             + Names.orEmail("l.membership_id") + " as person, t.name as type, "
             + "(select coalesce(sum(i.principal), 0) from app.loan_instalment i where i.loan_id = l.id and i.status = 'due') as outstanding, "
-            + "l.finance_approvals, (l.finance_by is not null) as first_approved "
+            + "l.finance_approvals, (l.finance_by is not null) as first_approved, l.perq_exempt_reason "
             + "from app.loan l join app.loan_type t on t.id = l.type_id ";
 
     /** The manager approves or rejects. Rejecting needs a reason. */
@@ -327,6 +329,8 @@ public final class LoanService {
                 if (first) {   // the first of two: the loan stays with finance until someone else approves too
                     Sql.update(c, "update app.loan set finance_by = ?, finance_at = now(), version = version + 1, updated_at = now() where id = ?", ctx.membershipId(), id);
                     UserService.audit(c, ctx, "loan.approve_first", "loan", id, Map.of("number", l.get("number")));
+                    // The others in finance hear that it now waits for one of them (the borrower, if in finance, cannot approve it).
+                    ExpenseNotices.tellHolders(c, ctx.tenantId(), "loan.manage", "loan_finance_waiting", ExpenseNotices.loan(c, id), ctx.membershipId());
                     return null;
                 }
                 if (ctx.membershipId().equals(AuthService.uuid(l.get("financeBy")))) {
@@ -431,7 +435,7 @@ public final class LoanService {
                     (String) l.get("decisionNote"), l.get("disbursedOn"), (String) l.get("disbursalRef"), (BigDecimal) l.get("outstanding"),
                     ((Number) l.get("version")).intValue(), schedule, settlements,
                     ((Number) l.get("financeApprovals")).intValue(), Boolean.TRUE.equals(l.get("firstApproved")),
-                    Sql.exists(c, "select 1 from app.loan where id = ? and finance_by = ?", id, ctx.membershipId()));
+                    Sql.exists(c, "select 1 from app.loan where id = ? and finance_by = ?", id, ctx.membershipId()), (String) l.get("perqExemptReason"));
         });
     }
 
@@ -452,6 +456,7 @@ public final class LoanService {
                 throw new ApiException(409, "loan.state", "Only an instalment that is still due can be skipped");
             }
             UUID loan = AuthService.uuid(i.get("loanId"));
+            requireNotInRun(c, loan);
             LocalDate last = LocalDate.parse((String) Sql.one(c, "select max(month) as m from app.loan_instalment where loan_id = ? and status in ('due','taken')", loan).get("m"));
             Sql.update(c, "update app.loan_instalment set status = 'skipped' where id = ?", instalmentId);
             Sql.update(c, "insert into app.loan_instalment (tenant_id, loan_id, month, principal, interest) values (?, ?, ?, ?, ?)",
@@ -475,6 +480,7 @@ public final class LoanService {
         db.inTenant(ctx.tenantId(), c -> {
             Map<String, Object> l = lock(c, id);
             requireStatus(l, "active");
+            requireNotInRun(c, id);
             BigDecimal outstanding = outstanding(c, id);
             if (amount.compareTo(outstanding) > 0) {
                 throw ApiException.badRequest("That is more than the " + outstanding.toPlainString() + " still owed");
@@ -511,6 +517,7 @@ public final class LoanService {
         db.inTenant(ctx.tenantId(), c -> {
             Map<String, Object> l = lock(c, id);
             requireStatus(l, "active");
+            requireNotInRun(c, id);
             if (ctx.membershipId().equals(l.get("disbursedBy") == null ? null : AuthService.uuid(l.get("disbursedBy")))) {
                 throw new ApiException(403, "loan.same_person", "Someone other than the person who paid the loan out must write it off");
             }
@@ -528,20 +535,69 @@ public final class LoanService {
 
     // ── payroll ─────────────────────────────────────────────────────────
 
-    /** What a person has due in the run for this month: every instalment up to it, oldest first, and the sum to deduct. */
-    static Map<String, Object> dueFor(Connection c, UUID membershipId, LocalDate period) throws SQLException {
-        List<Map<String, Object>> rows = Sql.query(c, "select i.id, i.principal + i.interest as amount from app.loan_instalment i join app.loan l on l.id = i.loan_id "
-                + "where l.membership_id = ? and l.status = 'active' and i.status = 'due' and i.month <= ? order by i.month, i.created_at", membershipId, period);
-        BigDecimal total = BigDecimal.ZERO;
-        List<String> ids = new ArrayList<>();
-        for (Map<String, Object> r : rows) {
-            total = total.add((BigDecimal) r.get("amount"));
-            ids.add((String) r.get("id"));
+    /**
+     * Takes up, for a run being frozen, the instalments of its people that fall due by the month. While an instalment is taken up, no
+     * other run takes it, and the loan cannot be skipped, repaid early or written off: the payslip would deduct what the schedule no longer has.
+     */
+    static void reserve(Connection c, UUID runId, UUID[] employments, LocalDate period) throws SQLException {
+        Sql.update(c, "update app.loan_instalment i set reserved_run_id = ? from app.loan l where l.id = i.loan_id and l.status = 'active' "
+                + "and i.status = 'due' and i.reserved_run_id is null and i.month <= ? and l.membership_id in "
+                + "(select e.membership_id from app.employment e where e.id = any(?) and e.membership_id is not null)", runId, period, employments);
+    }
+
+    /** Gives a run's instalments back: when it is reopened, and after it is approved (what was not deducted stays due). */
+    static void release(Connection c, UUID runId) throws SQLException {
+        Sql.update(c, "update app.loan_instalment set reserved_run_id = null where reserved_run_id = ?", runId);
+    }
+
+    /** What the run has taken up, by membership id: {@code amount} to deduct and the {@code ids} it is for, oldest first. One query for the run. */
+    static Map<String, Map<String, Object>> reserved(Connection c, UUID runId) throws SQLException {
+        Map<String, Map<String, Object>> out = new java.util.LinkedHashMap<>();
+        for (Map<String, Object> r : Sql.query(c, "select l.membership_id, i.id, i.principal + i.interest as amount from app.loan_instalment i "
+                + "join app.loan l on l.id = i.loan_id where i.reserved_run_id = ? order by i.month, i.created_at", runId)) {
+            Map<String, Object> m = out.computeIfAbsent(String.valueOf(r.get("membershipId")), k -> {
+                Map<String, Object> n = new java.util.LinkedHashMap<>();
+                n.put("amount", BigDecimal.ZERO);
+                n.put("ids", new ArrayList<String>());
+                return n;
+            });
+            m.put("amount", ((BigDecimal) m.get("amount")).add((BigDecimal) r.get("amount")));
+            @SuppressWarnings("unchecked")
+            List<String> ids = (List<String>) m.get("ids");
+            ids.add(String.valueOf(r.get("id")));
         }
-        Map<String, Object> out = new java.util.LinkedHashMap<>();
-        out.put("amount", total);
-        out.put("ids", ids);
         return out;
+    }
+
+    /** A frozen person as payroll works them out when their pay is held: no expense claims, and no loan instalment among the inputs. */
+    static Map<String, Object> withoutExpenses(Map<String, Object> emp) {
+        if (emp.get("reimbursements") == null && emp.get("loanDue") == null) {
+            return emp;
+        }
+        Map<String, Object> out = new java.util.LinkedHashMap<>(emp);
+        out.remove("reimbursements");
+        out.remove("loanInstalments");
+        if (emp.get("loanDue") != null) {
+            Map<String, Object> inputs = new java.util.LinkedHashMap<>(PayrollEngine.map(emp, "inputs"));
+            BigDecimal left = PayrollEngine.dec(inputs, COMPONENT).subtract(PayrollEngine.dec(emp, "loanDue"));
+            if (left.signum() > 0) {
+                inputs.put(COMPONENT, left);
+            } else {
+                inputs.remove(COMPONENT);
+            }
+            out.put("inputs", inputs);
+        }
+        return out;
+    }
+
+    /** Refuses a change to a loan while a payroll run that is not yet approved has one of its instalments. */
+    private static void requireNotInRun(Connection c, UUID loan) throws SQLException {
+        Map<String, Object> r = Sql.one(c, "select to_char(r.period, 'FMMonth YYYY') as month from app.loan_instalment i join app.payroll_run r on r.id = i.reserved_run_id "
+                + "where i.loan_id = ? limit 1", loan);
+        if (r != null) {
+            throw new ApiException(409, "loan.in_run", "The payroll run for " + r.get("month") + " has an instalment of this loan and is not approved yet. "
+                    + "Reopen that run first, or do this after it is approved");
+        }
     }
 
     /**
@@ -581,6 +637,7 @@ public final class LoanService {
                 closeIfDone(c, loan);
             }
         }
+        release(c, runId);   // held pay and anything not covered stays due, free for the next run
     }
 
     /**
@@ -588,11 +645,13 @@ public final class LoanService {
      * small to cover them, or finance skipped nothing yet the money did not come). One notification a loan for each person in
      * finance, in the run's own month, so a loan carried for longer is mentioned again each month. Returns how many loans.
      */
-    public static int alertCarried(Connection c, UUID tenantId, LocalDate period) throws SQLException {
+    public static int alertCarried(Connection c, UUID tenantId, UUID runId, LocalDate period) throws SQLException {
         List<Map<String, Object>> loans = Sql.query(c, "select l.id, l.number, " + Names.orEmail("l.membership_id") + " as person, count(*) as n, "
                 + "sum(i.principal + i.interest) as amount, min(i.month) as since from app.loan l join app.loan_instalment i on i.loan_id = l.id "
-                + "where l.status = 'active' and i.status = 'due' and i.month <= ?::date - interval '1 month' group by l.id, l.number, l.membership_id "
-                + "order by l.number", period);
+                + "where l.status = 'active' and i.status = 'due' and i.month <= ?::date - interval '1 month' "
+                // Only the people paid in this run: another pay group's instalments are judged when its own run is approved.
+                + "and (?::uuid is null or l.membership_id in (select ps.membership_id from app.payslip ps where ps.run_id = ?::uuid)) "
+                + "group by l.id, l.number, l.membership_id order by l.number", period, runId, runId);
         for (Map<String, Object> l : loans) {
             int n = ((Number) l.get("n")).intValue();
             Map<String, String> told = ExpenseNotices.loan(c, AuthService.uuid(l.get("id")));
@@ -611,34 +670,39 @@ public final class LoanService {
     // ── the interest perquisite ─────────────────────────────────────────
 
     /**
-     * The taxable benefit of a month: for each loan charged less than the State Bank rate, the balance at the start of the month times
-     * the difference, a twelfth of a year. It counts only when the person's loans together are above ₹2,00,000 (all of it, not the
-     * excess), and not for a loan finance has marked exempt (a medical loan). The rate is the setting in force on the first day of the
-     * tax year. With no rate set nothing is worked out, and {@code rateMissing} says a warning is due.
+     * The taxable benefit of a month, for the people of a run, by membership id: for each loan charged less than the State Bank rate,
+     * what is still owed (every instalment not yet taken, overdue ones included, and those taken this month or later) times the
+     * difference, a twelfth of a year. It counts only when the person's loans together are above ₹2,00,000 (all of it, not the excess),
+     * and not for a loan finance has marked exempt. The rate is the setting in force on the first day of the tax year. With no rate set
+     * nothing is worked out, and {@code rateMissing} says a warning is due. One read of the setting and one query, whatever the size of the run.
      */
-    static Map<String, Object> perquisite(Connection c, UUID membershipId, LocalDate period) throws SQLException {
+    static Map<String, Map<String, Object>> perquisites(Connection c, UUID[] employments, LocalDate period) throws SQLException {
         LocalDate yearStart = LocalDate.of(period.getMonthValue() >= 4 ? period.getYear() : period.getYear() - 1, 4, 1);
         int bp = Settings.get(c, Settings.LOAN_MARKET_RATE, Settings.Context.ORGANIZATION, yearStart).asInt();
         BigDecimal market = BigDecimal.valueOf(bp).movePointLeft(2);
-        BigDecimal total = BigDecimal.ZERO;
-        BigDecimal benefit = BigDecimal.ZERO;
-        boolean cheaper = false;
-        for (Map<String, Object> l : Sql.query(c, "select l.annual_rate, (select coalesce(sum(i.principal), 0) from app.loan_instalment i where i.loan_id = l.id "
-                + "and i.status in ('due','taken') and i.month >= ?) as balance from app.loan l where l.membership_id = ? and l.status in ('active','closed') "
-                + "and l.disbursed_on < ? and l.perq_exempt_reason is null", period, membershipId, period.plusMonths(1))) {
+        Map<String, BigDecimal> totals = new java.util.LinkedHashMap<>();
+        Map<String, BigDecimal> benefits = new java.util.LinkedHashMap<>();
+        for (Map<String, Object> l : Sql.query(c, "select l.membership_id, l.annual_rate, (select coalesce(sum(i.principal), 0) from app.loan_instalment i where i.loan_id = l.id "
+                + "and (i.status = 'due' or (i.status = 'taken' and i.month >= ?))) as balance from app.loan l where l.status in ('active','closed') "
+                + "and l.disbursed_on < ? and l.perq_exempt_reason is null and l.membership_id in "
+                + "(select e.membership_id from app.employment e where e.id = any(?) and e.membership_id is not null)", period, period.plusMonths(1), employments)) {
             BigDecimal balance = (BigDecimal) l.get("balance");
             BigDecimal rate = (BigDecimal) l.get("annualRate");
             if (balance.signum() <= 0 || (bp > 0 && rate.compareTo(market) >= 0)) {
                 continue;
             }
-            cheaper = true;
-            total = total.add(balance);
-            benefit = benefit.add(balance.multiply(market.subtract(rate).max(BigDecimal.ZERO)).divide(BigDecimal.valueOf(1200), 2, RoundingMode.HALF_UP));
+            String who = String.valueOf(l.get("membershipId"));
+            totals.merge(who, balance, BigDecimal::add);
+            benefits.merge(who, balance.multiply(market.subtract(rate).max(BigDecimal.ZERO)).divide(BigDecimal.valueOf(1200), 2, RoundingMode.HALF_UP), BigDecimal::add);
         }
-        boolean over = total.compareTo(PERQUISITE_THRESHOLD) > 0;
-        Map<String, Object> out = new java.util.LinkedHashMap<>();
-        out.put("amount", over && bp > 0 ? benefit : BigDecimal.ZERO);
-        out.put("rateMissing", over && cheaper && bp == 0);
+        Map<String, Map<String, Object>> out = new java.util.LinkedHashMap<>();
+        for (Map.Entry<String, BigDecimal> t : totals.entrySet()) {
+            boolean over = t.getValue().compareTo(PERQUISITE_THRESHOLD) > 0;
+            Map<String, Object> m = new java.util.LinkedHashMap<>();
+            m.put("amount", over && bp > 0 ? benefits.get(t.getKey()) : BigDecimal.ZERO);
+            m.put("rateMissing", over && bp == 0);
+            out.put(t.getKey(), m);
+        }
         return out;
     }
 
@@ -646,7 +710,7 @@ public final class LoanService {
     public void exempt(SessionCtx ctx, UUID id, String reason) {
         ctx.require("loan.manage");
         String why = reason == null ? "" : reason.trim();
-        if (why.length() < 10) {
+        if (!why.isEmpty() && why.length() < 10) {
             throw ApiException.badRequest("Say what makes the loan exempt, and where the evidence is kept, in at least 10 characters");
         }
         db.inTenant(ctx.tenantId(), c -> {
@@ -654,8 +718,8 @@ public final class LoanService {
             if (ctx.membershipId().equals(AuthService.uuid(l.get("membershipId")))) {
                 throw new ApiException(403, "loan.own", "You cannot decide your own loan");
             }
-            Sql.update(c, "update app.loan set perq_exempt_reason = ?, updated_at = now() where id = ?", why, id);
-            UserService.audit(c, ctx, "loan.perquisite_exempt", "loan", id, Map.of("number", l.get("number"), "reason", why));
+            Sql.update(c, "update app.loan set perq_exempt_reason = ?, updated_at = now() where id = ?", why.isEmpty() ? null : why, id);
+            UserService.audit(c, ctx, why.isEmpty() ? "loan.perquisite_taxed" : "loan.perquisite_exempt", "loan", id, Map.of("number", l.get("number"), "reason", why));
             return null;
         });
     }

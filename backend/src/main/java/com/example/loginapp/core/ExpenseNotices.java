@@ -63,6 +63,27 @@ final class ExpenseNotices {
         }
     }
 
+    /** Tells the claimant of each claim, with one read of the claims and one write of the notifications, however many there are. */
+    static void tellClaimants(Connection c, UUID tenantId, String event, java.util.List<UUID> claimIds) throws SQLException {
+        if (claimIds.isEmpty()) {
+            return;
+        }
+        ensure(c, tenantId);
+        Map<String, Object> t = Sql.one(c, "select subject, body from app.message_template where event = ? and channel = 'in_app' and active", event);
+        if (t == null) {
+            return;
+        }
+        java.util.List<Object[]> rows = new java.util.ArrayList<>();
+        for (Map<String, Object> k : Sql.query(c, "select k.number, k.title, k.membership_id, k.decision_note, " + Names.orEmail("k.membership_id") + " as person, "
+                + "(select coalesce(sum(coalesce(l.approved_amount, l.amount)), 0) from app.expense_line l where l.claim_id = k.id) as amount "
+                + "from app.expense_claim k where k.id = any(?)", (Object) claimIds.toArray(new UUID[0]))) {
+            Map<String, String> v = values(k);
+            rows.add(new Object[] {tenantId, AuthService.uuid(k.get("membershipId")), event, Templates.render((String) t.get("subject"), v),
+                    Templates.render((String) t.get("body"), v), "expenses"});
+        }
+        Sql.batch(c, "insert into app.notification (tenant_id, membership_id, event, subject, body, link) values (?, ?, ?, ?, ?, ?)", rows);
+    }
+
     static String rupees(Object amount) {
         return "₹" + ((BigDecimal) amount).setScale(2, RoundingMode.HALF_UP).toPlainString();
     }
@@ -72,6 +93,10 @@ final class ExpenseNotices {
         Map<String, Object> k = Sql.one(c, "select k.number, k.title, k.membership_id, k.decision_note, " + Names.orEmail("k.membership_id") + " as person, "
                 + "(select coalesce(sum(coalesce(l.approved_amount, l.amount)), 0) from app.expense_line l where l.claim_id = k.id) as amount "
                 + "from app.expense_claim k where k.id = ?", claimId);
+        return values(k);
+    }
+
+    private static Map<String, String> values(Map<String, Object> k) {
         Map<String, String> v = new LinkedHashMap<>();
         v.put("claim.number", (String) k.get("number"));
         v.put("claim.title", (String) k.get("title"));

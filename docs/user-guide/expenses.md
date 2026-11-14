@@ -38,7 +38,7 @@ The approver sees claims waiting for them with the lines, the evidence and any w
 
 ## 3. Finance
 
-**Finance** lists claims the manager has approved. Finance checks the evidence line by line, then **verifies** the claim, returns it, or rejects it. Where the Organization has set a second finance approver above an amount, a larger claim needs two different people.
+**Finance** lists claims the manager has approved (the first 200 when there are more; the screen says so). Finance checks the evidence line by line, then **verifies** the claim, returns it, or rejects it. Where the Organization has set a second finance approver above an amount, a larger claim needs two different people.
 
 ![Finance's view of a claim](img/expenses/08-finance-claim.png)
 
@@ -74,7 +74,7 @@ The manager (or named approver) decides first, then Finance (**Loan approvals**,
 
 ### Repayment
 
-Payroll takes each instalment from salary as **Loan or advance recovery**. Deductions in a month cannot take more than half of gross pay: the instalment gives way, the payroll run shows a warning, and the rest stays due at the end of the schedule. Approving the run records what was taken. Pay that is held is not settled; its instalments are taken in the run after release. When an instalment has missed two runs, everyone in Finance is notified, and again each month it stays behind.
+Payroll takes each instalment from salary as **Loan or advance recovery**. Deductions in a month cannot take more than half of gross pay: the instalment gives way, the payroll run shows a warning, and the rest stays due at the end of the schedule. Approving the run records what was taken. Held pay deducts no instalment; it is taken in a later run. If pay is held or released after the run is calculated, calculate it again before approving. When an instalment has missed two runs, everyone in Finance is notified, and again each month it stays behind.
 
 Finance can also:
 
@@ -82,13 +82,15 @@ Finance can also:
 - Record an **early repayment**: the remaining instalments are worked out again over the same months.
 - **Write off** the balance with a reason; this needs someone other than the person who paid it out.
 
+While a payroll run that is frozen but not yet approved has an instalment of the loan, these three are refused: reopen the run first, or wait until it is approved.
+
 ### When an employee leaves
 
 The exit settlement shows verified claims not yet paid as an amount to pay, and the loan principal still due as an amount to ask back. These come from Expenses at the time, and refresh when the settlement is prepared again. Amounts HR has typed by hand are kept. The exit task **Clear open advances, loans and expense claims** shows what is still open and completes itself when nothing is.
 
 ### Tax on cheap loans
 
-A loan charged less than the State Bank of India rate gives the employee a taxable benefit, but only when their loans together are above ₹2,00,000. When it applies, the benefit appears on the payslip as an information line, is included in tax deducted, and shows on the year-end tax certificate as "of which perquisite". Finance can mark a loan exempt (for example, treatment of a specified illness), with a reason and where the evidence is kept. The rate is set once a year (see 5); with no rate set, the payslip warns and no benefit is worked out.
+A loan charged less than the State Bank of India rate gives the employee a taxable benefit, but only when their loans together are above ₹2,00,000. When it applies, the benefit appears on the payslip as an information line, is included in tax deducted, and shows on the year-end tax certificate as "of which perquisite". Finance can mark a loan exempt (for example, treatment of a specified illness) on the loan's page under **Loans**: write the reason and where the evidence is kept, then **Mark exempt from perquisite tax**. **Remove the exemption** undoes it. The rate is set once a year (see 5); with no rate set, the payslip warns and no benefit is worked out.
 
 ## 5. Setting up (Org Admin and Finance)
 

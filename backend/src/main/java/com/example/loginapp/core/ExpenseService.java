@@ -107,7 +107,8 @@ public final class ExpenseService {
         }
         for (String[] d : new String[][] {{"Travel", "Travel and conveyance", "true"}, {"Local conveyance", "Travel and conveyance", "false"},
                 {"Meals", "Staff welfare", "false"}, {"Internet and phone", "Communication", "false"}, {"Other", "Miscellaneous expenses", "false"}}) {
-            Sql.update(c, "insert into app.expense_category (tenant_id, name, ledger, needs_travel_proof) values (?, ?, ?, ?)",
+            // Two first visits at the same moment both get here: the second finds each name taken and adds nothing.
+            Sql.update(c, "insert into app.expense_category (tenant_id, name, ledger, needs_travel_proof) values (?, ?, ?, ?) on conflict do nothing",
                     tenantId, d[0], d[1], Boolean.parseBoolean(d[2]));
         }
     }
@@ -526,10 +527,11 @@ public final class ExpenseService {
         return db.inTenant(ctx.tenantId(), c -> {
             UUID[] team = Team.reach(c, ctx, "expense.approve", today());
             // Claims routed to this person, and (for the legacy route) those of their team; everyone's for HR and the Org Admin.
-            return Sql.query(c, CLAIM_LIST + "where k.status = 'submitted' and k.membership_id <> ? "
-                    + (team == null ? "" : "and (k.approver_membership_id = ? or (k.approver_membership_id is null and k.membership_id = any(?))) ")
-                    + "order by k.submitted_at limit 200",
-                    team == null ? new Object[] {ctx.membershipId()} : new Object[] {ctx.membershipId(), ctx.membershipId(), team});
+            String where = "where k.status = 'submitted' and k.membership_id <> ? "
+                    + (team == null ? "" : "and (k.approver_membership_id = ? or (k.approver_membership_id is null and k.membership_id = any(?))) ");
+            Object[] params = team == null ? new Object[] {ctx.membershipId()} : new Object[] {ctx.membershipId(), ctx.membershipId(), team};
+            return Lists.withTotal(Sql.query(c, CLAIM_LIST + where + "order by k.submitted_at limit 200", params),
+                    Sql.count(c, "select 1 from app.expense_claim k " + where, params));
         });
     }
 
@@ -601,8 +603,9 @@ public final class ExpenseService {
     /** Claims waiting for finance: approved by the manager, or paused for evidence. */
     public List<Map<String, Object>> verifyQueue(SessionCtx ctx) {
         ctx.require("expense.finance");
-        return db.inTenant(ctx.tenantId(), c -> Sql.query(c, CLAIM_LIST
-                + "where k.status in ('approved','evidence_requested') order by k.submitted_at limit 200"));
+        return db.inTenant(ctx.tenantId(), c -> Lists.withTotal(Sql.query(c, CLAIM_LIST
+                + "where k.status in ('approved','evidence_requested') order by k.submitted_at limit 200"),
+                Sql.count(c, "select 1 from app.expense_claim k where k.status in ('approved','evidence_requested')")));
     }
 
     /**
@@ -690,6 +693,8 @@ public final class ExpenseService {
                     Sql.update(c, "update app.expense_claim set finance_by = ?, finance_at = now(), finance_note = ?, "
                             + "version = version + 1, updated_at = now() where id = ?", ctx.membershipId(), blankToNull(note), claimId);
                     UserService.audit(c, ctx, "expense.verified_first", "expense_claim", claimId, Map.of("number", k.get("number")));
+                    // The others in finance hear that it now waits for one of them.
+                    ExpenseNotices.tellHolders(c, ctx.tenantId(), "expense.finance", "expense_finance_waiting", ExpenseNotices.claim(c, claimId), ctx.membershipId());
                     return null;
                 }
                 if (ctx.membershipId().equals(AuthService.uuid(k.get("financeBy")))) {

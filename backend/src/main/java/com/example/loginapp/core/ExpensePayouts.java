@@ -47,12 +47,13 @@ public final class ExpensePayouts {
     /** Verified claims waiting for payment, with whether the person has a bank account to pay into. */
     public List<Map<String, Object>> payable(SessionCtx ctx) {
         ctx.require("expense.finance");
-        return db.inTenant(ctx.tenantId(), c -> Sql.query(c,
+        return db.inTenant(ctx.tenantId(), c -> Lists.withTotal(Sql.query(c,
                 "select k.id, k.number, k.title, k.membership_id, " + Names.orEmail("k.membership_id") + " as claimant, k.finance_at as verified_at, "
                         + "(select coalesce(sum(coalesce(l.approved_amount, l.amount)), 0) from app.expense_line l where l.claim_id = k.id) as payable, "
                         + "exists (select 1 from app.employment e join app.bank_account b on b.person_id = e.person_id "
                         + "  where e.membership_id = k.membership_id and b.effective_from <= ?) as has_bank "
-                        + "from app.expense_claim k where k.status = 'verified' order by k.finance_at limit 500", today()));
+                        + "from app.expense_claim k where k.status = 'verified' order by k.finance_at limit 500", today()),
+                Sql.count(c, "select 1 from app.expense_claim k where k.status = 'verified'")));
     }
 
     public List<Map<String, Object>> batches(SessionCtx ctx) {
@@ -161,10 +162,8 @@ public final class ExpensePayouts {
                     on, ctx.membershipId(), reference, batchId);
             UserService.audit(c, ctx, "expense.batch_paid", "expense_batch", batchId,
                     Map.of("number", b.get("number"), "paidOn", on.toString(), "reference", reference));
-            for (Map<String, Object> p : Sql.query(c, "select claim_id from app.expense_payment where batch_id = ?", batchId)) {
-                Map<String, String> told = ExpenseNotices.claim(c, AuthService.uuid(p.get("claimId")));
-                ExpenseNotices.tell(c, ctx.tenantId(), "expense_paid", ExpenseNotices.owner(told), told);
-            }
+            ExpenseNotices.tellClaimants(c, ctx.tenantId(), "expense_paid", Sql.query(c, "select claim_id from app.expense_payment where batch_id = ?", batchId)
+                    .stream().map(p -> AuthService.uuid(p.get("claimId"))).toList());
             return null;
         });
     }

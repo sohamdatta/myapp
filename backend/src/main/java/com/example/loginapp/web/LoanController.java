@@ -128,6 +128,13 @@ public class LoanController {
         return ResponseEntity.noContent().build();
     }
 
+    /** Marks a loan's interest benefit as not taxed (a loan for treating a specified illness); an empty note takes the mark off. */
+    @PostMapping("/{id}/exempt")
+    public ResponseEntity<Void> exempt(SessionCtx ctx, @PathVariable("id") String id, @RequestBody Note body) {
+        loans.exempt(ctx, Requests.id(id), body.note());
+        return ResponseEntity.noContent().build();
+    }
+
     private static int version(Integer v) {
         if (v == null) {
             throw com.example.loginapp.core.ApiException.badRequest("Send the version you are looking at");
