@@ -568,6 +568,39 @@ public final class LoanService {
         }
     }
 
+    /**
+     * After a run is approved: tells finance of each loan with instalments still due from two or more months ago (pay held or too
+     * small to cover them, or finance skipped nothing yet the money did not come). One notification a loan for each person in
+     * finance, in the run's own month, so a loan carried for longer is mentioned again each month. Returns how many loans.
+     */
+    public static int alertCarried(Connection c, UUID tenantId, LocalDate period) throws SQLException {
+        List<UUID> finance = new ArrayList<>();
+        for (Map<String, Object> m : Sql.query(c, "select distinct m.id from app.membership m join app.membership_role mr on mr.membership_id = m.id "
+                + "join app.role_permission rp on rp.role_id = mr.role_id where m.status = 'active' and rp.permission_code = 'loan.manage' "
+                + "and rp.scope = 'tenant' order by m.id")) {
+            finance.add(AuthService.uuid(m.get("id")));
+        }
+        List<Map<String, Object>> loans = Sql.query(c, "select l.id, l.number, " + Names.orEmail("l.membership_id") + " as person, count(*) as n, "
+                + "sum(i.principal + i.interest) as amount, min(i.month) as since from app.loan l join app.loan_instalment i on i.loan_id = l.id "
+                + "where l.status = 'active' and i.status = 'due' and i.month <= ?::date - interval '1 month' group by l.id, l.number, l.membership_id "
+                + "order by l.number", period);
+        for (Map<String, Object> l : loans) {
+            int n = ((Number) l.get("n")).intValue();
+            String body = l.get("person") + ": " + l.get("number") + " has " + n + (n == 1 ? " instalment" : " instalments") + " still due, "
+                    + "₹" + ((BigDecimal) l.get("amount")).setScale(2, RoundingMode.HALF_UP).toPlainString() + " in all, the oldest from "
+                    + monthName(LocalDate.parse((String) l.get("since"))) + ". Look at it under Expenses, Loans.";
+            for (UUID to : finance) {
+                Sql.update(c, "insert into app.notification (tenant_id, membership_id, event, subject, body, link) values (?, ?, 'loan_instalment_carried', ?, ?, 'expenses')",
+                        tenantId, to, "Loan instalments carried: " + l.get("number"), body);
+            }
+        }
+        return loans.size();
+    }
+
+    private static String monthName(LocalDate d) {
+        return d.getMonth().getDisplayName(java.time.format.TextStyle.FULL, java.util.Locale.ENGLISH) + " " + d.getYear();
+    }
+
     // ── the interest perquisite ─────────────────────────────────────────
 
     /**

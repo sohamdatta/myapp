@@ -784,6 +784,7 @@ public final class PayrollRuns {
             Sql.update(c, "update app.payroll_run set state = 'approved', approved_by = ?, approved_at = now() where id = ?", ctx.membershipId(), runId);
             ExpenseRunClaims.settleRun(c, runId);   // claims on a payslip that goes out are paid
             LoanService.settleRun(c, ctx.tenantId(), runId);   // what was deducted settles the instalments; an approved run is not reopened
+            LoanService.alertCarried(c, ctx.tenantId(), LocalDate.parse(String.valueOf(r.get("period"))));   // finance hears of instalments left over
             UserService.audit(c, ctx, "payroll.run_approved", "payroll_run", runId, Map.of("period", r.get("period")));
             return null;
         });

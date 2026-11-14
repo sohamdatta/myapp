@@ -623,6 +623,30 @@ class ExpensesTest {
     }
 
     @Test
+    void financeIsToldOfLoansWithInstalmentsCarriedForTwoMonths() {
+        Setup s = setup();
+        UUID type = loans.saveType(s.finance, null, new LoanService.TypeInput("Advance", "salary_advance", new BigDecimal("9000"), 3,
+                BigDecimal.ZERO, 0, 2, true)).id();
+        UUID worker = s.emp.membershipId();
+        LocalDate thisMonth = TODAY.withDayOfMonth(1);
+        db.inTenant(s.orgId, c -> {
+            for (int k = 0; k < 2; k++) {   // one with instalments from the last three months, one with this month and next only
+                UUID loan = UUID.fromString(String.valueOf(Sql.one(c, "insert into app.loan (tenant_id, number, membership_id, type_id, amount, months, annual_rate, purpose, status, disbursed_on, first_month) "
+                        + "values (?, ?, ?, ?, 3000, 3, 0, 'Medical', 'active', ?, ?) returning id", s.orgId, "LN-2026-80" + k, worker, type, thisMonth.minusMonths(4), thisMonth.minusMonths(3)).get("id")));
+                for (int m = 3 - 3 * k; m >= 1 - 2 * k; m--) {
+                    Sql.update(c, "insert into app.loan_instalment (tenant_id, loan_id, month, principal) values (?, ?, ?, 1000)", s.orgId, loan, thisMonth.minusMonths(m));
+                }
+            }
+            return null;
+        });
+        int told = db.inTenant(s.orgId, c -> LoanService.alertCarried(c, s.orgId, thisMonth));
+        assertEquals(1, told, "only the loan with an instalment from two or more months back");
+        long mine = db.inTenant(s.orgId, c -> Sql.count(c, "select 1 from app.notification where membership_id = ? and event = 'loan_instalment_carried'", s.finance.membershipId()));
+        assertEquals(1, mine);
+        assertEquals(0, ((Number) db.inTenant(s.orgId, c -> Sql.count(c, "select 1 from app.notification where membership_id = ?", s.emp.membershipId()))).intValue(), "the borrower is not sent this");
+    }
+
+    @Test
     void aLoanGoesThroughManagerAndFinanceThenRepaysWithSkipPrepayAndWriteOff() {
         Setup s = setup();
         UUID type = loans.saveType(s.finance, null, new LoanService.TypeInput("Personal loan", "loan", new BigDecimal("100000"), 12,

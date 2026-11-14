@@ -70,7 +70,7 @@ The manager (or named approver) decides first, then Finance (**Loan approvals**,
 
 ### Repayment
 
-Payroll takes each instalment from salary as **Loan or advance recovery**. Deductions in a month cannot take more than half of gross pay: the instalment gives way, the payroll run shows a warning, and the rest stays due at the end of the schedule. Approving the run records what was taken. Pay that is held is not settled; its instalments are taken in the run after release.
+Payroll takes each instalment from salary as **Loan or advance recovery**. Deductions in a month cannot take more than half of gross pay: the instalment gives way, the payroll run shows a warning, and the rest stays due at the end of the schedule. Approving the run records what was taken. Pay that is held is not settled; its instalments are taken in the run after release. When an instalment has missed two runs, everyone in Finance gets a notification, and again each month it stays behind.
 
 Finance can also:
 
@@ -120,4 +120,4 @@ Settings (Organization level, changed with your password; weakening some needs a
 
 ## Still to come
 
-Expense advances set against claims; alerts for instalments carried two months.
+Expense advances set against claims.
