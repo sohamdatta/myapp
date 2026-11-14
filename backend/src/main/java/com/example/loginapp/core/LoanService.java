@@ -229,6 +229,12 @@ public final class LoanService {
                     + "approver_membership_id, finance_approvals) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) returning id", ctx.tenantId(), number, ctx.membershipId(), typeId,
                     amount, months, type.get("annualRate"), purpose, status, approver, financeApprovals).get("id"));
             UserService.audit(c, ctx, "loan.requested", "loan", id, Map.of("number", number, "amount", amount.toPlainString(), "months", months));
+            Map<String, String> told = ExpenseNotices.loan(c, id);
+            if (approver != null) {
+                ExpenseNotices.tell(c, ctx.tenantId(), "loan_waiting", approver, told);
+            } else {
+                ExpenseNotices.tellHolders(c, ctx.tenantId(), "loan.manage", "loan_finance_waiting", told, ctx.membershipId());
+            }
             return new Created(id, number, status, 1);
         });
     }
@@ -351,6 +357,13 @@ public final class LoanService {
             throw ApiException.badRequest("Choose approve or reject");
         }
         UserService.audit(c, ctx, "loan." + action, "loan", id, Map.of("number", l.get("number")));
+        Map<String, String> told = ExpenseNotices.loan(c, id);
+        if ("approve".equals(action) && "manager_approved".equals(approvedStatus)) {
+            ExpenseNotices.tellHolders(c, ctx.tenantId(), "loan.manage", "loan_finance_waiting", told, ctx.membershipId());
+        } else {
+            told.put("loan.outcome", "approve".equals(action) ? "approved" : "rejected");
+            ExpenseNotices.tell(c, ctx.tenantId(), "loan_decided", ExpenseNotices.owner(told), told);
+        }
     }
 
     // ── paying out ──────────────────────────────────────────────────────
@@ -387,6 +400,8 @@ public final class LoanService {
             Sql.update(c, "update app.loan set status = 'active', disbursed_on = ?, disbursed_by = ?, disbursal_ref = ?, first_month = ?, "
                     + "version = version + 1, updated_at = now() where id = ?", on, ctx.membershipId(), ref, first, id);
             UserService.audit(c, ctx, "loan.disbursed", "loan", id, Map.of("number", l.get("number"), "firstMonth", first.toString(), "reference", ref));
+            Map<String, String> told = ExpenseNotices.loan(c, id);
+            ExpenseNotices.tell(c, ctx.tenantId(), "loan_paid_out", ExpenseNotices.owner(told), told);
             return null;
         });
     }
@@ -574,25 +589,17 @@ public final class LoanService {
      * finance, in the run's own month, so a loan carried for longer is mentioned again each month. Returns how many loans.
      */
     public static int alertCarried(Connection c, UUID tenantId, LocalDate period) throws SQLException {
-        List<UUID> finance = new ArrayList<>();
-        for (Map<String, Object> m : Sql.query(c, "select distinct m.id from app.membership m join app.membership_role mr on mr.membership_id = m.id "
-                + "join app.role_permission rp on rp.role_id = mr.role_id where m.status = 'active' and rp.permission_code = 'loan.manage' "
-                + "and rp.scope = 'tenant' order by m.id")) {
-            finance.add(AuthService.uuid(m.get("id")));
-        }
         List<Map<String, Object>> loans = Sql.query(c, "select l.id, l.number, " + Names.orEmail("l.membership_id") + " as person, count(*) as n, "
                 + "sum(i.principal + i.interest) as amount, min(i.month) as since from app.loan l join app.loan_instalment i on i.loan_id = l.id "
                 + "where l.status = 'active' and i.status = 'due' and i.month <= ?::date - interval '1 month' group by l.id, l.number, l.membership_id "
                 + "order by l.number", period);
         for (Map<String, Object> l : loans) {
             int n = ((Number) l.get("n")).intValue();
-            String body = l.get("person") + ": " + l.get("number") + " has " + n + (n == 1 ? " instalment" : " instalments") + " still due, "
-                    + "₹" + ((BigDecimal) l.get("amount")).setScale(2, RoundingMode.HALF_UP).toPlainString() + " in all, the oldest from "
-                    + monthName(LocalDate.parse((String) l.get("since"))) + ". Look at it under Expenses, Loans.";
-            for (UUID to : finance) {
-                Sql.update(c, "insert into app.notification (tenant_id, membership_id, event, subject, body, link) values (?, ?, 'loan_instalment_carried', ?, ?, 'expenses')",
-                        tenantId, to, "Loan instalments carried: " + l.get("number"), body);
-            }
+            Map<String, String> told = ExpenseNotices.loan(c, AuthService.uuid(l.get("id")));
+            told.put("loan.count", n + (n == 1 ? " instalment" : " instalments"));
+            told.put("loan.amount", ExpenseNotices.rupees(l.get("amount")));
+            told.put("loan.since", monthName(LocalDate.parse((String) l.get("since"))));
+            ExpenseNotices.tellHolders(c, tenantId, "loan.manage", "loan_instalment_carried", told, null);
         }
         return loans.size();
     }

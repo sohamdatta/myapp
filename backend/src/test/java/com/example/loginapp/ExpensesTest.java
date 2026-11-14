@@ -647,6 +647,55 @@ class ExpensesTest {
     }
 
     @Test
+    void peopleAreToldWhenSomethingWaitsForThemAndWhenTheirRequestMoves() {
+        Setup s = setup();
+        bank(s, "Esha Emp", "223456789012", "HDFC0001234");
+        // A claim: manager hears, then finance, then the employee at verification and at payment.
+        UUID claim = claim(s.emp, "Client visit");
+        line(s.emp, claim, s.meals, 3, "300.00");
+        expenses.submit(s.emp, claim, version(s.emp, claim));
+        assertEquals(List.of("expense_waiting"), told(s, s.manager));
+        expenses.decide(s.manager, claim, "approve", "Agreed", version(s.emp, claim), null);
+        assertEquals(List.of("expense_finance_waiting"), told(s, s.finance));
+        expenses.verify(s.finance, claim, version(s.emp, claim), null);
+        assertEquals(List.of("expense_verified"), told(s, s.emp));
+        ExpensePayouts.BatchMade batch = payouts.createBatch(s.finance, List.of(claim));
+        payouts.markPaid(s.finance, batch.id(), new ExpensePayouts.PaidInput(null, "UTR123456"));
+        assertEquals(List.of("expense_verified", "expense_paid"), told(s, s.emp));
+        assertTrue(notes(s, s.emp).get(1).contains("EXP-"), "the text names the claim");
+
+        // A returned claim says why.
+        UUID again = claim(s.emp, "Taxi");
+        line(s.emp, again, s.meals, 2, "150.00");
+        expenses.submit(s.emp, again, version(s.emp, again));
+        expenses.decide(s.manager, again, "return", "Attach the bill", version(s.emp, again), null);
+        assertTrue(notes(s, s.emp).stream().anyMatch(n -> n.contains("Attach the bill")));
+
+        // A loan: the manager, finance, then the employee at the decision and the payout.
+        UUID type = loans.saveType(s.finance, null, new LoanService.TypeInput("Advance", "salary_advance", new BigDecimal("9000"), 3,
+                BigDecimal.ZERO, 0, 2, true)).id();
+        LoanService.Created ln = loans.request(s.emp, new LoanService.RequestInput(type.toString(), new BigDecimal("3000"), 3, "Rent"));
+        assertTrue(told(s, s.manager).contains("loan_waiting"));
+        loans.managerDecide(s.manager, ln.id(), "approve", null, 1);
+        assertTrue(told(s, s.finance).contains("loan_finance_waiting"));
+        loans.financeDecide(s.finance, ln.id(), "approve", null, 2);
+        assertTrue(told(s, s.emp).contains("loan_decided"));
+        loans.disburse(s.finance, ln.id(), TODAY.toString(), null, "UTR778899", 3);
+        assertTrue(told(s, s.emp).contains("loan_paid_out"));
+        assertTrue(notes(s, s.emp).stream().anyMatch(n -> n.contains("approved")));
+    }
+
+    private static List<String> told(Setup s, SessionCtx who) {
+        return db.inTenant(s.orgId, c -> Sql.query(c, "select event from app.notification where membership_id = ? order by created_at, id", who.membershipId()))
+                .stream().map(r -> (String) r.get("event")).toList();
+    }
+
+    private static List<String> notes(Setup s, SessionCtx who) {
+        return db.inTenant(s.orgId, c -> Sql.query(c, "select body from app.notification where membership_id = ? order by created_at, id", who.membershipId()))
+                .stream().map(r -> (String) r.get("body")).toList();
+    }
+
+    @Test
     void aLoanGoesThroughManagerAndFinanceThenRepaysWithSkipPrepayAndWriteOff() {
         Setup s = setup();
         UUID type = loans.saveType(s.finance, null, new LoanService.TypeInput("Personal loan", "loan", new BigDecimal("100000"), 12,

@@ -161,6 +161,10 @@ public final class ExpensePayouts {
                     on, ctx.membershipId(), reference, batchId);
             UserService.audit(c, ctx, "expense.batch_paid", "expense_batch", batchId,
                     Map.of("number", b.get("number"), "paidOn", on.toString(), "reference", reference));
+            for (Map<String, Object> p : Sql.query(c, "select claim_id from app.expense_payment where batch_id = ?", batchId)) {
+                Map<String, String> told = ExpenseNotices.claim(c, AuthService.uuid(p.get("claimId")));
+                ExpenseNotices.tell(c, ctx.tenantId(), "expense_paid", ExpenseNotices.owner(told), told);
+            }
             return null;
         });
     }

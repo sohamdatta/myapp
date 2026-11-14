@@ -14,6 +14,10 @@ For customers. How to claim an expense, how it is approved, verified and paid, h
 
 Nobody decides their own claim or loan, or puts their own claim into a payment.
 
+## Notifications
+
+People are told in the bell when something waits for them (an approver has a claim or loan request, Finance has one to verify or approve) and when their own request moves: a claim returned (with the reason), rejected, needing more evidence, verified or paid; a loan approved, rejected or paid out. Finance is also told of instalments that have missed two runs. Each message can be edited or switched off under Setup, Messages.
+
 ## 1. Claiming an expense (My claims)
 
 1. Choose **My claims → New claim** and give it a title.
@@ -70,7 +74,7 @@ The manager (or named approver) decides first, then Finance (**Loan approvals**,
 
 ### Repayment
 
-Payroll takes each instalment from salary as **Loan or advance recovery**. Deductions in a month cannot take more than half of gross pay: the instalment gives way, the payroll run shows a warning, and the rest stays due at the end of the schedule. Approving the run records what was taken. Pay that is held is not settled; its instalments are taken in the run after release. When an instalment has missed two runs, everyone in Finance gets a notification, and again each month it stays behind.
+Payroll takes each instalment from salary as **Loan or advance recovery**. Deductions in a month cannot take more than half of gross pay: the instalment gives way, the payroll run shows a warning, and the rest stays due at the end of the schedule. Approving the run records what was taken. Pay that is held is not settled; its instalments are taken in the run after release. When an instalment has missed two runs, everyone in Finance is notified, and again each month it stays behind.
 
 Finance can also:
 

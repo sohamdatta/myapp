@@ -470,6 +470,12 @@ public final class ExpenseService {
                     + "version = version + 1, updated_at = now() where id = ?", next, Json.write(snapshot), manager, financeApprovals, claimId);
             UserService.audit(c, ctx, "expense.submitted", "expense_claim", claimId,
                     Map.of("number", k.get("number"), "warnings", warnings, "route", manager == null ? "finance" : "manager"));
+            Map<String, String> told = ExpenseNotices.claim(c, claimId);
+            if (manager != null) {
+                ExpenseNotices.tell(c, ctx.tenantId(), "expense_waiting", manager, told);
+            } else {
+                ExpenseNotices.tellHolders(c, ctx.tenantId(), "expense.finance", "expense_finance_waiting", told, ctx.membershipId());
+            }
             return new Submitted(next, warnings, version + 1);
         });
     }
@@ -568,6 +574,12 @@ public final class ExpenseService {
                 default -> throw ApiException.badRequest("Unknown decision: " + action);
             }
             UserService.audit(c, ctx, "expense." + action, "expense_claim", claimId, decisionDetail(k, why, cuts));
+            Map<String, String> told = ExpenseNotices.claim(c, claimId);
+            switch (action) {
+                case "approve" -> ExpenseNotices.tellHolders(c, ctx.tenantId(), "expense.finance", "expense_finance_waiting", told, ctx.membershipId());
+                case "return" -> ExpenseNotices.tell(c, ctx.tenantId(), "expense_returned", ExpenseNotices.owner(told), told);
+                default -> ExpenseNotices.tell(c, ctx.tenantId(), "expense_rejected", ExpenseNotices.owner(told), told);
+            }
             return null;
         });
     }
@@ -628,6 +640,9 @@ public final class ExpenseService {
             Sql.update(c, "update app.expense_claim set status = ?, finance_by = null, finance_at = null, version = version + 1, updated_at = now() where id = ?",
                     status.equals("more_needed") ? "evidence_requested" : k.get("status"), claimId);
             UserService.audit(c, ctx, "expense.evidence_" + status, "expense_line", lineId, Map.of("claim", k.get("number")));
+            if (status.equals("more_needed") && !"evidence_requested".equals(k.get("status"))) {   // told once, when finance first asks
+                ExpenseNotices.tell(c, ctx.tenantId(), "expense_evidence_needed", AuthService.uuid(k.get("membershipId")), ExpenseNotices.claim(c, claimId));
+            }
             return null;
         });
     }
@@ -683,11 +698,15 @@ public final class ExpenseService {
                 Sql.update(c, "update app.expense_claim set status = 'verified', finance2_by = ?, finance2_at = now(), "
                         + "version = version + 1, updated_at = now() where id = ?", ctx.membershipId(), claimId);
                 UserService.audit(c, ctx, "expense.verified", "expense_claim", claimId, Map.of("number", k.get("number"), "payable", payable.toPlainString()));
+                Map<String, String> told = ExpenseNotices.claim(c, claimId);
+                ExpenseNotices.tell(c, ctx.tenantId(), "expense_verified", ExpenseNotices.owner(told), told);
                 return null;
             }
             Sql.update(c, "update app.expense_claim set status = 'verified', finance_by = ?, finance_at = now(), finance_note = ?, "
                     + "version = version + 1, updated_at = now() where id = ?", ctx.membershipId(), blankToNull(note), claimId);
             UserService.audit(c, ctx, "expense.verified", "expense_claim", claimId, Map.of("number", k.get("number"), "payable", payable.toPlainString()));
+            Map<String, String> told = ExpenseNotices.claim(c, claimId);
+            ExpenseNotices.tell(c, ctx.tenantId(), "expense_verified", ExpenseNotices.owner(told), told);
             return null;
         });
     }
@@ -714,6 +733,8 @@ public final class ExpenseService {
             Sql.update(c, "update app.expense_claim set status = 'rejected', finance_by = ?, finance_at = now(), decision_note = ?, "
                     + "version = version + 1, updated_at = now() where id = ?", ctx.membershipId(), why, claimId);
             UserService.audit(c, ctx, "expense.finance_rejected", "expense_claim", claimId, Map.of("number", k.get("number"), "reason", why));
+            Map<String, String> told = ExpenseNotices.claim(c, claimId);
+            ExpenseNotices.tell(c, ctx.tenantId(), "expense_rejected", ExpenseNotices.owner(told), told);
             return null;
         });
     }

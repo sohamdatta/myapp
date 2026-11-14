@@ -72,12 +72,18 @@ final class ExpenseRunClaims {
     }
 
     /** Approving the run: claims on a payslip that goes out are paid; those on a held payslip go back to finance for the run after release. */
-    static void settleRun(Connection c, UUID runId) throws SQLException {
+    static void settleRun(Connection c, UUID tenantId, UUID runId) throws SQLException {
+        List<Map<String, Object>> going = Sql.query(c, "select rc.claim_id from app.expense_run_claim rc join app.payslip ps on ps.run_id = rc.run_id "
+                + "and ps.employment_id = rc.employment_id where rc.run_id = ? and rc.status = 'reserved' and not ps.held", runId);
         Sql.update(c, "update app.expense_claim set status = 'paid', version = version + 1, updated_at = now() where id in "
                 + "(select rc.claim_id from app.expense_run_claim rc join app.payslip ps on ps.run_id = rc.run_id and ps.employment_id = rc.employment_id "
                 + " where rc.run_id = ? and rc.status = 'reserved' and not ps.held)", runId);
         Sql.update(c, "update app.expense_run_claim rc set status = 'paid' from app.payslip ps where rc.run_id = ? and rc.status = 'reserved' "
                 + "and ps.run_id = rc.run_id and ps.employment_id = rc.employment_id and not ps.held", runId);
         release(c, runId);   // what is still reserved belongs to a held payslip
+        for (Map<String, Object> g : going) {
+            Map<String, String> told = ExpenseNotices.claim(c, AuthService.uuid(g.get("claimId")));
+            ExpenseNotices.tell(c, tenantId, "expense_paid", ExpenseNotices.owner(told), told);
+        }
     }
 }
