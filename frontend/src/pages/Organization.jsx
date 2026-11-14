@@ -14,6 +14,7 @@ const ROLE_SUMMARIES = {
   it_admin: 'Gets the IT tasks of joining and leaving checklists (laptops, accounts)',
   payroll_operator: 'Prepares payroll. Cannot approve it',
   payroll_approver: 'Approves payroll and settlements. Cannot prepare them',
+  finance: 'Checks receipts and verifies expense claims for everyone; sets up expense categories. Cannot verify their own claims',
   auditor: 'Reads everything, including the audit log; changes nothing',
   ex_employee: 'Given by the app after the last working day: their exit letters and settlement only',
   joiner: 'Given by the app to someone joining: their own onboarding only',
@@ -28,8 +29,10 @@ const SCOPES = { tenant: 'everyone', team: 'their team', self: 'themselves', ass
 const PAYROLL_ROLES = ['payroll_operator', 'payroll_approver']
 
 function RolePicker({ me, roles, selected, onChange }) {
-  // Payroll's roles are offered only when the Organization has Payroll.
-  const payroll = (me?.modules || []).includes('payroll')
+  // Payroll's roles are offered only when the Organization has Payroll, and Finance only with Expenses.
+  const modules = me?.modules || []
+  const payroll = modules.includes('payroll')
+  const expenses = modules.includes('expenses')
   function toggle(code) {
     onChange(selected.includes(code) ? selected.filter((c) => c !== code) : [...selected, code])
   }
@@ -38,7 +41,7 @@ function RolePicker({ me, roles, selected, onChange }) {
       <legend>Roles</legend>
       <div className="role-options">
         {roles
-          .filter((r) => r.assignable && (payroll || !PAYROLL_ROLES.includes(r.code)))
+          .filter((r) => r.assignable && (payroll || !PAYROLL_ROLES.includes(r.code)) && (expenses || r.code !== 'finance'))
           .map((r) => (
             <div key={r.code} className="role-option">
               <label className={r.grantable ? 'check' : 'check check-disabled'}>

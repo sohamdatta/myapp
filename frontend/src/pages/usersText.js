@@ -1,7 +1,7 @@
 /** Words on the Users tab of User management, ready for translation. */
 
 /** Roles that reach everyone's data are marked in a list of roles, so wide access is easy to spot. */
-export const WIDE_ROLES = ['hr_admin', 'payroll_operator', 'payroll_approver', 'auditor']
+export const WIDE_ROLES = ['hr_admin', 'payroll_operator', 'payroll_approver', 'finance', 'auditor']
 
 export const USERS_TEXT = {
   search: 'Search by email',
