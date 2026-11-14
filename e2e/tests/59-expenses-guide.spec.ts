@@ -29,12 +29,12 @@ test('the expenses guide, screen by screen', async ({ browser }) => {
     pg[n] = await join(browser, inv.token, em(n));
   }
   const ids = Object.fromEntries((await ok(api(owner, 'GET', '/org/attendance/assignments'))).map((p: any) => [p.email, p.membershipId]));
-  const add = (body: any) => ok(api(owner, 'POST', '/org/people/employees', { joiningDate: isoDay(-400), ...body }));
+  const add = (body: any) => ok(api(owner, 'POST', '/org/people/employees', { joiningDate: isoDay(-400), ...body }));   // date-safe: joined long ago
   await add({ legalName: 'Nisha Kulkarni', designation: 'Finance lead', membershipId: ids[em('fin')] });
   const vivek = await add({ legalName: 'Vivek Joshi', designation: 'Operations manager', membershipId: ids[em('mgr')] });
   const esha = await add({ legalName: 'Esha Patil', designation: 'Dispatcher', managerId: vivek.id, membershipId: ids[em('esha')] });
   await ok(api(owner, 'PUT', `/org/people/employees/${esha.id}/bank`, { holderName: 'Esha Patil', accountNumber: '50100234567891', ifsc: 'HDFC0000123',
-    bankName: 'HDFC Bank', branch: 'Pune', effectiveFrom: isoDay(-300) }));
+    bankName: 'HDFC Bank', branch: 'Pune', effectiveFrom: isoDay(-300) }));   // date-safe: an account on record long before any claim
   for (const p of Object.values(pg)) await p.setViewportSize({ width: 1280, height: 1100 });
   const expenses = async (p: Page, t: string) => { await p.reload(); await nav(p, 'Expenses'); await tab(p, t); };
 
