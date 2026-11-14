@@ -1,0 +1,62 @@
+# Signs in to a running copy of the app and checks every feature the account can see, one by one.
+# Read-only: it opens pages and tabs, and never saves anything, so it is safe on UAT or production.
+#
+# Run it from Actions > Feature check > Run workflow, and paste the URL to test.
+# Needs, under Settings > Secrets and variables > Actions:
+#   secrets    CHECK_EMAIL        the account to sign in with
+#              CHECK_PASSWORD     its password
+#              CHECK_TOTP_SECRET  its authenticator key (only if it uses two-step sign-in)
+
+name: Feature check
+
+on:
+  workflow_dispatch:
+    inputs:
+      url:
+        description: 'URL of the app to test (e.g. https://uat.hr.example.com)'
+        required: true
+      features:
+        description: 'Only these features, comma-separated (blank = all)'
+        required: false
+        default: ''
+      org:
+        description: 'Organization to open, if the account belongs to more than one'
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: e2e
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: e2e/package-lock.json
+      - run: |
+          npm ci
+          npx playwright install --with-deps chromium
+      - name: Check every feature
+        env:
+          APP_URL: ${{ inputs.url }}
+          APP_FEATURES: ${{ inputs.features }}
+          APP_ORG: ${{ inputs.org }}
+          APP_EMAIL: ${{ secrets.CHECK_EMAIL }}
+          APP_PASSWORD: ${{ secrets.CHECK_PASSWORD }}
+          APP_TOTP_SECRET: ${{ secrets.CHECK_TOTP_SECRET }}
+        run: npm run check
+      - name: Keep the report
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: feature-check-report
+          path: e2e/feature-check-report
+          retention-days: 14

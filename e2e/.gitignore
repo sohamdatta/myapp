@@ -4,3 +4,5 @@ playwright-report/
 blob-report/
 coverage-raw/
 coverage-report/
+feature-check-results/
+feature-check-report/
