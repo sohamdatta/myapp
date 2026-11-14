@@ -3,6 +3,7 @@ import { expenses, saveBlob } from '../api.js'
 import { formatDay, useAction, useLoad } from '../hooks.js'
 import { Badge, Empty, ErrorNote, Tabs } from '../ui.jsx'
 import { useToast } from '../feedbackContext.js'
+import { LoanApprovals, LoanQueue, LoanTypes, MyLoans } from './Loans.jsx'
 
 const rupees = (value) => `₹${Number(value || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 
@@ -27,11 +28,16 @@ function ClaimStatus({ status }) {
 /** What a person can do on Expenses depends on what they hold: their own claims, their team's, finance's, or setup. */
 export default function Expenses({ me }) {
   const can = (p) => me.permissions.includes(p)
+  const hasPayroll = (me.modules || []).includes('payroll')
   const tabs = [
     can('expense.claim') && { id: 'mine', label: 'My claims' },
     can('expense.approve') && { id: 'approvals', label: 'Approvals' },
+    hasPayroll && can('expense.claim') && { id: 'loans', label: 'Advances and loans' },
+    hasPayroll && can('expense.approve') && { id: 'loan-approvals', label: 'Loan approvals' },
     can('expense.finance') && { id: 'finance', label: 'Finance' },
     can('expense.finance') && { id: 'payments', label: 'Payments' },
+    hasPayroll && can('loan.manage') && { id: 'loan-queue', label: 'Loans' },
+    hasPayroll && can('loan.manage') && { id: 'loan-types', label: 'Loan types' },
     can('expense.setup') && { id: 'categories', label: 'Categories' },
     can('expense.setup') && { id: 'approvers', label: 'Approvers' },
   ].filter(Boolean)
@@ -45,6 +51,10 @@ export default function Expenses({ me }) {
       {tab === 'approvals' && <Queue load={expenses.approvals} empty="Nothing is waiting for you." mode="manager" />}
       {tab === 'finance' && <Queue load={expenses.queue} empty="No claims are waiting for finance." mode="finance" />}
       {tab === 'payments' && <Payments />}
+      {tab === 'loans' && <MyLoans />}
+      {tab === 'loan-approvals' && <LoanApprovals />}
+      {tab === 'loan-queue' && <LoanQueue />}
+      {tab === 'loan-types' && <LoanTypes />}
       {tab === 'categories' && <Categories />}
       {tab === 'approvers' && <Approvers />}
     </>

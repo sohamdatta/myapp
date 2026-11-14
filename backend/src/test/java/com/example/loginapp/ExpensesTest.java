@@ -30,6 +30,7 @@ import com.example.loginapp.core.EmployeeService;
 import com.example.loginapp.core.EmployeeService.NewEmployee;
 import com.example.loginapp.core.ExpensePayouts;
 import com.example.loginapp.core.ExpenseService;
+import com.example.loginapp.core.LoanService;
 import com.example.loginapp.core.ExpenseService.CategoryInput;
 import com.example.loginapp.core.ExpenseService.Cut;
 import com.example.loginapp.core.ExpenseService.LineInput;
@@ -62,6 +63,7 @@ class ExpensesTest {
     private static EmployeeService employees;
     private static ExpenseService expenses;
     private static ExpensePayouts payouts;
+    private static LoanService loans;
     private static Crypto crypto;
     private static SessionCtx superAdmin;
 
@@ -101,6 +103,7 @@ class ExpensesTest {
         employees = new EmployeeService(db, crypto);
         expenses = new ExpenseService(db, crypto);
         payouts = new ExpensePayouts(db, crypto);
+        loans = new LoanService(db, expenses);
         platform.ensureFirstSuperAdmin("root@platform.test", PASSWORD);
         superAdmin = auth.resolve(auth.enterConsole(auth.resolve(auth.login("root@platform.test", PASSWORD))));
     }
@@ -571,6 +574,94 @@ class ExpensesTest {
         UUID other = claim(s.emp, "Has boss");
         line(s.emp, other, s.meals, 1, "200.00");
         assertEquals("submitted", expenses.submit(s.emp, other, version(s.emp, other)).status());
+    }
+
+    // ── advances and loans ──────────────────────────────────────────────
+
+    @Test
+    void aLoanGoesThroughManagerAndFinanceThenRepaysWithSkipPrepayAndWriteOff() {
+        Setup s = setup();
+        UUID type = loans.saveType(s.finance, null, new LoanService.TypeInput("Personal loan", "loan", new BigDecimal("100000"), 12,
+                new BigDecimal("12"), 0, 1, true)).id();
+        assertError(409, "loan.type_exists", () -> loans.saveType(s.finance, null, new LoanService.TypeInput("personal LOAN", "loan",
+                BigDecimal.TEN, 1, BigDecimal.ZERO, 0, 1, true)));
+        assertEquals(1, loans.types(s.emp, false).size());
+        assertError(403, "permission.denied", () -> loans.types(s.emp, true));
+
+        LoanService.Created asked = loans.request(s.emp, new LoanService.RequestInput(type.toString(), new BigDecimal("12000"), 4, "Laptop"));
+        assertEquals("requested", asked.status());
+        assertError(409, "loan.state", () -> loans.financeDecide(s.finance, asked.id(), "approve", null, 1));
+        assertError(404, "not_found", () -> loans.managerDecide(s.solo, asked.id(), "approve", null, 1));
+        assertEquals(1, loans.approvals(s.manager).size());
+        assertError(400, "request.invalid", () -> loans.managerDecide(s.manager, asked.id(), "reject", " ", 1));
+        loans.managerDecide(s.manager, asked.id(), "approve", null, 1);
+        assertError(409, "loan.stale", () -> loans.financeDecide(s.finance, asked.id(), "approve", null, 1));
+        loans.financeDecide(s.finance, asked.id(), "approve", null, 2);
+        assertError(400, "request.invalid", () -> loans.disburse(s.finance, asked.id(), TODAY.toString(), null, "x", 3));
+        loans.disburse(s.finance, asked.id(), TODAY.toString(), null, "UTR778899", 3);
+        assertError(409, "loan.state", () -> loans.withdraw(s.emp, asked.id(), 4));
+
+        LoanService.LoanView view = loans.loan(s.emp, asked.id());
+        assertEquals(4, view.schedule().size());
+        assertEquals(0, new BigDecimal("12000.00").compareTo(view.outstanding()));
+        // 12% a year is 1% a month on the balance: 120 in the first month
+        assertEquals(0, new BigDecimal("120.00").compareTo((BigDecimal) view.schedule().get(0).get("interest")));
+        assertEquals(0, new BigDecimal("90.00").compareTo((BigDecimal) view.schedule().get(1).get("interest")));
+
+        // Skipping a month pushes the schedule out by one
+        UUID first = UUID.fromString((String) view.schedule().get(0).get("id"));
+        assertError(400, "request.invalid", () -> loans.skip(s.finance, first, " "));
+        loans.skip(s.finance, first, "Month of unpaid leave");
+        assertEquals(5, loans.loan(s.emp, asked.id()).schedule().size());
+        assertEquals(0, new BigDecimal("12000.00").compareTo(loans.loan(s.emp, asked.id()).outstanding()));
+
+        // A prepayment works the rest out again over the same months
+        assertError(400, "request.invalid", () -> loans.prepay(s.finance, asked.id(), new BigDecimal("12000.01"), "UTR1"));
+        loans.prepay(s.finance, asked.id(), new BigDecimal("6000.00"), "Bank transfer UTR5544");
+        assertEquals(0, new BigDecimal("6000.00").compareTo(loans.loan(s.emp, asked.id()).outstanding()));
+        assertEquals(1, loans.loan(s.emp, asked.id()).settlements().size());
+
+        // The person who paid it out cannot write it off; someone else can, with a reason
+        assertError(403, "loan.same_person", () -> loans.writeOff(s.finance, asked.id(), "Employee has left, unrecoverable"));
+        assertError(400, "request.invalid", () -> loans.writeOff(s.admin, asked.id(), "short"));
+        loans.writeOff(s.admin, asked.id(), "Employee has left, unrecoverable");
+        LoanService.LoanView done = loans.loan(s.emp, asked.id());
+        assertEquals("written_off", done.status());
+        assertEquals(0, BigDecimal.ZERO.compareTo(done.outstanding()));
+        assertEquals(2, done.settlements().size());
+        List<String> audited = db.inTenant(s.orgId, c -> Sql.query(c, "select distinct action from app.audit_event where action like 'loan.%'")).stream()
+                .map(r -> (String) r.get("action")).toList();
+        assertTrue(audited.containsAll(List.of("loan.requested", "loan.approve", "loan.disbursed", "loan.instalment_skipped", "loan.prepaid", "loan.written_off")),
+                audited.toString());
+    }
+
+    @Test
+    void loanRulesRefuseWhatTheTypeDoesNotAllow() {
+        Setup s = setup();
+        UUID type = loans.saveType(s.finance, null, new LoanService.TypeInput("Advance", "salary_advance", new BigDecimal("5000"), 2,
+                BigDecimal.ZERO, 0, 1, true)).id();
+        UUID veteran = loans.saveType(s.finance, null, new LoanService.TypeInput("Long service loan", "loan", new BigDecimal("5000"), 2,
+                BigDecimal.ZERO, 120, 1, true)).id();
+        assertError(400, "request.invalid", () -> loans.request(s.emp, new LoanService.RequestInput(type.toString(), new BigDecimal("5000.01"), 1, "Too much")));
+        assertError(400, "request.invalid", () -> loans.request(s.emp, new LoanService.RequestInput(type.toString(), new BigDecimal("100"), 3, "Too long")));
+        assertError(400, "request.invalid", () -> loans.request(s.emp, new LoanService.RequestInput(type.toString(), new BigDecimal("100"), 1, "x")));
+        assertError(409, "loan.too_soon", () -> loans.request(s.emp, new LoanService.RequestInput(veteran.toString(), new BigDecimal("100"), 1, "Soon enough")));
+        LoanService.Created one = loans.request(s.emp, new LoanService.RequestInput(type.toString(), new BigDecimal("1000"), 1, "Rent deposit"));
+        assertError(409, "loan.too_many", () -> loans.request(s.emp, new LoanService.RequestInput(type.toString(), new BigDecimal("1000"), 1, "Again")));
+        // a rejection needs a reason and ends the request; withdrawing frees the place for another
+        loans.managerDecide(s.manager, one.id(), "reject", "Not this month", 1);
+        assertEquals("rejected", loans.loan(s.emp, one.id()).status());
+        LoanService.Created two = loans.request(s.emp, new LoanService.RequestInput(type.toString(), new BigDecimal("1000"), 1, "Rent deposit"));
+        loans.withdraw(s.emp, two.id(), 1);
+        assertEquals("withdrawn", loans.loan(s.emp, two.id()).status());
+        // nobody else sees it; another Organization has no such loan
+        assertError(404, "not_found", () -> loans.loan(s.solo, one.id()));
+        Setup other = setup();
+        assertError(404, "not_found", () -> loans.loan(other.admin, one.id()));
+        assertEquals(0, loans.queue(other.finance).size());
+        // someone with a loan cannot decide it for themselves
+        UUID own = loans.request(s.finance, new LoanService.RequestInput(type.toString(), new BigDecimal("500"), 1, "Own advance")).id();
+        assertError(403, "loan.own", () -> loans.financeDecide(s.finance, own, "approve", null, 1));
     }
 
     private static UUID verified(Setup s, SessionCtx who, String title, String amount) {

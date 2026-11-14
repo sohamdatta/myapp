@@ -36,6 +36,8 @@ import com.example.loginapp.core.AuthService;
 import com.example.loginapp.core.Crypto;
 import com.example.loginapp.core.Db;
 import com.example.loginapp.core.EmployeeService;
+import com.example.loginapp.core.ExpenseService;
+import com.example.loginapp.core.LoanService;
 import com.example.loginapp.core.EmployeeService.NewEmployee;
 import com.example.loginapp.core.Formula;
 import com.example.loginapp.core.InvitationService;
@@ -80,6 +82,7 @@ class PayrollTest {
     private static PayrollConfig config;
     private static PayrollPay pay;
     private static PayrollRuns runs;
+    private static LoanService loans;
     private static SessionCtx superAdmin;
     private static boolean reachable;
 
@@ -120,6 +123,7 @@ class PayrollTest {
         config = new PayrollConfig(db);
         pay = new PayrollPay(db);
         runs = new PayrollRuns(db, crypto);
+        loans = new LoanService(db, new ExpenseService(db, crypto));
         platform.ensureFirstSuperAdmin("root@platform.test", PASSWORD);
         superAdmin = auth.resolve(auth.enterConsole(auth.resolve(auth.login("root@platform.test", PASSWORD))));
     }
@@ -965,6 +969,98 @@ class PayrollTest {
     private static final class PayrollRunsMoney {
         static String of(BigDecimal v) {
             return v.setScale(2, RoundingMode.HALF_UP).toPlainString();
+        }
+    }
+
+    @Test
+    void loanInstalmentsAreDeductedCappedAtHalfOfPayAndSettledWhenTheRunIsApproved() {
+        assumeTrue(reachable, "PostgreSQL is not reachable");
+        Org org = newOrg();
+        SessionCtx operator = join(org, "payroll", List.of("payroll_operator"));
+        SessionCtx asha = join(org, "asha", List.of("employee"));
+        String loc = (String) settings.saveLocation(org.admin, null,
+                new LocationInput("Bengaluru office", "Asia/Kolkata", "KA", null, null, null, null, "none", true)).get("id");
+        String shift = (String) settings.saveShift(org.admin, null, new ShiftInput("General", "09:30", "18:30", 10, 480, 240, true)).get("id");
+        settings.assign(org.admin, List.of(asha.membershipId().toString()), UUID.fromString(loc), UUID.fromString(shift), List.of(0), TODAY.minusDays(120).toString());
+        UUID ashaId = UUID.fromString((String) employees.add(org.admin, person("Asha Rao", "ABCPR1234F", asha)).get("id"));
+        for (String[] r : List.of(new String[] {"pf", null, "KABLR0012345000"}, new String[] {"esi", null, "53000123450001001"},
+                new String[] {"pt", "KA", "PTKA-123456"}, new String[] {"lwf", "KA", "LWF-KA-998"})) {
+            config.addRegistration(operator, new PayrollConfig.RegistrationInput(r[0], r[1], r[2]));
+        }
+        String staff = (String) ((Map<?, ?>) ((List<?>) config.setup(operator).get("structures")).get(0)).get("id");
+        LocalDate period = TODAY.withDayOfMonth(1).plusMonths(1);
+        pay.revise(org.admin, ashaId, new PayrollPay.ReviseInput(TODAY.withDayOfMonth(1).toString(), staff, new BigDecimal("900000"), "Joining salary"));
+
+        // Two kinds on offer: a small advance and a big loan.
+        UUID advance = loans.saveType(org.admin, null, new LoanService.TypeInput("Salary advance", "salary_advance", new BigDecimal("20000"), 3,
+                BigDecimal.ZERO, 0, 1, true)).id();
+        UUID big = loans.saveType(org.admin, null, new LoanService.TypeInput("Staff loan", "loan", new BigDecimal("500000"), 24,
+                new BigDecimal("6"), 0, 1, true)).id();
+        assertError(400, "request.invalid", () -> loans.saveType(org.admin, null, new LoanService.TypeInput("Long advance", "salary_advance",
+                new BigDecimal("1000"), 6, BigDecimal.ZERO, 0, 1, true)));
+        assertError(403, "permission.denied", () -> loans.saveType(asha, null, new LoanService.TypeInput("Mine", "loan", BigDecimal.TEN, 1, BigDecimal.ZERO, 0, 1, true)));
+        assertError(400, "request.invalid", () -> loans.request(asha, new LoanService.RequestInput(advance.toString(), new BigDecimal("25000"), 3, "Medical")));
+
+        LoanService.Created small = loans.request(asha, new LoanService.RequestInput(advance.toString(), new BigDecimal("6000"), 3, "Medical bill"));
+        LoanService.Created large = loans.request(asha, new LoanService.RequestInput(big.toString(), new BigDecimal("200000"), 1, "House deposit"));
+        assertEquals("manager_approved", small.status(), "no manager, so straight to finance");
+        assertError(409, "loan.too_many", () -> loans.request(asha, new LoanService.RequestInput(advance.toString(), new BigDecimal("1000"), 1, "Another")));
+        assertError(403, "permission.denied", () -> loans.financeDecide(asha, small.id(), "approve", null, 1));
+        for (LoanService.Created l : List.of(small, large)) {
+            loans.financeDecide(org.admin, l.id(), "approve", null, 1);
+        }
+        assertError(400, "request.invalid", () -> loans.disburse(org.admin, small.id(), TODAY.toString(), TODAY.withDayOfMonth(1).toString(), "UTR1234", 2));
+        for (LoanService.Created l : List.of(small, large)) {
+            loans.disburse(org.admin, l.id(), TODAY.toString(), null, "UTR-" + l.number(), 2);
+        }
+        LoanService.LoanView view = loans.loan(asha, small.id());
+        assertEquals("active", view.status());
+        assertEquals(3, view.schedule().size());
+        assertEquals(0, new BigDecimal("6000.00").compareTo(view.outstanding()));
+        assertError(404, "not_found", () -> loans.loan(operator, small.id()));
+
+        // The run: both instalments fall due this month, and half of pay is the most deductions may take.
+        String group = (String) ((Map<?, ?>) ((List<?>) runs.list(operator).get("groups")).get(0)).get("id");
+        UUID run = UUID.fromString((String) runs.open(operator, UUID.fromString(group), period.toString()).get("id"));
+        runs.freeze(operator, run);
+        runs.calculate(operator, run);
+        Map<String, Object> slip = runs.employee(operator, run, ashaId);
+        BigDecimal gross = (BigDecimal) slip.get("gross");
+        BigDecimal taken = lineAmount(slip, "LOAN_EMI");
+        BigDecimal otherDeductions = lineAmount(slip, "PF_EE").add(lineAmount(slip, "PT")).add(lineAmount(slip, "TDS")).add(lineAmount(slip, "ESI_EE")).add(lineAmount(slip, "LWF_EE"));
+        assertTrue(taken.signum() > 0 && taken.compareTo(new BigDecimal("202000")) < 0, "capped: " + taken);
+        assertTrue(taken.add(otherDeductions).compareTo(gross.multiply(new BigDecimal("0.5"))) <= 0, "deductions " + taken.add(otherDeductions) + " of gross " + gross);
+        assertTrue(((List<?>) runs.get(operator, run).get("exceptions")).stream().anyMatch(x -> "loan_emi_capped".equals(((Map<?, ?>) x).get("code"))));
+
+        // Approving takes what was deducted off the schedules: the advance in full, the loan in part, the rest pushed to the end.
+        for (Object o : (List<?>) runs.get(operator, run).get("exceptions")) {
+            Map<?, ?> x = (Map<?, ?>) o;
+            if ("blocking".equals(x.get("level")) && Boolean.TRUE.equals(x.get("acceptable"))) {
+                runs.accept(org.admin, run, UUID.fromString((String) x.get("id")), "Checked");
+            }
+        }
+        runs.approve(org.admin, run);
+        LoanService.LoanView afterSmall = loans.loan(asha, small.id());
+        assertEquals(0, new BigDecimal("4000.00").compareTo(afterSmall.outstanding()));
+        assertEquals("taken", afterSmall.schedule().get(0).get("status"));
+        LoanService.LoanView afterLarge = loans.loan(asha, large.id());
+        assertEquals("active", afterLarge.status(), "not repaid in full");
+        BigDecimal repaidPrincipal = afterLarge.schedule().stream().filter(r -> "taken".equals(r.get("status")))
+                .map(r -> (BigDecimal) r.get("principal")).reduce(BigDecimal.ZERO, BigDecimal::add);
+        assertEquals(0, new BigDecimal("200000.00").compareTo(repaidPrincipal.add(afterLarge.outstanding())), "principal is conserved");
+        assertTrue(afterLarge.schedule().stream().anyMatch(r -> "due".equals(r.get("status"))), "the rest stays due, at the end");
+    }
+
+    @Test
+    void scheduleInstalmentsAddUpToThePrincipalAtAnyRate() {
+        for (String rate : List.of("0", "6", "9.5", "12.75")) {
+            for (int months : List.of(1, 3, 7, 24, 60)) {
+                List<LoanService.Row> rows = LoanService.schedule(new BigDecimal("100000.01"), months, new BigDecimal(rate), LocalDate.of(2026, 12, 1));
+                assertEquals(months, rows.size());
+                assertEquals(0, new BigDecimal("100000.01").compareTo(rows.stream().map(LoanService.Row::principal).reduce(BigDecimal.ZERO, BigDecimal::add)));
+                assertTrue(rows.stream().allMatch(r -> r.interest().signum() >= 0 && r.principal().signum() >= 0));
+                assertTrue(new BigDecimal(rate).signum() > 0 || rows.stream().allMatch(r -> r.interest().signum() == 0));
+            }
         }
     }
 

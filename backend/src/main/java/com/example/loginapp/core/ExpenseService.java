@@ -771,7 +771,7 @@ public final class ExpenseService {
      * Who decides a person's claim: the approver set for them, else for their department, else their reporting manager.
      * Null when there is none, or when it would be the claimant: the claim then goes straight to finance.
      */
-    private UUID approverFor(Connection c, UUID membershipId) throws SQLException {
+    UUID approverFor(Connection c, UUID membershipId) throws SQLException {
         Map<String, Object> own = Sql.one(c, "select approver_membership_id from app.expense_approver where membership_id = ?", membershipId);
         UUID found = own == null ? null : AuthService.uuid(own.get("approverMembershipId"));
         if (found == null) {

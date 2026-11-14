@@ -446,6 +446,26 @@ export const expenses = {
   cancelBatch: (id) => post(`/org/expenses/batches/${id}/cancel`),
 }
 
+// ── advances and loans ──────────────────────────────────────────────
+
+export const loans = {
+  types: (all) => get(`/org/loans/types${query({ all: all ? 'true' : undefined })}`),
+  saveType: (id, body) => (id ? put(`/org/loans/types/${id}`, body) : post('/org/loans/types', body)),
+  preview: (type, amount, months) => get(`/org/loans/preview${query({ type, amount, months })}`),
+  mine: () => get('/org/loans'),
+  request: (body) => post('/org/loans', body),
+  loan: (id) => get(`/org/loans/${id}`),
+  withdraw: (id, version) => post(`/org/loans/${id}/withdraw`, { version }),
+  approvals: () => get('/org/loans/approvals'),
+  queue: () => get('/org/loans/queue'),
+  managerDecide: (id, action, note, version) => post(`/org/loans/${id}/manager`, { action, note, version }),
+  financeDecide: (id, action, note, version) => post(`/org/loans/${id}/finance`, { action, note, version }),
+  disburse: (id, body) => post(`/org/loans/${id}/disburse`, body),
+  skip: (instalmentId, note) => post(`/org/loans/instalments/${instalmentId}/skip`, { note }),
+  prepay: (id, amount, note) => post(`/org/loans/${id}/prepay`, { amount, note }),
+  writeOff: (id, note) => post(`/org/loans/${id}/write-off`, { note }),
+}
+
 // ── people: employee records and departments ────────────────────────
 
 export const people = {

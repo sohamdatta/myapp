@@ -308,6 +308,7 @@ public final class PayrollRuns {
                 throw new ApiException(409, "payroll.state", "Only a run being prepared can be frozen");
             }
             LocalDate period = LocalDate.parse((String) r.get("period"));
+            LoanComponent.ensure(c, ctx.tenantId());   // the library the run is frozen with has the loan deduction
             Map<String, Object> snapshot = snapshot(c, crypto, AuthService.uuid(r.get("groupId")), runId, period, today);
             Sql.update(c, "update app.payroll_run set state = 'frozen', snapshot = ?::jsonb, frozen_at = now(), frozen_by = ?, note = null where id = ?",
                     Json.write(snapshot), ctx.membershipId(), runId);
@@ -372,6 +373,9 @@ public final class PayrollRuns {
                     info.put("structure", PayrollEngine.map(PayrollEngine.map(config, "structures"), (String) emp.get("structureId")).get("name"));
                     info.put("compensationFrom", emp.get("compensationFrom"));
                     info.put("proration", PayrollEngine.map(config, "settings").get("proration"));
+                    if (emp.get("loanInstalments") != null) {
+                        info.put("loanInstalments", emp.get("loanInstalments"));
+                    }
                     if (bank.current.get(employment) != null) {
                         info.put("bankAccountId", bank.current.get(employment));   // the account this payslip is paid to; approval checks it is unchanged
                     }
@@ -772,6 +776,7 @@ public final class PayrollRuns {
                 throw new ApiException(409, "payroll.blocked", open + " blocking exception" + (open == 1 ? " is" : "s are") + " still open");
             }
             Sql.update(c, "update app.payroll_run set state = 'approved', approved_by = ?, approved_at = now() where id = ?", ctx.membershipId(), runId);
+            LoanService.settleRun(c, ctx.tenantId(), runId);   // what was deducted settles the instalments; an approved run is not reopened
             UserService.audit(c, ctx, "payroll.run_approved", "payroll_run", runId, Map.of("period", r.get("period")));
             return null;
         });

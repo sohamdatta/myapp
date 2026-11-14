@@ -122,6 +122,14 @@ final class PayrollSnapshot {
                 inputs.put((String) i.get("componentCode"), i.get("amount"));
             }
             held = Sql.one(c, "select 1 from app.pay_hold where run_id = ? and employment_id = ?", runId, employmentId) != null;
+            // Instalments of an advance or loan that fall due by this month go in as one deduction; the payslip says which were meant.
+            if (e.get("membershipId") != null) {
+                Map<String, Object> due = LoanService.dueFor(c, AuthService.uuid(e.get("membershipId")), period);
+                if (((java.math.BigDecimal) due.get("amount")).signum() > 0) {
+                    inputs.merge(LoanService.COMPONENT, due.get("amount"), (a, b) -> ((java.math.BigDecimal) a).add((java.math.BigDecimal) b));
+                    out.put("loanInstalments", due.get("ids"));
+                }
+            }
         }
         // Loss-of-pay days entered for the month are not a pay component: they go to the day count below.
         Object enteredLop = inputs.remove(PayrollRuns.LOP_DAYS);

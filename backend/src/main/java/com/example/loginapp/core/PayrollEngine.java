@@ -340,6 +340,7 @@ public final class PayrollEngine {
         tds(out, rules, emp, components, full, order, taxable, period, position++);
 
         // 8. Totals and checks.
+        capLoanRecovery(out);
         out.gross = sumKind(out, "earning");
         out.deductions = sumKind(out, "deduction");
         out.employer = sumKind(out, "employer");
@@ -1084,6 +1085,36 @@ public final class PayrollEngine {
         t.put("source", sources.get(statute + ":" + jurisdiction));
         t.put("draft", map(rules, "drafts").get(statute + ":" + jurisdiction));
         return t;
+    }
+
+    /**
+     * Deductions of a month may not take more than half the month's pay (Code on Wages s.18(4)). The loan instalment is the part that
+     * gives way: it takes what fits, and what is left stays due for the next run. Statutory and tax deductions are never reduced.
+     */
+    private static void capLoanRecovery(Calc out) {
+        Map<String, Object> emi = null;
+        for (Map<String, Object> l : out.lines) {
+            if (LoanService.COMPONENT.equals(l.get("code"))) {
+                emi = l;
+            }
+        }
+        if (emi == null) {
+            return;
+        }
+        BigDecimal asked = (BigDecimal) emi.get("amount");
+        BigDecimal others = sumKind(out, "deduction").subtract(asked);
+        BigDecimal room = sumKind(out, "earning").multiply(LoanService.DEDUCTION_CAP).setScale(2, RoundingMode.DOWN).subtract(others).max(ZERO);
+        if (asked.compareTo(room) <= 0) {
+            return;
+        }
+        out.exception("loan_emi_capped", "warning", false, "The loan instalment of " + rupees(asked) + " would take deductions above half of pay. "
+                + rupees(room) + " is taken and " + rupees(asked.subtract(room)) + " stays due.", null);
+        if (room.signum() == 0) {
+            out.lines.remove(emi);
+        } else {
+            emi.put("amount", room);
+            ((Map<String, Object>) emi.get("trace")).put("capped", "Half of pay is the most deductions may take; " + rupees(asked.subtract(room)) + " stays due");
+        }
     }
 
     private static BigDecimal sumKind(Calc out, String kind) {
