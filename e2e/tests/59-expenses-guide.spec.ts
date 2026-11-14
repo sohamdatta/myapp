@@ -2,11 +2,11 @@ import { test, expect, type Page } from '@playwright/test';
 import { SUPER_ADMIN, newPage, nav, tab, api, isoDay, shot as save } from './helpers';
 import { join } from './join';
 
-// The screenshots in docs/user-guide/expenses.md, taken in a demo Organization of their own (Northwind Logistics),
+// The screenshots in docs/user-guide/expenses.md, taken in a demo Organization of their own (Northwind Freight),
 // and the claim's journey from draft to paid. Run with E2E_SHOTS=<folder>; without it the steps still run and nothing is saved.
 
 const RUN = process.env.E2E_RUN || '';
-const em = (n: string) => `${n}@logistics${RUN}.example`;
+const em = (n: string) => `${n}@freight${RUN}.example`;
 
 async function ok(r: Promise<{ status: number; body: any }>) {
   const done = await r;
@@ -19,7 +19,7 @@ test('the expenses guide, screen by screen', async ({ browser }) => {
   const admin = await newPage(browser); await admin.goto('/');
   await admin.fill('#email', SUPER_ADMIN.email); await admin.fill('#password', SUPER_ADMIN.password); await admin.click('button.primary');
   await expect(admin.getByText('Platform console')).toBeVisible();
-  const org = await ok(api(admin, 'POST', '/platform/organizations', { name: 'Northwind Logistics', slug: `northwind-logistics${RUN}`, adminEmail: em('owner') }));
+  const org = await ok(api(admin, 'POST', '/platform/organizations', { name: 'Northwind Freight', slug: `northwind-freight${RUN}`, adminEmail: em('owner') }));
   await admin.context().close();
   const owner = await join(browser, org.invitationToken, em('owner'));
   await ok(api(owner, 'POST', '/org/setup/starter', { starter: 'office', locationName: 'Pune office', stateCode: 'MH' }));

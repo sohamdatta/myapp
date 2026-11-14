@@ -69,7 +69,8 @@ test.describe.serial('exit', () => {
   });
 
   test('clearance: tasks go to their owners, and the leaver records a claim owed to them', async () => {
-    await expect(hr.locator('.clearance')).toContainText('0 of 9 done');
+    // The advances, loans and claims task checks Expenses itself: Meera has nothing open there, so it is done from the start.
+    await expect(hr.locator('.clearance')).toContainText('1 of 9 done');
     await expect(hr.locator('.clearance .task-row[data-task="Plan the handover of work"]')).toContainText('Ananya Sen');
     await shot(hr, '88-clearance', true);
 

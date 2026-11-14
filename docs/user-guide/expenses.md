@@ -1,6 +1,6 @@
 # Expenses, advances and loans: user guide
 
-For customers. How to claim an expense, how it is approved, verified and paid, how to ask for a salary advance or a loan, and how an Organization sets all this up. Open **Expenses** from the menu; the tabs you see depend on your role. Loans and advances need the Payroll module. The screenshots come from a demo Organization (Northwind Logistics); your names will differ.
+For customers. How to claim an expense, how it is approved, verified and paid, how to ask for a salary advance or a loan, and how an Organization sets all this up. Open **Expenses** from the menu; the tabs you see depend on your role. Loans and advances need the Payroll module. The screenshots come from a demo Organization (Northwind Freight); your names will differ.
 
 ## Overview
 

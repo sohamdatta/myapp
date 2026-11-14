@@ -124,7 +124,7 @@ export default defineConfig({
     { name: 'onboarding-cases', testMatch: /56-onboarding-cases\.spec\.ts/, use: desktop },
     // The onboarding user guide's screenshots (docs/user-guide/onboarding.md), in Northwind Pharma: E2E_SHOTS=<folder> --project=onboarding-guide.
     { name: 'onboarding-guide', testMatch: /57-onboarding-guide\.spec\.ts/, use: desktop },
-    // The expenses user guide's screenshots (docs/user-guide/expenses.md), in Northwind Logistics: E2E_SHOTS=<folder> --project=expenses-guide.
+    // The expenses user guide's screenshots (docs/user-guide/expenses.md), in Northwind Freight: E2E_SHOTS=<folder> --project=expenses-guide.
     { name: 'expenses-guide', testMatch: /59-expenses-guide\.spec\.ts/, use: desktop },
     // The attendance user guide's screenshots (docs/user-guide/attendance.md), in Northwind Foods: E2E_SHOTS=<folder> --project=attendance-guide.
     { name: 'attendance-guide', testMatch: /43-attendance-guide\.spec\.ts/, use: desktop },
