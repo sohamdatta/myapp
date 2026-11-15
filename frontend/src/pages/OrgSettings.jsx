@@ -81,16 +81,27 @@ function EmailDomainPanel() {
   const [password, setPassword] = useState('')
   const [saved, setSaved] = useState('')
   const { busy, error, run } = useAction()
+  const [fresh, setFresh] = useState(null)
   if (loaded.loading || loaded.error) return null
-  const shown = domain ?? loaded.data?.officialEmailDomain ?? ''
+  const current = fresh ?? loaded.data
+  const shown = domain ?? current?.officialEmailDomain ?? ''
 
   async function save(event) {
     event.preventDefault()
     const result = await run(() => orgSignIn.setEmailDomain(shown, password))
     if (result) {
+      setFresh(result)
       setDomain(result.officialEmailDomain || '')
       setPassword('')
-      setSaved(result.officialEmailDomain ? signInText.orgSaved : signInText.orgOff)
+      setSaved(result.officialEmailDomain ? signInText.orgSaved : signInText.orgCleared)
+    }
+  }
+
+  async function check() {
+    const result = await run(() => orgSignIn.checkEmailDomain())
+    if (result) {
+      setFresh(result)
+      setSaved('')
     }
   }
 
@@ -113,6 +124,21 @@ function EmailDomainPanel() {
           {busy ? 'Saving…' : signInText.orgSave}
         </button>
       </form>
+      {current?.officialEmailDomain && !current.officialEmailVerified && (
+        <div className="stack">
+          <p className="hint">{signInText.emailDomainProve}</p>
+          <p>
+            {signInText.emailDomainName}: <code>{current.officialEmailRecordName}</code>
+          </p>
+          <p>
+            {signInText.emailDomainValue}: <code>{current.officialEmailRecordValue}</code>
+          </p>
+          <button type="button" className="outline" disabled={busy} onClick={check}>
+            {signInText.emailDomainCheck}
+          </button>
+        </div>
+      )}
+      {current?.officialEmailVerified && <p className="notice" role="status">{signInText.emailDomainVerified}</p>}
     </section>
   )
 }

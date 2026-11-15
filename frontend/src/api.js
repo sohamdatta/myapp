@@ -251,6 +251,8 @@ export const orgSignIn = {
   setGoogle: (domain, password) => put('/org/sign-in/google', { domain, password }),
   /** The email domain the Organization says is its own, so HR can propose company addresses in it. */
   setEmailDomain: (domain, password) => put('/org/sign-in/email-domain', { domain, password }),
+  /** Looks for the DNS record that shows the Organization controls the domain. */
+  checkEmailDomain: () => post('/org/sign-in/email-domain/check', {}),
 }
 
 /** Moving people to their company address: HR proposes, the person switches from Security. */

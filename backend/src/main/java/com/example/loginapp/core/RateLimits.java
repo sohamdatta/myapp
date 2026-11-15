@@ -52,6 +52,9 @@ public final class RateLimits {
     /** Every start counts: a start sets a cookie and builds an address, nothing more, so this is only a ceiling against floods. */
     public static final Rule OIDC_START_PER_ADDRESS = new Rule("oidc-start-address", 300, Duration.ofMinutes(15));
 
+    /** Requests to a person to use their company address: a few a day for each person, so nobody's inbox is flooded. */
+    public static final Rule OFFICIAL_EMAIL_PER_MEMBER = new Rule("official-email-member", 5, Duration.ofDays(1));
+
     static final int MAX_KEYS = 20_000;
     private static final Duration KEEP = Duration.ofDays(1);
 

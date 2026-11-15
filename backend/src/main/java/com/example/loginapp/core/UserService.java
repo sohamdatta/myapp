@@ -24,7 +24,9 @@ public final class UserService {
     public List<Map<String, Object>> users(SessionCtx ctx) {
         ctx.require("user.read");
         return db.inTenant(ctx.tenantId(), c -> Sql.query(c,
-                "select m.id, m.status, m.joined_at, m.suspended_at, m.ended_at, m.proposed_email, "
+                "select m.id, m.status, m.joined_at, m.suspended_at, m.ended_at, "
+                        + "case when m.proposed_at > now() - interval '30 days' and lower(m.proposed_email::text) <> lower(d.email::text) "
+                        + "     then m.proposed_email end as proposed_email, "
                         + "d.email, d.mfa_enrolled, d.last_login_at, "
                         + "array(select r.code from app.membership_role mr join app.role r on r.id = mr.role_id "
                         + "       where mr.membership_id = m.id order by r.name) as role_codes, "

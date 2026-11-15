@@ -141,6 +141,12 @@ public class OidcController {
         return settings.setOfficialEmailDomain(ctx, request.domain(), request.password());
     }
 
+    /** Looks for the DNS record that shows the Organization controls its email domain. */
+    @PostMapping("/org/sign-in/email-domain/check")
+    public SignInSettingsService.View checkEmailDomain(SessionCtx ctx) {
+        return settings.checkEmailDomain(ctx);
+    }
+
     /** HR proposes a company address for a member; the member switches from Security. */
     @PutMapping("/org/users/{id}/official-email")
     public ResponseEntity<Void> propose(SessionCtx ctx, @PathVariable UUID id, @RequestBody ProposalRequest request) {

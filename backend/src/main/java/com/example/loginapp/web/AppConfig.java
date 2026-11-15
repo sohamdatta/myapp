@@ -32,6 +32,7 @@ import com.example.loginapp.core.CertificateLayout;
 import com.example.loginapp.core.Crypto;
 import com.example.loginapp.core.IdTokenVerifier;
 import com.example.loginapp.core.JdkOidcTokenClient;
+import com.example.loginapp.core.UdpDnsTxtLookup;
 import com.example.loginapp.core.OfficialEmailService;
 import com.example.loginapp.core.OidcProvider;
 import com.example.loginapp.core.OidcService;
@@ -244,13 +245,13 @@ public class AppConfig {
     }
 
     @Bean
-    public OfficialEmailService officialEmailService(Db db, MailOutbox outbox) {
-        return new OfficialEmailService(db, outbox);
+    public OfficialEmailService officialEmailService(Db db, MailOutbox outbox, RateLimits limits) {
+        return new OfficialEmailService(db, outbox, limits);
     }
 
     @Bean
     public SignInSettingsService signInSettingsService(Db db) {
-        return new SignInSettingsService(db);
+        return new SignInSettingsService(db, new UdpDnsTxtLookup());
     }
 
     /** The key that encrypts sensitive values. See application.properties. */

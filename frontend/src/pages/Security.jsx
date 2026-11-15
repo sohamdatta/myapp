@@ -113,7 +113,7 @@ function EmailSection() {
     <form onSubmit={submit} noValidate aria-label="Change your sign-in address">
       <h3>Change your sign-in address</h3>
       {proposals.map((p) => (
-        <p key={p.email} className="notice" role="status">
+        <p key={`${p.organization}:${p.email}`} className="notice">
           {signInText.workEmailHint(p.organization)} <strong>{p.email}</strong>{' '}
           <button type="button" className="link" onClick={() => setAddress(p.email)}>{signInText.workEmailUse}</button>
         </p>
