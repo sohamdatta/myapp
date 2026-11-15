@@ -32,9 +32,5 @@ create index oidc_handoff_expires on auth.oidc_handoff (expires_at);
 grant select, insert, update, delete on auth.external_login, auth.oidc_handoff to app_auth;
 
 alter table auth.session
-  add column auth_method text not null default 'password',
+  add column auth_method text not null default 'password' check (auth_method in ('password','google','microsoft')),
   add column provider_tenant text;
-
-alter table auth.session
-  add constraint session_auth_method_check check (auth_method in ('password','google','microsoft')) not valid;
-alter table auth.session validate constraint session_auth_method_check;
