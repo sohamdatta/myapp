@@ -65,6 +65,16 @@ Choose **Set up two-step sign-in**, scan the code with an authenticator app (Goo
 
 ![Setting up two-step sign-in](img/administration/08-two-step.png)
 
+### Moving people to their company email
+
+People are often invited at a personal address. When they have a company address, an Org Admin first enters the organization's **Company email domain** (such as `acme.com`) in **Organization settings**; it asks for the admin's password. Public mail services such as Gmail or Outlook are refused.
+
+The domain is not believed until it is proven. Organization settings shows a **TXT record** (a name and a value) to add in the domain's DNS settings; then choose **Check the record**. It can take a while to appear. A domain can be verified by only one organization, and changing or removing it withdraws every request outside the new domain.
+
+Once the domain is verified, HR opens the person's row in **Users** and, under **Company email address**, sends a request with the new address. It must be in that domain, and it ends after 30 days or when the person leaves. A person who also belongs to another organization, or has a platform role, cannot be moved this way, because the new mailbox would gain control of those too; they change their own address in Security. A person can be asked a few times a day at most.
+
+Nothing changes by itself. The person gets an email naming the organization, opens **Security**, chooses **Use this address** under *Change your sign-in address*, types their own password, and a link goes to the company address: only whoever owns it can finish the change. The old address gets a link to undo it for 7 days. HR can withdraw a request from the same panel.
+
 ### Sign in with Google
 
 Where your platform administrator has turned it on, an Org Admin can let people sign in with their company Google account. Open **Organization settings**, enter your Google Workspace domain (such as `acme.com`) under **Sign in with Google**, and save; it asks for your password. Leave it empty to turn it off again. Nobody loses their password: this is an addition.

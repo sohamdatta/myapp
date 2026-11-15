@@ -68,8 +68,78 @@ export default function OrgSettings({ me, onRefresh }) {
       )}
     </section>
     {(me.modules || []).includes('payroll') && b.canChange && <CertificateLayoutPanel hasLogo={Boolean(current)} />}
+    {b.canChange && <EmailDomainPanel />}
     {b.canChange && <GoogleSignInPanel />}
     </>
+  )
+}
+
+/** The email domain this Organization says is its own: HR can propose company addresses in it. */
+function EmailDomainPanel() {
+  const loaded = useLoad(orgSignIn.get)
+  const [domain, setDomain] = useState(null)
+  const [password, setPassword] = useState('')
+  const [saved, setSaved] = useState('')
+  const { busy, error, run } = useAction()
+  const [fresh, setFresh] = useState(null)
+  if (loaded.loading || loaded.error) return null
+  const current = fresh ?? loaded.data
+  const shown = domain ?? current?.officialEmailDomain ?? ''
+
+  async function save(event) {
+    event.preventDefault()
+    const result = await run(() => orgSignIn.setEmailDomain(shown, password))
+    if (result) {
+      setFresh(result)
+      setDomain(result.officialEmailDomain || '')
+      setPassword('')
+      setSaved(result.officialEmailDomain ? signInText.orgSaved : signInText.orgCleared)
+    }
+  }
+
+  async function check() {
+    const result = await run(() => orgSignIn.checkEmailDomain())
+    if (result) {
+      setFresh(result)
+      setSaved('')
+    }
+  }
+
+  return (
+    <section className="panel" data-testid="email-domain-settings">
+      <h3>{signInText.emailDomainTitle}</h3>
+      <p className="hint">{signInText.emailDomainHint}</p>
+      <form onSubmit={save} noValidate aria-label={signInText.emailDomainTitle}>
+        <label htmlFor="email-domain">{signInText.emailDomainTitle}</label>
+        <input id="email-domain" placeholder="acme.com" autoComplete="off" value={shown} onChange={(e) => { setDomain(e.target.value); setSaved('') }} />
+        {shown.trim() && (
+          <>
+            <label htmlFor="email-domain-password">{signInText.orgPassword}</label>
+            <input id="email-domain-password" type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} />
+          </>
+        )}
+        <ErrorNote>{error}</ErrorNote>
+        {saved && <p className="notice" role="status">{saved}</p>}
+        <button type="submit" className="primary" disabled={busy || (shown.trim() && !password)}>
+          {busy ? 'Saving…' : signInText.orgSave}
+        </button>
+      </form>
+      {current?.officialEmailDomain && !current.officialEmailVerified && (
+        <div className="stack">
+          <p className="hint">{signInText.emailDomainProve}</p>
+          <p>
+            {signInText.emailDomainName}: <code>{current.officialEmailRecordName}</code>
+          </p>
+          <p>
+            {signInText.emailDomainValue}: <code>{current.officialEmailRecordValue}</code>
+          </p>
+          <button type="button" className="outline" disabled={busy} onClick={check}>
+            {signInText.emailDomainCheck}
+          </button>
+        </div>
+      )}
+      {current?.officialEmailVerified && <p className="notice" role="status">{signInText.emailDomainVerified}</p>}
+    </section>
   )
 }
 

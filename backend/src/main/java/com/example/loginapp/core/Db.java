@@ -95,6 +95,9 @@ public final class Db {
             return new ApiException(409, "role.maker_checker",
                     "One user cannot be both Payroll Operator and Payroll Approver");
         }
+        if (state.equals("23505") && message.contains("official_email_domain_verified_uq")) {
+            return new ApiException(409, "official_email.domain_taken", "Another organization has already verified that domain");
+        }
         if (state.equals("23505") && message.contains("external_login_provider_subject_key")) {
             return new ApiException(409, "oidc.taken", "That account is already connected to another login");
         }

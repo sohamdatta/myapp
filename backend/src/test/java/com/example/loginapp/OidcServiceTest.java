@@ -133,7 +133,7 @@ class OidcServiceTest {
     private final AuthService auth = new AuthService(db, limits);
     private final MfaService mfa = new MfaService(db, crypto, outbox, limits, CLOCK);
     private final OidcService oidc = service(CLIENT);
-    private final SignInSettingsService settings = new SignInSettingsService(db);
+    private final SignInSettingsService settings = new SignInSettingsService(db, name -> List.of());
 
     private OidcService service(String clientId) {
         IdTokenVerifier verifier = new IdTokenVerifier(new ImmutableJWKSet<>(new JWKSet(key.toPublicJWK())),

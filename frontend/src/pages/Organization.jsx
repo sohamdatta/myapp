@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { invitationLink, org } from '../api.js'
+import { invitationLink, officialEmail, org } from '../api.js'
 import { formatDate, formatDay, formatWhen, useAction, useLoad } from '../hooks.js'
 import { Badge, CopyLink, Empty, ErrorNote, StatusBadge, Tabs } from '../ui.jsx'
 import { useConfirm, useToast } from '../feedbackContext.js'
@@ -137,6 +137,7 @@ function UserPanel({ user, me, roles, onClose, onChanged }) {
   const { canAssign, canManage } = powers(me, user)
   const [selected, setSelected] = useState(user.roleCodes)
   const [resetting, setResetting] = useState(false)
+  const [workEmail, setWorkEmail] = useState('')
   const [reason, setReason] = useState('')
   const { busy, error, run } = useAction()
   const confirm = useConfirm()
@@ -258,6 +259,33 @@ function UserPanel({ user, me, roles, onClose, onChanged }) {
                       {t.resetCancel}
                     </button>
                   </div>
+                </form>
+              )}
+            </div>
+          )}
+          {user.status !== 'ended' && (
+            <div className="access-row">
+              <p className="hint">{t.workEmailHint}</p>
+              {user.proposedEmail ? (
+                <>
+                  <p>{t.workEmailProposed(user.proposedEmail)}</p>
+                  <button type="button" className="outline" disabled={busy} onClick={() => act(() => officialEmail.withdraw(user.id), t.workEmailWithdrawn)}>
+                    {t.workEmailWithdraw}
+                  </button>
+                </>
+              ) : (
+                <form
+                  className="stack"
+                  onSubmit={(e) => {
+                    e.preventDefault()
+                    act(() => officialEmail.propose(user.id, workEmail.trim()), t.workEmailDone(workEmail.trim()))
+                  }}
+                >
+                  <label htmlFor="work-email">{t.workEmail}</label>
+                  <input id="work-email" type="email" autoComplete="off" value={workEmail} onChange={(e) => setWorkEmail(e.target.value)} />
+                  <button type="submit" className="outline" disabled={busy || !workEmail.trim()}>
+                    {t.workEmailSend}
+                  </button>
                 </form>
               )}
             </div>
