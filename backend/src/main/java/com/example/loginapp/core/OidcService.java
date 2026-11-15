@@ -172,6 +172,7 @@ public final class OidcService {
             if (!"active".equals(link.get("status")) || (link.get("tenant") != null && !link.get("tenant").equals(who.tenant()))) {
                 throw new ApiException(401, "oidc.invalid", "That sign-in could not be verified. Try again");
             }
+            requireAccepted(c, AuthService.uuid(link.get("identityId")), who);
             Sql.update(c, "update auth.external_login set last_used_at = now() where id = ?", AuthService.uuid(link.get("id")));
             Sql.update(c, "delete from auth.oidc_handoff where expires_at < now() - interval '1 hour'");
             Sql.update(c, "insert into auth.oidc_handoff (code_hash, identity_id, provider, tenant, expires_at) "
@@ -197,6 +198,7 @@ public final class OidcService {
                             flow.sessionId(), flow.identityId())) {
                 throw new ApiException(401, "oidc.invalid", "That sign-in could not be verified. Try again");
             }
+            requireAccepted(c, flow.identityId(), who);
             if (Sql.exists(c, "select 1 from auth.external_login where identity_id = ? and provider = ?", flow.identityId(), who.provider())) {
                 throw new ApiException(409, "oidc.already_connected", "This login already has an account connected there. Disconnect it first");
             }
@@ -211,6 +213,18 @@ public final class OidcService {
             return null;
         });
         return new Finished("/?oidc=linked", null);
+    }
+
+    /**
+     * The account's company (Google Workspace domain) must be one that an Organization the person belongs to has accepted. A
+     * personal account has none, and an Organization that has not turned it on, or has since turned it off, accepts nothing.
+     */
+    private static void requireAccepted(java.sql.Connection c, UUID identityId, IdTokenVerifier.Identity who) throws java.sql.SQLException {
+        boolean accepted = who.tenant() != null && Sql.query(c, "select domain from auth.allowed_provider_tenants(?, ?)", identityId, who.provider())
+                .stream().anyMatch(r -> who.tenant().equalsIgnoreCase((String) r.get("domain")));
+        if (!accepted) {
+            throw new ApiException(403, "oidc.not_allowed", "Your organization has not turned on sign-in with that account");
+        }
     }
 
     private static Finished fail(String code) {

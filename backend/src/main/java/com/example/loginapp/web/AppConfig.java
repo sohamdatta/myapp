@@ -34,6 +34,7 @@ import com.example.loginapp.core.IdTokenVerifier;
 import com.example.loginapp.core.JdkOidcTokenClient;
 import com.example.loginapp.core.OidcProvider;
 import com.example.loginapp.core.OidcService;
+import com.example.loginapp.core.SignInSettingsService;
 import com.example.loginapp.core.MailOutbox;
 import com.example.loginapp.core.MailSender;
 import com.example.loginapp.core.MfaService;
@@ -239,6 +240,11 @@ public class AppConfig {
         IdTokenVerifier verifier = new IdTokenVerifier(googleKeys, microsoftKeys, Clock.systemUTC());
         return new OidcService(db, crypto, outbox, limits, verifier, new JdkOidcTokenClient(), List.of(OidcProvider.google(googleId, googleSecret)),
                 publicUrl, Clock.systemUTC());
+    }
+
+    @Bean
+    public SignInSettingsService signInSettingsService(Db db) {
+        return new SignInSettingsService(db);
     }
 
     /** The key that encrypts sensitive values. See application.properties. */
