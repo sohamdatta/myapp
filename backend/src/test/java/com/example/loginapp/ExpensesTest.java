@@ -710,6 +710,33 @@ class ExpensesTest {
     }
 
     @Test
+    void theDailyDigestTellsWhoeverHasKeptAClaimOrLoanWaitingThreeDaysAndOnlyOnceADay() {
+        Setup s = setup();
+        com.example.loginapp.core.ExpenseDigest digest = new com.example.loginapp.core.ExpenseDigest(db, expenses);
+        UUID claim = claim(s.emp, "Client visit");
+        line(s.emp, claim, s.meals, 3, "300.00");
+        expenses.submit(s.emp, claim, version(s.emp, claim));
+        UUID type = loans.saveType(s.finance, null, new LoanService.TypeInput("Advance", "salary_advance", new BigDecimal("9000"), 3, BigDecimal.ZERO, 0, 2, true)).id();
+        loans.request(s.emp, new LoanService.RequestInput(type.toString(), new BigDecimal("3000"), 3, "Rent"));
+        assertEquals(0, digest.runFor(s.orgId), "nothing has waited three days yet");
+
+        db.inTenant(s.orgId, c -> Sql.update(c, "update app.expense_claim set submitted_at = now() - interval '4 days' where id = ?", claim)
+                + Sql.update(c, "update app.loan set created_at = now() - interval '5 days'"));
+        assertEquals(1, digest.runFor(s.orgId));
+        String body = notes(s, s.manager).get(notes(s, s.manager).size() - 1);
+        assertTrue(body.contains("1 expense claim and 1 loan request have been waiting"), body);
+        assertEquals(0, digest.runFor(s.orgId), "once a day");
+
+        // With finance for three days: everyone in finance hears, the manager no longer does.
+        expenses.decide(s.manager, claim, "approve", "Agreed", version(s.emp, claim), null);
+        db.inTenant(s.orgId, c -> Sql.update(c, "update app.expense_claim set manager_at = now() - interval '3 days 1 hour' where id = ?", claim));
+        db.inOwner(c -> Sql.update(c, "delete from app.notification where event = 'expense_digest'"));   // as if a day had passed
+        digest.runFor(s.orgId);
+        assertTrue(told(s, s.finance).contains("expense_digest"));
+        assertTrue(notes(s, s.finance).stream().anyMatch(n -> n.contains("1 expense claim has been waiting")));
+    }
+
+    @Test
     void aLoanGoesThroughManagerAndFinanceThenRepaysWithSkipPrepayAndWriteOff() {
         Setup s = setup();
         UUID type = loans.saveType(s.finance, null, new LoanService.TypeInput("Personal loan", "loan", new BigDecimal("100000"), 12,

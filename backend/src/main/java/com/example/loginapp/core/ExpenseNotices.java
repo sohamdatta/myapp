@@ -28,19 +28,31 @@ final class ExpenseNotices {
             {"loan_decided", "Your request was decided", "Hello {{person.first_name}}, your {{loan.type}} {{loan.number}} was {{loan.outcome}}. {{loan.note}}"},
             {"loan_paid_out", "Payout recorded", "Hello {{person.first_name}}, your {{loan.type}} {{loan.number}} of {{loan.amount}} was paid out. Repayment starts in {{loan.first_month}}."},
             {"loan_instalment_carried", "Loan instalments carried", "{{employee.name}}: {{loan.number}} has {{loan.count}} still due, {{loan.amount}} in all, the oldest from {{loan.since}}. Look at it under Expenses, Loans."},
+            {"expense_digest", "Waiting on you for three days or more", "Hello {{person.first_name}}, {{digest.what}} waiting for your decision for three days or more. Open Expenses to decide."},
     };
 
     private ExpenseNotices() {}
 
     /** Writes the default texts unless the Organization has them. */
     static void ensure(Connection c, UUID tenantId) throws SQLException {
-        if (Sql.exists(c, "select 1 from app.message_template where event = 'expense_waiting'")) {
+        String[] events = java.util.Arrays.stream(MESSAGES).map(m -> m[0]).toArray(String[]::new);
+        if (Sql.count(c, "select 1 from app.message_template where event = any(?)", (Object) events) >= MESSAGES.length) {
             return;
         }
-        for (String[] m : MESSAGES) {
+        for (String[] m : MESSAGES) {   // a message added in a later release joins the ones the Organization already has
             Sql.update(c, "insert into app.message_template (tenant_id, event, subject, body) values (?, ?, ?, ?) on conflict (tenant_id, event, channel) do nothing",
                     tenantId, m[0], m[1], m[2]);
         }
+    }
+
+    /** Everyone active who holds the permission across the Organization. */
+    static java.util.List<UUID> holders(Connection c, String permission) throws SQLException {
+        java.util.List<UUID> out = new java.util.ArrayList<>();
+        for (Map<String, Object> m : Sql.query(c, "select distinct m.id from app.membership m join app.membership_role mr on mr.membership_id = m.id "
+                + "join app.role_permission rp on rp.role_id = mr.role_id where m.status = 'active' and rp.permission_code = ? and rp.scope = 'tenant' order by m.id", permission)) {
+            out.add(AuthService.uuid(m.get("id")));
+        }
+        return out;
     }
 
     static void tell(Connection c, UUID tenantId, String event, UUID to, Map<String, String> values) throws SQLException {

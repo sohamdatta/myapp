@@ -405,6 +405,16 @@ public class AppConfig {
     }
 
     @Bean
+    public com.example.loginapp.core.ExpenseDigest expenseDigest(Db db, ExpenseService expenses) {
+        return new com.example.loginapp.core.ExpenseDigest(db, expenses);
+    }
+
+    @Bean
+    public ExpenseDigestWorker expenseDigestWorker(com.example.loginapp.core.ExpenseDigest digest) {
+        return new ExpenseDigestWorker(digest);
+    }
+
+    @Bean
     public UsageWorker usageWorker(UsageStats usage) {
         return new UsageWorker(usage);
     }
