@@ -70,6 +70,10 @@ Choose a type, an amount and the number of months, and give a reason. **Preview*
 
 Ask for an expense advance like any other, saying how many months (1 to 3) you need to settle it. After the trip, make your claim as usual and, on the draft, choose the advance under **Set against an advance**. When Finance verifies the claim, the advance covers as much of it as it can and only the rest is paid to you: an advance of ₹20,000 and a claim of ₹23,000 pays ₹3,000. A claim the advance covers in full shows as paid at once. Whatever your claims have not covered by the last of the months you asked for is taken from that month's salary in one deduction. A claim covered in part is paid by bank batch, not with the salary.
 
+![Choosing the advance on a draft claim](img/expenses/18-advance-choice.png)
+
+![The advance chosen](img/expenses/19-advance-chosen.png)
+
 ### Approval and payout
 
 The manager (or named approver) decides first, then Finance (**Loan approvals**, **Loans**). Where the Organization has set a second finance approver above an amount (`loans.second_finance_above`), a larger request needs two different people in Finance: the first approval keeps it with Finance, and someone else completes it. Then Finance records the payout with the bank reference. The schedule is fixed then: equal principal each month plus that month's interest, starting no earlier than the month after the payout.
@@ -119,6 +123,7 @@ Settings (Organization level, changed with your password; weakening some needs a
 | `expenses.manager_step` | on | Claims go to the manager before Finance |
 | `expenses.second_finance_above` | 0 (never) | A second finance approver above this many rupees |
 | `expenses.when_no_approver` | refuse | What to do for a person with no manager or approver: refuse, or send to finance |
+| `loans.enabled` | On | Turn off to stop new advance and loan requests; running loans keep being repaid |
 | `loans.second_finance_above` | 0 (never) | A second finance approver for a loan or advance above this many rupees |
 | `loans.perquisite_rate_bp` | 0 | State Bank rate in hundredths of a percent (940 is 9.40%), from 1 April. Ask your payroll consultant for the figure |
 

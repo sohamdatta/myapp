@@ -593,6 +593,21 @@ class ExpensesTest {
     // ── advances and loans ──────────────────────────────────────────────
 
     @Test
+    void switchingAdvancesAndLoansOffStopsNewRequestsButNotRunningOnes() {
+        Setup s = setup();
+        UUID type = loans.saveType(s.finance, null, new LoanService.TypeInput("Personal loan", "loan", new BigDecimal("100000"), 12,
+                BigDecimal.ZERO, 0, 3, true)).id();
+        LoanService.Created before = loans.request(s.solo, new LoanService.RequestInput(type.toString(), new BigDecimal("9000"), 3, "Fees"));
+        new com.example.loginapp.core.SettingsService(db).change(s.admin, "loans.enabled",
+                new com.example.loginapp.core.SettingsService.ChangeInput("organization", null, null, false, false, "No loans this year", PASSWORD));
+        assertError(409, "loan.off", () -> loans.request(s.solo, new LoanService.RequestInput(type.toString(), new BigDecimal("9000"), 3, "More fees")));
+        assertTrue(loans.types(s.solo, false).isEmpty(), "people see no types to choose from");
+        assertEquals(1, loans.types(s.finance, true).size(), "finance still sees and manages the types");
+        loans.financeDecide(s.finance, before.id(), "approve", null, 1);
+        assertEquals("approved", loans.loan(s.solo, before.id()).status(), "a request already made can still be decided");
+    }
+
+    @Test
     void aLoanAboveTheLimitNeedsTwoDifferentPeopleInFinance() {
         Setup s = setup();
         new com.example.loginapp.core.SettingsService(db).change(s.admin, "loans.second_finance_above",
@@ -683,6 +698,23 @@ class ExpensesTest {
         loans.disburse(s.finance, ln.id(), TODAY.toString(), null, "UTR778899", 3);
         assertTrue(told(s, s.emp).contains("loan_paid_out"));
         assertTrue(notes(s, s.emp).stream().anyMatch(n -> n.contains("approved")));
+    }
+
+    @Test
+    void everyExpenseMessageCanBeSavedAsItIsInSetup() {
+        Setup s = setup();
+        // The messages are written the first time one is sent; a claim sent and approved writes the claim ones, a request the loan ones.
+        UUID claim = claim(s.emp, "Messages");
+        line(s.emp, claim, s.meals, 1, "200.00");
+        expenses.submit(s.emp, claim, version(s.emp, claim));
+        com.example.loginapp.core.Notifications notifications = new com.example.loginapp.core.Notifications(db);
+        List<Map<String, Object>> expenseMessages = notifications.messages(s.admin).stream()
+                .filter(m -> String.valueOf(m.get("event")).startsWith("expense_") || String.valueOf(m.get("event")).startsWith("loan_")).toList();
+        assertTrue(expenseMessages.size() >= 5, "the expense messages are listed in Setup");
+        for (Map<String, Object> m : expenseMessages) {
+            notifications.saveMessage(s.admin, UUID.fromString(String.valueOf(m.get("id"))),
+                    new com.example.loginapp.core.Notifications.MessageInput((String) m.get("subject"), (String) m.get("body"), false));
+        }
     }
 
     private static List<String> told(Setup s, SessionCtx who) {

@@ -145,4 +145,24 @@ test('the expenses guide, screen by screen', async ({ browser }) => {
   await pg.fin.getByRole('button', { name: 'Record payout' }).click();
   await expect(pg.fin.locator('main')).toContainText('5,000');
   await save(pg.fin, 'expenses-17-loan-schedule');
+
+  // An expense advance: money given before a trip, settled by the claims that follow.
+  await ok(api(pg.fin, 'POST', '/org/loans/types', { name: 'Trip advance', kind: 'expense_advance', maxAmount: 20000, maxMonths: 2, annualRate: 0,
+    minServiceMonths: 0, maxOpen: 1, active: true }));
+  const adv = (await ok(api(pg.esha, 'GET', '/org/loans/types'))).find((t: any) => t.name === 'Trip advance');
+  const ask = await ok(api(pg.esha, 'POST', '/org/loans', { typeId: adv.id, amount: 8000, months: 1, purpose: 'Site visit, Satara' }));
+  let view = await ok(api(pg.mgr, 'GET', `/org/loans/${ask.id}`));
+  await ok(api(pg.mgr, 'POST', `/org/loans/${ask.id}/manager`, { action: 'approve', note: null, version: view.version }));
+  view = await ok(api(pg.fin, 'GET', `/org/loans/${ask.id}`));
+  await ok(api(pg.fin, 'POST', `/org/loans/${ask.id}/finance`, { action: 'approve', note: null, version: view.version }));
+  view = await ok(api(pg.fin, 'GET', `/org/loans/${ask.id}`));
+  await ok(api(pg.fin, 'POST', `/org/loans/${ask.id}/disburse`, { paidOn: isoDay(0), firstMonth: null, reference: 'UTR-HDFC-884400', version: view.version }));
+  await expenses(pg.esha, 'My claims');
+  await pg.esha.fill('#new-claim', 'Site visit, Satara');
+  await pg.esha.getByRole('button', { name: 'Start' }).click();
+  await expect(pg.esha.locator('#claim-advance')).toBeVisible();
+  await save(pg.esha, 'expenses-18-advance-choice');
+  await pg.esha.selectOption('#claim-advance', { index: 1 });
+  await expect(pg.esha.locator('main')).toContainText('Trip advance').catch(() => {});
+  await save(pg.esha, 'expenses-19-advance-chosen');
 });

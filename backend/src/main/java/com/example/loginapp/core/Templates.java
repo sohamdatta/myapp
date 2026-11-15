@@ -104,6 +104,19 @@ public final class Templates {
         m.put("plan.decision", "HR's decision on an improvement plan, in words");
         m.put("plan.checkin_due", "When a plan check-in is due");
         m.put("requester.name", "Who asked for the feedback");
+        m.put("claim.number", "The expense claim's number, as EXP-26-00012");
+        m.put("claim.title", "The expense claim's title");
+        m.put("claim.amount", "The amount of the claim, as ₹1,240.00");
+        m.put("claim.note", "The approver's or finance's note on the claim");
+        m.put("loan.number", "The advance or loan's number, as LN-2026-0003");
+        m.put("loan.type", "The kind of advance or loan");
+        m.put("loan.amount", "The amount of the advance or loan, as ₹15,000.00");
+        m.put("loan.first_month", "The month the first instalment is taken");
+        m.put("loan.note", "The approver's or finance's note on the advance or loan");
+        m.put("loan.count", "How many instalments are carried over, for the alert to finance");
+        m.put("loan.outcome", "What happened to the loan, in words");
+        m.put("loan.since", "The month an instalment has been carried since");
+        m.put("digest.what", "What is waiting, as 2 expense claims and 1 loan request");
         MESSAGE = java.util.Collections.unmodifiableMap(m);
     }
 

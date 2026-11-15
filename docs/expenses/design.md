@@ -363,3 +363,4 @@ Keka will not mark an expense paid outside payroll as unpaid again ([Keka](https
 - Deductions cap, Code on Wages s.18: [Nyaaya](https://nyaaya.org/legal-explainer/what-can-employers-deduct-from-employees-wages/), [TaxTMI](https://www.taxtmi.com/article/detailed?id=16583)
 
 The tax and wage points come from secondary sources and still need the payroll consultant's sign-off, like the other rules.
+- **Allow advances and loans (`loans.enabled`, default on).** Off: new requests are refused (`loan.off`) and people see no loan types. Running loans, decisions on requests already made, and Finance's type list are unaffected.
