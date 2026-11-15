@@ -119,6 +119,7 @@ Settings (Organization level, changed with your password; weakening some needs a
 | `expenses.manager_step` | on | Claims go to the manager before Finance |
 | `expenses.second_finance_above` | 0 (never) | A second finance approver above this many rupees |
 | `expenses.when_no_approver` | refuse | What to do for a person with no manager or approver: refuse, or send to finance |
+| `loans.enabled` | On | Turn off to stop new advance and loan requests; running loans keep being repaid |
 | `loans.second_finance_above` | 0 (never) | A second finance approver for a loan or advance above this many rupees |
 | `loans.perquisite_rate_bp` | 0 | State Bank rate in hundredths of a percent (940 is 9.40%), from 1 April. Ask your payroll consultant for the figure |
 

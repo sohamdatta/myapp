@@ -593,6 +593,21 @@ class ExpensesTest {
     // ── advances and loans ──────────────────────────────────────────────
 
     @Test
+    void switchingAdvancesAndLoansOffStopsNewRequestsButNotRunningOnes() {
+        Setup s = setup();
+        UUID type = loans.saveType(s.finance, null, new LoanService.TypeInput("Personal loan", "loan", new BigDecimal("100000"), 12,
+                BigDecimal.ZERO, 0, 3, true)).id();
+        LoanService.Created before = loans.request(s.solo, new LoanService.RequestInput(type.toString(), new BigDecimal("9000"), 3, "Fees"));
+        new com.example.loginapp.core.SettingsService(db).change(s.admin, "loans.enabled",
+                new com.example.loginapp.core.SettingsService.ChangeInput("organization", null, null, false, false, "No loans this year", PASSWORD));
+        assertError(409, "loan.off", () -> loans.request(s.solo, new LoanService.RequestInput(type.toString(), new BigDecimal("9000"), 3, "More fees")));
+        assertTrue(loans.types(s.solo, false).isEmpty(), "people see no types to choose from");
+        assertEquals(1, loans.types(s.finance, true).size(), "finance still sees and manages the types");
+        loans.financeDecide(s.finance, before.id(), "approve", null, 1);
+        assertEquals("approved", loans.loan(s.solo, before.id()).status(), "a request already made can still be decided");
+    }
+
+    @Test
     void aLoanAboveTheLimitNeedsTwoDifferentPeopleInFinance() {
         Setup s = setup();
         new com.example.loginapp.core.SettingsService(db).change(s.admin, "loans.second_finance_above",

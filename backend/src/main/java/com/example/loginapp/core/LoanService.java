@@ -110,7 +110,8 @@ public final class LoanService {
         if (!manage) {
             requireClaimant(ctx);
         }
-        return db.inTenant(ctx.tenantId(), c -> Sql.query(c, "select id, name, kind, max_amount, max_months, annual_rate, min_service_months, max_open, active "
+        return db.inTenant(ctx.tenantId(), c -> !all && !manage && !Settings.get(c, Settings.LOANS_ENABLED).asBoolean() ? List.<Map<String, Object>>of()
+                : Sql.query(c, "select id, name, kind, max_amount, max_months, annual_rate, min_service_months, max_open, active "
                 + "from app.loan_type " + (all ? "" : "where active ") + "order by lower(name)"));
     }
 
@@ -192,6 +193,9 @@ public final class LoanService {
         UUID typeId = ExpenseService.Requests0.id(in.typeId());
         int months = in.months() == null ? 0 : in.months();
         return db.inTenant(ctx.tenantId(), c -> {
+            if (!Settings.get(c, Settings.LOANS_ENABLED).asBoolean()) {
+                throw new ApiException(409, "loan.off", "This Organization is not giving advances or loans at the moment");
+            }
             Map<String, Object> type = Sql.one(c, "select id, name, max_amount, max_months, annual_rate, min_service_months, max_open from app.loan_type where id = ? and active", typeId);
             if (type == null) {
                 throw ApiException.notFound("The loan type");

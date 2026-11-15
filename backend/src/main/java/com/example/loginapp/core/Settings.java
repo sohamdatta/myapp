@@ -95,6 +95,12 @@ public final class Settings {
             .help("finance: the claim goes straight to finance. refuse: it cannot be submitted until HR sets a manager or a designated approver for them.")
             .defaultValue("finance").weakens(Weakens.UP, Approval.PASSWORD).since("V50"));
 
+    public static final Setting LOANS_ENABLED = define(Setting.bool("loans.enabled")
+            .group("expenses").owner("loan.manage").module(Modules.EXPENSES)
+            .label("Allow advances and loans")
+            .help("When off, nobody can ask for a new advance or loan. Loans already running keep being repaid through payroll, and people in finance can still decide and pay out requests already made.")
+            .defaultValue(true).weakens(Weakens.NEVER, Approval.NONE).since("V60"));
+
     public static final Setting LOAN_SECOND_APPROVER_ABOVE = define(Setting.integer("loans.second_finance_above")
             .group("expenses").owner("loan.manage").module(Modules.EXPENSES)
             .label("A second finance approver is needed for a loan above").unit("rupees")
