@@ -218,12 +218,16 @@ public final class MfaService {
 
     // ── a lost phone and lost recovery codes ────────────────────────────
 
+    /** Said for every login an Organization's administrator may not reset, so the refusal does not say why. */
+    private static final String RESET_IS_THEIRS = "This person must turn off two-step sign-in themselves, in Security";
+
     /**
      * An administrator turns off another person's two-step sign-in, for someone who has lost both their phone and their
      * recovery codes. It needs the permission to manage users, a reason that goes in the audit log, a fresh code from the
      * administrator if they have two-step on, and reach over every role the person holds (as for suspending them). It is
-     * refused for a login that is in another Organization too, because the authenticator belongs to the login, not to one
-     * Organization: that person turns it off themselves. The person's other sessions end and they are emailed.
+     * refused for a login that is in another Organization too, and for a platform login, because the authenticator belongs
+     * to the login, not to one Organization: those people turn it off themselves. The person's sessions end and they are
+     * emailed.
      */
     public void adminReset(SessionCtx ctx, UUID membershipId, String reason) {
         ctx.require("user.manage");
@@ -235,13 +239,15 @@ public final class MfaService {
         }
         StepUp.requireIfEnrolled(db, ctx);   // a fresh code from the administrator, when they have two-step on
 
-        // The target is read and checked in the Organization first; the audit entry is written once the reset has happened.
+        // The target is checked in the Organization first, and the request is audited there with its reason before anything
+        // changes, so a reset that happens always has an entry. The entry that says it was done follows the change.
         UUID identityId = db.inTenant(ctx.tenantId(), c -> {
             Map<String, Object> target = UserService.lock(c, membershipId);
             if ("ended".equals(target.get("status"))) {
                 throw new ApiException(409, "request.refused", "This user has left");
             }
             UserService.requireReach(c, ctx, membershipId);
+            UserService.audit(c, ctx, "mfa.reset_requested", "membership", membershipId, Map.of("reason", why));
             return AuthService.uuid(Sql.one(c, "select identity_id from app.membership where id = ?", membershipId).get("identityId"));
         });
         db.inAuth(c -> {
@@ -249,10 +255,9 @@ public final class MfaService {
             if (identity == null || !enrolled(c, identityId)) {
                 throw new ApiException(409, "mfa.not_enrolled", "This person has not set up two-step sign-in");
             }
-            long organizations = ((Number) Sql.one(c, "select count(*) as n from auth.memberships_for_identity(?)", identityId).get("n")).longValue();
-            if (organizations > 1) {
-                throw new ApiException(409, "request.refused",
-                        "This person is also in another Organization, so two-step sign-in is theirs to change. They can turn it off in Security");
+            if (Sql.one(c, "select 1 from platform.platform_user where identity_id = ?", identityId) != null
+                    || ((Number) Sql.one(c, "select auth.other_memberships(?, ?) as n", identityId, ctx.tenantId()).get("n")).longValue() > 0) {
+                throw new ApiException(409, "request.refused", RESET_IS_THEIRS);
             }
             Sql.update(c, "update auth.identity set mfa_secret_enc = null, mfa_pending_secret_enc = null, mfa_enrolled_at = null, "
                     + "mfa_last_step = null where id = ?", identityId);

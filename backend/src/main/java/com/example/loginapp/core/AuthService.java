@@ -420,8 +420,10 @@ public final class AuthService {
                 throw new ApiException(403, "permission.denied", "This login has no platform role");
             }
             if (requireConsoleMfa) {
-                // The Super Admin can reach every Organization's support access, so a password alone is not enough. The state
-                // is read with the session held, as when entering an Organization, so a code that ended a moment ago is not used.
+                // The Super Admin can reach every Organization's support access, so a password alone is not enough. The login is
+                // locked first (shared, so sign-ins do not queue) so that a reset or turning two-step off, which holds it for
+                // update, finishes before the state is read and a console session cannot slip in beside it.
+                Sql.one(c, "select 1 from auth.identity where id = ? for share", ctx.identityId());
                 Map<String, Object> state = Sql.one(c,
                         "select s.mfa_at is not null as passed, i.mfa_enrolled_at is not null as enrolled "
                                 + "from auth.session s join auth.identity i on i.id = s.identity_id "

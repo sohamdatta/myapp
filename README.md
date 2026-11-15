@@ -43,7 +43,12 @@ Read this before relying on it.
   notices are emailed through the mail outbox once `APP_SMTP_HOST` is set.
 - **Two-step sign-in, password reset and email change are built.** Set
   `APP_REQUIRE_CONSOLE_MFA=true` in production so the Super Admin needs a code
-  too.
+  too. A platform login that has not set up an authenticator does so first with
+  its password alone, so the first Super Admin should do it at once, and
+  anyone who turns it off from the console loses the console until they set it
+  up again. An Organization's administrator cannot reset a platform login, or
+  a login that is in another Organization too: those people turn it off
+  themselves in Security.
 - **Not built yet:** seat
   limits, custom roles, and limiting a user to particular legal entities or
   departments. In attendance and leave: overtime pay, approval chains beyond
