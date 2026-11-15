@@ -34,6 +34,13 @@
       <groupId>org.postgresql</groupId>
       <artifactId>postgresql</artifactId>
     </dependency>
+    <!-- Sign in with Google or Microsoft: checks the signature and claims of the provider's ID token (IdTokenVerifier).
+         No Spring Security: the sign-in flow itself is written in OidcService, like the rest of sign-in. -->
+    <dependency>
+      <groupId>com.nimbusds</groupId>
+      <artifactId>nimbus-jose-jwt</artifactId>
+      <version>10.10</version>
+    </dependency>
     <dependency>
       <groupId>com.zaxxer</groupId>
       <artifactId>HikariCP</artifactId>
