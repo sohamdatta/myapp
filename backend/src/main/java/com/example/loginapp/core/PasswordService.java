@@ -128,6 +128,9 @@ public final class PasswordService {
             EmailChangeService.cancelPending(c, identityId);
             AuthService.revokeAll(c, identityId, null);
             MfaService.endChallenges(c, identityId);
+            // Accounts connected to the login are disconnected too: whoever had the old session may have connected their own.
+            Sql.update(c, "delete from auth.external_login where identity_id = ?", identityId);
+            Sql.update(c, "delete from auth.oidc_handoff where identity_id = ?", identityId);
             // a login with two-step sign-in keeps its run of failures: wrong codes are guesses at the second factor, and a
             // reset (which anyone with the mailbox can ask for) must not hand a code-guesser a fresh set
             if (Sql.one(c, "select 1 as x from auth.identity where id = ? and mfa_enrolled_at is not null", identityId) == null) {

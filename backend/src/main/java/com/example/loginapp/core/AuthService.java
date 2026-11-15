@@ -419,6 +419,10 @@ public final class AuthService {
                     ctx.identityId()) == null) {
                 throw new ApiException(403, "permission.denied", "This login has no platform role");
             }
+            if (Sql.one(c, "select 1 from auth.session where id = ? and auth_method = 'password'", ctx.sessionId()) == null) {
+                // The console is the most powerful place there is; it opens only for a password and a code, never through another company's login.
+                throw new ApiException(403, "permission.denied", "Sign in with your password to open the platform console");
+            }
             if (requireConsoleMfa) {
                 // The Super Admin can reach every Organization's support access, so a password alone is not enough. The login is
                 // locked first (shared, so sign-ins do not queue) so that a reset or turning two-step off, which holds it for
@@ -461,15 +465,25 @@ public final class AuthService {
 
     static void insertSession(Connection c, String token, UUID identityId, String kind, UUID tenantId,
                               UUID membershipId, UUID grantId, String lifetime) throws SQLException {
-        Sql.update(c, "insert into auth.session (identity_id, kind, tenant_id, membership_id, impersonation_grant_id, "
-                        + "refresh_token_hash, expires_at) values (?, ?, ?, ?, ?, ?, now() + ?::interval)",
-                identityId, kind, tenantId, membershipId, grantId, Secrets.sha256(token), lifetime);
+        insertSession(c, token, identityId, kind, tenantId, membershipId, grantId, lifetime, "password", null);
     }
 
-    /** A new session made from an old one (switching Organization) keeps the old one's proof of a recent code. */
+    /** As above, recording how the person signed in: "password", or "google" / "microsoft" with the company the account belongs to. */
+    static void insertSession(Connection c, String token, UUID identityId, String kind, UUID tenantId,
+                              UUID membershipId, UUID grantId, String lifetime, String method, String providerTenant) throws SQLException {
+        Sql.update(c, "insert into auth.session (identity_id, kind, tenant_id, membership_id, impersonation_grant_id, "
+                        + "refresh_token_hash, expires_at, auth_method, provider_tenant) values (?, ?, ?, ?, ?, ?, now() + ?::interval, ?, ?)",
+                identityId, kind, tenantId, membershipId, grantId, Secrets.sha256(token), lifetime, method, providerTenant);
+    }
+
+    /** A new session made from an old one (switching Organization) keeps the old one's proof of a recent code and how it started. */
     static void carryMfa(Connection c, UUID fromSession, String newToken) throws SQLException {
-        Sql.update(c, "update auth.session set mfa_at = (select mfa_at from auth.session where id = ?) where refresh_token_hash = ?",
-                fromSession, Secrets.sha256(newToken));
+        int carried = Sql.update(c, "update auth.session n set mfa_at = o.mfa_at, auth_method = o.auth_method, provider_tenant = o.provider_tenant "
+                + "from auth.session o where o.id = ? and n.refresh_token_hash = ?", fromSession, Secrets.sha256(newToken));
+        if (carried != 1) {
+            // Never fall back to "password": a session that cannot say how it started must not be made.
+            throw new IllegalStateException("The session this one comes from was not found");
+        }
     }
 
     /** Ends a session; returns 1 when it was still open, 0 when it had already ended. */

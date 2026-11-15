@@ -95,6 +95,12 @@ public final class Db {
             return new ApiException(409, "role.maker_checker",
                     "One user cannot be both Payroll Operator and Payroll Approver");
         }
+        if (state.equals("23505") && message.contains("external_login_provider_subject_key")) {
+            return new ApiException(409, "oidc.taken", "That account is already connected to another login");
+        }
+        if (state.equals("23505") && message.contains("external_login_identity_id_provider_key")) {
+            return new ApiException(409, "oidc.already_connected", "This login already has an account connected there. Disconnect it first");
+        }
         if (state.equals("23505") && message.contains("invitation_pending_uq")) {
             return new ApiException(409, "membership.exists", "A pending invitation already exists for this email");
         }
