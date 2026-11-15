@@ -1,10 +1,11 @@
 import { Suspense, lazy, useEffect, useRef, useState } from 'react'
-import { currentUser, endSupportSession, logout } from './api.js'
+import { currentUser, endSupportSession, exchangeOidc, logout } from './api.js'
 import PageView from './PageView.jsx'
 import { preloadAll, preloadPage, rememberLanding } from './pageRegistry.js'
 import { isPlainClick, pathFor, resetLocation, usePage } from './router.js'
 import { AcceptInvitation, Chooser, EmailLink, LoginForm, ResetPassword } from './pages/SignIn.jsx'
 import StepUpPrompt from './pages/StepUpPrompt.jsx'
+import { oidcMessage, signInText } from './pages/signInText.js'
 // loaded when opened: it carries the QR code library, which most visits never need
 const Security = lazy(() => import('./pages/Security.jsx'))
 import { formatDate } from './hooks.js'
@@ -32,12 +33,41 @@ function emailLinkFromUrl() {
   return null
 }
 
+/** Coming back from Google: ?oidc=1 (a sign-in to finish), ?oidc=linked (an account connected), ?oidc_error=<code>. */
+function oidcFromUrl() {
+  const params = new URLSearchParams(window.location.search)
+  if (params.get('oidc') === '1') return { kind: 'exchange' }
+  if (params.get('oidc') === 'linked') {
+    securityReturn = signInText.connected
+    return { kind: 'linked' }
+  }
+  if (params.get('oidc_error')) {
+    securityReturn = oidcMessage(params.get('oidc_error'))
+    return { kind: 'error', code: params.get('oidc_error') }
+  }
+  return null
+}
+
+// What to tell a signed-in person who comes back from connecting a Google account; shown once, in Security.
+let securityReturn = ''
+
+function takeSecurityReturn() {
+  const message = securityReturn
+  securityReturn = ''
+  return message
+}
+
+// The code is spent by the first request; a second (React runs effects twice in development) would only fail.
+let exchanging = null
+
 function clearInviteFromUrl() {
   window.history.replaceState(null, '', window.location.pathname)
 }
 
 function Shell({ me, nav, page, onNavigate, onSwitch, onSignOut, onEndSupport, children }) {
-  const [changingPassword, setChangingPassword] = useState(false)
+  // Back from connecting a Google account: open Security, where the result is shown.
+  const [returnMessage] = useState(takeSecurityReturn)
+  const [changingPassword, setChangingPassword] = useState(Boolean(returnMessage))
   const where = me.kind === 'platform' ? 'Platform console' : me.organization.name
   const items = nav.flatMap((section) => section.items)
   const title = items.find((item) => item.id === page)?.label || where
@@ -189,7 +219,7 @@ function Shell({ me, nav, page, onNavigate, onSwitch, onSignOut, onEndSupport, c
           <StepUpPrompt />
           {changingPassword && (
             <Suspense fallback={null}>
-              <Security onClose={() => setChangingPassword(false)} />
+              <Security onClose={() => setChangingPassword(false)} notice={returnMessage} />
             </Suspense>
           )}
         </main>
@@ -230,6 +260,14 @@ export default function App() {
     if (link) clearInviteFromUrl()
     return link
   })
+  // The same for what Google sent the browser back with. The one-time code itself is in a cookie, not in the address.
+  const [oidcReturn] = useState(() => {
+    const back = oidcFromUrl()
+    if (back) clearInviteFromUrl()
+    return back
+  })
+  const [signInNotice, setSignInNotice] = useState(oidcReturn?.kind === 'error' ? oidcMessage(oidcReturn.code) : '')
+  const [googleChallenge, setGoogleChallenge] = useState(null)
   const [choosing, setChoosing] = useState(false)
 
   async function refresh() {
@@ -239,15 +277,33 @@ export default function App() {
 
   useEffect(() => {
     let cancelled = false
-    currentUser().then((user) => {
+    async function start() {
+      if (oidcReturn?.kind === 'exchange') {
+        try {
+          exchanging ??= exchangeOidc()
+          const result = await exchanging
+          if (cancelled) return
+          if (result.mfaRequired) setGoogleChallenge(result.challenge)
+          else {
+            setMe(result)
+            setLoading(false)
+            return
+          }
+        } catch (err) {
+          if (!cancelled) setSignInNotice(oidcMessage(err.code))
+        }
+      }
+      const user = await currentUser()
       if (cancelled) return
+      if (!user) securityReturn = ''
       setMe(user)
       setLoading(false)
-    })
+    }
+    start()
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [oidcReturn])
 
   // Moving from one place to another (another Organization, into or out of a support session)
   // starts on the new place's first page; only a fresh visit or sign-in keeps the page in the address.
@@ -336,7 +392,7 @@ export default function App() {
   if (!me) {
     return (
       <main className="centered centered-wide">
-        <LoginForm onSignedIn={setMe} />
+        <LoginForm onSignedIn={setMe} notice={signInNotice} challenge={googleChallenge} />
       </main>
     )
   }

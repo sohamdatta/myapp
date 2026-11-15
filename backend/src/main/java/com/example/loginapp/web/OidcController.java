@@ -14,6 +14,8 @@ import org.springframework.web.bind.annotation.CookieValue;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -22,6 +24,8 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.example.loginapp.core.AuthService;
 import com.example.loginapp.core.OidcService;
+import com.example.loginapp.core.SessionCtx;
+import com.example.loginapp.core.SignInSettingsService;
 
 import jakarta.servlet.http.HttpServletRequest;
 
@@ -32,16 +36,20 @@ public class OidcController {
 
     public record Providers(List<String> providers) {}
 
+    public record GoogleDomainRequest(String domain, String password) {}
+
     private static final String COOKIE_PATH = "/api/auth/oidc";
 
     private final OidcService oidc;
+    private final SignInSettingsService settings;
     private final AuthService auth;
     private final boolean trustForwardedFor;
     private final boolean secureCookie;
 
-    public OidcController(OidcService oidc, AuthService auth, @Value("${app.trust-forwarded-for:false}") boolean trustForwardedFor,
+    public OidcController(OidcService oidc, SignInSettingsService settings, AuthService auth, @Value("${app.trust-forwarded-for:false}") boolean trustForwardedFor,
                           @Value("${app.public-url}") String publicUrl) {
         this.oidc = oidc;
+        this.settings = settings;
         this.auth = auth;
         this.trustForwardedFor = trustForwardedFor;
         this.secureCookie = publicUrl.startsWith("https://");
@@ -108,6 +116,17 @@ public class OidcController {
     public ResponseEntity<Void> unlink(@RequestHeader(value = "Authorization", required = false) String authorization, @PathVariable String provider) {
         oidc.unlink(Requests.session(auth, authorization), provider);
         return ResponseEntity.noContent().build();
+    }
+
+    /** The Organization's Google Workspace domain (null when Google sign-in is off). */
+    @GetMapping("/org/sign-in")
+    public SignInSettingsService.View signInSettings(SessionCtx ctx) {
+        return settings.get(ctx);
+    }
+
+    @PutMapping("/org/sign-in/google")
+    public SignInSettingsService.View setGoogleDomain(SessionCtx ctx, @RequestBody GoogleDomainRequest request) {
+        return settings.setGoogleDomain(ctx, request.domain(), request.password());
     }
 
     private ResponseCookie cookie(String value, int seconds) {

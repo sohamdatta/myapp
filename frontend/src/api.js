@@ -226,6 +226,31 @@ export async function completeMfa(challenge, code) {
   return enterDefault(me)
 }
 
+/** Which sign-in buttons to show: the providers this installation has turned on. */
+export const providers = () => get('/auth/providers').then((r) => r.providers).catch(() => [])
+
+/** Trades the one-time code the browser came back from Google with (it is in a cookie) for a session, or for a challenge. */
+export async function exchangeOidc() {
+  const me = await post('/auth/oidc/exchange')
+  if (me.mfaRequired) return me
+  setToken(me.token)
+  return enterDefault(me)
+}
+
+/** Connected accounts: the Google account a login can sign in with. */
+export const connectedAccounts = {
+  list: () => get('/auth/external-logins'),
+  /** Returns { url }: where to send the browser to pick the account. */
+  start: (provider) => post(`/auth/oidc/${provider}/link`),
+  remove: (provider) => del(`/auth/external-logins/${provider}`),
+}
+
+/** The Organization's Google Workspace domain (null when off). */
+export const orgSignIn = {
+  get: () => get('/org/sign-in'),
+  setGoogle: (domain, password) => put('/org/sign-in/google', { domain, password }),
+}
+
 export const mfa = {
   status: () => get('/auth/mfa'),
   start: () => post('/auth/mfa/start'),

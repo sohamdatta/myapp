@@ -1,7 +1,8 @@
-import { useRef, useState } from 'react'
-import { branding, certificateLayout } from '../api.js'
+import { useEffect, useRef, useState } from 'react'
+import { branding, certificateLayout, orgSignIn, providers } from '../api.js'
 import { formatDate, useAction, useLoad } from '../hooks.js'
 import { ErrorNote } from '../ui.jsx'
+import { signInText } from './signInText.js'
 import { PRODUCT, logoUrl } from '../brand/brand.js'
 import NexvanceLogo from '../brand/NexvanceLogo.jsx'
 
@@ -67,7 +68,61 @@ export default function OrgSettings({ me, onRefresh }) {
       )}
     </section>
     {(me.modules || []).includes('payroll') && b.canChange && <CertificateLayoutPanel hasLogo={Boolean(current)} />}
+    {b.canChange && <GoogleSignInPanel />}
     </>
+  )
+}
+
+/** Which Google Workspace domain this Organization accepts for signing in with Google. Shown only where Google sign-in is turned on. */
+function GoogleSignInPanel() {
+  const [offered, setOffered] = useState(null)
+  const loaded = useLoad(orgSignIn.get)
+  const [domain, setDomain] = useState(null)
+  const [password, setPassword] = useState('')
+  const [saved, setSaved] = useState('')
+  const { busy, error, run } = useAction()
+
+  useEffect(() => {
+    let cancelled = false
+    providers().then((p) => !cancelled && setOffered(p))
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  if (!offered?.includes('google') || loaded.loading || loaded.error) return null
+  const shown = domain ?? loaded.data?.googleDomain ?? ''
+
+  async function save(event) {
+    event.preventDefault()
+    const result = await run(() => orgSignIn.setGoogle(shown, password))
+    if (result) {
+      setDomain(result.googleDomain || '')
+      setPassword('')
+      setSaved(result.googleDomain ? signInText.orgSaved : signInText.orgOff)
+    }
+  }
+
+  return (
+    <section className="panel" data-testid="google-sign-in-settings">
+      <h3>{signInText.orgTitle}</h3>
+      <p className="hint">{signInText.orgHint}</p>
+      <form onSubmit={save} noValidate aria-label={signInText.orgTitle}>
+        <label htmlFor="google-domain">{signInText.orgDomain}</label>
+        <input id="google-domain" placeholder="acme.com" autoComplete="off" value={shown} onChange={(e) => { setDomain(e.target.value); setSaved('') }} />
+        {shown.trim() && (
+          <>
+            <label htmlFor="google-domain-password">{signInText.orgPassword}</label>
+            <input id="google-domain-password" type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} />
+          </>
+        )}
+        <ErrorNote>{error}</ErrorNote>
+        {saved && <p className="notice" role="status">{saved}</p>}
+        <button type="submit" className="primary" disabled={busy || (shown.trim() && !password)}>
+          {busy ? 'Saving…' : signInText.orgSave}
+        </button>
+      </form>
+    </section>
   )
 }
 

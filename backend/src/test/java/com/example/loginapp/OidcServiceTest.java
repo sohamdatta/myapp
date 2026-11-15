@@ -44,6 +44,7 @@ import com.example.loginapp.core.OidcTokenClient;
 import com.example.loginapp.core.PlatformService;
 import com.example.loginapp.core.RateLimits;
 import com.example.loginapp.core.SessionCtx;
+import com.example.loginapp.core.SignInSettingsService;
 import com.example.loginapp.core.Totp;
 import com.nimbusds.jose.JWSAlgorithm;
 import com.nimbusds.jose.JWSHeader;
@@ -132,6 +133,7 @@ class OidcServiceTest {
     private final AuthService auth = new AuthService(db, limits);
     private final MfaService mfa = new MfaService(db, crypto, outbox, limits, CLOCK);
     private final OidcService oidc = service(CLIENT);
+    private final SignInSettingsService settings = new SignInSettingsService(db);
 
     private OidcService service(String clientId) {
         IdTokenVerifier verifier = new IdTokenVerifier(new ImmutableJWKSet<>(new JWKSet(key.toPublicJWK())),
@@ -152,12 +154,25 @@ class OidcServiceTest {
         return new OidcService(db, crypto, outbox, limits, verifier, fake, List.of(OidcProvider.google(clientId, "secret")), "https://hr.example", CLOCK);
     }
 
+    /** An Organization owner whose Organization accepts Google accounts of acme.com. */
     private String owner() {
+        String email = ownerWithoutGoogle();
+        settings.setGoogleDomain(insideOrganization(email), "acme.com", PASSWORD);
+        return email;
+    }
+
+    private String ownerWithoutGoogle() {
         String slug = "oidc-" + SEQ.incrementAndGet();
         String email = "owner@" + slug + ".test";
         Map<String, Object> created = platform.createOrganization(superAdmin, "Org " + slug, slug, email);
         new InvitationService(db, limits).accept((String) created.get("invitationToken"), PASSWORD, null);
         return email;
+    }
+
+    private SessionCtx insideOrganization(String email) {
+        SessionCtx identity = auth.resolve(auth.login(email, PASSWORD));
+        java.util.UUID tenant = java.util.UUID.fromString(((Map<?, ?>) ((List<?>) auth.destinations(identity).get("organizations")).get(0)).get("tenantId").toString());
+        return auth.resolve(auth.enterOrganization(identity, tenant));
     }
 
     private static String param(String url, String name) {
@@ -291,14 +306,65 @@ class OidcServiceTest {
     }
 
     @Test
-    void aSessionStartedWithGoogleDoesNotOpenThePlatformConsole() {
-        String email = "root@platform.test";
-        connect(email, "sub-root-" + SEQ.incrementAndGet());
-        google(NEXT.get().get("sub").toString(), email);
-        String token = oidc.exchange(code(comeBack(oidc.startSignIn("google", null))), null).token();
-        SessionCtx ctx = auth.resolve(token);
+    void aSessionStartedWithGoogleDoesNotOpenThePlatformConsole() throws Exception {
+        SessionCtx ctx = auth.resolve(auth.login("root@platform.test", PASSWORD));
+        try (Connection c = DriverManager.getConnection(url, ownerUser, ownerPassword); Statement st = c.createStatement()) {
+            st.execute("update auth.session set auth_method = 'google' where id = '" + ctx.sessionId() + "'");
+        }
         assertEquals(403, refusal(() -> auth.enterConsole(ctx)).status());
         assertEquals(403, refusal(() -> oidc.startLink(superAdmin, "google", null)).status(), "nor can accounts be connected from the console");
+    }
+
+    @Test
+    void theMethodSurvivesEnteringAnOrganization() throws Exception {
+        String email = owner();
+        connect(email, "sub-" + SEQ.incrementAndGet());
+        google(ownerQuery("select subject from auth.external_login order by created_at desc limit 1"), email);
+        SessionCtx identity = auth.resolve(oidc.exchange(code(comeBack(oidc.startSignIn("google", null))), null).token());
+        java.util.UUID tenant = java.util.UUID.fromString(((Map<?, ?>) ((List<?>) auth.destinations(identity).get("organizations")).get(0)).get("tenantId").toString());
+        String inside = auth.enterOrganization(identity, tenant);
+        assertEquals("google", ownerQuery("select auth_method from auth.session where refresh_token_hash = sha256(convert_to('" + inside + "','UTF8'))"));
+    }
+
+    @Test
+    void onlyAnAccountOfACompanyTheOrganizationAcceptsCanBeConnectedOrSignIn() throws Exception {
+        String without = ownerWithoutGoogle();
+        SessionCtx ctx = auth.resolve(auth.login(without, PASSWORD));
+        google("sub-" + SEQ.incrementAndGet(), without);
+        assertEquals("/?oidc_error=oidc.not_allowed", comeBack(oidc.startLink(ctx, "google", null)).redirect(), "the Organization has not turned it on");
+        String email = owner();
+        SessionCtx mine = auth.resolve(auth.login(email, PASSWORD));
+        Map<String, Object> other = new LinkedHashMap<>(NEXT.get());
+        other.put("hd", "other.com");
+        assertEquals("/?oidc_error=oidc.not_allowed", comeBack(oidc.startLink(mine, "google", null), other).redirect(), "another company's account");
+        Map<String, Object> personal = new LinkedHashMap<>(NEXT.get());
+        personal.remove("hd");
+        assertEquals("/?oidc_error=oidc.not_allowed", comeBack(oidc.startLink(mine, "google", null), personal).redirect(), "a personal account has no company");
+        assertEquals("0", ownerQuery("select count(*) from auth.external_login where identity_id = (select id from auth.identity where email = '" + email + "')"));
+    }
+
+    @Test
+    void turningGoogleOffForTheOrganizationStopsTheSignIn() throws Exception {
+        String email = owner();
+        connect(email, "sub-" + SEQ.incrementAndGet());
+        google(ownerQuery("select subject from auth.external_login order by created_at desc limit 1"), email);
+        settings.setGoogleDomain(insideOrganization(email), "", null);
+        assertEquals("/?oidc_error=oidc.not_allowed", comeBack(oidc.startSignIn("google", null)).redirect());
+        settings.setGoogleDomain(insideOrganization(email), "ACME.com ", PASSWORD);
+        assertEquals("acme.com", settings.get(insideOrganization(email)).googleDomain());
+        assertTrue(comeBack(oidc.startSignIn("google", null)).redirect().startsWith("/?oidc=1"));
+    }
+
+    @Test
+    void theDomainSettingNeedsTheAdminsPasswordAndARealDomain() throws Exception {
+        String email = ownerWithoutGoogle();
+        SessionCtx inside = insideOrganization(email);
+        assertEquals(403, refusal(() -> settings.setGoogleDomain(inside, "acme.com", "wrong-password-here")).status());
+        assertEquals(403, refusal(() -> settings.setGoogleDomain(inside, "acme.com", null)).status());
+        assertEquals(400, refusal(() -> settings.setGoogleDomain(inside, "not a domain", PASSWORD)).status());
+        assertEquals(400, refusal(() -> settings.setGoogleDomain(inside, "localhost", PASSWORD)).status());
+        assertEquals(null, settings.get(inside).googleDomain());
+        assertEquals("acme.com", settings.setGoogleDomain(inside, "acme.com", PASSWORD).googleDomain());
     }
 
     @Test
