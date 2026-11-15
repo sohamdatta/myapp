@@ -14,7 +14,6 @@
 				replace token REDACTED
 				replace code REDACTED
 				replace state REDACTED
-				replace oidc REDACTED
 			}
 			wrap json
 		}

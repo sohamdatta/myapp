@@ -231,13 +231,13 @@ public class AppConfig {
      * fetched from the provider and cached by the library, which fetches again when a token names a key it does not have.
      */
     @Bean
-    public OidcService oidcService(Db db, Crypto crypto, RateLimits limits, @Value("${app.public-url}") String publicUrl,
+    public OidcService oidcService(Db db, Crypto crypto, MailOutbox outbox, RateLimits limits, @Value("${app.public-url}") String publicUrl,
                                    @Value("${app.google.client-id:}") String googleId, @Value("${app.google.client-secret:}") String googleSecret)
             throws java.net.MalformedURLException {
         JWKSource<SecurityContext> googleKeys = JWKSourceBuilder.create(new java.net.URL("https://www.googleapis.com/oauth2/v3/certs")).retrying(true).build();
         JWKSource<SecurityContext> microsoftKeys = JWKSourceBuilder.create(new java.net.URL("https://login.microsoftonline.com/common/discovery/v2.0/keys")).retrying(true).build();
         IdTokenVerifier verifier = new IdTokenVerifier(googleKeys, microsoftKeys, Clock.systemUTC());
-        return new OidcService(db, crypto, limits, verifier, new JdkOidcTokenClient(), List.of(OidcProvider.google(googleId, googleSecret)),
+        return new OidcService(db, crypto, outbox, limits, verifier, new JdkOidcTokenClient(), List.of(OidcProvider.google(googleId, googleSecret)),
                 publicUrl, Clock.systemUTC());
     }
 

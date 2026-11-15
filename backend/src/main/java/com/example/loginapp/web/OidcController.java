@@ -15,7 +15,6 @@ import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -30,8 +29,6 @@ import jakarta.servlet.http.HttpServletRequest;
 @RestController
 @RequestMapping("/api")
 public class OidcController {
-
-    public record ExchangeRequest(String code) {}
 
     public record Providers(List<String> providers) {}
 
@@ -80,23 +77,26 @@ public class OidcController {
                                          @RequestParam(value = "error", required = false) String error,
                                          @CookieValue(value = OidcService.COOKIE, required = false) String cookie, HttpServletRequest http) {
         OidcService.Finished done = oidc.callback(provider, code, state, error, cookie, Requests.clientIp(http, trustForwardedFor));
-        return ResponseEntity.status(302).header(HttpHeaders.SET_COOKIE, cookie("", 0).toString())
+        // The cookie that held the flow is replaced by one that holds the one-time code, when there is one: the code is never in
+        // an address, so a link someone else made cannot sign this browser in as them.
+        ResponseCookie next = done.handoff() == null ? cookie("", 0) : cookie(done.handoff(), OidcService.HANDOFF_SECONDS);
+        return ResponseEntity.status(302).header(HttpHeaders.SET_COOKIE, next.toString())
                 .header(HttpHeaders.CACHE_CONTROL, "no-store").location(URI.create(done.redirect())).build();
     }
 
-    /** The page trades the one-time code in the address for a session (or a challenge, when the login has two-step sign-in). */
+    /** The page trades the one-time code in the cookie for a session (or a challenge, when the login has two-step sign-in). */
     @PostMapping("/auth/oidc/exchange")
-    public ResponseEntity<Object> exchange(@RequestBody ExchangeRequest request, HttpServletRequest http) {
-        AuthService.SignIn result = oidc.exchange(request.code(), Requests.clientIp(http, trustForwardedFor));
+    public ResponseEntity<Object> exchange(@CookieValue(value = OidcService.COOKIE, required = false) String code, HttpServletRequest http) {
+        AuthService.SignIn result = oidc.exchange(code, Requests.clientIp(http, trustForwardedFor));
         Map<String, Object> body = new LinkedHashMap<>();
         if (result.mfaRequired()) {
             body.put("mfaRequired", true);
             body.put("challenge", result.token());
-            return ResponseEntity.ok(body);
+        } else {
+            body.put("token", result.token());
+            body.putAll(auth.me(auth.resolve(result.token())));
         }
-        body.put("token", result.token());
-        body.putAll(auth.me(auth.resolve(result.token())));
-        return ResponseEntity.ok(body);
+        return ResponseEntity.ok().header(HttpHeaders.SET_COOKIE, cookie("", 0).toString()).header(HttpHeaders.CACHE_CONTROL, "no-store").body(body);
     }
 
     @GetMapping("/auth/external-logins")

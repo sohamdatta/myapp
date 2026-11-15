@@ -149,7 +149,7 @@ class OidcServiceTest {
                 throw new IllegalStateException(e);
             }
         };
-        return new OidcService(db, crypto, limits, verifier, fake, List.of(OidcProvider.google(clientId, "secret")), "https://hr.example", CLOCK);
+        return new OidcService(db, crypto, outbox, limits, verifier, fake, List.of(OidcProvider.google(clientId, "secret")), "https://hr.example", CLOCK);
     }
 
     private String owner() {
@@ -194,8 +194,9 @@ class OidcServiceTest {
     }
 
     private static String code(OidcService.Finished done) {
-        assertTrue(done.redirect().startsWith("/?oidc="), done.redirect());
-        return done.redirect().substring("/?oidc=".length());
+        assertEquals("/?oidc=1", done.redirect(), "the code is never in the address");
+        assertNotNull(done.handoff());
+        return done.handoff();
     }
 
     private static String ownerQuery(String sql) throws Exception {
@@ -384,11 +385,73 @@ class OidcServiceTest {
     @Test
     void tooManyStartsFromOneAddressAreLimited() {
         OidcService limited = service(CLIENT);
-        for (int i = 0; i < 60; i++) {
+        for (int i = 0; i < 300; i++) {
             limited.startSignIn("google", "10.9.9.9");
         }
         assertEquals(429, refusal(() -> limited.startSignIn("google", "10.9.9.9")).status());
         limited.startSignIn("google", "10.9.9.10");
+    }
+
+    @Test
+    void successfulSignInsDoNotCountAgainstAnAddressButFailuresDo() throws Exception {
+        String email = owner();
+        connect(email, "sub-" + SEQ.incrementAndGet());
+        String sub = ownerQuery("select subject from auth.external_login order by created_at desc limit 1");
+        for (int i = 0; i < 40; i++) {   // an office signing in from one address
+            google(sub, email);
+            OidcService.Started s = oidc.startSignIn("google", "10.8.8.8");
+            Map<String, Object> claims = new LinkedHashMap<>(NEXT.get());
+            claims.put("nonce", param(s.url(), "nonce"));
+            NEXT.set(claims);
+            OidcService.Finished done = oidc.callback("google", "c", param(s.url(), "state"), null, s.cookie(), "10.8.8.8");
+            oidc.exchange(code(done), "10.8.8.8");
+        }
+        for (int i = 0; i < 30; i++) {
+            assertEquals("/?oidc_error=oidc.invalid", oidc.callback("google", "c", "x", null, "garbage", "10.8.8.7").redirect());
+        }
+        assertEquals("/?oidc_error=request.rate_limited", oidc.callback("google", "c", "x", null, "garbage", "10.8.8.7").redirect());
+        assertEquals(429, refusal(() -> oidc.exchange("nope", "10.8.8.7")).status());
+    }
+
+    @Test
+    void connectingAfterTheSessionEndedDoesNothing() throws Exception {
+        String email = owner();
+        SessionCtx ctx = auth.resolve(auth.login(email, PASSWORD));
+        google("sub-" + SEQ.incrementAndGet(), email);
+        OidcService.Started started = oidc.startLink(ctx, "google", null);
+        auth.logout(ctx);
+        assertEquals("/?oidc_error=oidc.invalid", comeBack(started).redirect());
+        assertEquals("0", ownerQuery("select count(*) from auth.external_login where identity_id = (select id from auth.identity where email = '" + email + "')"));
+    }
+
+    @Test
+    void aCodeIssuedBeforeDisconnectingNoLongerSignsIn() throws Exception {
+        String email = owner();
+        connect(email, "sub-" + SEQ.incrementAndGet());
+        google(ownerQuery("select subject from auth.external_login order by created_at desc limit 1"), email);
+        String code = code(comeBack(oidc.startSignIn("google", null)));
+        oidc.unlink(auth.resolve(auth.login(email, PASSWORD)), "google");
+        assertEquals(401, refusal(() -> oidc.exchange(code, null)).status());
+    }
+
+    @Test
+    void aWorkspaceAccountThatMovedToAnotherDomainIsNotTheOneThatWasConnected() throws Exception {
+        String email = owner();
+        connect(email, "sub-" + SEQ.incrementAndGet());
+        Map<String, Object> moved = new LinkedHashMap<>(NEXT.get());
+        moved.put("hd", "other.com");
+        assertEquals("/?oidc_error=oidc.invalid", comeBack(oidc.startSignIn("google", null), moved).redirect());
+    }
+
+    @Test
+    void aSuspendedLoginCannotSignInWithGoogle() throws Exception {
+        String email = owner();
+        connect(email, "sub-" + SEQ.incrementAndGet());
+        google(ownerQuery("select subject from auth.external_login order by created_at desc limit 1"), email);
+        try (Connection c = DriverManager.getConnection(url, ownerUser, ownerPassword); Statement st = c.createStatement()) {
+            st.execute("update auth.identity set status = 'suspended' where email = '" + email + "'");
+        }
+        assertEquals("/?oidc_error=oidc.invalid", comeBack(oidc.startSignIn("google", null)).redirect());
     }
 
     private static PGSimpleDataSource source(String url, String user, String password) {

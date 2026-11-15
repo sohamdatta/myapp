@@ -478,8 +478,12 @@ public final class AuthService {
 
     /** A new session made from an old one (switching Organization) keeps the old one's proof of a recent code and how it started. */
     static void carryMfa(Connection c, UUID fromSession, String newToken) throws SQLException {
-        Sql.update(c, "update auth.session n set mfa_at = o.mfa_at, auth_method = o.auth_method, provider_tenant = o.provider_tenant "
+        int carried = Sql.update(c, "update auth.session n set mfa_at = o.mfa_at, auth_method = o.auth_method, provider_tenant = o.provider_tenant "
                 + "from auth.session o where o.id = ? and n.refresh_token_hash = ?", fromSession, Secrets.sha256(newToken));
+        if (carried != 1) {
+            // Never fall back to "password": a session that cannot say how it started must not be made.
+            throw new IllegalStateException("The session this one comes from was not found");
+        }
     }
 
     /** Ends a session; returns 1 when it was still open, 0 when it had already ended. */

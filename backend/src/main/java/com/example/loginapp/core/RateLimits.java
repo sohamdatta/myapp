@@ -47,8 +47,10 @@ public final class RateLimits {
     /** Looking up what an invitation link is for, from one client address. */
     public static final Rule INVITE_PREVIEWS_PER_ADDRESS = new Rule("invite-preview-address", 120, Duration.ofMinutes(5));
 
-    /** Starting, finishing or trading a code for a sign-in with Google or Microsoft: each costs a call to the provider. */
-    public static final Rule OIDC_PER_ADDRESS = new Rule("oidc-address", 60, Duration.ofMinutes(15));
+    /** Sign-ins with Google or Microsoft that came back refused (a state or code that is wrong, an account not connected). Failures only, so an office behind one address is not locked out by its own sign-ins. */
+    public static final Rule OIDC_FAILURES_PER_ADDRESS = new Rule("oidc-failures-address", 30, Duration.ofMinutes(15));
+    /** Every start counts: a start sets a cookie and builds an address, nothing more, so this is only a ceiling against floods. */
+    public static final Rule OIDC_START_PER_ADDRESS = new Rule("oidc-start-address", 300, Duration.ofMinutes(15));
 
     static final int MAX_KEYS = 20_000;
     private static final Duration KEEP = Duration.ofDays(1);

@@ -37,9 +37,13 @@ public final class JdkOidcTokenClient implements OidcTokenClient {
         HttpRequest request = HttpRequest.newBuilder(URI.create(provider.tokenUrl())).timeout(Duration.ofSeconds(10))
                 .header("Content-Type", "application/x-www-form-urlencoded").header("Accept", "application/json")
                 .POST(HttpRequest.BodyPublishers.ofString(body)).build();
-        HttpResponse<String> response;
+        HttpResponse<java.io.InputStream> response;
+        String text;
         try {
-            response = http.send(request, HttpResponse.BodyHandlers.ofString());
+            response = http.send(request, HttpResponse.BodyHandlers.ofInputStream());
+            try (java.io.InputStream in = response.body()) {
+                text = new String(in.readNBytes(64 * 1024), StandardCharsets.UTF_8);   // a token response is a few KB
+            }
         } catch (IOException e) {
             LOG.warn("Sign-in with {}: token endpoint not reachable: {}", provider.name(), e.toString());
             throw unavailable();
@@ -57,7 +61,7 @@ public final class JdkOidcTokenClient implements OidcTokenClient {
         }
         Object parsed;
         try {
-            parsed = Json.parse(response.body());
+            parsed = Json.parse(text);
         } catch (RuntimeException e) {
             throw unavailable();
         }
