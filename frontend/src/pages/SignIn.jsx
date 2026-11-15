@@ -1,13 +1,15 @@
 import { lazy, Suspense, useEffect, useState } from 'react'
-import { acceptInvitation, completeMfa, confirmEmailChange, undoEmailChange, enterConsole, enterOrganization, forgotPassword, login, previewInvitation, resetPassword } from '../api.js'
+import { acceptInvitation, completeMfa, confirmEmailChange, undoEmailChange, enterConsole, enterOrganization, forgotPassword, login, previewInvitation, providers as loadProviders, resetPassword } from '../api.js'
 import { useAction } from '../hooks.js'
 import { ErrorNote } from '../ui.jsx'
 import NexvanceLogo from '../brand/NexvanceLogo.jsx'
 import VersionLine from '../VersionLine.jsx'
+import { signInText } from './signInText.js'
 
 const Security = lazy(() => import('./Security.jsx'))
 
-export function LoginForm({ onSignedIn }) {
+/** notice: something to tell the person first (a Google sign-in that did not work). challenge: a Google sign-in that now needs the authenticator code. */
+export function LoginForm({ onSignedIn, notice, challenge }) {
   const [forgot, setForgot] = useState(false)
   return (
     <div className="signin-shell">
@@ -16,7 +18,7 @@ export function LoginForm({ onSignedIn }) {
         <div className="brand brand-sign-in signin-logo-small">
           <NexvanceLogo size={40} />
         </div>
-        {forgot ? <ForgotPassword onBack={() => setForgot(false)} /> : <SignInForm onSignedIn={onSignedIn} onForgot={() => setForgot(true)} />}
+        {forgot ? <ForgotPassword onBack={() => setForgot(false)} /> : <SignInForm onSignedIn={onSignedIn} onForgot={() => setForgot(true)} notice={notice} initialChallenge={challenge} />}
         <VersionLine className="signin-version-mobile" />
       </div>
     </div>
@@ -51,12 +53,21 @@ function SignInHero() {
   )
 }
 
-function SignInForm({ onSignedIn, onForgot }) {
-  const [challenge, setChallenge] = useState(null)
+function SignInForm({ onSignedIn, onForgot, notice, initialChallenge }) {
+  const [challenge, setChallenge] = useState(initialChallenge || null)
+  const [offered, setOffered] = useState([])
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const { busy, error, run } = useAction()
+
+  useEffect(() => {
+    let cancelled = false
+    loadProviders().then((list) => !cancelled && setOffered(list))
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   async function handleSubmit(event) {
     event.preventDefault()
@@ -99,11 +110,20 @@ function SignInForm({ onSignedIn, onForgot }) {
         </button>
       </div>
 
-      <ErrorNote>{error}</ErrorNote>
+      <ErrorNote>{error || notice}</ErrorNote>
 
       <button type="submit" className="primary" disabled={busy}>
         {busy ? 'Signing in…' : 'Sign in'}
       </button>
+      {offered.includes('google') && (
+        <>
+          <p className="muted signin-or">{signInText.or}</p>
+          {/* A plain link: the browser navigates to the server, which sets a cookie and sends it on to Google. */}
+          <a className="button secondary" href="/api/auth/oidc/google/start" data-testid="google-sign-in">
+            {signInText.google}
+          </a>
+        </>
+      )}
       <button type="button" className="link" onClick={onForgot}>
         Forgot your password?
       </button>

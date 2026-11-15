@@ -1,11 +1,13 @@
 import { useEffect, useRef, useState } from 'react'
 import QRCode from 'qrcode'
-import { changeEmail, changePassword, mfa } from '../api.js'
+import { changeEmail, changePassword, connectedAccounts, mfa, providers } from '../api.js'
 import { useAction, useLoad } from '../hooks.js'
 import { ErrorNote } from '../ui.jsx'
+import { signInText } from './signInText.js'
 
 /** Your own sign-in: change the password, and set up the second step. Every other session of yours ends when either changes. */
-export default function Security({ onClose }) {
+/** notice: what happened when the person came back from connecting an account. */
+export default function Security({ onClose, notice }) {
   const dialog = useRef(null)
 
   useEffect(() => {
@@ -20,10 +22,65 @@ export default function Security({ onClose }) {
       <EmailSection />
       <hr />
       <TwoStepSection />
+      <ConnectedAccounts notice={notice} />
       <button type="button" className="quiet" onClick={onClose}>
         Close
       </button>
     </dialog>
+  )
+}
+
+/** The Google account a login can sign in with. Connecting needs a fresh authenticator code for a login that uses one (asked for by the app). */
+function ConnectedAccounts({ notice }) {
+  const [offered, setOffered] = useState(null)
+  const list = useLoad(connectedAccounts.list)
+  const { busy, error, run } = useAction()
+
+  useEffect(() => {
+    let cancelled = false
+    providers().then((p) => !cancelled && setOffered(p))
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  if (!offered || offered.length === 0) return null   // Google sign-in is not turned on here
+
+  async function connect() {
+    const started = await run(() => connectedAccounts.start('google'))
+    if (started) window.location.assign(started.url)
+  }
+
+  async function disconnect() {
+    const ok = await run(async () => {
+      await connectedAccounts.remove('google')
+      return true
+    })
+    if (ok) list.reload()
+  }
+
+  const google = (list.data || []).find((a) => a.provider === 'google')
+  return (
+    <>
+      <hr />
+      <section aria-label={signInText.linkedTitle}>
+        <h3>{signInText.linkedTitle}</h3>
+        <p className="hint">{signInText.linkedHint}</p>
+        {notice && <p className="notice" role="status">{notice}</p>}
+        {google ? (
+          <p>
+            Google{google.email ? `: ${google.email}` : ''} <span className="muted">(connected {google.since})</span>{' '}
+            <button type="button" className="link" disabled={busy} onClick={disconnect}>{signInText.disconnect}</button>
+          </p>
+        ) : (
+          <>
+            <p className="muted">{signInText.none}</p>
+            <button type="button" disabled={busy || list.loading} onClick={connect}>{signInText.connect}</button>
+          </>
+        )}
+        <ErrorNote>{error}</ErrorNote>
+      </section>
+    </>
   )
 }
 

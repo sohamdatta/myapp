@@ -175,6 +175,7 @@ Set these environment variables for anything beyond local development.
 | `APP_REQUIRE_DATA_KEY` | `false` | Set to `true` in production, so the app refuses to start without `APP_DATA_KEY` rather than use the development key |
 | `APP_DATA_KEY_ID`, `APP_DATA_KEY_PREVIOUS` | `1`, none | Rotating the key: give the new key a new id, and put the old one in `APP_DATA_KEY_PREVIOUS` as `id:key` so existing values can still be read |
 | `APP_REQUIRE_CONSOLE_MFA` | `false` | Set to `true` in production, so the platform console opens only for a login with two-step sign-in set up and a code passed. The first Super Admin is then asked to set it up at their first sign-in |
+| `APP_GOOGLE_CLIENT_ID`, `APP_GOOGLE_CLIENT_SECRET` | empty | Turn on sign-in with Google (both needed). Each Organization then chooses its own Google Workspace domain under Organization settings. See [docs/security/google-sign-in.md](docs/security/google-sign-in.md) |
 | `APP_TRUST_FORWARDED_FOR` | `false` | Set to `true` only when the backend sits behind exactly one proxy that sets `X-Forwarded-For`. The office-network punch check then uses the address that proxy reports |
 
 ## How isolation works
