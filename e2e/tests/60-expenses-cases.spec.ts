@@ -129,10 +129,10 @@ test.beforeAll(async ({ browser }) => {
   }
   for (const p of (await ok(api(owner, 'GET', '/org/attendance/assignments')))) ID[String(p.email).split('@')[0]] = p.membershipId;
   const add = async (key: string, legalName: string, designation: string, extra: any = {}) => {
-    const e = await ok(api(owner, 'POST', '/org/people/employees', { joiningDate: isoDay(-400), legalName, designation, membershipId: ID[key], ...extra }));
+    const e = await ok(api(owner, 'POST', '/org/people/employees', { joiningDate: isoDay(-400), legalName, designation, membershipId: ID[key], ...extra }));   // date-safe: joined long ago
     EMP[key] = e.id;
     await ok(api(owner, 'PUT', `/org/people/employees/${e.id}/bank`, { holderName: legalName, accountNumber: '50100234567' + (10 + Object.keys(EMP).length), ifsc: 'HDFC0000123',
-      bankName: 'HDFC Bank', branch: 'Mumbai', effectiveFrom: isoDay(-300) }));
+      bankName: 'HDFC Bank', branch: 'Mumbai', effectiveFrom: isoDay(-300) }));   // date-safe: an account on record long before any claim
   };
   await add('nisha', 'Nisha Rao', 'Finance lead');
   await add('farid', 'Farid Khan', 'Accountant');
