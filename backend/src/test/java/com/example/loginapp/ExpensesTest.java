@@ -700,6 +700,23 @@ class ExpensesTest {
         assertTrue(notes(s, s.emp).stream().anyMatch(n -> n.contains("approved")));
     }
 
+    @Test
+    void everyExpenseMessageCanBeSavedAsItIsInSetup() {
+        Setup s = setup();
+        // The messages are written the first time one is sent; a claim sent and approved writes the claim ones, a request the loan ones.
+        UUID claim = claim(s.emp, "Messages");
+        line(s.emp, claim, s.meals, 1, "200.00");
+        expenses.submit(s.emp, claim, version(s.emp, claim));
+        com.example.loginapp.core.Notifications notifications = new com.example.loginapp.core.Notifications(db);
+        List<Map<String, Object>> expenseMessages = notifications.messages(s.admin).stream()
+                .filter(m -> String.valueOf(m.get("event")).startsWith("expense_") || String.valueOf(m.get("event")).startsWith("loan_")).toList();
+        assertTrue(expenseMessages.size() >= 5, "the expense messages are listed in Setup");
+        for (Map<String, Object> m : expenseMessages) {
+            notifications.saveMessage(s.admin, UUID.fromString(String.valueOf(m.get("id"))),
+                    new com.example.loginapp.core.Notifications.MessageInput((String) m.get("subject"), (String) m.get("body"), false));
+        }
+    }
+
     private static List<String> told(Setup s, SessionCtx who) {
         return db.inTenant(s.orgId, c -> Sql.query(c, "select event from app.notification where membership_id = ? order by created_at, id", who.membershipId()))
                 .stream().map(r -> (String) r.get("event")).toList();

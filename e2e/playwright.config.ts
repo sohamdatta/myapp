@@ -125,6 +125,8 @@ export default defineConfig({
     // The onboarding user guide's screenshots (docs/user-guide/onboarding.md), in Northwind Pharma: E2E_SHOTS=<folder> --project=onboarding-guide.
     { name: 'onboarding-guide', testMatch: /57-onboarding-guide\.spec\.ts/, use: desktop },
     // The expenses user guide's screenshots (docs/user-guide/expenses.md), in Northwind Freight: E2E_SHOTS=<folder> --project=expenses-guide.
+    // Every case in docs/testing/expenses-ui-test-cases.xlsx that a browser can reach, in Harbour Logistics.
+    { name: 'expenses-cases', testMatch: /60-expenses-cases\.spec\.ts/, use: desktop },
     { name: 'expenses-guide', testMatch: /59-expenses-guide\.spec\.ts/, use: desktop },
     // The attendance user guide's screenshots (docs/user-guide/attendance.md), in Northwind Foods: E2E_SHOTS=<folder> --project=attendance-guide.
     { name: 'attendance-guide', testMatch: /43-attendance-guide\.spec\.ts/, use: desktop },
