@@ -270,7 +270,7 @@ public final class ExitSettlement {
         // like a notice shortfall; the law limits what may be deducted from final wages.
         if (membership != null) {
             Map<String, Object> claims = Sql.one(c, "select count(*) as n, coalesce(sum((select coalesce(sum(coalesce(l.approved_amount, l.amount)), 0) "
-                    + "from app.expense_line l where l.claim_id = k.id)), 0) as total from app.expense_claim k where k.membership_id = ? and k.status = 'verified'",
+                    + "from app.expense_line l where l.claim_id = k.id) - k.advance_applied), 0) as total from app.expense_claim k where k.membership_id = ? and k.status = 'verified'",
                     membership);
             if (((BigDecimal) claims.get("total")).signum() > 0) {
                 out.add(new Computed(8, "reimbursement", "Expense claims verified and not yet paid", "earning", null, null, (BigDecimal) claims.get("total"),

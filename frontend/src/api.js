@@ -430,6 +430,7 @@ export const expenses = {
   submit: (id, version) => post(`/org/expenses/claims/${id}/submit`, { version }),
   withdraw: (id, version) => post(`/org/expenses/claims/${id}/withdraw`, { version }),
   reopen: (id, version) => post(`/org/expenses/claims/${id}/reopen`, { version }),
+  setAdvance: (id, loanId) => put(`/org/expenses/claims/${id}/advance`, { loanId }),
   sendBack: (id, version) => post(`/org/expenses/claims/${id}/send-back`, { version }),
   approvals: () => get('/org/expenses/approvals'),
   decide: (id, body) => post(`/org/expenses/claims/${id}/decision`, body),

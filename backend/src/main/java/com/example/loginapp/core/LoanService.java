@@ -120,19 +120,20 @@ public final class LoanService {
         if (name.isEmpty() || name.length() > 60) {
             throw ApiException.badRequest("Give the type a name of up to 60 characters");
         }
-        if (!Set.of("salary_advance", "loan").contains(in.kind())) {
-            throw ApiException.badRequest("Choose salary advance or loan");
+        if (!Set.of("expense_advance", "salary_advance", "loan").contains(in.kind())) {
+            throw ApiException.badRequest("Choose expense advance, salary advance or loan");
         }
+        boolean advance = !"loan".equals(in.kind());
         if (in.maxAmount() == null || in.maxAmount().signum() <= 0 || in.maxAmount().scale() > 2) {
             throw ApiException.badRequest("Give the largest amount, in rupees and paise");
         }
         int months = in.maxMonths() == null ? 0 : in.maxMonths();
-        if (months < 1 || months > 60 || ("salary_advance".equals(in.kind()) && months > 3)) {
-            throw ApiException.badRequest("A salary advance is repaid in 1 to 3 months and a loan in 1 to 60");
+        if (months < 1 || months > 60 || (advance && months > 3)) {
+            throw ApiException.badRequest("An advance is settled or repaid in 1 to 3 months and a loan in 1 to 60");
         }
         BigDecimal rate = in.annualRate() == null ? BigDecimal.ZERO : in.annualRate();
-        if (rate.signum() < 0 || rate.compareTo(BigDecimal.valueOf(30)) > 0 || rate.scale() > 2 || ("salary_advance".equals(in.kind()) && rate.signum() != 0)) {
-            throw ApiException.badRequest("The yearly rate is between 0 and 30 percent, and a salary advance has none");
+        if (rate.signum() < 0 || rate.compareTo(BigDecimal.valueOf(30)) > 0 || rate.scale() > 2 || (advance && rate.signum() != 0)) {
+            throw ApiException.badRequest("The yearly rate is between 0 and 30 percent, and an advance has none");
         }
         int service = in.minServiceMonths() == null ? 0 : in.minServiceMonths();
         int open = in.maxOpen() == null ? 1 : in.maxOpen();
@@ -290,7 +291,7 @@ public final class LoanService {
     private static final String LIST = "select l.id, l.number, l.status, l.amount, l.months, l.annual_rate, l.purpose, l.version, l.membership_id, "
             + Names.orEmail("l.membership_id") + " as person, t.name as type, "
             + "(select coalesce(sum(i.principal), 0) from app.loan_instalment i where i.loan_id = l.id and i.status = 'due') as outstanding, "
-            + "l.finance_approvals, (l.finance_by is not null) as first_approved, l.perq_exempt_reason "
+            + "l.finance_approvals, (l.finance_by is not null) as first_approved, l.perq_exempt_reason, t.kind "
             + "from app.loan l join app.loan_type t on t.id = l.type_id ";
 
     /** The manager approves or rejects. Rejecting needs a reason. */
@@ -397,7 +398,12 @@ public final class LoanService {
             requireStatus(l, "approved");
             requireVersion(l, version);
             LoanComponent.ensure(c, ctx.tenantId());
-            for (Row r : schedule((BigDecimal) l.get("amount"), ((Number) l.get("months")).intValue(), (BigDecimal) l.get("annualRate"), first)) {
+            // An expense advance is settled by claims; whatever is left is taken in one deduction, in the last of the months asked for.
+            int months = ((Number) l.get("months")).intValue();
+            boolean expenseAdvance = "expense_advance".equals(Sql.one(c, "select t.kind from app.loan l join app.loan_type t on t.id = l.type_id where l.id = ?", id).get("kind"));
+            List<Row> rows = expenseAdvance ? schedule((BigDecimal) l.get("amount"), 1, BigDecimal.ZERO, first.plusMonths(months - 1))
+                    : schedule((BigDecimal) l.get("amount"), months, (BigDecimal) l.get("annualRate"), first);
+            for (Row r : rows) {
                 Sql.update(c, "insert into app.loan_instalment (tenant_id, loan_id, month, principal, interest) values (?, ?, ?, ?, ?)",
                         ctx.tenantId(), id, r.month(), r.principal(), r.interest());
             }
@@ -485,22 +491,7 @@ public final class LoanService {
             if (amount.compareTo(outstanding) > 0) {
                 throw ApiException.badRequest("That is more than the " + outstanding.toPlainString() + " still owed");
             }
-            List<UUID> due = dueIds(c, id);
-            BigDecimal balance = outstanding.subtract(amount);
-            if (balance.signum() == 0) {
-                Sql.update(c, "update app.loan_instalment set status = 'cancelled' where loan_id = ? and status = 'due'", id);
-            } else {
-                List<LocalDate> months = Sql.query(c, "select month from app.loan_instalment where loan_id = ? and status = 'due' order by month", id)
-                        .stream().map(m -> LocalDate.parse((String) m.get("month"))).toList();
-                List<Row> rows = schedule(balance, months.size(), (BigDecimal) l.get("annualRate"), months.get(0));
-                for (int k = 0; k < due.size(); k++) {
-                    Sql.update(c, "update app.loan_instalment set month = ?, principal = ?, interest = ? where id = ?",
-                            months.get(k), rows.get(k).principal(), rows.get(k).interest(), due.get(k));
-                }
-            }
-            Sql.update(c, "insert into app.loan_settlement (tenant_id, loan_id, kind, amount, note, by_id) values (?, ?, 'prepayment', ?, ?, ?)",
-                    ctx.tenantId(), id, amount, why, ctx.membershipId());
-            closeIfDone(c, id);
+            repay(c, ctx.tenantId(), id, (BigDecimal) l.get("annualRate"), outstanding, amount, "prepayment", why, ctx.membershipId());
             UserService.audit(c, ctx, "loan.prepaid", "loan", id, Map.of("number", l.get("number"), "amount", amount.toPlainString()));
             return null;
         });
@@ -588,6 +579,45 @@ public final class LoanService {
             out.put("inputs", inputs);
         }
         return out;
+    }
+
+    /** Takes an amount off what is owed: the instalments still due are worked out again over the same months, and the loan closes at nothing. */
+    private static void repay(Connection c, UUID tenantId, UUID id, BigDecimal annualRate, BigDecimal outstanding, BigDecimal amount, String kind, String why, UUID by)
+            throws SQLException {
+        List<UUID> due = dueIds(c, id);
+        BigDecimal balance = outstanding.subtract(amount);
+        if (balance.signum() == 0) {
+            Sql.update(c, "update app.loan_instalment set status = 'cancelled' where loan_id = ? and status = 'due'", id);
+        } else {
+            List<LocalDate> months = Sql.query(c, "select month from app.loan_instalment where loan_id = ? and status = 'due' order by month", id)
+                    .stream().map(m -> LocalDate.parse((String) m.get("month"))).toList();
+            List<Row> rows = schedule(balance, months.size(), annualRate, months.get(0));
+            for (int k = 0; k < due.size(); k++) {
+                Sql.update(c, "update app.loan_instalment set month = ?, principal = ?, interest = ? where id = ?",
+                        months.get(k), rows.get(k).principal(), rows.get(k).interest(), due.get(k));
+            }
+        }
+        Sql.update(c, "insert into app.loan_settlement (tenant_id, loan_id, kind, amount, note, by_id) values (?, ?, ?, ?, ?, ?)", tenantId, id, kind, amount, why, by);
+        closeIfDone(c, id);
+    }
+
+    /**
+     * Sets a verified claim against the expense advance its owner named: the advance drops by as much of the claim as it can cover,
+     * and that much is returned, for the claim not to pay again. Nothing when the advance is no longer being repaid. Refused while
+     * a payroll run that is not yet approved has the advance's deduction.
+     */
+    static BigDecimal settleByClaim(Connection c, UUID tenantId, UUID loanId, BigDecimal payable, String claimNumber, UUID by) throws SQLException {
+        Map<String, Object> l = lock(c, loanId);
+        if (!"active".equals(l.get("status"))) {
+            return BigDecimal.ZERO;
+        }
+        requireNotInRun(c, loanId);
+        BigDecimal outstanding = outstanding(c, loanId);
+        BigDecimal apply = payable.min(outstanding);
+        if (apply.signum() > 0) {
+            repay(c, tenantId, loanId, (BigDecimal) l.get("annualRate"), outstanding, apply, "claim", "Expense claim " + claimNumber, by);
+        }
+        return apply;
     }
 
     /** Refuses a change to a loan while a payroll run that is not yet approved has one of its instalments. */
@@ -684,7 +714,8 @@ public final class LoanService {
         Map<String, BigDecimal> benefits = new java.util.LinkedHashMap<>();
         for (Map<String, Object> l : Sql.query(c, "select l.membership_id, l.annual_rate, (select coalesce(sum(i.principal), 0) from app.loan_instalment i where i.loan_id = l.id "
                 + "and (i.status = 'due' or (i.status = 'taken' and i.month >= ?))) as balance from app.loan l where l.status in ('active','closed') "
-                + "and l.disbursed_on < ? and l.perq_exempt_reason is null and l.membership_id in "
+                // An expense advance is the employer's money for the employer's business, not a loan to the employee.
+                + "and l.disbursed_on < ? and l.perq_exempt_reason is null and (select t.kind from app.loan_type t where t.id = l.type_id) <> 'expense_advance' and l.membership_id in "
                 + "(select e.membership_id from app.employment e where e.id = any(?) and e.membership_id is not null)", period, period.plusMonths(1), employments)) {
             BigDecimal balance = (BigDecimal) l.get("balance");
             BigDecimal rate = (BigDecimal) l.get("annualRate");

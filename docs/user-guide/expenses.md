@@ -16,7 +16,7 @@ Nobody decides their own claim or loan, or puts their own claim into a payment.
 
 ## Notifications
 
-People are told in the bell when something waits for them (an approver has a claim or loan request, Finance has one to verify or approve) and when their own request moves: a claim returned (with the reason), rejected, needing more evidence, verified or paid; a loan approved, rejected or paid out. Finance is also told of instalments that have missed two runs. Each message can be edited or switched off under Setup, Messages.
+People are told in the bell when something waits for them (an approver has a claim or loan request, Finance has one to verify or approve) and when their own request moves: a claim returned (with the reason), rejected, needing more evidence, verified or paid; a loan approved, rejected or paid out. Finance is also told of instalments that have missed two runs. Each morning, anyone who has kept a claim or loan request waiting for three days or more gets one reminder saying how many. Each message can be edited or switched off under Setup, Messages.
 
 ## 1. Claiming an expense (My claims)
 
@@ -62,9 +62,13 @@ The other way is to let payroll pay them. When the payroll operator freezes a mo
 
 ### Asking (Advances and loans)
 
-Choose a type, an amount and the number of months, and give a reason. **Preview** shows the monthly instalments. A salary advance is 1 to 3 months and carries no interest; a loan can run longer and carries simple interest on the reducing balance. Types have limits on the largest amount, the longest term, months of service needed, and how many you may have open; the screen says which limit stopped you. You can withdraw a request until it is decided.
+Choose a type, an amount and the number of months, and give a reason. **Preview** shows the monthly instalments. A salary advance is 1 to 3 months and carries no interest; a loan can run longer and carries simple interest on the reducing balance. An **expense advance** is money for a trip before you spend it: see below. Types have limits on the largest amount, the longest term, months of service needed, and how many you may have open; the screen says which limit stopped you. You can withdraw a request until it is decided.
 
 ![Asking for an advance](img/expenses/14-loan-request.png)
+
+### Expense advances
+
+Ask for an expense advance like any other, saying how many months (1 to 3) you need to settle it. After the trip, make your claim as usual and, on the draft, choose the advance under **Set against an advance**. When Finance verifies the claim, the advance covers as much of it as it can and only the rest is paid to you: an advance of ₹20,000 and a claim of ₹23,000 pays ₹3,000. A claim the advance covers in full shows as paid at once. Whatever your claims have not covered by the last of the months you asked for is taken from that month's salary in one deduction. A claim covered in part is paid by bank batch, not with the salary.
 
 ### Approval and payout
 
@@ -123,7 +127,3 @@ Settings (Organization level, changed with your password; weakening some needs a
 - Whether the half-of-pay limit counts gross pay or "wages" under the Code on Wages, and whether a voluntary instalment counts toward it.
 - Whether a loan balance is asked for separately at exit (as built) or taken from final wages.
 - The State Bank rate to enter, and the ₹2,00,000 threshold.
-
-## Still to come
-
-Expense advances set against claims.

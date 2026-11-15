@@ -130,7 +130,7 @@ function LoanDetail({ id, mode, onClose }) {
       {l.settlements.length > 0 && (
         <ul>
           {l.settlements.map((s, i) => (
-            <li key={i}>{s.kind === 'prepayment' ? 'Repaid early' : 'Written off'}: {rupees(s.amount)} on {formatDay(s.createdAt)} ({s.note})</li>
+            <li key={i}>{s.kind === 'prepayment' ? 'Repaid early' : s.kind === 'claim' ? 'Settled by a claim' : 'Written off'}: {rupees(s.amount)} on {formatDay(s.createdAt)} ({s.note})</li>
           ))}
         </ul>
       )}
@@ -363,6 +363,7 @@ export function LoanTypes() {
           <select id="lt-kind" value={f.kind} onChange={(e) => setF({ ...f, kind: e.target.value, maxMonths: e.target.value === 'loan' ? '12' : '3' })}>
             <option value="loan">Loan (up to 60 months)</option>
             <option value="salary_advance">Salary advance (up to 3 months, no interest)</option>
+            <option value="expense_advance">Expense advance (settled by expense claims within 3 months, the rest in one deduction)</option>
           </select>
         </div>
         <div><label htmlFor="lt-amount">Largest amount (₹)</label><input id="lt-amount" type="number" min="1" value={f.maxAmount} onChange={(e) => setF({ ...f, maxAmount: e.target.value })} /></div>

@@ -274,6 +274,15 @@ final class PayrollSnapshot {
         return out;
     }
 
+    private static boolean covers(List<LocalDate[]> ranges, LocalDate d) {
+        for (LocalDate[] r : ranges) {
+            if (!d.isBefore(r[0]) && !d.isAfter(r[1])) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     /**
      * Days in the month, days paid and loss of pay. Unpaid leave counts as loss of pay when the
      * Organization has Leave; absence without leave too when it has Attendance and says so. Days not
@@ -301,6 +310,15 @@ final class PayrollSnapshot {
                     rows.put((String) d.get("workDate"), d);
                 }
             }
+            // Approved leave that touches the month, read once: only its days need the day-by-day look (three queries each), and most
+            // people have none, so a run of thousands does not ask the same empty question for every day of every person.
+            List<LocalDate[]> onLeave = new ArrayList<>();
+            if (leaveOn) {
+                for (Map<String, Object> r : Sql.query(c, "select from_date, to_date from app.leave_request where membership_id = ? and status = 'approved' "
+                        + "and from_date <= ? and to_date >= ?", membership, to, from)) {
+                    onLeave.add(new LocalDate[] {LocalDate.parse((String) r.get("fromDate")), LocalDate.parse((String) r.get("toDate"))});
+                }
+            }
             for (LocalDate d = from; !d.isAfter(to); d = d.plusDays(1)) {
                 Map<String, Object> row = rows.get(d.toString());
                 if (row != null) {
@@ -316,7 +334,7 @@ final class PayrollSnapshot {
                         lop = lop.add(new BigDecimal("0.5"));
                         lopDates.add(lopDay(d, new BigDecimal("0.5"), "absent"));
                     }
-                } else if (leaveOn) {
+                } else if (leaveOn && covers(onLeave, d)) {
                     AttendanceDays.Assigned at = AttendanceDays.assigned(c, membership, d);
                     boolean off = at != null && AttendanceDays.dayOff(c, at, d) != null;
                     DayCalculator.Leave leave = LeaveService.leaveOn(c, membership, d, off);

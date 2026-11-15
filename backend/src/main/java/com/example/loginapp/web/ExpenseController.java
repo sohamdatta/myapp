@@ -183,6 +183,15 @@ public class ExpenseController {
         return ResponseEntity.noContent().build();
     }
 
+    /** Sets the claim against one of the owner's expense advances; no advance takes it off. */
+    @PutMapping("/claims/{id}/advance")
+    public ResponseEntity<Void> advance(SessionCtx ctx, @PathVariable("id") String id, @RequestBody AdvanceChoice body) {
+        expenses.setAdvance(ctx, Requests.id(id), body.loanId() == null || body.loanId().isBlank() ? null : Requests.id(body.loanId()));
+        return ResponseEntity.noContent().build();
+    }
+
+    public record AdvanceChoice(String loanId) {}
+
     @PostMapping("/claims/{id}/reopen")
     public ResponseEntity<Void> reopen(SessionCtx ctx, @PathVariable("id") String id, @RequestBody Versioned body) {
         expenses.reopen(ctx, Requests.id(id), version(body.version()));

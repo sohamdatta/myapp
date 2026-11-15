@@ -58,7 +58,8 @@ public final class ExpenseService {
     public record ClaimView(UUID id, UUID membershipId, String number, String title, String status, Object submittedAt,
                             String decisionNote, String managerNote, String financeNote, Object limits, int version,
                             String claimant, BigDecimal total, BigDecimal payable, int financeApprovals, boolean firstVerified,
-                            String batchNumber, Object paidOn, String bankReference, List<Map<String, Object>> lines) {}
+                            String batchNumber, Object paidOn, String bankReference, List<Map<String, Object>> lines,
+                            UUID advanceLoanId, String advanceNumber, BigDecimal advanceApplied) {}
 
     /** A reviewer's change to one line: the amount approved and why it is lower. */
     public record Cut(String lineId, BigDecimal amount, String reason) {}
@@ -187,7 +188,8 @@ public final class ExpenseService {
             + "k.membership_id, " + Names.orEmail("k.membership_id") + " as claimant, "
             + "(select count(*) from app.expense_line l where l.claim_id = k.id) as lines, "
             + "(select coalesce(sum(l.amount), 0) from app.expense_line l where l.claim_id = k.id) as total, "
-            + "(select coalesce(sum(coalesce(l.approved_amount, l.amount)), 0) from app.expense_line l where l.claim_id = k.id) as payable, "
+            + "(select coalesce(sum(coalesce(l.approved_amount, l.amount)), 0) from app.expense_line l where l.claim_id = k.id) - k.advance_applied as payable, "
+            + "k.advance_loan_id, k.advance_applied, (select a.number from app.loan a where a.id = k.advance_loan_id) as advance_number, "
             + "coalesce((select b.number from app.expense_payment p join app.expense_batch b on b.id = p.batch_id "
             + "  where p.claim_id = k.id and p.status in ('scheduled','paid')), "
             + "  (select 'Salary of ' || to_char(r.period, 'Mon YYYY') from app.expense_run_claim rc join app.payroll_run r on r.id = rc.run_id where rc.claim_id = k.id)) as batch_number, "
@@ -224,7 +226,8 @@ public final class ExpenseService {
                     (String) k.get("managerNote"), (String) k.get("financeNote"), Json.parse((String) k.get("limits")),
                     ((Number) k.get("version")).intValue(), (String) k.get("claimant"), (BigDecimal) k.get("total"),
                     (BigDecimal) k.get("payable"), ((Number) k.get("financeApprovals")).intValue(),
-                    Boolean.TRUE.equals(k.get("firstVerified")), (String) k.get("batchNumber"), k.get("paidOn"), (String) k.get("bankReference"), lines);
+                    Boolean.TRUE.equals(k.get("firstVerified")), (String) k.get("batchNumber"), k.get("paidOn"), (String) k.get("bankReference"), lines,
+                    k.get("advanceLoanId") == null ? null : AuthService.uuid(k.get("advanceLoanId")), (String) k.get("advanceNumber"), (BigDecimal) k.get("advanceApplied"));
         });
     }
 
@@ -496,6 +499,44 @@ public final class ExpenseService {
         });
     }
 
+    /**
+     * A claim just verified: if its owner set it against an expense advance, the advance covers what it can and only the rest is
+     * left to pay. A claim the advance covers in full is paid there and then. The owner is told either way.
+     */
+    private static void afterVerified(Connection c, SessionCtx ctx, UUID claimId, Map<String, Object> k, BigDecimal payable) throws SQLException {
+        Object advance = Sql.one(c, "select advance_loan_id from app.expense_claim where id = ?", claimId).get("advanceLoanId");
+        BigDecimal applied = advance == null ? BigDecimal.ZERO
+                : LoanService.settleByClaim(c, ctx.tenantId(), AuthService.uuid(advance), payable, (String) k.get("number"), ctx.membershipId());
+        boolean covered = applied.compareTo(payable) == 0;
+        if (applied.signum() > 0) {
+            Sql.update(c, "update app.expense_claim set advance_applied = ?, status = ?, updated_at = now() where id = ?", applied, covered ? "paid" : "verified", claimId);
+            UserService.audit(c, ctx, "expense.advance_applied", "expense_claim", claimId, Map.of("number", k.get("number"), "amount", applied.toPlainString()));
+        }
+        Map<String, String> told = ExpenseNotices.claim(c, claimId);
+        ExpenseNotices.tell(c, ctx.tenantId(), covered ? "expense_paid" : "expense_verified", ExpenseNotices.owner(told), told);
+    }
+
+    /**
+     * The owner sets a claim against one of their expense advances, or (with no advance) takes that off. While the claim is still
+     * theirs to change: a draft, or one returned to them.
+     */
+    public void setAdvance(SessionCtx ctx, UUID claimId, UUID loanId) {
+        requireClaim(ctx);
+        db.inTenant(ctx.tenantId(), c -> {
+            Map<String, Object> k = lockOwn(c, ctx, claimId);
+            if (!List.of("draft", "returned").contains((String) k.get("status"))) {
+                throw new ApiException(409, "expense.locked", "The advance can be chosen only while the claim is a draft or returned to you");
+            }
+            if (loanId != null && !Sql.exists(c, "select 1 from app.loan l join app.loan_type t on t.id = l.type_id where l.id = ? and l.membership_id = ? "
+                    + "and l.status = 'active' and t.kind = 'expense_advance'", loanId, ctx.membershipId())) {
+                throw ApiException.badRequest("Choose one of your own expense advances that is still open");
+            }
+            Sql.update(c, "update app.expense_claim set advance_loan_id = ?, updated_at = now() where id = ?", loanId, claimId);
+            UserService.audit(c, ctx, "expense.advance_chosen", "expense_claim", claimId, Map.of("number", k.get("number"), "advance", String.valueOf(loanId)));
+            return null;
+        });
+    }
+
     /** After finance paused a claim for more evidence: sends it back once each requested line has a newer file. */
     public void sendBack(SessionCtx ctx, UUID claimId, int version) {
         requireClaim(ctx);
@@ -703,15 +744,13 @@ public final class ExpenseService {
                 Sql.update(c, "update app.expense_claim set status = 'verified', finance2_by = ?, finance2_at = now(), "
                         + "version = version + 1, updated_at = now() where id = ?", ctx.membershipId(), claimId);
                 UserService.audit(c, ctx, "expense.verified", "expense_claim", claimId, Map.of("number", k.get("number"), "payable", payable.toPlainString()));
-                Map<String, String> told = ExpenseNotices.claim(c, claimId);
-                ExpenseNotices.tell(c, ctx.tenantId(), "expense_verified", ExpenseNotices.owner(told), told);
+                afterVerified(c, ctx, claimId, k, payable);
                 return null;
             }
             Sql.update(c, "update app.expense_claim set status = 'verified', finance_by = ?, finance_at = now(), finance_note = ?, "
                     + "version = version + 1, updated_at = now() where id = ?", ctx.membershipId(), blankToNull(note), claimId);
             UserService.audit(c, ctx, "expense.verified", "expense_claim", claimId, Map.of("number", k.get("number"), "payable", payable.toPlainString()));
-            Map<String, String> told = ExpenseNotices.claim(c, claimId);
-            ExpenseNotices.tell(c, ctx.tenantId(), "expense_verified", ExpenseNotices.owner(told), told);
+            afterVerified(c, ctx, claimId, k, payable);
             return null;
         });
     }

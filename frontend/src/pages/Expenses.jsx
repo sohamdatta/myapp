@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { expenses, saveBlob } from '../api.js'
+import { expenses, loans, saveBlob } from '../api.js'
 import { formatDay, useAction, useLoad } from '../hooks.js'
 import { Badge, Empty, ErrorNote, Tabs } from '../ui.jsx'
 import { useToast } from '../feedbackContext.js'
@@ -126,6 +126,25 @@ function ClaimTable({ rows, onOpen, empty, showWho }) {
       </table>
     </div>
     </>
+  )
+}
+
+/** On a draft claim: the owner's open expense advances, to set the claim against one. Shown only when they have one. */
+function AdvanceChoice({ claim, onDone }) {
+  const mine = useLoad(() => loans.mine().catch(() => []), [])   // without Payroll there are no advances: nothing to choose
+  const { busy, error, run } = useAction()
+  const open = (mine.data || []).filter((l) => l.kind === 'expense_advance' && l.status === 'active')
+  if (!open.length) return null
+  return (
+    <div>
+      <label htmlFor="claim-advance">Set against an advance</label>
+      <select id="claim-advance" disabled={busy} value={claim.advanceLoanId || ''}
+        onChange={(e) => run(async () => { await expenses.setAdvance(claim.id, e.target.value || null); onDone() })}>
+        <option value="">No advance: pay the whole claim</option>
+        {open.map((l) => <option key={l.id} value={l.id}>{l.number}, {rupees(l.outstanding)} still open</option>)}
+      </select>
+      <ErrorNote>{error}</ErrorNote>
+    </div>
   )
 }
 
@@ -365,6 +384,14 @@ function ClaimView({ id, mine, mode, onClose }) {
           {c.status === 'paid' ? `Paid on ${formatDay(c.paidOn)}, bank reference ${c.bankReference}` : 'Scheduled for payment'} (batch {c.batchNumber}).
         </p>
       )}
+      {c.advanceNumber && (
+        <p className="hint">
+          {Number(c.advanceApplied) > 0
+            ? `${rupees(c.advanceApplied)} of this claim was set against advance ${c.advanceNumber}; ${rupees(c.payable)} is left to pay.`
+            : `Set against advance ${c.advanceNumber}: when finance verifies the claim, the advance covers what it can and only the rest is paid.`}
+        </p>
+      )}
+      {editable && <AdvanceChoice claim={c} onDone={claim.reload} />}
       {c.decisionNote && <p className="hint">Note: {c.decisionNote}</p>}
       {c.financeApprovals === 2 && ['approved', 'verified'].includes(c.status) && (
         <p className="hint">{c.status === 'verified' ? 'Verified by two people.' : c.firstVerified ? 'Verified once. A second person must verify it.' : 'This claim is large: two different people must verify it.'}</p>

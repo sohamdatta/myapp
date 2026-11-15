@@ -24,14 +24,15 @@ final class ExpenseRunClaims {
     private ExpenseRunClaims() {}
 
     /**
-     * Takes up the verified claims of the run's people, before the snapshot is made, in one statement. A claim another transaction is
+     * Takes up the verified claims of the run's people, before the snapshot is made, in one statement. A claim an expense advance
+     * covered in part is left for a bank batch: its payslip lines, by category, would not add up to what is still to pay. A claim another transaction is
      * putting in a bank batch at the same moment is waited for and then left out (its status is checked again), so no claim is paid twice.
      */
     static void reserve(Connection c, UUID runId, UUID[] employments) throws SQLException {
         Sql.update(c, "with picked as (select distinct on (k.id) k.id, e.id as employment_id, "
                 + "  (select coalesce(sum(coalesce(l.approved_amount, l.amount)), 0) from app.expense_line l where l.claim_id = k.id) as amount "
                 + "  from app.expense_claim k join app.employment e on e.membership_id = k.membership_id "
-                + "  where k.status = 'verified' and e.id = any(?) order by k.id, e.id), "
+                + "  where k.status = 'verified' and k.advance_applied = 0 and e.id = any(?) order by k.id, e.id), "
                 + "taken as (update app.expense_claim k set status = 'scheduled', version = version + 1, updated_at = now() "
                 + "  where k.id in (select id from picked where amount > 0) and k.status = 'verified' returning k.id) "
                 + "insert into app.expense_run_claim (tenant_id, run_id, claim_id, employment_id, amount) "

@@ -79,7 +79,7 @@ public final class ExitTasks {
     /** What the leaver still has open in Expenses: claims not yet paid or closed, and advances or loans with instalments still due. */
     static Map<String, Object> openInExpenses(Connection c, UUID caseId) throws SQLException {
         Map<String, Object> claims = Sql.one(c, "select count(*) as n, coalesce(sum((select coalesce(sum(coalesce(l.approved_amount, l.amount)), 0) "
-                + "from app.expense_line l where l.claim_id = k.id)), 0) as total from app.expense_claim k join app.employment e on e.membership_id = k.membership_id "
+                + "from app.expense_line l where l.claim_id = k.id) - k.advance_applied), 0) as total from app.expense_claim k join app.employment e on e.membership_id = k.membership_id "
                 + "join app.exit_case x on x.employment_id = e.id where x.id = ? and k.status in ('submitted','returned','evidence_requested','approved','verified','scheduled')", caseId);
         Map<String, Object> loans = Sql.one(c, "select count(distinct l.id) as n, coalesce(sum(i.principal), 0) as total from app.loan l "
                 + "join app.employment e on e.membership_id = l.membership_id join app.exit_case x on x.employment_id = e.id "
