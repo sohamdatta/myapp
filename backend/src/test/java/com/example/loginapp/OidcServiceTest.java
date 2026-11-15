@@ -444,12 +444,12 @@ class OidcServiceTest {
     }
 
     @Test
-    void aSuspendedLoginCannotSignInWithGoogle() throws Exception {
+    void aDisabledLoginCannotSignInWithGoogle() throws Exception {
         String email = owner();
         connect(email, "sub-" + SEQ.incrementAndGet());
         google(ownerQuery("select subject from auth.external_login order by created_at desc limit 1"), email);
         try (Connection c = DriverManager.getConnection(url, ownerUser, ownerPassword); Statement st = c.createStatement()) {
-            st.execute("update auth.identity set status = 'suspended' where email = '" + email + "'");
+            st.execute("update auth.identity set status = 'disabled' where email = '" + email + "'");
         }
         assertEquals("/?oidc_error=oidc.invalid", comeBack(oidc.startSignIn("google", null)).redirect());
     }
