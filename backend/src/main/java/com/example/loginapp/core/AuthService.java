@@ -24,14 +24,21 @@ public final class AuthService {
 
     private final Db db;
     private final RateLimits limits;
+    private final boolean requireConsoleMfa;
 
     public AuthService(Db db) {
         this(db, new RateLimits());
     }
 
     public AuthService(Db db, RateLimits limits) {
+        this(db, limits, false);
+    }
+
+    /** With requireConsoleMfa, the platform console opens only for a login that has two-step sign-in set up and has passed a code. */
+    public AuthService(Db db, RateLimits limits, boolean requireConsoleMfa) {
         this.db = db;
         this.limits = limits;
+        this.requireConsoleMfa = requireConsoleMfa;
     }
 
     /** Checks the email and password and returns a token for a session with no Organization chosen yet. */
@@ -411,6 +418,23 @@ public final class AuthService {
             if (Sql.one(c, "select 1 from platform.platform_user where identity_id = ? and status = 'active'",
                     ctx.identityId()) == null) {
                 throw new ApiException(403, "permission.denied", "This login has no platform role");
+            }
+            if (requireConsoleMfa) {
+                // The Super Admin can reach every Organization's support access, so a password alone is not enough. The state
+                // is read with the session held, as when entering an Organization, so a code that ended a moment ago is not used.
+                Map<String, Object> state = Sql.one(c,
+                        "select s.mfa_at is not null as passed, i.mfa_enrolled_at is not null as enrolled "
+                                + "from auth.session s join auth.identity i on i.id = s.identity_id "
+                                + "where s.id = ? and s.revoked_at is null for update of s", ctx.sessionId());
+                if (state == null) {
+                    throw ApiException.notSignedIn();
+                }
+                if (!Boolean.TRUE.equals(state.get("enrolled"))) {
+                    throw new ApiException(403, "mfa.enrolment_required", "The platform console requires two-step sign-in. Set it up to continue");
+                }
+                if (!Boolean.TRUE.equals(state.get("passed"))) {
+                    throw new ApiException(403, "mfa.required", "Sign in again and enter your code to open the platform console");
+                }
             }
             insertSession(c, token, ctx.identityId(), "platform", null, null, null, "8 hours");
             carryMfa(c, ctx.sessionId(), token);

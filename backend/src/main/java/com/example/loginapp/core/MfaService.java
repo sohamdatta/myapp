@@ -216,6 +216,62 @@ public final class MfaService {
         refuseUnless(outcome);
     }
 
+    // ── a lost phone and lost recovery codes ────────────────────────────
+
+    /**
+     * An administrator turns off another person's two-step sign-in, for someone who has lost both their phone and their
+     * recovery codes. It needs the permission to manage users, a reason that goes in the audit log, a fresh code from the
+     * administrator if they have two-step on, and reach over every role the person holds (as for suspending them). It is
+     * refused for a login that is in another Organization too, because the authenticator belongs to the login, not to one
+     * Organization: that person turns it off themselves. The person's other sessions end and they are emailed.
+     */
+    public void adminReset(SessionCtx ctx, UUID membershipId, String reason) {
+        ctx.require("user.manage");
+        requireOwnLogin(ctx);
+        UserService.notSelf(ctx, membershipId, "reset your own two-step sign-in. Turn it off in Security");
+        String why = reason == null ? "" : reason.trim();
+        if (why.length() < 5 || why.length() > 500) {
+            throw ApiException.badRequest("Give the reason, in 5 to 500 characters");
+        }
+        StepUp.requireIfEnrolled(db, ctx);   // a fresh code from the administrator, when they have two-step on
+
+        // The target is read and checked in the Organization first; the audit entry is written once the reset has happened.
+        UUID identityId = db.inTenant(ctx.tenantId(), c -> {
+            Map<String, Object> target = UserService.lock(c, membershipId);
+            if ("ended".equals(target.get("status"))) {
+                throw new ApiException(409, "request.refused", "This user has left");
+            }
+            UserService.requireReach(c, ctx, membershipId);
+            return AuthService.uuid(Sql.one(c, "select identity_id from app.membership where id = ?", membershipId).get("identityId"));
+        });
+        db.inAuth(c -> {
+            Map<String, Object> identity = Sql.one(c, "select email from auth.identity where id = ? for update", identityId);
+            if (identity == null || !enrolled(c, identityId)) {
+                throw new ApiException(409, "mfa.not_enrolled", "This person has not set up two-step sign-in");
+            }
+            long organizations = ((Number) Sql.one(c, "select count(*) as n from auth.memberships_for_identity(?)", identityId).get("n")).longValue();
+            if (organizations > 1) {
+                throw new ApiException(409, "request.refused",
+                        "This person is also in another Organization, so two-step sign-in is theirs to change. They can turn it off in Security");
+            }
+            Sql.update(c, "update auth.identity set mfa_secret_enc = null, mfa_pending_secret_enc = null, mfa_enrolled_at = null, "
+                    + "mfa_last_step = null where id = ?", identityId);
+            Sql.update(c, "update auth.mfa_recovery_code set used_at = coalesce(used_at, now()) where identity_id = ?", identityId);
+            endChallenges(c, identityId);
+            EmailChangeService.cancelPending(c, identityId);
+            AuthService.revokeAll(c, identityId, null);
+            String email = (String) identity.get("email");
+            notice(c, email, "Two-step sign-in was reset by an administrator", "An administrator of your Organization reset two-step sign-in for "
+                    + email + " and signed you out everywhere. You can sign in with your password and set it up again in Security.\n\n"
+                    + "If you did not ask for this, tell your Org Admin.\n");
+            return null;
+        });
+        db.inTenant(ctx.tenantId(), c -> {
+            UserService.audit(c, ctx, "mfa.reset_by_admin", "membership", membershipId, Map.of("reason", why));
+            return null;
+        });
+    }
+
     // ── signing in ──────────────────────────────────────────────────────
 
     /** Answers a challenge from {@link AuthService#signIn} with a code (or a recovery code); returns the session token. */
