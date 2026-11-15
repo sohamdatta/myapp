@@ -136,6 +136,8 @@ function UserPanel({ user, me, roles, onClose, onChanged }) {
   const t = USERS_TEXT.panel
   const { canAssign, canManage } = powers(me, user)
   const [selected, setSelected] = useState(user.roleCodes)
+  const [resetting, setResetting] = useState(false)
+  const [reason, setReason] = useState('')
   const { busy, error, run } = useAction()
   const confirm = useConfirm()
   const toast = useToast()
@@ -227,6 +229,39 @@ function UserPanel({ user, me, roles, onClose, onChanged }) {
               </button>
             )}
           </div>
+          {user.mfaEnrolled && (
+            <div className="access-row">
+              <p className="hint">{t.resetHint}</p>
+              {!resetting && (
+                <button type="button" className="outline" disabled={busy} onClick={() => setResetting(true)}>
+                  {t.reset}
+                </button>
+              )}
+              {resetting && (
+                <form
+                  className="stack"
+                  onSubmit={(e) => {
+                    e.preventDefault()
+                    act(() => org.resetTwoStep(user.id, reason.trim()), t.resetDone(user.email))
+                  }}
+                >
+                  <label htmlFor="reset-reason">{t.resetReason}</label>
+                  <input id="reset-reason" value={reason} onChange={(e) => setReason(e.target.value)} maxLength={500} aria-describedby="reset-reason-hint" autoFocus />
+                  <p id="reset-reason-hint" className="hint">
+                    {t.resetReasonHint}
+                  </p>
+                  <div className="form-actions">
+                    <button type="submit" className="danger-outline" disabled={busy || reason.trim().length < 5}>
+                      {t.resetConfirm}
+                    </button>
+                    <button type="button" className="quiet" disabled={busy} onClick={() => setResetting(false)}>
+                      {t.resetCancel}
+                    </button>
+                  </div>
+                </form>
+              )}
+            </div>
+          )}
           <div className="access-row">
             <p className="hint">{t.endHint}</p>
             <button

@@ -333,6 +333,7 @@ export const org = {
   revokeInvitation: (id) => post(`/org/invitations/${id}/revoke`),
   changeRoles: (id, roles) => put(`/org/users/${id}/roles`, { roles }),
   changeStatus: (id, action) => post(`/org/users/${id}/${action}`),
+  resetTwoStep: (id, reason) => post(`/org/users/${id}/two-step/reset`, { reason }),
 }
 
 // ── attendance, inside an Organization ──────────────────────────────
