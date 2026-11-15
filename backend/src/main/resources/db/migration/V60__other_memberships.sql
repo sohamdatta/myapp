@@ -4,6 +4,8 @@
 -- holds a role there: a suspended member, or one in a suspended Organization, still relies on it once reactivated.
 -- Only a membership that has ended (the person left) is ignored. Returns a number, never a name.
 
+set lock_timeout = '5s';
+
 create function auth.other_memberships(p_identity uuid, p_tenant uuid)
 returns bigint
 language sql stable security definer set search_path = app, pg_temp as $$
