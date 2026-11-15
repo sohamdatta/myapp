@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.example.loginapp.core.ApiException;
 import com.example.loginapp.core.AuthService;
+import com.example.loginapp.core.MfaService;
 import com.example.loginapp.core.SessionCtx;
 import com.example.loginapp.core.UserService;
 
@@ -26,14 +27,18 @@ public class UsersController {
 
     public record RolesRequest(List<String> roles) {}
 
+    public record ResetTwoStepRequest(String reason) {}
+
     private final AuthService auth;
     private final UserService users;
+    private final MfaService mfa;
 
     private final com.example.loginapp.core.RoleService roleService;
 
-    public UsersController(AuthService auth, UserService users, com.example.loginapp.core.RoleService roleService) {
+    public UsersController(AuthService auth, UserService users, MfaService mfa, com.example.loginapp.core.RoleService roleService) {
         this.auth = auth;
         this.users = users;
+        this.mfa = mfa;
         this.roleService = roleService;
     }
 
@@ -75,6 +80,14 @@ public class UsersController {
     public ResponseEntity<Void> changeRoles(SessionCtx ctx,
                                             @PathVariable("id") String id, @RequestBody RolesRequest request) {
         users.changeRoles(ctx, Requests.id(id), request.roles());
+        return ResponseEntity.noContent().build();
+    }
+
+    /** For someone who lost their phone and their recovery codes: turns off their two-step sign-in, with a reason that is audited. */
+    @PostMapping("/users/{id}/two-step/reset")
+    public ResponseEntity<Void> resetTwoStep(SessionCtx ctx,
+                                             @PathVariable("id") String id, @RequestBody ResetTwoStepRequest request) {
+        mfa.adminReset(ctx, Requests.id(id), request.reason());
         return ResponseEntity.noContent().build();
     }
 

@@ -38,9 +38,18 @@ Read this before relying on it.
 - **The office-network punch check has not been tried behind a real proxy.**
   It was tested with the address passed in directly. See "Attendance" below
   before relying on it.
-- **No email is sent.** Invitations produce a link that the screen shows for
-  you to copy and send.
-- **Not built yet:** multi-factor sign-in, password reset, email change, seat
+- **Invitations are not emailed.** They produce a link that the screen shows
+  for you to copy and send. Password reset, email change and two-step sign-in
+  notices are emailed through the mail outbox once `APP_SMTP_HOST` is set.
+- **Two-step sign-in, password reset and email change are built.** Set
+  `APP_REQUIRE_CONSOLE_MFA=true` in production so the Super Admin needs a code
+  too. A platform login that has not set up an authenticator does so first with
+  its password alone, so the first Super Admin should do it at once, and
+  anyone who turns it off from the console loses the console until they set it
+  up again. An Organization's administrator cannot reset a platform login, or
+  a login that is in another Organization too: those people turn it off
+  themselves in Security.
+- **Not built yet:** seat
   limits, custom roles, and limiting a user to particular legal entities or
   departments. In attendance and leave: overtime pay, approval chains beyond
   one approver, leave or work-from-home requests raised by HR for someone
@@ -165,6 +174,7 @@ Set these environment variables for anything beyond local development.
 | `APP_DATA_KEY` | none: a fixed development key, with a warning in the log | Encrypts PAN, UAN, bank account numbers and, later, documents. 32 random bytes, base64: `openssl rand -base64 32`. Keep a copy somewhere safe; values encrypted with a lost key cannot be read again |
 | `APP_REQUIRE_DATA_KEY` | `false` | Set to `true` in production, so the app refuses to start without `APP_DATA_KEY` rather than use the development key |
 | `APP_DATA_KEY_ID`, `APP_DATA_KEY_PREVIOUS` | `1`, none | Rotating the key: give the new key a new id, and put the old one in `APP_DATA_KEY_PREVIOUS` as `id:key` so existing values can still be read |
+| `APP_REQUIRE_CONSOLE_MFA` | `false` | Set to `true` in production, so the platform console opens only for a login with two-step sign-in set up and a code passed. The first Super Admin is then asked to set it up at their first sign-in |
 | `APP_TRUST_FORWARDED_FOR` | `false` | Set to `true` only when the backend sits behind exactly one proxy that sets `X-Forwarded-For`. The office-network punch check then uses the address that proxy reports |
 
 ## How isolation works

@@ -61,6 +61,8 @@ Choose **Security** at the top right.
 
 Choose **Set up two-step sign-in**, scan the code with an authenticator app (Google Authenticator, Microsoft Authenticator, 1Password and others), type your password and the 6-digit code, and choose **Turn on**. Save the ten **recovery codes** shown: each signs you in once if you lose your phone. From then on, signing in asks for the code after the password. **Turn off** needs your password and a code. The Org Admin can make two-step sign-in required (Settings).
 
+**If someone loses their phone and their recovery codes,** an administrator with permission to manage users opens their row in **Users** and chooses **Reset two-step sign-in**. Give a reason (it is kept in the audit log) and confirm; if you have two-step on yourself, you are asked for a fresh code first. The person is signed out everywhere, emailed, and signs in again with their password, then sets two-step up again in **Security**. You cannot reset your own, or the login of someone who is also in another Organization or has a platform role: they turn it off themselves in **Security**. An HR Admin cannot reset an Org Admin.
+
 ![Setting up two-step sign-in](img/administration/08-two-step.png)
 
 ## 4. Settings (Org Admin)
@@ -98,7 +100,7 @@ A change that makes the Organization less safe (longer invitation links, fewer p
 | --- | --- |
 | A role is greyed out when inviting | Only an Org Admin gives Org Admin and the payroll roles. |
 | "One user cannot be both Payroll Operator and Payroll Approver" | Give the two roles to different people. |
-| Someone cannot sign in | They may be suspended (Users → Suspended), or their invitation expired: send a new link. |
+| Someone cannot sign in | They may be suspended (Users → Suspended), or their invitation expired: send a new link. If they lost their phone and recovery codes, reset their two-step sign-in (Users → their row). |
 | "The current password is not correct" | Type the password you sign in with now. |
 | The new password is refused | Use at least 12 characters. |
 | "That code is not right" | Check the phone's clock is right, use the newest code, or a recovery code. |

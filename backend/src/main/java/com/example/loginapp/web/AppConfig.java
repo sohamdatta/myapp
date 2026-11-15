@@ -173,8 +173,8 @@ public class AppConfig {
     }
 
     @Bean
-    public AuthService authService(Db db, RateLimits limits) {
-        return new AuthService(db, limits);
+    public AuthService authService(Db db, RateLimits limits, @Value("${app.console-mfa.required:false}") boolean requireConsoleMfa) {
+        return new AuthService(db, limits, requireConsoleMfa);
     }
 
     @Bean

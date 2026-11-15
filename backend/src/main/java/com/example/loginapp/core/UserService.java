@@ -254,13 +254,13 @@ public final class UserService {
         }
     }
 
-    private static void notSelf(SessionCtx ctx, UUID membershipId, String what) {
+    static void notSelf(SessionCtx ctx, UUID membershipId, String what) {
         if (membershipId.equals(ctx.membershipId())) {
             throw new ApiException(409, "request.refused", "You cannot " + what);
         }
     }
 
-    private static Map<String, Object> lock(Connection c, UUID membershipId) throws SQLException {
+    static Map<String, Object> lock(Connection c, UUID membershipId) throws SQLException {
         Map<String, Object> row = Sql.one(c, "select id, status, person_id from app.membership where id = ? for update", membershipId);
         if (row == null) {
             throw ApiException.notFound("The user");
@@ -274,7 +274,7 @@ public final class UserService {
     }
 
     /** A user can only be suspended, reactivated or ended by someone who could have granted all of their roles. */
-    private static void requireReach(Connection c, SessionCtx ctx, UUID membershipId) throws SQLException {
+    static void requireReach(Connection c, SessionCtx ctx, UUID membershipId) throws SQLException {
         if (ctx.membershipId() == null) {
             return;   // support sessions are limited by their own permissions and the audit trail
         }

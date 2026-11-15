@@ -558,4 +558,195 @@ class MfaServiceTest {
         assertFalse(com.example.loginapp.core.MfaPolicy.applies("admins_payroll", List.of("employee", "manager")));
         assertTrue(com.example.loginapp.core.MfaPolicy.applies("everyone", List.of("employee")));
     }
+
+    // ── the platform console, and a lost phone ─────────────────────────
+
+    private static final String ROOT = "root@platform.test";
+
+    @Test
+    void theConsoleOpensWithoutACodeOnlyWhenTheDeploymentDoesNotRequireOne() {
+        AuthService strict = new AuthService(db, limits, true);
+        AuthService lax = new AuthService(db, limits, false);
+        assertNotNull(lax.enterConsole(lax.resolve(lax.login(ROOT, PASSWORD))), "local and test setups keep the password alone");
+        ApiException e = refusal(() -> strict.enterConsole(strict.resolve(strict.login(ROOT, PASSWORD))));
+        assertEquals("mfa.enrolment_required", e.code(), "no authenticator set up: asked to set one up");
+        assertEquals(403, e.status());
+    }
+
+    @Test
+    void theConsoleNeedsAnAuthenticatorSetUpAndACodePassedWhenRequired() throws Exception {
+        String email = "console-" + SEQ.incrementAndGet() + "@platform.test";
+        platform.addPlatformUser(superAdmin, email, "support", PASSWORD);
+        AuthService strict = new AuthService(db, limits, true);
+        SessionCtx identity = strict.resolve(strict.login(email, PASSWORD));
+        assertEquals("mfa.enrolment_required", refusal(() -> strict.enterConsole(identity)).code());
+        MfaService.Enrolment enrolment = mfa.start(identity);
+        mfa.confirm(identity, PASSWORD, codeNow(enrolment.secret()));
+        advance(30);
+        // a fresh sign-in must pass a code before the console opens
+        AuthService.SignIn step = strict.signIn(email, PASSWORD, null);
+        assertTrue(step.mfaRequired());
+        SessionCtx withCode = strict.resolve(mfa.complete(step.token(), codeNow(enrolment.secret()), null));
+        strict.enterConsole(withCode);
+        assertEquals(1, Integer.parseInt(owner("select count(*) from auth.session s join auth.identity i on i.id = s.identity_id "
+                + "where i.email = '" + email + "' and s.kind = 'platform' and s.revoked_at is null and s.mfa_at is not null")),
+                "the console session carries the proof of the code");
+    }
+
+    private static String membershipOf(com.example.loginapp.core.UserService users, SessionCtx admin, String email) {
+        return users.users(admin).stream().filter(u -> email.equalsIgnoreCase((String) u.get("email")))
+                .map(u -> (String) u.get("id")).findFirst().orElseThrow();
+    }
+
+    @Test
+    void anAdminCanTurnOffAnotherPersonsTwoStepWithAReasonAndTheyAreToldAndSignedOut() throws Exception {
+        String email = owner();
+        SessionCtx admin = insideOrganization(email);
+        com.example.loginapp.core.UserService users = new com.example.loginapp.core.UserService(db);
+        String slug = admin.tenantName().toLowerCase().replace(' ', '-');
+        String hr = "hr@" + slug + ".test";
+        String token = (String) users.invite(admin, hr, List.of("hr_admin")).get("token");
+        new InvitationService(db, limits).accept(token, PASSWORD, null);
+        String hrSecret = enrol(hr).get(0);
+        String hrSession = mfa.complete(auth.signIn(hr, PASSWORD, null).token(), codeNow(hrSecret), null);
+        java.util.UUID membership = java.util.UUID.fromString(membershipOf(users, admin, hr));
+
+        assertEquals(400, refusal(() -> mfa.adminReset(admin, membership, " ")).status(), "a reason is needed");
+        assertEquals(409, refusal(() -> mfa.adminReset(admin, java.util.UUID.fromString(membershipOf(users, admin, email)), "testing it"))
+                .status(), "not your own");
+        mfa.adminReset(admin, membership, "Lost phone and recovery codes, verified in person");
+
+        assertFalse(mfa.status(auth.resolve(auth.login(hr, PASSWORD))).enrolled());
+        assertEquals(401, refusal(() -> auth.resolve(hrSession)).status(), "their open sessions ended");
+        assertEquals(1, Integer.parseInt(owner("select count(*) from app.audit_event where action = 'mfa.reset_by_admin' "
+                + "and target_id = '" + membership + "' and detail->>'reason' like 'Lost phone%'")), "audited with the reason");
+        assertTrue(Integer.parseInt(owner("select count(*) from mail.outbox where to_email = '" + hr
+                + "' and subject = 'Two-step sign-in was reset by an administrator'")) >= 1, "they were emailed");
+        assertEquals("mfa.not_enrolled", refusal(() -> mfa.adminReset(admin, membership, "again, for no reason")).code(),
+                "nothing left to reset");
+    }
+
+    @Test
+    void anAdminCannotResetSomeoneWhoIsInAnotherOrganizationToo() throws Exception {
+        String email = owner();
+        SessionCtx admin = insideOrganization(email);
+        com.example.loginapp.core.UserService users = new com.example.loginapp.core.UserService(db);
+        String slug = admin.tenantName().toLowerCase().replace(' ', '-');
+        // one login in two Organizations, joined before any authenticator is set up
+        String shared = "shared@" + slug + ".test";
+        new InvitationService(db, limits).accept((String) users.invite(admin, shared, List.of("employee")).get("token"), PASSWORD, null);
+        String otherSlug = "mfa-other-" + SEQ.incrementAndGet();
+        Map<String, Object> other = platform.createOrganization(superAdmin, "Org " + otherSlug, otherSlug, shared);
+        new InvitationService(db, limits).accept((String) other.get("invitationToken"), PASSWORD, null);
+        enrol(shared);
+        java.util.UUID membership = java.util.UUID.fromString(membershipOf(users, admin, shared));
+
+        ApiException e = refusal(() -> mfa.adminReset(admin, membership, "Lost phone and recovery codes"));
+        assertEquals(409, e.status());
+        assertEquals("auth.mfa_required", refusal(() -> auth.login(shared, PASSWORD)).code(), "sign-in still asks for the code");
+        assertEquals(0, Integer.parseInt(owner("select count(*) from app.audit_event where action = 'mfa.reset_by_admin' "
+                + "and target_id = '" + membership + "'")), "a refused reset is not logged as done");
+        assertEquals(1, Integer.parseInt(owner("select count(*) from app.audit_event where action = 'mfa.reset_requested' "
+                + "and target_id = '" + membership + "'")), "but the attempt is");
+    }
+
+    private static String enrolledFlag(String email) throws Exception {
+        return owner("select (mfa_enrolled_at is not null)::text from auth.identity where email = '" + email + "'");
+    }
+
+    /** Invites the person into the Organization with one role and lets them accept, so they hold a password. */
+    private void join(com.example.loginapp.core.UserService users, SessionCtx admin, String email, String role) {
+        new InvitationService(db, limits).accept((String) users.invite(admin, email, List.of(role)).get("token"), PASSWORD, null);
+    }
+
+    @Test
+    void aMemberWithoutThePermissionToManageUsersCannotResetAnyone() throws Exception {
+        String email = owner();
+        SessionCtx admin = insideOrganization(email);
+        com.example.loginapp.core.UserService users = new com.example.loginapp.core.UserService(db);
+        String slug = admin.tenantName().toLowerCase().replace(' ', '-');
+        String employee = "emp@" + slug + ".test";
+        String colleague = "colleague@" + slug + ".test";
+        join(users, admin, employee, "employee");
+        join(users, admin, colleague, "employee");
+        enrol(colleague);
+        SessionCtx emp = insideOrganization(employee);
+        java.util.UUID target = java.util.UUID.fromString(membershipOf(users, admin, colleague));
+        assertEquals(403, refusal(() -> mfa.adminReset(emp, target, "Lost phone and recovery codes")).status());
+        assertEquals("true", enrolledFlag(colleague));
+    }
+
+    @Test
+    void anAdminCannotResetSomeoneWhoseRolesTheyAreNotAllowedToGrant() throws Exception {
+        String email = owner();
+        SessionCtx admin = insideOrganization(email);
+        com.example.loginapp.core.UserService users = new com.example.loginapp.core.UserService(db);
+        String slug = admin.tenantName().toLowerCase().replace(' ', '-');
+        String hr = "hr@" + slug + ".test";
+        join(users, admin, hr, "hr_admin");
+        java.util.UUID owner = java.util.UUID.fromString(membershipOf(users, admin, email));
+        enrol(email);
+        SessionCtx hrCtx = insideOrganization(hr);
+        assertEquals(403, refusal(() -> mfa.adminReset(hrCtx, owner, "Lost phone and recovery codes")).status(),
+                "an HR Admin cannot take the second factor off an Org Admin");
+        assertEquals("true", enrolledFlag(email));
+    }
+
+    @Test
+    void aMembershipOfAnotherOrganizationIsNotFound() {
+        SessionCtx adminA = insideOrganization(owner());
+        String emailB = owner();
+        SessionCtx adminB = insideOrganization(emailB);
+        com.example.loginapp.core.UserService users = new com.example.loginapp.core.UserService(db);
+        java.util.UUID inB = java.util.UUID.fromString(membershipOf(users, adminB, emailB));
+        assertEquals(404, refusal(() -> mfa.adminReset(adminA, inB, "Lost phone and recovery codes")).status());
+    }
+
+    @Test
+    void anAdminWithTwoStepOnNeedsAFreshCodeToResetSomeone() throws Exception {
+        String email = owner();
+        SessionCtx first = insideOrganization(email);
+        com.example.loginapp.core.UserService users = new com.example.loginapp.core.UserService(db);
+        String slug = first.tenantName().toLowerCase().replace(' ', '-');
+        String colleague = "colleague@" + slug + ".test";
+        join(users, first, colleague, "employee");
+        enrol(colleague);
+        java.util.UUID target = java.util.UUID.fromString(membershipOf(users, first, colleague));
+        String secret = enrol(email).get(0);
+        SessionCtx identity = auth.resolve(mfa.complete(auth.signIn(email, PASSWORD, null).token(), codeNow(secret), null));
+        SessionCtx admin = auth.resolve(auth.enterOrganization(identity, organizationOf(identity)));
+        ownerExec("update auth.session set step_up_at = null where identity_id = (select id from auth.identity where email = '" + email + "')");
+        assertEquals("stepup.required", refusal(() -> mfa.adminReset(admin, target, "Lost phone and recovery codes")).code());
+        assertEquals("true", enrolledFlag(colleague));
+    }
+
+    @Test
+    void aPlatformLoginCannotBeResetByAnOrganizationAdmin() throws Exception {
+        String email = owner();
+        SessionCtx admin = insideOrganization(email);
+        com.example.loginapp.core.UserService users = new com.example.loginapp.core.UserService(db);
+        String staff = "staff-" + SEQ.incrementAndGet() + "@platform.test";
+        platform.addPlatformUser(superAdmin, staff, "support", PASSWORD);
+        join(users, admin, staff, "employee");
+        enrol(staff);
+        java.util.UUID target = java.util.UUID.fromString(membershipOf(users, admin, staff));
+        assertEquals(409, refusal(() -> mfa.adminReset(admin, target, "Lost phone and recovery codes")).status());
+        assertEquals("true", enrolledFlag(staff), "the console login keeps its authenticator");
+    }
+
+    @Test
+    void aMembershipSuspendedInAnotherOrganizationStillCountsAsBeingThere() throws Exception {
+        SessionCtx adminA = insideOrganization(owner());
+        String emailB = owner();
+        SessionCtx adminB = insideOrganization(emailB);
+        com.example.loginapp.core.UserService users = new com.example.loginapp.core.UserService(db);
+        String shared = "shared-" + SEQ.incrementAndGet() + "@example.test";
+        join(users, adminA, shared, "employee");
+        join(users, adminB, shared, "employee");
+        enrol(shared);
+        users.suspend(adminB, java.util.UUID.fromString(membershipOf(users, adminB, shared)));
+        java.util.UUID inA = java.util.UUID.fromString(membershipOf(users, adminA, shared));
+        assertEquals(409, refusal(() -> mfa.adminReset(adminA, inA, "Lost phone and recovery codes")).status());
+        assertEquals("true", enrolledFlag(shared));
+    }
 }
