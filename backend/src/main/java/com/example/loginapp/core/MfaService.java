@@ -294,7 +294,7 @@ public final class MfaService {
             }
             String email = (String) peek.get("email");
             AuthService.lockEmail(c, email);   // before the challenge's row, as every other sign-in path takes them
-            Map<String, Object> row = Sql.one(c, "select m.identity_id, m.attempts, i.status from auth.mfa_challenge m "
+            Map<String, Object> row = Sql.one(c, "select m.identity_id, m.attempts, m.auth_method, m.provider_tenant, i.status from auth.mfa_challenge m "
                     + "join auth.identity i on i.id = m.identity_id where m.token_hash = ? and m.used_at is null and m.expires_at > now() "
                     + "for update of m", hash);
             if (row == null) {
@@ -315,7 +315,8 @@ public final class MfaService {
             Sql.update(c, "update auth.mfa_challenge set used_at = now() where token_hash = ?", hash);
             AuthService.clearFailures(c, email);
             Sql.update(c, "update auth.identity set last_login_at = now() where id = ?", identityId);
-            AuthService.insertSession(c, token, identityId, "identity", null, null, null, "30 minutes");
+            AuthService.insertSession(c, token, identityId, "identity", null, null, null, "30 minutes",
+                    (String) row.get("authMethod"), (String) row.get("providerTenant"));
             Sql.update(c, "update auth.session set mfa_at = now() where refresh_token_hash = ?", Secrets.sha256(token));
             if (result == Result.RECOVERY) {
                 notice(c, email, "A recovery code was used", "A recovery code was just used to sign in to " + email + ". "

@@ -1,6 +1,8 @@
 package com.example.loginapp.web;
 
+import java.time.Clock;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 import javax.sql.DataSource;
@@ -8,6 +10,9 @@ import javax.sql.DataSource;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.nimbusds.jose.jwk.source.JWKSource;
+import com.nimbusds.jose.jwk.source.JWKSourceBuilder;
+import com.nimbusds.jose.proc.SecurityContext;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -25,6 +30,10 @@ import com.example.loginapp.core.ClientErrors;
 import com.example.loginapp.core.ChecklistService;
 import com.example.loginapp.core.CertificateLayout;
 import com.example.loginapp.core.Crypto;
+import com.example.loginapp.core.IdTokenVerifier;
+import com.example.loginapp.core.JdkOidcTokenClient;
+import com.example.loginapp.core.OidcProvider;
+import com.example.loginapp.core.OidcService;
 import com.example.loginapp.core.MailOutbox;
 import com.example.loginapp.core.MailSender;
 import com.example.loginapp.core.MfaService;
@@ -215,6 +224,21 @@ public class AppConfig {
     @Bean
     public LeaveAdminService leaveAdminService(Db db) {
         return new LeaveAdminService(db);
+    }
+
+    /**
+     * Sign in with Google. Off until APP_GOOGLE_CLIENT_ID and APP_GOOGLE_CLIENT_SECRET are both set. The signing keys are
+     * fetched from the provider and cached by the library, which fetches again when a token names a key it does not have.
+     */
+    @Bean
+    public OidcService oidcService(Db db, Crypto crypto, RateLimits limits, @Value("${app.public-url}") String publicUrl,
+                                   @Value("${app.google.client-id:}") String googleId, @Value("${app.google.client-secret:}") String googleSecret)
+            throws java.net.MalformedURLException {
+        JWKSource<SecurityContext> googleKeys = JWKSourceBuilder.create(new java.net.URL("https://www.googleapis.com/oauth2/v3/certs")).retrying(true).build();
+        JWKSource<SecurityContext> microsoftKeys = JWKSourceBuilder.create(new java.net.URL("https://login.microsoftonline.com/common/discovery/v2.0/keys")).retrying(true).build();
+        IdTokenVerifier verifier = new IdTokenVerifier(googleKeys, microsoftKeys, Clock.systemUTC());
+        return new OidcService(db, crypto, limits, verifier, new JdkOidcTokenClient(), List.of(OidcProvider.google(googleId, googleSecret)),
+                publicUrl, Clock.systemUTC());
     }
 
     /** The key that encrypts sensitive values. See application.properties. */

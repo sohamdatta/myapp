@@ -47,6 +47,9 @@ public final class RateLimits {
     /** Looking up what an invitation link is for, from one client address. */
     public static final Rule INVITE_PREVIEWS_PER_ADDRESS = new Rule("invite-preview-address", 120, Duration.ofMinutes(5));
 
+    /** Starting, finishing or trading a code for a sign-in with Google or Microsoft: each costs a call to the provider. */
+    public static final Rule OIDC_PER_ADDRESS = new Rule("oidc-address", 60, Duration.ofMinutes(15));
+
     static final int MAX_KEYS = 20_000;
     private static final Duration KEEP = Duration.ofDays(1);
 

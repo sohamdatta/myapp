@@ -5,13 +5,16 @@
 
 	# One JSON line per request, to the container log, which deploy/logs/ship-logs.sh sends daily to the
 	# Indian-region log bucket (CERT-In: keep logs 180 days, inside India). Caddy leaves out the
-	# Authorization and Cookie headers; the invitation token in a link's query is blanked too.
+	# Authorization and Cookie headers; the invitation token in a link's query is blanked too, and so are the code and state a sign-in with Google brings back.
 	log {
 		output stdout
 		format filter {
 			request>uri query {
 				replace invite REDACTED
 				replace token REDACTED
+				replace code REDACTED
+				replace state REDACTED
+				replace oidc REDACTED
 			}
 			wrap json
 		}
