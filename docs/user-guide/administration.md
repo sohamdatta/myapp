@@ -65,6 +65,12 @@ Choose **Set up two-step sign-in**, scan the code with an authenticator app (Goo
 
 ![Setting up two-step sign-in](img/administration/08-two-step.png)
 
+### Sign in with Google
+
+Where your platform administrator has turned it on, an Org Admin can let people sign in with their company Google account. Open **Organization settings**, enter your Google Workspace domain (such as `acme.com`) under **Sign in with Google**, and save; it asks for your password. Leave it empty to turn it off again. Nobody loses their password: this is an addition.
+
+Each person then opens **Security**, chooses **Connect a Google account** and picks their work account. From then on **Sign in with Google** on the sign-in page takes them in. If they use two-step sign-in they are still asked for the authenticator code. Personal Gmail accounts and other companies' accounts cannot be connected. Turning the setting off stops every connected account from signing in at once, and a password reset disconnects the account too. The platform console always needs the password.
+
 ## 4. Settings (Org Admin)
 
 **Settings** shows how the Organization works. Each value says where it comes from (**Default**, or **Set for the Organization** or a location). Choose **Change**, type the value and a reason, and **Save**.
