@@ -32,6 +32,7 @@ import com.example.loginapp.core.CertificateLayout;
 import com.example.loginapp.core.Crypto;
 import com.example.loginapp.core.IdTokenVerifier;
 import com.example.loginapp.core.JdkOidcTokenClient;
+import com.example.loginapp.core.OfficialEmailService;
 import com.example.loginapp.core.OidcProvider;
 import com.example.loginapp.core.OidcService;
 import com.example.loginapp.core.SignInSettingsService;
@@ -240,6 +241,11 @@ public class AppConfig {
         IdTokenVerifier verifier = new IdTokenVerifier(googleKeys, microsoftKeys, Clock.systemUTC());
         return new OidcService(db, crypto, outbox, limits, verifier, new JdkOidcTokenClient(), List.of(OidcProvider.google(googleId, googleSecret)),
                 publicUrl, Clock.systemUTC());
+    }
+
+    @Bean
+    public OfficialEmailService officialEmailService(Db db, MailOutbox outbox) {
+        return new OfficialEmailService(db, outbox);
     }
 
     @Bean

@@ -15,6 +15,7 @@ import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PutMapping;
+import java.util.UUID;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestHeader;
@@ -23,6 +24,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.example.loginapp.core.AuthService;
+import com.example.loginapp.core.OfficialEmailService;
 import com.example.loginapp.core.OidcService;
 import com.example.loginapp.core.SessionCtx;
 import com.example.loginapp.core.SignInSettingsService;
@@ -38,18 +40,22 @@ public class OidcController {
 
     public record GoogleDomainRequest(String domain, String password) {}
 
+    public record ProposalRequest(String email) {}
+
     private static final String COOKIE_PATH = "/api/auth/oidc";
 
     private final OidcService oidc;
     private final SignInSettingsService settings;
+    private final OfficialEmailService officialEmail;
     private final AuthService auth;
     private final boolean trustForwardedFor;
     private final boolean secureCookie;
 
-    public OidcController(OidcService oidc, SignInSettingsService settings, AuthService auth, @Value("${app.trust-forwarded-for:false}") boolean trustForwardedFor,
+    public OidcController(OidcService oidc, SignInSettingsService settings, OfficialEmailService officialEmail, AuthService auth, @Value("${app.trust-forwarded-for:false}") boolean trustForwardedFor,
                           @Value("${app.public-url}") String publicUrl) {
         this.oidc = oidc;
         this.settings = settings;
+        this.officialEmail = officialEmail;
         this.auth = auth;
         this.trustForwardedFor = trustForwardedFor;
         this.secureCookie = publicUrl.startsWith("https://");
@@ -127,6 +133,31 @@ public class OidcController {
     @PutMapping("/org/sign-in/google")
     public SignInSettingsService.View setGoogleDomain(SessionCtx ctx, @RequestBody GoogleDomainRequest request) {
         return settings.setGoogleDomain(ctx, request.domain(), request.password());
+    }
+
+    /** The email domain the Organization says is its own. */
+    @PutMapping("/org/sign-in/email-domain")
+    public SignInSettingsService.View setEmailDomain(SessionCtx ctx, @RequestBody GoogleDomainRequest request) {
+        return settings.setOfficialEmailDomain(ctx, request.domain(), request.password());
+    }
+
+    /** HR proposes a company address for a member; the member switches from Security. */
+    @PutMapping("/org/users/{id}/official-email")
+    public ResponseEntity<Void> propose(SessionCtx ctx, @PathVariable UUID id, @RequestBody ProposalRequest request) {
+        officialEmail.propose(ctx, id, request.email());
+        return ResponseEntity.noContent().build();
+    }
+
+    @DeleteMapping("/org/users/{id}/official-email")
+    public ResponseEntity<Void> withdraw(SessionCtx ctx, @PathVariable UUID id) {
+        officialEmail.withdraw(ctx, id);
+        return ResponseEntity.noContent().build();
+    }
+
+    /** What the signed-in person has been asked to switch to. */
+    @GetMapping("/auth/official-email")
+    public List<OfficialEmailService.Proposal> proposals(SessionCtx ctx) {
+        return officialEmail.mine(ctx);
     }
 
     private ResponseCookie cookie(String value, int seconds) {

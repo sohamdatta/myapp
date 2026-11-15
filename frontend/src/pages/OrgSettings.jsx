@@ -68,8 +68,52 @@ export default function OrgSettings({ me, onRefresh }) {
       )}
     </section>
     {(me.modules || []).includes('payroll') && b.canChange && <CertificateLayoutPanel hasLogo={Boolean(current)} />}
+    {b.canChange && <EmailDomainPanel />}
     {b.canChange && <GoogleSignInPanel />}
     </>
+  )
+}
+
+/** The email domain this Organization says is its own: HR can propose company addresses in it. */
+function EmailDomainPanel() {
+  const loaded = useLoad(orgSignIn.get)
+  const [domain, setDomain] = useState(null)
+  const [password, setPassword] = useState('')
+  const [saved, setSaved] = useState('')
+  const { busy, error, run } = useAction()
+  if (loaded.loading || loaded.error) return null
+  const shown = domain ?? loaded.data?.officialEmailDomain ?? ''
+
+  async function save(event) {
+    event.preventDefault()
+    const result = await run(() => orgSignIn.setEmailDomain(shown, password))
+    if (result) {
+      setDomain(result.officialEmailDomain || '')
+      setPassword('')
+      setSaved(result.officialEmailDomain ? signInText.orgSaved : signInText.orgOff)
+    }
+  }
+
+  return (
+    <section className="panel" data-testid="email-domain-settings">
+      <h3>{signInText.emailDomainTitle}</h3>
+      <p className="hint">{signInText.emailDomainHint}</p>
+      <form onSubmit={save} noValidate aria-label={signInText.emailDomainTitle}>
+        <label htmlFor="email-domain">{signInText.emailDomainTitle}</label>
+        <input id="email-domain" placeholder="acme.com" autoComplete="off" value={shown} onChange={(e) => { setDomain(e.target.value); setSaved('') }} />
+        {shown.trim() && (
+          <>
+            <label htmlFor="email-domain-password">{signInText.orgPassword}</label>
+            <input id="email-domain-password" type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} />
+          </>
+        )}
+        <ErrorNote>{error}</ErrorNote>
+        {saved && <p className="notice" role="status">{saved}</p>}
+        <button type="submit" className="primary" disabled={busy || (shown.trim() && !password)}>
+          {busy ? 'Saving…' : signInText.orgSave}
+        </button>
+      </form>
+    </section>
   )
 }
 

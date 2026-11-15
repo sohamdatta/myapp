@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import QRCode from 'qrcode'
-import { changeEmail, changePassword, connectedAccounts, mfa, providers } from '../api.js'
+import { changeEmail, changePassword, connectedAccounts, mfa, officialEmail, providers } from '../api.js'
 import { useAction, useLoad } from '../hooks.js'
 import { ErrorNote } from '../ui.jsx'
 import { signInText } from './signInText.js'
@@ -86,6 +86,7 @@ function ConnectedAccounts({ notice }) {
 
 function EmailSection() {
   const [address, setAddress] = useState('')
+  const asked = useLoad(officialEmail.mine)
   const [password, setPassword] = useState('')
   const [sentTo, setSentTo] = useState('')
   const { busy, error, run } = useAction()
@@ -107,9 +108,16 @@ function EmailSection() {
       </p>
     )
   }
+  const proposals = asked.data || []
   return (
     <form onSubmit={submit} noValidate aria-label="Change your sign-in address">
       <h3>Change your sign-in address</h3>
+      {proposals.map((p) => (
+        <p key={p.email} className="notice" role="status">
+          {signInText.workEmailHint(p.organization)} <strong>{p.email}</strong>{' '}
+          <button type="button" className="link" onClick={() => setAddress(p.email)}>{signInText.workEmailUse}</button>
+        </p>
+      ))}
       <label htmlFor="ce-address">New email address</label>
       <input id="ce-address" type="email" autoComplete="email" value={address} onChange={(e) => setAddress(e.target.value)} />
       <label htmlFor="ce-password">Your password</label>

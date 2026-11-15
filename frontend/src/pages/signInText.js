@@ -34,4 +34,9 @@ export const signInText = {
   orgSave: 'Save',
   orgSaved: 'Saved.',
   orgOff: 'Turned off.',
+  emailDomainTitle: 'Company email domain',
+  emailDomainHint: 'The email domain that belongs to your organization, such as acme.com. HR can then propose a company address for people who were invited at a personal one. Nothing changes until the person switches themselves.',
+  workEmailTitle: 'Use your work email',
+  workEmailHint: (org) => `${org} asks you to sign in with a company address.`,
+  workEmailUse: 'Use this address',
 }

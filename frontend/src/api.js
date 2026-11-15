@@ -249,6 +249,15 @@ export const connectedAccounts = {
 export const orgSignIn = {
   get: () => get('/org/sign-in'),
   setGoogle: (domain, password) => put('/org/sign-in/google', { domain, password }),
+  /** The email domain the Organization says is its own, so HR can propose company addresses in it. */
+  setEmailDomain: (domain, password) => put('/org/sign-in/email-domain', { domain, password }),
+}
+
+/** Moving people to their company address: HR proposes, the person switches from Security. */
+export const officialEmail = {
+  mine: () => get('/auth/official-email'),
+  propose: (membershipId, email) => put(`/org/users/${membershipId}/official-email`, { email }),
+  withdraw: (membershipId) => del(`/org/users/${membershipId}/official-email`),
 }
 
 export const mfa = {
