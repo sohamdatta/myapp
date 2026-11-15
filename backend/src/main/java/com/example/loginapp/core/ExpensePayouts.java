@@ -49,7 +49,7 @@ public final class ExpensePayouts {
         ctx.require("expense.finance");
         return db.inTenant(ctx.tenantId(), c -> Lists.withTotal(Sql.query(c,
                 "select k.id, k.number, k.title, k.membership_id, " + Names.orEmail("k.membership_id") + " as claimant, k.finance_at as verified_at, "
-                        + "(select coalesce(sum(coalesce(l.approved_amount, l.amount)), 0) from app.expense_line l where l.claim_id = k.id) as payable, "
+                        + "(select coalesce(sum(coalesce(l.approved_amount, l.amount)), 0) from app.expense_line l where l.claim_id = k.id) - k.advance_applied as payable, "
                         + "exists (select 1 from app.employment e join app.bank_account b on b.person_id = e.person_id "
                         + "  where e.membership_id = k.membership_id and b.effective_from <= ?) as has_bank "
                         + "from app.expense_claim k where k.status = 'verified' order by k.finance_at limit 500", today()),
@@ -96,8 +96,8 @@ public final class ExpensePayouts {
                 if (ctx.membershipId().equals(AuthService.uuid(k.get("membershipId")))) {
                     throw new ApiException(403, "expense.own_claim", "You cannot pay your own claim");
                 }
-                BigDecimal amount = (BigDecimal) Sql.one(c, "select coalesce(sum(coalesce(approved_amount, amount)), 0) as s "
-                        + "from app.expense_line where claim_id = ?", id).get("s");
+                BigDecimal amount = (BigDecimal) Sql.one(c, "select coalesce(sum(coalesce(approved_amount, amount)), 0) "   // less what an advance covered
+                        + "- (select advance_applied from app.expense_claim where id = ?) as s from app.expense_line where claim_id = ?", id, id).get("s");
                 if (amount.signum() <= 0) {
                     throw new ApiException(409, "expense.nothing_payable", "Claim " + k.get("number") + " has nothing to pay");
                 }

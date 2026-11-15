@@ -737,6 +737,54 @@ class ExpensesTest {
     }
 
     @Test
+    void anExpenseAdvanceIsSettledByClaimsAndOnlyTheRestOfAClaimIsPaid() {
+        Setup s = setup();
+        bank(s, "Esha Emp", "223456789012", "HDFC0001234");
+        UUID type = loans.saveType(s.finance, null, new LoanService.TypeInput("Travel advance", "expense_advance", new BigDecimal("30000"), 3, BigDecimal.ZERO, 0, 2, true)).id();
+        assertError(400, "request.invalid", () -> loans.saveType(s.finance, null,
+                new LoanService.TypeInput("Bad", "expense_advance", new BigDecimal("30000"), 3, new BigDecimal("5"), 0, 2, true)));
+        LoanService.Created adv = loans.request(s.emp, new LoanService.RequestInput(type.toString(), new BigDecimal("1000"), 2, "Trip to Nashik"));
+        loans.managerDecide(s.manager, adv.id(), "approve", null, 1);
+        loans.financeDecide(s.finance, adv.id(), "approve", null, 2);
+        loans.disburse(s.finance, adv.id(), TODAY.toString(), null, "UTR445566", 3);
+        LoanService.LoanView paidOut = loans.loan(s.emp, adv.id());
+        assertEquals(1, paidOut.schedule().size(), "whatever claims do not cover is taken in one deduction");
+        assertEquals(TODAY.withDayOfMonth(1).plusMonths(2).toString(), paidOut.schedule().get(0).get("month"), "in the last of the months asked for");
+
+        // The first claim is covered in full: nothing is paid again, and the advance drops.
+        UUID first = claim(s.emp, "Nashik, day one");
+        for (int d = 1; d <= 3; d++) {
+            line(s.emp, first, s.meals, d, "300.00");
+        }
+        assertError(400, "request.invalid", () -> expenses.setAdvance(s.solo, claim(s.solo, "Mine"), adv.id()));   // someone else's advance
+        expenses.setAdvance(s.emp, first, adv.id());
+        expenses.submit(s.emp, first, version(s.emp, first));
+        assertError(409, "expense.locked", () -> expenses.setAdvance(s.emp, first, null));
+        expenses.decide(s.manager, first, "approve", "Agreed", version(s.emp, first), null);
+        expenses.verify(s.finance, first, version(s.emp, first), null);
+        ExpenseService.ClaimView covered = expenses.claim(s.emp, first);
+        assertEquals("paid", covered.status());
+        assertEquals(0, new BigDecimal("900.00").compareTo(covered.advanceApplied()));
+        assertEquals(0, covered.payable().signum());
+        assertEquals(0, new BigDecimal("100.00").compareTo(loans.loan(s.emp, adv.id()).outstanding()));
+
+        // The second is bigger than what is left: the advance closes and only the rest goes to payment.
+        UUID second = claim(s.emp, "Nashik, day two");
+        line(s.emp, second, s.meals, 4, "300.00");
+        expenses.setAdvance(s.emp, second, adv.id());
+        expenses.submit(s.emp, second, version(s.emp, second));
+        expenses.decide(s.manager, second, "approve", "Agreed", version(s.emp, second), null);
+        expenses.verify(s.finance, second, version(s.emp, second), null);
+        ExpenseService.ClaimView part = expenses.claim(s.emp, second);
+        assertEquals("verified", part.status());
+        assertEquals(0, new BigDecimal("200.00").compareTo(part.payable()));
+        assertEquals("closed", loans.loan(s.emp, adv.id()).status());
+        assertEquals(0, new BigDecimal("200.00").compareTo((BigDecimal) payouts.payable(s.finance).get(0).get("payable")));
+        ExpensePayouts.BatchMade batch = payouts.createBatch(s.finance, List.of(second));
+        assertEquals(0, new BigDecimal("200.00").compareTo((BigDecimal) db.inTenant(s.orgId, c -> Sql.one(c, "select amount from app.expense_payment where batch_id = ?", batch.id()).get("amount"))));
+    }
+
+    @Test
     void aLoanGoesThroughManagerAndFinanceThenRepaysWithSkipPrepayAndWriteOff() {
         Setup s = setup();
         UUID type = loans.saveType(s.finance, null, new LoanService.TypeInput("Personal loan", "loan", new BigDecimal("100000"), 12,
