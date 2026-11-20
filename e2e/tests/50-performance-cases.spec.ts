@@ -313,6 +313,7 @@ test.describe.serial('performance test cases', () => {
   test('TC-F052 TC-F053 TC-F054 send; the sender cannot approve; another person approves', async () => {
     await perf(hr, 'Reviews'); await hr.getByTestId('cycles').getByRole('button', { name: 'Half-year review' }).click(); await tab(hr, 'Outcomes');
     await hr.getByTestId('outcomes').getByRole('button', { name: 'Send drafts for approval' }).click();
+    await expect(hr.getByTestId('outcomes').getByRole('button', { name: 'Send drafts for approval' })).toHaveCount(0);   // sent before the API is asked
     const list = await ok(api(hr, 'GET', `/org/performance/cycles/${cycleId}/outcomes`));
     const o = (list.outcomes || list).find((x: any) => x.name === NAMES.e1);
     await refused(api(hr, 'POST', `/org/performance/cycles/${cycleId}/outcomes/approve`, { ids: [o.id] }), 409, 'someone else approves it');
