@@ -44,4 +44,22 @@ export const signInText = {
   emailDomainVerified: 'Verified. HR can now propose addresses in this domain.',
   workEmailHint: (org) => `${org} asks you to sign in with a company address.`,
   workEmailUse: 'Use this address',
+  // An Organization's own sign-in address, such as acme.hr.example.com
+  orgWelcome: (org) => `Sign in to ${org}`,
+  orgHero: (org) => `Welcome to ${org}`,
+  orgWelcomeHint: (org) => `Use your work email. Only people in ${org} can sign in here.`,
+  poweredBy: (product) => `Powered by ${product}`,
+  unknownTitle: 'Nobody signs in at this address',
+  unknownHint: 'This address does not belong to an Organization. Its short name may have changed; ask your administrator for the new address, or use the main sign-in page.',
+  unknownGo: 'Go to the main sign-in page',
+  addressTitle: 'Sign-in address',
+  addressHint: (org) =>
+    `People in ${org} can sign in at this address. It shows your name and logo, and lets in only members of ${org}. Bookmark it or share it with your people.`,
+  addressLabel: 'Short name',
+  addressRule: '3 to 40 lowercase letters, digits or single hyphens.',
+  addressWarn: (old) => `The old address, ${old}, stops working as soon as you save. Tell your people the new one.`,
+  addressSave: 'Change the address',
+  addressSaved: 'Saved. Your sign-in address has changed.',
+  addressCopy: 'Copy',
+  addressCopied: 'Copied.',
 }

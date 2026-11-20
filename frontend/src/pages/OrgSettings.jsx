@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { branding, certificateLayout, orgSignIn, providers } from '../api.js'
+import { branding, certificateLayout, orgSignIn, providers, signInAddress } from '../api.js'
 import { formatDate, useAction, useLoad } from '../hooks.js'
 import { ErrorNote } from '../ui.jsx'
 import { signInText } from './signInText.js'
@@ -30,8 +30,8 @@ export default function OrgSettings({ me, onRefresh }) {
       <h3>Logo</h3>
       <p className="hint">
         Your logo replaces the {PRODUCT.name} logo at the top of the sidebar for everyone in {me.organization.name}. Use a PNG or JPEG
-        of at most 2 MB, ideally wide, on a transparent or white background; it is scaled to fit. The sign-in page keeps the{' '}
-        {PRODUCT.name} logo, because people sign in before choosing an Organization.
+        of at most 2 MB, ideally wide, on a transparent or white background; it is scaled to fit. Where your Organization has its own
+        sign-in address it shows there too; the shared sign-in page keeps the {PRODUCT.name} logo.
       </p>
       <div className="logo-preview" data-testid="logo-preview">
         {current ? <img src={current} alt={`${me.organization.name} logo`} /> : <NexvanceLogo />}
@@ -67,10 +67,87 @@ export default function OrgSettings({ me, onRefresh }) {
         </div>
       )}
     </section>
+    <SignInAddressPanel organization={me.organization.name} />
     {(me.modules || []).includes('payroll') && b.canChange && <CertificateLayoutPanel hasLogo={Boolean(current)} />}
     {b.canChange && <EmailDomainPanel />}
     {b.canChange && <GoogleSignInPanel />}
     </>
+  )
+}
+
+/**
+ * The Organization's own sign-in address, such as https://acme.hr.example.com: its name and logo, and only its members.
+ * Everyone sees it, to share; the Org Admin changes the short name in it, which ends the old address at once.
+ */
+function SignInAddressPanel({ organization }) {
+  const loaded = useLoad(signInAddress.get)
+  const [fresh, setFresh] = useState(null)
+  const [slug, setSlug] = useState(null)
+  const [saved, setSaved] = useState('')
+  const { busy, error, run } = useAction()
+  // Off on this server (no ORG_ADDRESSES): the address would not open, so it is not offered.
+  if (loaded.loading || loaded.error || !loaded.data || !loaded.data.enabled) return null
+  const current = fresh || loaded.data
+  const shown = slug ?? current.slug
+  const changed = shown.trim().toLowerCase() !== current.slug
+
+  async function save(event) {
+    event.preventDefault()
+    const result = await run(() => signInAddress.save(shown))
+    if (result) {
+      setFresh(result)
+      setSlug(null)
+      setSaved(signInText.addressSaved)
+    }
+  }
+
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(current.address)
+      setSaved(signInText.addressCopied)
+    } catch {
+      // the address is on the screen to copy by hand
+    }
+  }
+
+  return (
+    <section className="panel" data-testid="sign-in-address">
+      <h3>{signInText.addressTitle}</h3>
+      <p className="hint">{signInText.addressHint(organization)}</p>
+      <div className="address-row">
+        <a href={current.address} target="_blank" rel="noreferrer">
+          <code data-testid="sign-in-address-link">{current.address}</code>
+        </a>
+        <button type="button" className="quiet plain" onClick={copy}>
+          {signInText.addressCopy}
+        </button>
+      </div>
+      {current.canChange && (
+        <form onSubmit={save} noValidate aria-label={signInText.addressTitle}>
+          <label htmlFor="sign-in-slug">{signInText.addressLabel}</label>
+          <input
+            id="sign-in-slug"
+            autoComplete="off"
+            spellCheck={false}
+            aria-describedby="sign-in-slug-hint"
+            value={shown}
+            onChange={(e) => {
+              setSlug(e.target.value)
+              setSaved('')
+            }}
+          />
+          <p id="sign-in-slug-hint" className="hint">
+            {signInText.addressRule}
+          </p>
+          {changed && shown.trim() && <p className="hint" role="status">{signInText.addressWarn(current.address)}</p>}
+          <ErrorNote>{error}</ErrorNote>
+          <button type="submit" className="primary" disabled={busy || !changed || !shown.trim()}>
+            {busy ? 'Saving…' : signInText.addressSave}
+          </button>
+        </form>
+      )}
+      {saved && <p className="notice" role="status">{saved}</p>}
+    </section>
   )
 }
 

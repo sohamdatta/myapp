@@ -296,7 +296,7 @@ Method <com.example.loginapp.web.AttendanceSettingsController.saveSettings(com.e
 Method <com.example.loginapp.web.AttendanceSettingsController.setMode(com.example.loginapp.core.SessionCtx, java.lang.String, com.example.loginapp.web.AttendanceSettingsController$ModeRequest)> does not have modifier PRIVATE in (AttendanceSettingsController.java:73)
 Method <com.example.loginapp.web.AttendanceSettingsController.settings(com.example.loginapp.core.SessionCtx)> does not have modifier PRIVATE in (AttendanceSettingsController.java:150)
 Method <com.example.loginapp.web.AuthController.acceptInvitation(java.lang.String, com.example.loginapp.web.AuthController$AcceptRequest, jakarta.servlet.http.HttpServletRequest)> does not have modifier PRIVATE in (AuthController.java:200)
-Method <com.example.loginapp.web.AuthController.enter(java.lang.String, com.example.loginapp.web.AuthController$EnterRequest)> does not have modifier PRIVATE in (AuthController.java:171)
+Method <com.example.loginapp.web.AuthController.enter(java.lang.String, com.example.loginapp.web.AuthController$EnterRequest, jakarta.servlet.http.HttpServletRequest)> does not have modifier PRIVATE in (AuthController.java:171)
 Method <com.example.loginapp.web.AuthController.login(com.example.loginapp.web.AuthController$LoginRequest, jakarta.servlet.http.HttpServletRequest)> does not have modifier PRIVATE in (AuthController.java:74)
 Method <com.example.loginapp.web.AuthController.me(java.lang.String)> does not have modifier PRIVATE in (AuthController.java:164)
 Method <com.example.loginapp.web.AuthController.mfa(com.example.loginapp.web.AuthController$MfaRequest, jakarta.servlet.http.HttpServletRequest)> does not have modifier PRIVATE in (AuthController.java:84)

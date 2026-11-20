@@ -20,6 +20,7 @@ import com.example.loginapp.core.InvitationService;
 import com.example.loginapp.core.MfaService;
 import com.example.loginapp.core.PasswordService;
 import com.example.loginapp.core.SessionCtx;
+import com.example.loginapp.core.SignInPage;
 
 import jakarta.servlet.http.HttpServletRequest;
 
@@ -57,31 +58,49 @@ public class AuthController {
     private final PasswordService passwords;
     private final MfaService mfa;
     private final EmailChangeService emailChanges;
+    private final SignInPage pages;
     private final boolean trustForwardedFor;
 
     public AuthController(AuthService auth, InvitationService invitations, PasswordService passwords, MfaService mfa,
-                          EmailChangeService emailChanges, @Value("${app.trust-forwarded-for:false}") boolean trustForwardedFor) {
+                          EmailChangeService emailChanges, SignInPage pages,
+                          @Value("${app.trust-forwarded-for:false}") boolean trustForwardedFor) {
         this.auth = auth;
         this.invitations = invitations;
         this.passwords = passwords;
         this.mfa = mfa;
         this.emailChanges = emailChanges;
+        this.pages = pages;
         this.trustForwardedFor = trustForwardedFor;
     }
 
+    /**
+     * On an Organization's own sign-in address (see {@link SignInPage}) only its members get a session: anyone else is
+     * refused once the password is right, and on an address that leads to no Organization nobody is let in.
+     */
     @PostMapping("/auth/login")
     public Map<String, Object> login(@RequestBody LoginRequest request, HttpServletRequest http) {
+        SignInPage.Page page = page(http);
+        if (page.kind() == SignInPage.Kind.UNKNOWN) {
+            pages.requireEnterable(page, null);   // refuses: no Organization signs in here
+        }
         AuthService.SignIn result = auth.signIn(request.email(), request.password(), Requests.clientIp(http, trustForwardedFor));
         if (result.mfaRequired()) {
             return new LinkedHashMap<>(Map.of("mfaRequired", true, "challenge", result.token()));
         }
+        pages.requireMember(auth, page, result.token());
         return withToken(result.token());
     }
 
     /** Answers the challenge a right password earned, with a code from the authenticator app or a recovery code. */
     @PostMapping("/auth/mfa")
     public Map<String, Object> mfa(@RequestBody MfaRequest request, HttpServletRequest http) {
-        return withToken(mfa.complete(request.challenge(), request.code(), Requests.clientIp(http, trustForwardedFor)));
+        String token = mfa.complete(request.challenge(), request.code(), Requests.clientIp(http, trustForwardedFor));
+        pages.requireMember(auth, page(http), token);
+        return withToken(token);
+    }
+
+    private SignInPage.Page page(HttpServletRequest http) {
+        return pages.forHost(Requests.host(http));
     }
 
     @GetMapping("/auth/mfa")
@@ -167,15 +186,19 @@ public class AuthController {
     /** Enters an Organization or the console. The old token stops working and a new one is returned. */
     @PostMapping("/auth/enter")
     public Map<String, Object> enter(@RequestHeader(value = "Authorization", required = false) String authorization,
-                                     @RequestBody EnterRequest request) {
+                                     @RequestBody EnterRequest request, HttpServletRequest http) {
         SessionCtx ctx = Requests.session(auth, authorization);
+        SignInPage.Page page = page(http);
         if (Boolean.TRUE.equals(request.console())) {
+            pages.requireEnterable(page, null);   // the console opens only from the shared address
             return withToken(auth.enterConsole(ctx));
         }
         if (request.organizationId() == null) {
             throw ApiException.badRequest("Choose an Organization");
         }
-        return withToken(auth.enterOrganization(ctx, Requests.id(request.organizationId())));
+        java.util.UUID tenantId = Requests.id(request.organizationId());
+        pages.requireEnterable(page, tenantId);
+        return withToken(auth.enterOrganization(ctx, tenantId));
     }
 
     @PostMapping("/auth/logout")

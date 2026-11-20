@@ -38,6 +38,10 @@ services:
     environment:
       DOMAIN: ${DOMAIN:?Set DOMAIN in the environment's settings file (deploy/env/<environment>.env)}
       DEVICE_PORT: ${DEVICE_PORT:-8081}
+      # Each Organization's own sign-in address: *.<DOMAIN>, with a DNS wildcard record. Unset: off, as a name that never
+      # resolves. Never pass it empty: Caddy's {$ORG_ADDRESSES:default} keeps an empty value, and a site with no address
+      # stops Caddy from starting.
+      ORG_ADDRESSES: ${ORG_ADDRESSES:-org-addresses-off.invalid}
     ports:
       - "80:80"
       - "443:443"

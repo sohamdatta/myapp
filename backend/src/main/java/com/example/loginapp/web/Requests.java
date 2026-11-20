@@ -64,6 +64,19 @@ final class Requests {
         return http.getRemoteAddr();
     }
 
+    /**
+     * The host name the browser asked for. Caddy and the development server put it in X-Forwarded-Host (Caddy replaces one
+     * a browser sends); without one, the Host header. It only picks which sign-in page's rules apply, so a made-up one gains
+     * nothing the shared address does not already give.
+     */
+    static String host(jakarta.servlet.http.HttpServletRequest http) {
+        String forwarded = http.getHeader("X-Forwarded-Host");
+        if (forwarded != null && !forwarded.isBlank()) {
+            return forwarded.split(",")[0].trim();
+        }
+        return http.getHeader("Host");
+    }
+
     static UUID id(String value) {
         try {
             return UUID.fromString(value);

@@ -377,6 +377,12 @@ public class AppConfig {
     }
 
     @Bean
+    public com.example.loginapp.core.SignInPage signInPage(Db db, @Value("${app.public-url}") String publicUrl,
+                                                         @Value("${app.org-addresses:}") String orgAddresses) {
+        return new com.example.loginapp.core.SignInPage(db, publicUrl, orgAddresses);
+    }
+
+    @Bean
     public Plans plans(Db db, Crypto crypto, ExitService exits) {
         return new Plans(db, crypto, exits);
     }

@@ -3,22 +3,34 @@ import { acceptInvitation, completeMfa, confirmEmailChange, undoEmailChange, ent
 import { useAction } from '../hooks.js'
 import { ErrorNote } from '../ui.jsx'
 import NexvanceLogo from '../brand/NexvanceLogo.jsx'
+import { PRODUCT, logoUrl } from '../brand/brand.js'
 import VersionLine from '../VersionLine.jsx'
 import { signInText } from './signInText.js'
 
 const Security = lazy(() => import('./Security.jsx'))
 
-/** notice: something to tell the person first (a Google sign-in that did not work). challenge: a Google sign-in that now needs the authenticator code. */
-export function LoginForm({ onSignedIn, notice, challenge }) {
+/**
+ * notice: something to tell the person first (a Google sign-in that did not work). challenge: a Google sign-in that now needs
+ * the authenticator code. organization: on an Organization's own sign-in address, its { id, name, logoVersion }; the page
+ * then shows its name and logo instead of the product's.
+ */
+export function LoginForm({ onSignedIn, notice, challenge, organization }) {
   const [forgot, setForgot] = useState(false)
+  useEffect(() => {
+    if (organization) document.title = `${signInText.orgWelcome(organization.name)} · ${PRODUCT.name} HRMS`
+  }, [organization])
   return (
     <div className="signin-shell">
-      <SignInHero />
+      {organization ? <OrganizationHero organization={organization} /> : <SignInHero />}
       <div className="signin-side">
         <div className="brand brand-sign-in signin-logo-small">
-          <NexvanceLogo size={40} />
+          {organization ? <OrganizationMark organization={organization} /> : <NexvanceLogo size={40} />}
         </div>
-        {forgot ? <ForgotPassword onBack={() => setForgot(false)} /> : <SignInForm onSignedIn={onSignedIn} onForgot={() => setForgot(true)} notice={notice} initialChallenge={challenge} />}
+        {forgot ? (
+          <ForgotPassword onBack={() => setForgot(false)} />
+        ) : (
+          <SignInForm onSignedIn={onSignedIn} onForgot={() => setForgot(true)} notice={notice} initialChallenge={challenge} organization={organization} />
+        )}
         <VersionLine className="signin-version-mobile" />
       </div>
     </div>
@@ -53,7 +65,33 @@ function SignInHero() {
   )
 }
 
-function SignInForm({ onSignedIn, onForgot, notice, initialChallenge }) {
+/** An Organization's logo on a light plate, or its name when it has no logo of its own. */
+function OrganizationMark({ organization, large = false }) {
+  const src = logoUrl(organization)
+  return (
+    <span className={large ? 'org-mark org-mark-large' : 'org-mark'} data-testid="org-mark">
+      {src ? <img src={src} alt={`${organization.name} logo`} /> : <span className="org-mark-name">{organization.name}</span>}
+    </span>
+  )
+}
+
+/** The brand panel on an Organization's own sign-in address: its logo and name, and the product underneath. */
+function OrganizationHero({ organization }) {
+  return (
+    <div className="signin-hero signin-hero-org">
+      <OrganizationMark organization={organization} large />
+      <p className="signin-headline">{signInText.orgHero(organization.name)}</p>
+      <p className="signin-foot signin-powered">
+        <span>{signInText.poweredBy(PRODUCT.name)}</span>
+        <NexvanceLogo size={26} onDark />
+        <span aria-hidden="true">·</span>
+        <VersionLine />
+      </p>
+    </div>
+  )
+}
+
+function SignInForm({ onSignedIn, onForgot, notice, initialChallenge, organization }) {
   const [challenge, setChallenge] = useState(initialChallenge || null)
   const [offered, setOffered] = useState([])
   const [email, setEmail] = useState('')
@@ -81,8 +119,10 @@ function SignInForm({ onSignedIn, onForgot, notice, initialChallenge }) {
   return (
     <>
     <form className="card" onSubmit={handleSubmit} noValidate>
-      <h1>Welcome back</h1>
-      <p className="muted">Sign in with your work email. You go straight to your Organization.</p>
+      <h1>{organization ? signInText.orgWelcome(organization.name) : 'Welcome back'}</h1>
+      <p className="muted">
+        {organization ? signInText.orgWelcomeHint(organization.name) : 'Sign in with your work email. You go straight to your Organization.'}
+      </p>
 
       <label htmlFor="email">Email</label>
       <input
