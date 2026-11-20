@@ -92,7 +92,8 @@
 	import app
 }
 
-# The Organizations' own addresses. Off (a name that never resolves) unless ORG_ADDRESSES is set.
+# The Organizations' own addresses. Off (a name that never resolves) unless ORG_ADDRESSES is set; docker-compose.yml
+# passes that name when it is not, since Caddy would keep an empty value and the site would have no address.
 {$ORG_ADDRESSES:org-addresses-off.invalid} {
 	tls {
 		on_demand
