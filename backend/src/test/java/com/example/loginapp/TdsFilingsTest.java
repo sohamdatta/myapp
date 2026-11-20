@@ -157,10 +157,11 @@ class TdsFilingsTest {
         if (hook != null) {
             hook.before(org, a, v, asha, vikram);
         }
-        // Never in the fourth quarter (January to March): its statement also needs the year's salary detail and the year's last
-        // month approved, which TaxCertificatesTest covers on purpose. These tests are about challans, PANs and corrections.
+        // The statement tests never use the fourth quarter (January to March): its statement also needs the year's last month
+        // approved and the salary detail, which TaxCertificatesTest covers on purpose. The tests with a hook (earlier-employer
+        // salary) build no statement and need the run in the tax year of today, so they keep next month.
         LocalDate next = TODAY.withDayOfMonth(1).plusMonths(1);
-        LocalDate period = next.getMonthValue() <= 3 ? next.withMonth(4) : next;
+        LocalDate period = hook == null && next.getMonthValue() <= 3 ? next.withMonth(4) : next;
         String group = (String) ((Map<?, ?>) ((List<?>) runs.list(operator).get("groups")).get(0)).get("id");
         UUID run = UUID.fromString((String) runs.open(operator, UUID.fromString(group), period.toString()).get("id"));
         runs.freeze(operator, run);
