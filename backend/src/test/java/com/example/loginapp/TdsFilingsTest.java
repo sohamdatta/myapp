@@ -157,7 +157,10 @@ class TdsFilingsTest {
         if (hook != null) {
             hook.before(org, a, v, asha, vikram);
         }
-        LocalDate period = TODAY.withDayOfMonth(1).plusMonths(1);
+        // Never in the fourth quarter (January to March): its statement also needs the year's salary detail and the year's last
+        // month approved, which TaxCertificatesTest covers on purpose. These tests are about challans, PANs and corrections.
+        LocalDate next = TODAY.withDayOfMonth(1).plusMonths(1);
+        LocalDate period = next.getMonthValue() <= 3 ? next.withMonth(4) : next;
         String group = (String) ((Map<?, ?>) ((List<?>) runs.list(operator).get("groups")).get(0)).get("id");
         UUID run = UUID.fromString((String) runs.open(operator, UUID.fromString(group), period.toString()).get("id"));
         runs.freeze(operator, run);
@@ -255,22 +258,13 @@ class TdsFilingsTest {
         assertEquals(m.vikram.toString(), noPan.who(), "identified by employment, not by a name that two people can share");
         assertTrue(noPan.acceptable());
         UUID id = UUID.fromString(second.id());
-        // The fourth quarter adds the salary detail for the year, where Vikram can be listed as missing too: every
-        // remaining blocking check is one that can be accepted, and the first one is the PAN.
-        List<TdsStatements.Check> blocking = second.checks().stream().filter(c -> "blocking".equals(c.level())).toList();
-        assertEquals(second.unresolved(), blocking.size());
-        assertTrue(blocking.size() >= 1 && blocking.stream().allMatch(TdsStatements.Check::acceptable), String.valueOf(blocking));
+        assertEquals(1, second.unresolved());
         assertEquals("statement.blocked", assertThrows(ApiException.class, () -> st.download(m.operator, id)).code());
 
         // The operator cannot accept (no approve permission); the approver can, with a reason.
         TdsStatements.AcceptInput accept = new TdsStatements.AcceptInput("pan_invalid", m.vikram.toString(), "PAN applied for, Form 60 on file");
         assertEquals(403, assertThrows(ApiException.class, () -> st.accept(m.operator, id, accept)).status());
         st.accept(m.org.admin, id, accept);
-        for (TdsStatements.Check other : blocking) {
-            if (!other.code().equals("pan_invalid")) {
-                st.accept(m.org.admin, id, new TdsStatements.AcceptInput(other.code(), other.who(), "Salary detail follows once the PAN is on file"));
-            }
-        }
         String csv = new String(st.download(m.operator, id).bytes(), StandardCharsets.UTF_8);
         assertTrue(csv.contains("Asha Rao") && csv.contains("ABCPR1234F"), csv);
         assertTrue(csv.contains("Vikram Nair"));
