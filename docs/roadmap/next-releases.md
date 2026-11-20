@@ -1,17 +1,19 @@
 # HRMS: design for the next five releases
 
-Oct 24, 2026 · Markdown export of the [live document](https://claude.ai/artifact/RkLD2g8gjmfVprQ5pxRwUq); edit there and export again.
+Oct 24, 2026 · Started as a Markdown export of the [live document](https://claude.ai/artifact/RkLD2g8gjmfVprQ5pxRwUq). This file is now ahead of it: the live document has no status summary and no Email or Domain sections. Edit this file; do not export the live document over it.
 
-**Where each release stands, 1 Nov 2026.** The first four bullets were checked on 29 Oct against `main` at 46f4f57 and the GitHub Actions runs; releases 3 and 4 were brought up to date on 1 Nov against `main` after the pull requests of that day (#70 to #75). Nothing was run for the 29 Oct check. The release numbers in this document are not the ones in the live roadmap: there R3 is income tax, R4 PF and ESI, R5 the Labour Codes work, and the installable app is R6.
+**Where each release stands, 20 Nov 2026.** Checked on 20 Nov against `main` at bffa6a2 (pull request #120) and the GitHub Actions runs from 15 to 20 Nov. Nothing was run for this check. The release numbers in this document are not the ones in the live roadmap: there R3 is income tax, R4 PF and ESI, R5 the Labour Codes work, and the installable app is R6.
 
-- **1 Green CI: built, not yet done.** Ordinary CI is green on `main` in both time zones, and the guards exist. The "done when" is not met: the daily fixed-date run failed on all three dates on 29 Oct and 27 Oct, in `27-two-step` › "an Organization owner sets it up from the key on screen and is given ten recovery codes".
-- **2 Sign-in security: built, with four differences from the design** (below).
-- **Email before go-live: half built.** The outbox, worker and SMTP sender exist and carry security mail. Invitations and notices are still not emailed.
-- **Domain and HTTPS: production done 25 Oct** (see that section); UAT's name is still open.
-- **3 Income tax: built except Form 130 Part A.** Form 122, challans, quarterly Form 138 statements (a review spreadsheet, with the fourth quarter's salary detail), and Form 130 Part B with a per-Organization layout (V35, V36, V38). Not built: Part A (TRACES upload, match by PAN, join into one PDF) and the department utility's text file layout. The screens (Payroll → Tax filing, Statutory filing, My pay → Tax certificates, Form 122 under Tax declaration) were built on 14 Nov.
-- **4 PF and ESI returns: built** (V34): the ECR and ESI files, pre-checks and the filing log, with a second person approving. The layouts and ceilings are draft data awaiting the consultant.
+- **1 Green CI: built, not yet done, and worse than on 1 Nov.** Ordinary CI passes in UTC, but the India-time browser run failed on the last merge (#120, `50-performance-cases` › TC-F052). The daily fixed-date run has failed on every run since the evening of 15 Nov; which tests fail was not checked for this update. `42-attendance-cases-marks` › TC-219 books work from home for today, so it fails when today is a day off (it did on 20 Nov).
+- **2 Sign-in security: built.** Since 1 Nov: an administrator can turn off a member's two-step sign-in when they lose their phone, and the platform console needs a code when `APP_REQUIRE_CONSOLE_MFA=true` (#116). Still different from the design: in-memory rate limits. Still not built: the SES bounce webhook and an email when an account is locked.
+- **Beyond the design, built 15 Nov: sign in with Google and company email addresses.** Google sign-in (V61 to V63, #117 to #119): each Organization chooses the Google Workspace domain it accepts; off unless `APP_GOOGLE_CLIENT_ID` and `APP_GOOGLE_CLIENT_SECRET` are set. Company addresses (V64, #120): HR proposes an address in the Organization's DNS-verified email domain, and the person switches to it from Security.
+- **Organization sign-in addresses: in review (PR #124, V65).** Each Organization signs in at `<short name>.<DOMAIN>`, which shows its name and logo and lets in only its members. The Org Admin can change the short name; a name given up is held for 90 days. Off in production until `ORG_ADDRESSES` and a DNS wildcard record are set.
+- **Email before go-live: half built, unchanged.** Security mail goes out; invitations are still links to copy, and notices are in-app only.
+- **Domain and HTTPS: production done 25 Oct**; UAT's name is still open.
+- **3 Income tax: built except Form 130 Part A**, unchanged. Form 122, challans, quarterly Form 138 statements (a review spreadsheet, with the fourth quarter's salary detail), and Form 130 Part B with a per-Organization layout (V35, V36, V38); the screens were built on 14 Nov. Not built: Part A (TRACES upload, match by PAN, join into one PDF) and the department utility's text file layout.
+- **4 PF and ESI returns: built** (V34), unchanged: the ECR and ESI files, pre-checks and the filing log, with a second person approving. The layouts and ceilings are draft data awaiting the consultant.
 - **5 Installable app: not started.** No service worker or web manifest.
-- **Expenses (not one of the five): claims built, payout not.** Claims, evidence review, routing, the Finance role and Organization-defined roles are built (V47 to V49, PR #113). Payout through payroll or a bank file (X3), advances and loans (X4), exit and tax (X5) are designed in [the Expenses design](../expenses/design.md), not built.
+- **Expenses (not one of the five): built, all six stages** (V47 to V59, #113 to #115). Claims and evidence review, payment by bank batch or with the salary, advances and loans with a second approver, the loan perquisite and the exit settlement, notifications and a daily digest, and the user guide. Not built: a manager cut-line for loans, audit sampling, and the yearly count of missing-receipt statements. See [the Expenses design](../expenses/design.md).
 - **All of it runs on draft tax and statutory rules** until the payroll consultant signs them off, so certificates and statements say provisional.
 
 ## Summary
@@ -20,15 +22,16 @@ Build these five in order: green CI first (half a day), then sign-in security, t
 
 | # | Release | What it delivers | Effort (estimate) | Depends on | Migration | Status |
 | --- | --- | --- | --- | --- | --- | --- |
-| 1 | Green CI | The two fragile browser tests fixed; date and timezone guards so they cannot creep back | 0.5 day | — | none | Built; fixed-date run failing |
-| 2 | Sign-in security | Email sending, password reset, email change, TOTP MFA with recovery codes, lockout and rate limits | 2–3 weeks | 1 | V28 to V33 (built) | Built, with differences |
+| 1 | Green CI | The two fragile browser tests fixed; date and timezone guards so they cannot creep back | 0.5 day | — | none | Built; fixed-date and India-time runs failing |
+| 2 | Sign-in security | Email sending, password reset, email change, TOTP MFA with recovery codes, lockout and rate limits | 2–3 weeks | 1 | V28 to V33, V60 (built) | Built; rate limits in memory |
 | 3 | Income tax completion | Previous employer's income and TDS, challans, quarterly Form 138 return file, Form 130 Part B | 3–4 weeks | 1; uses tax declarations (V17) | V35, V36, V38 (built) | Built, except Form 130 Part A |
 | 4 | PF and ESI returns | Monthly PF ECR text file, ESI contribution file, with pre-checks and a filing log | 1.5–2 weeks | 1 | V34 (built) | Built |
 | 5 | Installable app (PWA) | Home-screen install, offline punch queue, web push, camera upload for proofs and documents | 3 weeks | 2 (push uses the outbox) | V39 | Not started |
 | — | Email (before go-live) | Invitations and the app's notices sent by email instead of copied links: the outbox, Amazon SES from the product's domain, an email beside each in-app notice, switches per event | 1–1.5 weeks | Domain and HTTPS; built as the first part of release 2 | With release 2's schema | Outbox built; invitations and notices not emailed |
+| — | Organization sign-in addresses | Each Organization's own sign-in page at `<short name>.<DOMAIN>`, with its name and logo, members only | Done in a day | Domain and HTTPS; a DNS wildcard record | V65 | In review (PR #124) |
 | — | Domain and HTTPS (before go-live) | The product's own domain: addresses for production and UAT, their HTTPS certificates, and the sending domain release 2's email needs | 1 hour, plus DNS propagation and email DNS records | Buying the domain | none | Production done 25 Oct |
 
-Migration numbers below follow the schema on `main` (V19 is the Leave module; V20 to V26 are performance management and branding; V27 reports browser errors; V28 to V33 are release 2; V34 to V38 are releases 3 and 4, the state tax rule console and the certificate layout), so what is left starts at V39. They change if another migration lands first. Estimates assume one developer working with Claude and the current test discipline (JUnit against PostgreSQL plus a Playwright suite per release). Every release keeps the existing rules: maker-checker where money moves, row-level security per Organization, an audit event for every change, and statutory figures as rule data awaiting the payroll consultant's sign-off.
+Migration numbers below follow the schema on `main` (V19 is the Leave module; V20 to V26 are performance management and branding; V27 reports browser errors; V28 to V33 are release 2; V34 to V38 are releases 3 and 4, the state tax rule console and the certificate layout; V39 to V59 are later payroll rules, exits and Expenses; V60 to V64 are the two-step reset, Google sign-in and company email addresses), and V65 is taken by PR #124, so what is left starts at V66. The V39 planned for release 5 below is therefore V66 or later. They change if another migration lands first. Estimates assume one developer working with Claude and the current test discipline (JUnit against PostgreSQL plus a Playwright suite per release). Every release keeps the existing rules: maker-checker where money moves, row-level security per Organization, an audit event for every change, and statutory figures as rule data awaiting the payroll consultant's sign-off.
 
 ## 1. Green CI
 
@@ -56,11 +59,12 @@ Migration numbers below follow the schema on `main` (V19 is the Leave module; V2
 
 ## 2. Sign-in security: email, password reset, MFA, rate limits
 
-**Status, 29 Oct 2026: built, with differences from this design.**
+**Status, 20 Nov 2026: built, with differences from this design.**
 
 - Built: the email outbox with a worker that claims rows with `skip locked`, an SMTP sender, a suppression list, and a platform Email page (list, retry, suppress, test mail); forgot and reset password and change password (`/auth/forgot`, `/auth/reset`, `/auth/password`); email change with an undo link (`/auth/email-change`); two-step sign-in with an authenticator app, recovery codes and disabling it (`/auth/mfa/*`); step-up for the sensitive actions (`/auth/step-up`); the sign-in lockout (V28 to V33; browser tests 26, 27 and 28).
 - Different: the rate limits (`RateLimits`) are kept in memory per server, with their own numbers (for example 100 failed sign-ins per address in 15 minutes, 10 forgot-password requests per address in 15 minutes and 5 per email an hour), not in an `auth.rate_counter` table. They reset on a restart, and each server counts alone. The Organization's two-step policy is one setting, `auth.mfa.required_for` (none, admins, admins and payroll, everyone; default none), not a list of roles. Migrations are V28 to V33, not V27.
-- Not found in the code: an Org Admin resetting a member's two-step sign-in, the SES bounce webhook (suppressions are added by hand from the Email page), an email to the person when their account is locked, and invitations by email (see Email before go-live).
+- Built since (15 Nov, #116, V60): an administrator with `user.manage` turns off a member's two-step sign-in (`POST /api/org/users/{id}/two-step/reset`) with a reason and a fresh code of their own; it ends the person's sessions, emails them, and is audited. With `APP_REQUIRE_CONSOLE_MFA=true` the platform console opens only for a login that has passed a code.
+- Not found in the code: the SES bounce webhook (suppressions are added by hand from the Email page), an email to the person when their account is locked, and invitations by email (see Email before go-live).
 
 Add a durable email outbox, then build password reset, email change and TOTP MFA on it, and widen the existing lockout with per-address rate limits. Much of the groundwork exists: V1 already has `auth.password_reset`, `auth.mfa_recovery_code`, `identity.mfa_secret_enc` and `session.mfa_at`, and sign-in already locks an identity for 15 minutes after repeated failures. What is missing is every flow that uses them, and any way to send mail.
 
@@ -466,6 +470,7 @@ The releases above fix about twenty operational values in code: lockout limits, 
 - [ ] Email before go-live: build the outbox and invitation and notice emails ahead of the rest of release 2, so customers are not sent links by hand?
 - [ ] Should MFA be required for admin and payroll roles in existing Organizations too, after a notice period, or stay their choice?
 - [ ] Offline punch: allowed by default, or off until an Organization turns it on?
+- [ ] Organization sign-in addresses (PR #124): turn them on in production? That needs the DNS wildcard record `*.peopleos.nexvance.in` and `ORG_ADDRESSES` in the production settings file.
 - [ ] Statement filing: is producing the file for the department's utility enough for now, or is direct filing through a licensed intermediary wanted?
 
 **For the payroll consultant**
