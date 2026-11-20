@@ -28,7 +28,11 @@ test.describe('attendance test cases, part 3', () => {
     expect(r.status, JSON.stringify(r.body)).toBe(409); expect(r.body.code).toBe('attendance.nothing_to_undo');
   });
   test('TC-219 first half work from home approved', async () => {
-    const q = await api(n2, 'POST', '/org/attendance/me/requests', { kind: 'work_from_home', fromDate: isoDay(0), toDate: isoDay(0), half: 'first', reason: 'Home in the morning' });
+    // Today can be a day off, which the server refuses ("None of those dates needs a request"): use the first day that takes one.
+    let q = await api(n2, 'POST', '/org/attendance/me/requests', { kind: 'work_from_home', fromDate: isoDay(0), toDate: isoDay(0), half: 'first', reason: 'Home in the morning' });
+    for (let i = 1; q.status === 400 && i <= 7; i++) {
+      q = await api(n2, 'POST', '/org/attendance/me/requests', { kind: 'work_from_home', fromDate: isoDay(i), toDate: isoDay(i), half: 'first', reason: 'Home in the morning' });
+    }
     expect([200, 409], JSON.stringify(q.body)).toContain(q.status);
     await hr.reload(); await nav(hr, 'Attendance'); await tab(hr, 'Requests');
     const row = hr.locator('tr', { hasText: 'n2@acme.test' }).first(); await expect(row).toContainText(/first half/i);
