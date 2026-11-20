@@ -340,7 +340,8 @@ class TdsFilingsTest {
     // ── other employers (Form 122, Part B) ──────────────────────────────
 
     private static OtherEmployerIncome.Input previous() {
-        return new OtherEmployerIncome.Input(null, "Old Co Pvt Ltd", "ABCD12345E", 6, new BigDecimal("6000000"), new BigDecimal("80000"),
+        // The tax year of the run, not of today: on a date in March next month is April, the next tax year.
+        return new OtherEmployerIncome.Input(taxYear(TODAY.withDayOfMonth(1).plusMonths(1)), "Old Co Pvt Ltd", "ABCD12345E", 6, new BigDecimal("6000000"), new BigDecimal("80000"),
                 new BigDecimal("2400"), new BigDecimal("500000"));
     }
 
