@@ -181,6 +181,10 @@ public final class Db {
         if (state.equals("42501")) {
             return new ApiException(403, "permission.denied", "This action is not allowed");
         }
+        if (state.equals("P0001") && message.contains("slug held")) {
+            return new ApiException(409, "tenant.slug_held",
+                    "Another Organization used that short name until recently, and it stays free for 90 days after; choose another");
+        }
         if (state.equals("P0001") && message.contains("employee licence limit")) {
             return new ApiException(409, "licence.limit",
                     "All of this Organization's employee licences are in use. Ask Nexvance to add more licences, or end an employee first");

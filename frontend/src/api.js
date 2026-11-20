@@ -214,21 +214,29 @@ const del = (path) => request('DELETE', path)
 
 /**
  * The Organization whose own sign-in address this page was opened at (such as acme.hr.example.com), or null on the
- * shared address. Set once by loadSignInPage, before anything else signs in: on an Organization's address, signing in
- * goes straight to that Organization and nowhere else.
+ * shared address. On an Organization's address, signing in goes straight to that Organization and nowhere else.
  */
 let pageOrganization = null
+let pageLoad = null
 
-/** What the page at this address is: { organization, unknown, sharedAddress }. The shared page when it cannot be told. */
-export async function loadSignInPage() {
-  try {
-    const page = await get('/public/sign-in-page')
-    pageOrganization = page.organization || null
-    return page
-  } catch {
-    pageOrganization = null
-    return { organization: null, unknown: false, sharedAddress: null }
-  }
+/**
+ * What the page at this address is: { organization, unknown, sharedAddress }; the shared page when it cannot be told.
+ * Asked once per visit; anything that signs in waits for the answer, so it can be asked alongside the first other calls.
+ */
+export function loadSignInPage() {
+  pageLoad ??= get('/public/sign-in-page')
+    .catch(() => ({ organization: null, unknown: false, sharedAddress: null }))
+    .then((page) => {
+      pageOrganization = page.organization || null
+      return page
+    })
+  return pageLoad
+}
+
+/** For tests: ask again on the next call. */
+export function forgetSignInPage() {
+  pageLoad = null
+  pageOrganization = null
 }
 
 /** The places this person can switch to from this address: on an Organization's own address, only that Organization. */
@@ -338,6 +346,7 @@ export async function enterConsole() {
  * with nowhere to go, or whose entry fails, is returned unchanged.
  */
 async function enterDefault(me) {
+  await loadSignInPage()
   const organizationIds = me.organizations.map((o) => o.tenantId)
   const last = lastDestination()
   try {

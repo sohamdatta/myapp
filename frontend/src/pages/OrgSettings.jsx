@@ -30,8 +30,8 @@ export default function OrgSettings({ me, onRefresh }) {
       <h3>Logo</h3>
       <p className="hint">
         Your logo replaces the {PRODUCT.name} logo at the top of the sidebar for everyone in {me.organization.name}. Use a PNG or JPEG
-        of at most 2 MB, ideally wide, on a transparent or white background; it is scaled to fit. It also shows on your own sign-in
-        address, below; the shared sign-in page keeps the {PRODUCT.name} logo.
+        of at most 2 MB, ideally wide, on a transparent or white background; it is scaled to fit. Where your Organization has its own
+        sign-in address it shows there too; the shared sign-in page keeps the {PRODUCT.name} logo.
       </p>
       <div className="logo-preview" data-testid="logo-preview">
         {current ? <img src={current} alt={`${me.organization.name} logo`} /> : <NexvanceLogo />}
@@ -85,7 +85,8 @@ function SignInAddressPanel({ organization }) {
   const [slug, setSlug] = useState(null)
   const [saved, setSaved] = useState('')
   const { busy, error, run } = useAction()
-  if (loaded.loading || loaded.error || !loaded.data) return null
+  // Off on this server (no ORG_ADDRESSES): the address would not open, so it is not offered.
+  if (loaded.loading || loaded.error || !loaded.data || !loaded.data.enabled) return null
   const current = fresh || loaded.data
   const shown = slug ?? current.slug
   const changed = shown.trim().toLowerCase() !== current.slug

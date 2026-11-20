@@ -36,16 +36,44 @@ public final class SignInPage {
     /** What an Organization's sign-in page shows about it: public, like its logo. */
     public record Organization(UUID id, String name, String slug, int logoVersion) {}
 
-    /** The Organization's sign-in address, for its Org Admin: the short name and the whole address it makes. */
-    public record Address(String slug, String address, boolean canChange) {}
+    /**
+     * The Organization's sign-in address, for its Org Admin: the short name and the whole address it makes. enabled is false
+     * when this server does not serve Organizations' addresses (ORG_ADDRESSES is not set), so the address would not open.
+     */
+    public record Address(String slug, String address, boolean canChange, boolean enabled) {}
 
     private final Db db;
     private final String baseHost;
+    private final boolean enabled;
 
-    /** @param publicUrl the app's address, app.public-url; its host is the shared page, and Organizations' pages are under it */
+    /** For development and tests: Organizations' addresses are served only on localhost, as with no ORG_ADDRESSES. */
     public SignInPage(Db db, String publicUrl) {
+        this(db, publicUrl, "");
+    }
+
+    /**
+     * @param publicUrl     the app's address, app.public-url; its host is the shared page, and Organizations' pages are under it
+     * @param orgAddresses  ORG_ADDRESSES, the names Caddy serves Organizations' pages at: *.&lt;the shared host&gt;, or empty
+     *                      for none. On localhost they work without it: browsers send *.localhost to the machine itself.
+     * @throws IllegalStateException when ORG_ADDRESSES is not the shared host's wildcard, so the two never disagree in silence
+     */
+    public SignInPage(Db db, String publicUrl, String orgAddresses) {
         this.db = db;
         this.baseHost = hostOf(publicUrl);
+        String wanted = orgAddresses == null ? "" : orgAddresses.trim().toLowerCase(Locale.ROOT).replaceFirst("^[a-z]+://", "");
+        if (wanted.isEmpty()) {
+            this.enabled = baseHost.equals("localhost");
+        } else if (wanted.equals("*." + baseHost)) {
+            this.enabled = true;
+        } else {
+            throw new IllegalStateException("ORG_ADDRESSES is " + orgAddresses + " but the app's address (APP_PUBLIC_URL, or DOMAIN) is "
+                    + baseHost + ". Set ORG_ADDRESSES=*." + baseHost + ", or leave it out to turn Organizations' own addresses off");
+        }
+    }
+
+    /** Whether this server serves Organizations' own addresses at all. Off, every address is the shared page. */
+    public boolean enabled() {
+        return enabled;
     }
 
     /** The host, lower case and without a port, of an address such as https://hr.example.com:8443/x. */
@@ -75,7 +103,7 @@ public final class SignInPage {
      */
     public Page forHost(String hostHeader) {
         String host = stripPort(hostHeader);
-        if (host == null || host.equals(baseHost) || !host.endsWith("." + baseHost)) {
+        if (!enabled || host == null || host.equals(baseHost) || !host.endsWith("." + baseHost)) {
             return new Page(Kind.SHARED, null, null);
         }
         String slug = host.substring(0, host.length() - baseHost.length() - 1);
@@ -128,9 +156,20 @@ public final class SignInPage {
         }
         SessionCtx ctx = auth.resolve(token);
         if (page.organization() == null || !isMember(ctx.identityId(), page.organization().id())) {
+            boolean suspended = page.organization() != null && isSuspended(ctx.identityId(), page.organization().id());
             auth.logout(ctx);
+            if (suspended) {
+                throw new ApiException(403, "signin.suspended", "Your access to " + page.organization().name()
+                        + " is suspended. Ask its administrator to reactivate it");
+            }
             throw notMember(page);
         }
+    }
+
+    /** Whether the login's membership of the Organization is suspended (as opposed to missing). */
+    private boolean isSuspended(UUID identityId, UUID tenantId) {
+        return db.inTenant(tenantId, c -> Sql.one(c,
+                "select 1 from app.membership where identity_id = ? and status = 'suspended'", identityId) != null);
     }
 
     /** On an Organization's page, only that Organization can be entered: not another, and not the console. */
@@ -191,6 +230,6 @@ public final class SignInPage {
     }
 
     private Address view(SessionCtx ctx, String slug, String publicUrl) {
-        return new Address(slug, addressOf(slug, publicUrl), ctx.canAcrossOrganization("tenant.manage") && !ctx.isSupport());
+        return new Address(slug, addressOf(slug, publicUrl), ctx.canAcrossOrganization("tenant.manage") && !ctx.isSupport(), enabled);
     }
 }

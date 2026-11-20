@@ -20,16 +20,27 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.postgresql.ds.PGSimpleDataSource;
 
+import org.springframework.mock.web.MockHttpServletRequest;
+
 import com.example.loginapp.core.ApiException;
 import com.example.loginapp.core.AuthService;
+import com.example.loginapp.core.Crypto;
 import com.example.loginapp.core.Db;
+import com.example.loginapp.core.EmailChangeService;
 import com.example.loginapp.core.InvitationService;
+import com.example.loginapp.core.MailOutbox;
+import com.example.loginapp.core.MfaService;
 import com.example.loginapp.core.Migrator;
+import com.example.loginapp.core.PasswordService;
 import com.example.loginapp.core.PlatformService;
+import com.example.loginapp.core.RateLimits;
 import com.example.loginapp.core.SessionCtx;
 import com.example.loginapp.core.SignInPage;
 import com.example.loginapp.core.Sql;
+import com.example.loginapp.core.Totp;
 import com.example.loginapp.core.UserService;
+import com.example.loginapp.web.AuthController;
+import com.example.loginapp.web.SignInPageController;
 
 /**
  * Each Organization's own sign-in address against a real PostgreSQL: which page a host name is, that only members get a
@@ -49,6 +60,11 @@ class SignInPageTest {
     private static PlatformService platform;
     private static SessionCtx superAdmin;
     private static SignInPage pages;
+    private static RateLimits limits;
+    private static Crypto crypto;
+    private static MfaService mfa;
+    private static AuthController controller;
+    private static SignInPageController pageController;
 
     @BeforeAll
     static void startDatabase() throws Exception {
@@ -77,7 +93,14 @@ class SignInPageTest {
         users = new UserService(db);
         invitations = new InvitationService(db);
         platform = new PlatformService(db);
-        pages = new SignInPage(db, PUBLIC_URL);
+        pages = new SignInPage(db, PUBLIC_URL, "*.hr.example.test");
+        limits = new RateLimits();
+        crypto = Crypto.withKey(Crypto.DEVELOPMENT_KEY);
+        MailOutbox outbox = new MailOutbox(db, crypto);
+        mfa = new MfaService(db, crypto, outbox, limits);
+        controller = new AuthController(auth, invitations, new PasswordService(db, outbox, limits, PUBLIC_URL, false), mfa,
+                new EmailChangeService(db, outbox, limits, PUBLIC_URL), pages, false);
+        pageController = new SignInPageController(pages, PUBLIC_URL);
         platform.ensureFirstSuperAdmin("root@platform.test", PASSWORD);
         superAdmin = auth.resolve(auth.enterConsole(auth.resolve(auth.login("root@platform.test", PASSWORD))));
     }
@@ -206,6 +229,7 @@ class SignInPageTest {
     @Test
     void theAddressKeepsTheSchemeAndPortOfTheSharedOne() {
         SignInPage local = new SignInPage(db, "http://localhost:5173");
+        assertTrue(local.enabled(), "on localhost the addresses work without ORG_ADDRESSES");
         assertEquals("http://acme.localhost:5173", local.addressOf("acme", "http://localhost:5173"));
         assertEquals("http://localhost:5173", local.addressOf(null, "http://localhost:5173"));
         SignInPage bare = new SignInPage(db, "hr.example.test");
@@ -216,6 +240,135 @@ class SignInPageTest {
     @Test
     void anOrganizationCannotBeCreatedWithAReservedSlug() {
         assertError(409, "tenant.slug_reserved", () -> platform.createOrganization(superAdmin, "API", "api", "admin@api-org.test"));
+    }
+
+    // ── turned on only where the server serves the addresses ─────────────
+
+    @Test
+    void withoutOrgAddressesEveryAddressIsTheSharedPageAndNoneIsOffered() {
+        Org org = organization();
+        SignInPage off = new SignInPage(db, PUBLIC_URL, "");
+        assertFalse(off.enabled());
+        assertTrue(off.forHost(org.slug() + ".hr.example.test").shared(), "no branding and no members-only rule when off");
+        assertFalse(off.servesHost(org.slug() + ".hr.example.test"), "and no certificate");
+        assertTrue(off.servesHost("hr.example.test"));
+        assertFalse(off.get(org.admin(), PUBLIC_URL).enabled(), "settings do not offer an address that would not open");
+        assertTrue(pages.get(org.admin(), PUBLIC_URL).enabled());
+
+        assertTrue(new SignInPage(db, PUBLIC_URL, "https://*.HR.example.test").enabled(), "a scheme and case do not matter");
+        IllegalStateException wrong = assertThrows(IllegalStateException.class, () -> new SignInPage(db, PUBLIC_URL, "*.other.example"));
+        assertTrue(wrong.getMessage().contains("ORG_ADDRESSES=*.hr.example.test"), wrong.getMessage());
+        assertThrows(IllegalStateException.class, () -> new SignInPage(db, "https://hrms.example.test", "*.hr.example.test"),
+                "APP_PUBLIC_URL on another host than DOMAIN would leave every address without a certificate");
+    }
+
+    // ── a short name given up is held ─────────────────────────────────────
+
+    @Test
+    void aShortNameGivenUpIsHeldFromOthersButCanBeTakenBack() {
+        Org acme = organization();
+        Org other = organization();
+        String old = acme.slug();
+        String fresh = "moved-" + SEQUENCE.incrementAndGet();
+        pages.setSlug(acme.admin(), fresh, PUBLIC_URL);
+
+        assertError(409, "tenant.slug_held", () -> pages.setSlug(other.admin(), old, PUBLIC_URL));
+        assertError(409, "tenant.slug_held", () -> platform.createOrganization(superAdmin, "Squatter", old, "x@squat.test"));
+        assertEquals(SignInPage.Kind.UNKNOWN, pages.forHost(old + ".hr.example.test").kind(), "the old address leads nowhere meanwhile");
+
+        // Acme takes it back; its newer name is now held for it instead.
+        assertEquals(old, pages.setSlug(acme.admin(), old, PUBLIC_URL).slug());
+        assertError(409, "tenant.slug_held", () -> pages.setSlug(other.admin(), fresh, PUBLIC_URL));
+
+        // After 90 days it is free again.
+        db.inOwner(c -> Sql.update(c, "update platform.retired_slug set retired_at = now() - interval '91 days' where slug = ?", fresh));
+        assertEquals(fresh, pages.setSlug(other.admin(), fresh, PUBLIC_URL).slug());
+    }
+
+    @Test
+    void theSuperAdminFollowsTheSameRulesForANewOrganization() {
+        assertError(400, "request.invalid", () -> platform.createOrganization(superAdmin, "Punycode", "xn--abc", "a@puny.test"));
+        assertError(400, "request.invalid", () -> platform.createOrganization(superAdmin, "Double", "two--dashes", "a@two.test"));
+    }
+
+    @Test
+    void aSuspendedMemberIsToldSoNotThatTheyDoNotBelong() {
+        Org org = organization();
+        users.suspend(org.admin(), org.hr().membershipId());
+        SignInPage.Page page = pages.forHost(org.slug() + ".hr.example.test");
+        String token = auth.login(org.hr().email(), PASSWORD);
+        assertError(403, "signin.suspended", () -> pages.requireMember(auth, page, token));
+        assertThrows(ApiException.class, () -> auth.resolve(token), "no session is left behind");
+    }
+
+    // ── the same rules, through the endpoints with a real Host header ─────
+
+    private static MockHttpServletRequest request(String host, boolean forwarded) {
+        MockHttpServletRequest http = new MockHttpServletRequest();
+        http.setRemoteAddr("10.0.0.1");
+        if (forwarded) {
+            http.addHeader("Host", "app:8080");   // as behind Caddy, which names the browser's host in X-Forwarded-Host
+            http.addHeader("X-Forwarded-Host", host);
+        } else {
+            http.addHeader("Host", host);
+        }
+        return http;
+    }
+
+    @Test
+    void theEndpointsApplyThePageTheRequestWasMadeAt() {
+        Org acme = organization();
+        Org other = organization();
+        String acmeHost = acme.slug() + ".hr.example.test";
+
+        // What the page shows, by Host and by X-Forwarded-Host.
+        assertEquals(acme.id(), pageController.page(request(acmeHost, true)).getBody().organization().id());
+        assertEquals(acme.id(), pageController.page(request(acmeHost + ":443", false)).getBody().organization().id());
+        assertNull(pageController.page(request("hr.example.test", true)).getBody().organization());
+        assertTrue(pageController.page(request("ghost.hr.example.test", true)).getBody().unknown());
+        assertEquals(200, pageController.tlsCheck(acmeHost).getStatusCode().value());
+        assertEquals(404, pageController.tlsCheck("ghost.hr.example.test").getStatusCode().value());
+
+        // Sign-in: a member gets in; someone else is refused with the right password; on an unknown address nobody is.
+        var in = controller.login(new AuthController.LoginRequest(acme.hr().email(), PASSWORD), request(acmeHost, true));
+        assertNotNull(in.get("token"));
+        ApiException refused = assertThrows(ApiException.class,
+                () -> controller.login(new AuthController.LoginRequest(other.hr().email(), PASSWORD), request(acmeHost, true)));
+        assertEquals("signin.not_member", refused.code());
+        assertEquals("auth.invalid_credentials", assertThrows(ApiException.class,
+                () -> controller.login(new AuthController.LoginRequest(other.hr().email(), "wrong-password-1"), request(acmeHost, true))).code(),
+                "a wrong password gets the usual answer, so the page tells a guesser nothing");
+        assertEquals("signin.unknown_address", assertThrows(ApiException.class,
+                () -> controller.login(new AuthController.LoginRequest(acme.hr().email(), PASSWORD), request("ghost.hr.example.test", true))).code());
+
+        // Entering: only Acme from Acme's page, never another Organization or the console.
+        String identity = (String) controller.login(new AuthController.LoginRequest(acme.hr().email(), PASSWORD), request(acmeHost, true)).get("token");
+        assertEquals("signin.not_member", assertThrows(ApiException.class, () -> controller.enter("Bearer " + identity,
+                new AuthController.EnterRequest(other.id().toString(), null), request(acmeHost, true))).code());
+        assertEquals("signin.not_member", assertThrows(ApiException.class, () -> controller.enter("Bearer " + identity,
+                new AuthController.EnterRequest(null, true), request(acmeHost, true))).code());
+        assertNotNull(controller.enter("Bearer " + identity, new AuthController.EnterRequest(acme.id().toString(), null),
+                request(acmeHost, true)).get("token"));
+
+        // On the shared address an outsider of Acme signs in as before.
+        assertNotNull(controller.login(new AuthController.LoginRequest(other.hr().email(), PASSWORD), request("hr.example.test", true)).get("token"));
+    }
+
+    @Test
+    void theTwoStepCodeIsHeldToThePageToo() {
+        Org acme = organization();
+        Org other = organization();
+        SessionCtx ctx = auth.resolve(auth.login(other.hr().email(), PASSWORD));
+        MfaService.Enrolment e = mfa.start(ctx);
+        List<String> recovery = mfa.confirm(ctx, PASSWORD,
+                Totp.code(Totp.fromBase32(e.secret()), Totp.stepAt(java.time.Instant.now())));
+        String acmeHost = acme.slug() + ".hr.example.test";
+
+        var challenged = controller.login(new AuthController.LoginRequest(other.hr().email(), PASSWORD), request(acmeHost, true));
+        assertEquals(true, challenged.get("mfaRequired"));
+        ApiException refused = assertThrows(ApiException.class, () -> controller.mfa(
+                new AuthController.MfaRequest((String) challenged.get("challenge"), recovery.get(0)), request(acmeHost, true)));
+        assertEquals("signin.not_member", refused.code(), "a right code does not open another Organization's page either");
     }
 
     private static void assertError(int status, String code, org.junit.jupiter.api.function.Executable work) {

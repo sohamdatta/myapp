@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { downloadFile, fetchFile, loadSignInPage, login, postFile, saveBlob, scopeToPage } from './api.js'
+import { downloadFile, fetchFile, forgetSignInPage, loadSignInPage, login, postFile, saveBlob, scopeToPage } from './api.js'
 
 describe('saveBlob', () => {
   beforeEach(() => {
@@ -68,13 +68,20 @@ describe('an Organization’s own sign-in address', () => {
   })
   const answer = (data) => ({ ok: true, status: 200, json: async () => data })
 
-  afterEach(async () => {
+  beforeEach(() => forgetSignInPage())
+  afterEach(() => {
     vi.restoreAllMocks()
     vi.unstubAllGlobals()
     localStorage.clear()
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(answer({ organization: null, unknown: false })))
+    forgetSignInPage()
+  })
+
+  it('asks which page this is only once per visit', async () => {
+    const fetch = vi.fn().mockResolvedValue(answer({ organization: ACME, unknown: false }))
+    vi.stubGlobal('fetch', fetch)
+    await Promise.all([loadSignInPage(), loadSignInPage()])
     await loadSignInPage()
-    vi.unstubAllGlobals()
+    expect(fetch).toHaveBeenCalledTimes(1)
   })
 
   it('goes straight into that Organization, whatever was used last on this browser', async () => {
@@ -87,7 +94,7 @@ describe('an Organization’s own sign-in address', () => {
       if (url === '/api/auth/enter') return answer(me({ kind: 'tenant', organization: { id: 'acme-id', name: 'Acme' } }))
       throw new Error(`unexpected ${url}`)
     }))
-    await loadSignInPage()
+    // Not asked beforehand: signing in waits for the answer itself.
     const signedIn = await login('a@acme.test', 'pw')
     expect(signedIn.organization.id).toBe('acme-id')
     expect(calls.find(([url]) => url === '/api/auth/enter')[1]).toBe(JSON.stringify({ organizationId: 'acme-id' }))

@@ -377,8 +377,9 @@ public class AppConfig {
     }
 
     @Bean
-    public com.example.loginapp.core.SignInPage signInPage(Db db, @Value("${app.public-url}") String publicUrl) {
-        return new com.example.loginapp.core.SignInPage(db, publicUrl);
+    public com.example.loginapp.core.SignInPage signInPage(Db db, @Value("${app.public-url}") String publicUrl,
+                                                         @Value("${app.org-addresses:}") String orgAddresses) {
+        return new com.example.loginapp.core.SignInPage(db, publicUrl, orgAddresses);
     }
 
     @Bean

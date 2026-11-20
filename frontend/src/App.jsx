@@ -295,9 +295,8 @@ export default function App() {
   useEffect(() => {
     let cancelled = false
     async function start() {
-      const page = await loadSignInPage()
-      if (cancelled) return
-      setSignInPage(page)
+      // Asked alongside the session check below; signing in waits for it.
+      loadSignInPage().then((page) => !cancelled && setSignInPage(page))
       if (oidcReturn?.kind === 'exchange') {
         try {
           exchanging ??= exchangeOidc()
@@ -313,9 +312,10 @@ export default function App() {
           if (!cancelled) setSignInNotice(oidcMessage(err.code))
         }
       }
-      const user = await currentUser()
+      const [user, page] = await Promise.all([currentUser(), loadSignInPage()])
       if (cancelled) return
       if (!user) securityReturn = ''
+      setSignInPage(page)
       setMe(user)
       setLoading(false)
     }
