@@ -1,5 +1,5 @@
 import { Suspense, lazy, useEffect, useRef, useState } from 'react'
-import { currentUser, endSupportSession, exchangeOidc, logout } from './api.js'
+import { currentUser, endSupportSession, exchangeOidc, loadSignInPage, logout, scopeToPage } from './api.js'
 import PageView from './PageView.jsx'
 import { preloadAll, preloadPage, rememberLanding } from './pageRegistry.js'
 import { isPlainClick, pathFor, resetLocation, usePage } from './router.js'
@@ -244,9 +244,26 @@ function Workspace({ me, onSwitch, onSignOut, onEndSupport, onEnteredSupport, on
   )
 }
 
+/** An Organization address that leads nowhere: the short name was changed, mistyped, or the Organization is not active. */
+function UnknownAddress({ sharedAddress }) {
+  return (
+    <div className="card" data-testid="unknown-address">
+      <h1>{signInText.unknownTitle}</h1>
+      <p className="muted">{signInText.unknownHint}</p>
+      {sharedAddress && (
+        <a className="button primary" href={sharedAddress}>
+          {signInText.unknownGo}
+        </a>
+      )}
+    </div>
+  )
+}
+
 export default function App() {
   const [me, setMe] = useState(null)
   const [loading, setLoading] = useState(true)
+  // Which sign-in address this is: the shared one, an Organization's own (its name and logo), or one that leads nowhere.
+  const [signInPage, setSignInPage] = useState(null)
   const [inviteToken, setInviteToken] = useState(inviteTokenFromUrl)
   // A reset token is taken out of the address at once: it should not sit in the history while the page is open.
   const [resetToken, setResetToken] = useState(() => {
@@ -278,6 +295,9 @@ export default function App() {
   useEffect(() => {
     let cancelled = false
     async function start() {
+      const page = await loadSignInPage()
+      if (cancelled) return
+      setSignInPage(page)
       if (oidcReturn?.kind === 'exchange') {
         try {
           exchanging ??= exchangeOidc()
@@ -389,20 +409,31 @@ export default function App() {
     )
   }
 
-  if (!me) {
+  if (signInPage?.unknown) {
     return (
-      <main className="centered centered-wide">
-        <LoginForm onSignedIn={setMe} notice={signInNotice} challenge={googleChallenge} />
+      <main className="centered">
+        <div className="brand brand-sign-in"><NexvanceLogo size={40} /></div>
+        <UnknownAddress sharedAddress={signInPage.sharedAddress} />
       </main>
     )
   }
+
+  if (!me) {
+    return (
+      <main className="centered centered-wide">
+        <LoginForm onSignedIn={setMe} notice={signInNotice} challenge={googleChallenge} organization={signInPage?.organization} />
+      </main>
+    )
+  }
+
+  const shown = scopeToPage(me)
 
   if (me.kind === 'identity' || choosing) {
     return (
       <main className="centered">
         <div className="brand brand-sign-in"><NexvanceLogo size={40} /></div>
         <Chooser
-          me={me}
+          me={shown}
           onEntered={entered}
           onSignOut={handleSignOut}
           onCancel={me.kind === 'identity' ? undefined : () => setChoosing(false)}
@@ -414,7 +445,7 @@ export default function App() {
   return (
     <Workspace
       key={me.kind === 'platform' ? 'console' : `${me.kind}-${me.organization.id}`}
-      me={me}
+      me={shown}
       onSwitch={() => setChoosing(true)}
       onSignOut={handleSignOut}
       onEndSupport={handleEndSupport}

@@ -175,6 +175,9 @@ public final class PlatformService {
         if (slug == null || !SLUG.matcher(slug).matches()) {
             throw ApiException.badRequest("The slug must be 3 to 40 lowercase letters, digits or hyphens");
         }
+        if (SignInPage.RESERVED.contains(slug)) {   // the slug is also the Organization's sign-in address
+            throw new ApiException(409, "tenant.slug_reserved", "\"" + slug + "\" is kept for the platform; choose another slug");
+        }
         requireEmail(adminEmail);
         String token = Secrets.newToken();
         return db.inPlatform(c -> {

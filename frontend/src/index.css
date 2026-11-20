@@ -4648,3 +4648,60 @@ td.org-cell .hint {
 .licence-full { color: var(--error); font-weight: 600; }
 
 td.licence-cell { white-space: nowrap; }
+
+/* ── sign-in on an Organization's own address: its logo and name ──── */
+.org-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  max-width: 100%;
+  padding: 10px 16px;
+  border-radius: 10px;
+  background: #fff;
+  border: 1px solid var(--border);
+}
+.org-mark img {
+  display: block;
+  max-width: 260px;
+  max-height: 56px;
+  object-fit: contain;
+}
+.org-mark-name {
+  font-size: 1.15rem;
+  font-weight: 600;
+  color: #1c203e;
+  overflow-wrap: anywhere;
+}
+.org-mark-large {
+  align-self: flex-start;
+  padding: 16px 24px;
+  border: none;
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.25);
+}
+.org-mark-large img {
+  max-width: min(360px, 100%);
+  max-height: 96px;
+}
+.org-mark-large .org-mark-name {
+  font-size: 1.6rem;
+}
+.signin-powered {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.signin-powered .nexvance-logo {
+  opacity: 0.85;
+}
+.address-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 0 12px;
+}
+.address-row code {
+  font-size: 0.95rem;
+  overflow-wrap: anywhere;
+}

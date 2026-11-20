@@ -212,6 +212,31 @@ const del = (path) => request('DELETE', path)
 
 // ── sign-in and sessions ────────────────────────────────────────────
 
+/**
+ * The Organization whose own sign-in address this page was opened at (such as acme.hr.example.com), or null on the
+ * shared address. Set once by loadSignInPage, before anything else signs in: on an Organization's address, signing in
+ * goes straight to that Organization and nowhere else.
+ */
+let pageOrganization = null
+
+/** What the page at this address is: { organization, unknown, sharedAddress }. The shared page when it cannot be told. */
+export async function loadSignInPage() {
+  try {
+    const page = await get('/public/sign-in-page')
+    pageOrganization = page.organization || null
+    return page
+  } catch {
+    pageOrganization = null
+    return { organization: null, unknown: false, sharedAddress: null }
+  }
+}
+
+/** The places this person can switch to from this address: on an Organization's own address, only that Organization. */
+export function scopeToPage(me) {
+  if (!me || !pageOrganization) return me
+  return { ...me, organizations: (me.organizations || []).filter((o) => o.tenantId === pageOrganization.id), console: null }
+}
+
 export async function login(email, password) {
   const me = await post('/auth/login', { email, password })
   if (me.mfaRequired) return me   // { mfaRequired, challenge }: the code comes next
@@ -316,6 +341,10 @@ async function enterDefault(me) {
   const organizationIds = me.organizations.map((o) => o.tenantId)
   const last = lastDestination()
   try {
+    if (pageOrganization) {
+      // The server let this login in here only because it belongs to this Organization.
+      return organizationIds.includes(pageOrganization.id) ? await enterOrganization(pageOrganization.id) : me
+    }
     if (last === 'console' && me.console) return await enterConsole()
     if (last && organizationIds.includes(last)) return await enterOrganization(last)
     if (organizationIds.length > 0) return await enterOrganization(organizationIds[0])
@@ -962,6 +991,12 @@ export const certificateLayout = {
   get: () => get('/org/payroll/certificate-layout'),
   save: (layout) => put('/org/payroll/certificate-layout', layout),
   preview: (layout) => postFile('/org/payroll/certificate-layout/preview', layout),
+}
+
+/** The Organization's own sign-in address: { slug, address, canChange }. Changing the short name changes the address. */
+export const signInAddress = {
+  get: () => get('/org/setup/sign-in-address'),
+  save: (slug) => put('/org/setup/sign-in-address', { slug }),
 }
 
 export const branding = {

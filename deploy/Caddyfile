@@ -1,6 +1,16 @@
-# DOMAIN is the address people open, such as hr.example.com. Caddy fetches and renews
-# its HTTPS certificate from Let's Encrypt; port 80 and 443 must be open to the internet.
-{$DOMAIN} {
+# Each Organization can also sign in at its own address, its short name in front of DOMAIN (acme.hr.example.com): the
+# page shows its name and logo and lets in only its members. Turned on by ORG_ADDRESSES=*.<DOMAIN> in the settings file,
+# with a DNS wildcard record *.<DOMAIN> pointing at this server. Those certificates are fetched when an address is first
+# opened (on-demand TLS), and only for names the app says belong to an active Organization, so nobody can make Caddy ask
+# Let's Encrypt for names that lead nowhere.
+{
+	on_demand_tls {
+		ask http://app:8080/api/public/tls-check
+	}
+}
+
+# Everything the app's addresses serve, shared by the main address and the Organizations' own.
+(app) {
 	encode zstd gzip
 
 	# One JSON line per request, to the container log, which deploy/logs/ship-logs.sh sends daily to the
@@ -74,6 +84,20 @@
 		try_files {path} /index.html
 		file_server
 	}
+}
+
+# DOMAIN is the address people open, such as hr.example.com. Caddy fetches and renews
+# its HTTPS certificate from Let's Encrypt; port 80 and 443 must be open to the internet.
+{$DOMAIN} {
+	import app
+}
+
+# The Organizations' own addresses. Off (a name that never resolves) unless ORG_ADDRESSES is set.
+{$ORG_ADDRESSES:org-addresses-off.invalid} {
+	tls {
+		on_demand
+	}
+	import app
 }
 
 # Many biometric devices cannot use HTTPS. They send punches over plain HTTP to this port

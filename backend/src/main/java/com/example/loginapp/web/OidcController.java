@@ -48,23 +48,29 @@ public class OidcController {
     private final SignInSettingsService settings;
     private final OfficialEmailService officialEmail;
     private final AuthService auth;
+    private final com.example.loginapp.core.SignInPage pages;
     private final boolean trustForwardedFor;
     private final boolean secureCookie;
 
-    public OidcController(OidcService oidc, SignInSettingsService settings, OfficialEmailService officialEmail, AuthService auth, @Value("${app.trust-forwarded-for:false}") boolean trustForwardedFor,
+    public OidcController(OidcService oidc, SignInSettingsService settings, OfficialEmailService officialEmail, AuthService auth,
+                          com.example.loginapp.core.SignInPage pages, @Value("${app.trust-forwarded-for:false}") boolean trustForwardedFor,
                           @Value("${app.public-url}") String publicUrl) {
         this.oidc = oidc;
         this.settings = settings;
         this.officialEmail = officialEmail;
         this.auth = auth;
+        this.pages = pages;
         this.trustForwardedFor = trustForwardedFor;
         this.secureCookie = publicUrl.startsWith("https://");
     }
 
-    /** Which buttons the sign-in page shows. */
+    /**
+     * Which buttons the sign-in page shows. None on an Organization's own address: the provider sends people back to the
+     * shared one, where the Organization's page could not hold them to its members.
+     */
     @GetMapping("/auth/providers")
-    public Providers providers() {
-        return new Providers(oidc.available());
+    public Providers providers(HttpServletRequest http) {
+        return new Providers(pages.forHost(Requests.host(http)).shared() ? oidc.available() : List.of());
     }
 
     /** The sign-in page sends the browser here; it goes on to the provider. */

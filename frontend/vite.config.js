@@ -41,6 +41,13 @@ export default defineConfig({
         changeOrigin: true,
         // Pass on the address the browser connected from, for the attendance office-network check.
         xfwd: true,
+        // changeOrigin rewrites Host, so pass on the name the browser asked for: an Organization's own sign-in address
+        // (try http://<slug>.localhost:5173) is told apart by it.
+        configure: (proxy) => {
+          proxy.on('proxyReq', (proxyReq, req) => {
+            if (req.headers.host) proxyReq.setHeader('X-Forwarded-Host', req.headers.host)
+          })
+        },
       },
     },
   },
