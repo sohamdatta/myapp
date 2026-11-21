@@ -284,11 +284,16 @@ test.describe.serial('payroll test cases', () => {
     const exceptions = owner.getByTestId('exceptions');
     const buttons = exceptions.getByRole('button', { name: 'Accept…' });
     await expect(buttons).toHaveCount(2);   // Ravi: no bank account, no PAN
+    const acceptedNotes = exceptions.locator('span.hint', { hasText: /Accepted by/ });
+    const alreadyAccepted = await acceptedNotes.count();
     for (let left = 2; left > 0; left--) {
       const row = exceptions.locator('li.exception.blocking').filter({ has: owner.getByRole('button', { name: 'Accept…' }) }).first();
       await row.getByRole('button', { name: 'Accept…' }).click();
       await owner.fill('#reason-Accept', 'Checked with HR; fixing it next month');
       await owner.locator('form:has(#reason-Accept)').getByRole('button', { name: 'Accept', exact: true }).click();
+      // Saved, not just submitted: the form closes and the run lists the exception as accepted before the next one is picked.
+      await expect(owner.locator('#reason-Accept')).toHaveCount(0);
+      await expect(acceptedNotes).toHaveCount(alreadyAccepted + 3 - left);
       await expect(buttons).toHaveCount(left - 1);
     }
     await expect(owner.getByTestId('exceptions')).toContainText('Checked with HR; fixing it next month');
