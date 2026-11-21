@@ -163,6 +163,6 @@ test('the expenses guide, screen by screen', async ({ browser }) => {
   await expect(pg.esha.locator('#claim-advance')).toBeVisible();
   await save(pg.esha, 'expenses-18-advance-choice');
   await pg.esha.selectOption('#claim-advance', { index: 1 });
-  await expect(pg.esha.locator('main')).toContainText('Trip advance');
+  await expect(pg.esha.locator('main')).toContainText(/Set against advance LN-\d{4}-\d+/);   // it was 'Trip advance' once, which this screen has never shown; .catch hid that
   await save(pg.esha, 'expenses-19-advance-chosen');
 });

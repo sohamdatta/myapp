@@ -118,9 +118,11 @@ test.describe.serial('negative: attendance, leave and work from home', () => {
     await expect(errorOn(owner)).toContainText(/name/i);
     await owner.fill('#hol-name', 'Founders day again');
     // Founders day is already there, on the date it was saved with (a run that crossed midnight would make isoDay(30) another day).
-    const founders = ((await api(owner, 'GET', '/org/attendance/holidays')).body as any[]).find((h) => h.name === 'Founders day');
+    // (The list is for one year, and a day 30 days on can be in the next.)
+    const holidays = [currentYear(), currentYear() + 1].map((y) => api(owner, 'GET', `/org/attendance/holidays?year=${y}`));
+    const founders = (await Promise.all(holidays)).flatMap((r) => r.body as any[]).find((h) => h.name === 'Founders day');
     expect(founders, 'Founders day is saved by the attendance setup spec').toBeTruthy();
-    await owner.fill('#hol-date', String(founders.date).slice(0, 10));
+    await owner.fill('#hol-date', String(founders.onDate).slice(0, 10));
     await owner.click('text=Add holiday');
     await expect(errorOn(owner)).toContainText(/already/i);
   });
