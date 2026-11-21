@@ -157,7 +157,11 @@ class TdsFilingsTest {
         if (hook != null) {
             hook.before(org, a, v, asha, vikram);
         }
-        LocalDate period = TODAY.withDayOfMonth(1).plusMonths(1);
+        // The statement tests never use the fourth quarter (January to March): its statement also needs the year's last month
+        // approved and the salary detail, which TaxCertificatesTest covers on purpose. The tests with a hook (earlier-employer
+        // salary) build no statement and declare that salary for the tax year of the run, so they keep next month.
+        LocalDate next = TODAY.withDayOfMonth(1).plusMonths(1);
+        LocalDate period = hook == null && next.getMonthValue() <= 3 ? next.withMonth(4) : next;
         String group = (String) ((Map<?, ?>) ((List<?>) runs.list(operator).get("groups")).get(0)).get("id");
         UUID run = UUID.fromString((String) runs.open(operator, UUID.fromString(group), period.toString()).get("id"));
         runs.freeze(operator, run);
@@ -255,22 +259,13 @@ class TdsFilingsTest {
         assertEquals(m.vikram.toString(), noPan.who(), "identified by employment, not by a name that two people can share");
         assertTrue(noPan.acceptable());
         UUID id = UUID.fromString(second.id());
-        // The fourth quarter adds the salary detail for the year, where Vikram can be listed as missing too: every
-        // remaining blocking check is one that can be accepted, and the first one is the PAN.
-        List<TdsStatements.Check> blocking = second.checks().stream().filter(c -> "blocking".equals(c.level())).toList();
-        assertEquals(second.unresolved(), blocking.size());
-        assertTrue(blocking.size() >= 1 && blocking.stream().allMatch(TdsStatements.Check::acceptable), String.valueOf(blocking));
+        assertEquals(1, second.unresolved());
         assertEquals("statement.blocked", assertThrows(ApiException.class, () -> st.download(m.operator, id)).code());
 
         // The operator cannot accept (no approve permission); the approver can, with a reason.
         TdsStatements.AcceptInput accept = new TdsStatements.AcceptInput("pan_invalid", m.vikram.toString(), "PAN applied for, Form 60 on file");
         assertEquals(403, assertThrows(ApiException.class, () -> st.accept(m.operator, id, accept)).status());
         st.accept(m.org.admin, id, accept);
-        for (TdsStatements.Check other : blocking) {
-            if (!other.code().equals("pan_invalid")) {
-                st.accept(m.org.admin, id, new TdsStatements.AcceptInput(other.code(), other.who(), "Salary detail follows once the PAN is on file"));
-            }
-        }
         String csv = new String(st.download(m.operator, id).bytes(), StandardCharsets.UTF_8);
         assertTrue(csv.contains("Asha Rao") && csv.contains("ABCPR1234F"), csv);
         assertTrue(csv.contains("Vikram Nair"));
@@ -345,14 +340,23 @@ class TdsFilingsTest {
     // ── other employers (Form 122, Part B) ──────────────────────────────
 
     private static OtherEmployerIncome.Input previous() {
-        return new OtherEmployerIncome.Input(null, "Old Co Pvt Ltd", "ABCD12345E", 6, new BigDecimal("6000000"), new BigDecimal("80000"),
+        return previous(null);
+    }
+
+    /** The earlier salary for the tax year of the run (next month): on a date in March that is April, the next tax year. */
+    private static OtherEmployerIncome.Input previousForRun() {
+        return previous(taxYear(TODAY.withDayOfMonth(1).plusMonths(1)));
+    }
+
+    private static OtherEmployerIncome.Input previous(String taxYear) {
+        return new OtherEmployerIncome.Input(taxYear, "Old Co Pvt Ltd", "ABCD12345E", 6, new BigDecimal("6000000"), new BigDecimal("80000"),
                 new BigDecimal("2400"), new BigDecimal("500000"));
     }
 
     @Test
     void salaryFromAPreviousEmployerRaisesTheTaxLeftToDeductAndUsesUpTheProfessionalTaxCeiling() throws Exception {
         assumeTrue(reachable, "PostgreSQL is not reachable");
-        Month m = approvedMonth((org, a, v, ashaId, vikramId) -> other.add(a, previous()));
+        Month m = approvedMonth((org, a, v, ashaId, vikramId) -> other.add(a, previousForRun()));
         BigDecimal withOther = lineAmount(runs.employee(m.operator, m.run, m.asha), "TDS");
         BigDecimal without = lineAmount(runs.employee(m.operator, m.run, m.vikram), "TDS");
         assertTrue(withOther.compareTo(without) != 0, "the earlier salary must change the tax left: " + withOther + " vs " + without);
@@ -368,14 +372,14 @@ class TdsFilingsTest {
     void aReturnedEntryCountsForNothingAndAnAcceptedOneCounts() throws Exception {
         assumeTrue(reachable, "PostgreSQL is not reachable");
         Month returned = approvedMonth((org, a, v, ashaId, vikramId) -> {
-            OtherEmployerIncome.Entry e = other.add(a, previous());
+            OtherEmployerIncome.Entry e = other.add(a, previousForRun());
             other.returnEntry(org.admin, UUID.fromString(e.id()), "Attach the Form 16 from Old Co", e.updatedAt());
         });
         assertEquals(0, lineAmount(runs.employee(returned.operator, returned.run, returned.asha), "TDS")
                 .compareTo(lineAmount(runs.employee(returned.operator, returned.run, returned.vikram), "TDS")));
 
         Month accepted = approvedMonth((org, a, v, ashaId, vikramId) -> {
-            OtherEmployerIncome.Entry e = other.add(a, previous());
+            OtherEmployerIncome.Entry e = other.add(a, previousForRun());
             other.accept(org.admin, UUID.fromString(e.id()), e.updatedAt());
         });
         assertTrue(lineAmount(runs.employee(accepted.operator, accepted.run, accepted.asha), "TDS")
