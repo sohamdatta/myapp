@@ -1,6 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
 import { createHmac } from 'node:crypto';
-import { SUPER_ADMIN, PASSWORD, newPage, signIn, nav, tab, api } from './helpers';
+import { SUPER_ADMIN, PASSWORD, newPage, signIn, nav, tab, api, nowMs } from './helpers';
 import { join, tokenOf } from './join';
 
 // Every setting and screen of getting started, users and roles, security, settings, Organization settings, the audit log and
@@ -43,7 +43,7 @@ function base32Decode(text: string): Buffer {
   }
   return Buffer.from(out);
 }
-const stepNow = () => Math.floor(Date.now() / 30000);
+const stepNow = () => Math.floor(nowMs() / 30000);   // the server's clock, which the fixed-date jobs move
 function totp(key: string, step: number): string {
   const counter = Buffer.alloc(8); counter.writeBigUInt64BE(BigInt(step));
   const hash = createHmac('sha1', base32Decode(key)).update(counter).digest();

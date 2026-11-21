@@ -795,6 +795,7 @@ class PayrollTest {
         assertEquals("blocking", recent.get(0).get("level"));
         assertError(409, "payroll.one_by_one", () -> runs.acceptMany(org.admin, run, List.of(UUID.fromString((String) recent.get(0).get("id"))), "Confirmed with Asha"));
         runs.accept(org.admin, run, UUID.fromString((String) recent.get(0).get("id")), "Confirmed with Asha by phone");
+        assertError(409, "payroll.already_accepted", () -> runs.accept(org.admin, run, UUID.fromString((String) recent.get(0).get("id")), "Accepted again"));
         // Neither the Org Admin nor the operator has an employee record: the run names them by their email, not by nothing.
         assertEquals("admin@" + org.slug + ".test", flags(runs.get(operator, run), "bank_changed_recent").get(0).get("acceptedByName"));
         runs.calculate(operator, run);

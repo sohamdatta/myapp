@@ -7,6 +7,11 @@ import { OWNER, HR, PASSWORD, signIn, newPage, nav, tab, isoDay, api, expectRefu
 const MEERA = 'meera.iyer@mail.test';
 
 /** The next date, from tomorrow on, that falls on the given weekday (0 = Sunday). */
+/** The day after a date such as 2026-11-23 (the second day of a two-day request starts from the first, whatever today is). */
+function plus(date: string, days: number): string {
+  return new Date(Date.parse(`${date}T00:00:00Z`) + days * 86_400_000).toISOString().slice(0, 10);
+}
+
 function next(weekday: number, after = 1): string {
   for (let i = after; i < after + 8; i++) {
     const d = isoDay(i);
@@ -112,7 +117,12 @@ test.describe.serial('negative: attendance, leave and work from home', () => {
     await owner.click('text=Add holiday');
     await expect(errorOn(owner)).toContainText(/name/i);
     await owner.fill('#hol-name', 'Founders day again');
-    await owner.fill('#hol-date', isoDay(30)); // Founders day is already there
+    // Founders day is already there, on the date it was saved with (a run that crossed midnight would make a recomputed date another day).
+    // (The list is for one year, and a day 30 days on can be in the next.)
+    const holidays = [currentYear(), currentYear() + 1].map((y) => api(owner, 'GET', `/org/attendance/holidays?year=${y}`));
+    const founders = (await Promise.all(holidays)).flatMap((r) => r.body as any[]).find((h) => h.name === 'Founders day');
+    expect(founders, 'Founders day is saved by the attendance setup spec').toBeTruthy();
+    await owner.fill('#hol-date', String(founders.onDate).slice(0, 10));
     await owner.click('text=Add holiday');
     await expect(errorOn(owner)).toContainText(/already/i);
   });
@@ -194,7 +204,7 @@ test.describe.serial('negative: attendance, leave and work from home', () => {
     await expectRefused(meera, 'POST', '/org/attendance/me/requests', [400],
       { kind: 'regularization', fromDate: isoDay(-3), toDate: isoDay(-2), reason: 'Forgot both days', inTime: '09:30', outTime: '18:30' });
     await expectRefused(meera, 'POST', '/org/attendance/me/requests', [400],
-      { kind: 'work_from_home', fromDate: mon, toDate: next(2), half: 'first', reason: 'Half of two days' });
+      { kind: 'work_from_home', fromDate: mon, toDate: plus(mon, 1), half: 'first', reason: 'Half of two days' });
     await expectRefused(meera, 'POST', '/org/attendance/me/requests', [400], { kind: 'holiday', fromDate: mon, toDate: mon, reason: 'A kind that is not one' });
   });
 
@@ -311,7 +321,7 @@ test.describe.serial('negative: attendance, leave and work from home', () => {
     await apply(isoDay(-200), isoDay(-199), 'Forgot to apply', /last|year|past/i);
     await apply(isoDay(1), isoDay(500), 'A very long break', /at most a year|three months|leave year|next 365/i);
     await expectRefused(meera, 'POST', '/org/leave/me/requests', [400], {
-      leaveTypeId: (await api(meera, 'GET', '/org/leave/types')).body[0].id, fromDate: tue, toDate: next(3), half: 'first', reason: 'Half of two days',
+      leaveTypeId: (await api(meera, 'GET', '/org/leave/types')).body[0].id, fromDate: tue, toDate: plus(tue, 1), half: 'first', reason: 'Half of two days',
     });
     await expectRefused(meera, 'POST', '/org/leave/me/requests', [400, 404], {
       leaveTypeId: '00000000-0000-0000-0000-000000000000', fromDate: tue, toDate: tue, reason: 'A type that does not exist',

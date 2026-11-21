@@ -651,16 +651,15 @@ function Exceptions({ run: x, open, onChanged, onOpen, beside }) {
                 Accept…
               </button>
             )}
-            {accepting === e.id && (
+            {accepting === e.id && !e.acceptedAt && (
               <ReasonForm
                 label="Why accept it"
                 action="Accept"
                 onCancel={() => setAccepting(null)}
                 onSubmit={async (reason) => {
-                  if (await run(() => payroll.accept(x.id, e.id, reason))) {
-                    setAccepting(null)
-                    onChanged()
-                  }
+                  // The form stays until the reloaded run shows it accepted: closing it first would show "Accept…" again for a
+                  // moment, and a second click would accept it twice.
+                  if (await run(() => payroll.accept(x.id, e.id, reason))) onChanged()
                 }}
               />
             )}

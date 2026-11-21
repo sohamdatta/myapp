@@ -288,7 +288,7 @@ test.describe('attendance test cases, part 1', () => {
   });
   test('TC-091 TC-092 year selector and next-year switch', async () => {
     await openSetup(hr);
-    const yr = new Date().getFullYear();
+    const yr = currentYear();
     await expect(hr.locator('#hol-year option')).toHaveCount(3);
     await hr.fill('#hol-date', `${yr + 1}-01-26`); await hr.fill('#hol-name', 'Next Republic'); await hr.getByRole('button', { name: 'Add holiday' }).click();
     await expect(hr.getByRole('heading', { name: `Holidays in ${yr + 1}` })).toBeVisible();
@@ -639,7 +639,7 @@ test.describe('attendance test cases, part 1', () => {
 
   // ---------- access ----------
   test('TC-260 TC-261 TC-262 role tabs', async () => {
-    await nav(emp.e1, 'My attendance'); await expect(emp.e1.locator('.sidebar, nav').getByText('Attendance', { exact: true })).toHaveCount(0).catch(() => {});
+    await nav(emp.e1, 'My attendance'); await expect(emp.e1.locator('.sidebar, nav').getByText('Attendance', { exact: true })).toHaveCount(0);
     await nav(mgr, 'Attendance'); await expect(mgr.getByRole('tab', { name: 'Setup' }).or(mgr.getByRole('button', { name: 'Setup', exact: true }))).toHaveCount(0);
     await nav(hr, 'Attendance'); for (const t of ['Daily', 'Requests', 'People', 'Setup', 'Devices']) await expect(hr.getByRole('tab', { name: t }).or(hr.getByRole('button', { name: t, exact: true })).first()).toBeVisible();
     await nav(aud, 'Attendance'); await tab(aud, 'Devices'); await expect(aud.getByRole('button', { name: 'Register device' })).toHaveCount(0);

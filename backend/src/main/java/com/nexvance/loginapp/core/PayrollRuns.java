@@ -741,12 +741,16 @@ public final class PayrollRuns {
             if (!"calculated".equals(lockRun(c, runId).get("state"))) {
                 throw new ApiException(409, "payroll.state", "Exceptions are accepted on a calculated run");
             }
-            Map<String, Object> x = Sql.one(c, "select level, acceptable, code from app.run_exception where id = ? and run_id = ?", exceptionId, runId);
+            Map<String, Object> x = Sql.one(c, "select level, acceptable, code, accepted_at from app.run_exception where id = ? and run_id = ?", exceptionId, runId);
             if (x == null) {
                 throw ApiException.notFound("The exception");
             }
             if (!"blocking".equals(x.get("level")) || !Boolean.TRUE.equals(x.get("acceptable"))) {
                 throw new ApiException(409, "payroll.not_acceptable", "This cannot be accepted; it has to be fixed");
+            }
+            if (x.get("acceptedAt") != null) {
+                // A second accept would replace who accepted it, and why, without a trace of the first.
+                throw new ApiException(409, "payroll.already_accepted", "This has already been accepted");
             }
             Sql.update(c, "update app.run_exception set accepted_by = ?, accepted_reason = ?, accepted_at = now() where id = ?", ctx.membershipId(), why,
                     exceptionId);

@@ -14,14 +14,18 @@ import { defineConfig, devices } from '@playwright/test';
 
 const desktop = { ...devices['Desktop Chrome'], viewport: { width: 1280, height: 900 } };
 
+// On the fixed-date jobs libfaketime makes the server 3-5x slower, and a beforeAll that signs in a dozen people ran past the
+// usual two minutes (41-attendance-cases-more on 30 Dec and 26 Feb).
+const slow = !!process.env.E2E_CLOCK_SHIFT_SECONDS;
+
 export default defineConfig({
   testDir: './tests',
   fullyParallel: false,
   workers: Number(process.env.E2E_WORKERS) || 2,   // a missing or non-numeric value means 2
   forbidOnly: !!process.env.CI,
   retries: 0,
-  timeout: 120_000,
-  expect: { timeout: 10_000 },
+  timeout: slow ? 360_000 : 120_000,
+  expect: { timeout: slow ? 30_000 : 10_000 },
   reporter: process.env.CI
     ? [['list'], ['html', { open: 'never' }], ['github']]
     : [['list'], ['html', { open: 'never' }]],

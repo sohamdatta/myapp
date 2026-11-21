@@ -79,8 +79,12 @@ jobs:
         # go-offline does not fetch the annotation processor path, so Error Prone (compiler plugin) is
         # fetched by compiling once; with the faked clock Maven Central's TLS certificate looks expired.
         run: |
-          mvn -B -ntp -q dependency:go-offline
-          mvn -B -ntp -q test-compile
+          # Maven Central sometimes fails to resolve plugins from a runner; a second try nearly always works.
+          for try in 1 2 3; do
+            mvn -B -ntp -q dependency:go-offline && mvn -B -ntp -q test-compile && break
+            [ "$try" = 3 ] && exit 1
+            sleep 20
+          done
 
       - name: Backend tests
         working-directory: backend
@@ -90,6 +94,12 @@ jobs:
         run: sudo -u postgres psql -qc 'drop database hrms' -c 'create database hrms'
 
       - name: Start the backend
+        env:
+          APP_SMTP_HOST: 127.0.0.1
+          APP_SMTP_PORT: '1025'
+          APP_SMTP_SECURITY: none
+          APP_SMTP_FROM: noreply@hrms.test
+          APP_PUBLIC_URL: http://localhost:5173
         run: |
           LD_PRELOAD="$FAKELIB" FAKETIME="$FAKE" nohup java -jar backend/target/login-app-*.jar > backend.log 2>&1 &
           for i in $(seq 1 60); do
@@ -116,9 +126,21 @@ jobs:
           npm ci
           npx playwright install --with-deps chromium
 
+      # Takes the app's email on SMTP and lists it over HTTP: without it the password-reset and email-change specs skip.
+      - name: Start the test mail server
+        working-directory: e2e
+        run: |
+          nohup node mail-sink.mjs > ../mail-sink.log 2>&1 &
+          for i in $(seq 1 15); do
+            if curl -sf http://localhost:8025/messages > /dev/null; then echo "mail server is up"; exit 0; fi
+            sleep 1
+          done
+          echo "mail server did not start"; cat ../mail-sink.log; exit 1
+
       - name: Browser tests
         working-directory: e2e
         env:
+          E2E_MAIL_URL: http://localhost:8025
           E2E_WORKERS: 1   # libfaketime slows the JVM 3-5x; keep one worker until a weekly run proves two
         run: npx playwright test --grep-invert @a11y   # the date does not change what axe finds
 
