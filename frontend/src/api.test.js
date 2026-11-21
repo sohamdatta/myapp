@@ -108,6 +108,74 @@ describe('an Organization’s own sign-in address', () => {
     expect(scoped.console).toBeNull()
   })
 
+  it('does not keep a failed answer: the next call asks again', async () => {
+    const fetch = vi.fn().mockRejectedValueOnce(new TypeError('Failed to fetch')).mockResolvedValue(answer({ organization: ACME, unknown: false }))
+    vi.stubGlobal('fetch', fetch)
+    expect((await loadSignInPage()).organization).toBeNull()
+    expect((await loadSignInPage()).organization.id).toBe('acme-id')
+    expect(scopeToPage(me()).organizations.map((o) => o.tenantId)).toEqual(['acme-id'])
+    expect(fetch).toHaveBeenCalledTimes(2)
+  })
+
+  it('takes the shared address’s own answer as it is, and passes an unknown address on', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce(answer({ organization: null, unknown: false, sharedAddress: 'https://hr.example.com' })))
+    const shared = await loadSignInPage()
+    expect(shared).toEqual({ organization: null, unknown: false, sharedAddress: 'https://hr.example.com' })
+    expect(scopeToPage(me())).toEqual(me())
+
+    forgetSignInPage()
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce(answer({ organization: null, unknown: true, sharedAddress: 'https://hr.example.com' })))
+    const unknown = await loadSignInPage()
+    expect(unknown.unknown).toBe(true)
+    expect(unknown.sharedAddress).toBe('https://hr.example.com')
+  })
+
+  describe('where a new sign-in goes', () => {
+    const route = (page, handlers = {}) => {
+      const calls = []
+      vi.stubGlobal('fetch', vi.fn(async (url, init) => {
+        calls.push([url, init?.body])
+        if (url === '/api/public/sign-in-page') return answer(page)
+        if (url === '/api/auth/login') return answer(me(handlers.login))
+        if (url === '/api/auth/enter') {
+          const body = JSON.parse(init.body)
+          if (handlers.enterFails) return { ok: false, status: 403, json: async () => handlers.enterFails }
+          return answer(body.console ? me({ kind: 'console' }) : me({ kind: 'tenant', organization: { id: body.organizationId } }))
+        }
+        throw new Error(`unexpected ${url}`)
+      }))
+      return calls
+    }
+    const entered = (calls) => calls.filter(([url]) => url === '/api/auth/enter').map(([, body]) => JSON.parse(body))
+
+    it('leaves a login that is not a member of this Organization on the screen that lists where it can go', async () => {
+      const calls = route({ organization: { ...ACME, id: 'elsewhere-id' }, unknown: false })
+      const result = await login('a@acme.test', 'pw')
+      expect(result.kind).toBe('identity')
+      expect(entered(calls)).toEqual([])
+    })
+
+    it('on the shared address goes to the console when that was last used and the login has it', async () => {
+      localStorage.setItem('hrms-last-destination', 'console')
+      const calls = route({ organization: null, unknown: false })
+      await login('a@acme.test', 'pw')
+      expect(entered(calls)).toEqual([{ console: true }])
+    })
+
+    it('on the shared address goes to the first Organization when the last one is no longer available', async () => {
+      localStorage.setItem('hrms-last-destination', 'gone-id')
+      const calls = route({ organization: null, unknown: false })
+      await login('a@acme.test', 'pw')
+      expect(entered(calls)).toEqual([{ organizationId: 'other-id' }])
+    })
+
+    it('says why an entry was refused when the Organization needs two-step sign-in', async () => {
+      route({ organization: ACME, unknown: false }, { enterFails: { code: 'mfa.required', message: 'Turn on two-step sign-in first' } })
+      const result = await login('a@acme.test', 'pw')
+      expect(result.entryRefused).toEqual({ code: 'mfa.required', message: 'Turn on two-step sign-in first' })
+    })
+  })
+
   it('changes nothing on the shared address, or when the page cannot be told', async () => {
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('Failed to fetch')))
     const page = await loadSignInPage()

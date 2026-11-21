@@ -224,12 +224,17 @@ let pageLoad = null
  * Asked once per visit; anything that signs in waits for the answer, so it can be asked alongside the first other calls.
  */
 export function loadSignInPage() {
-  pageLoad ??= get('/public/sign-in-page')
-    .catch(() => ({ organization: null, unknown: false, sharedAddress: null }))
-    .then((page) => {
+  pageLoad ??= get('/public/sign-in-page').then(
+    (page) => {
       pageOrganization = page.organization || null
       return page
-    })
+    },
+    () => {
+      // A failed answer is not kept: on an Organization's address it would stand for the shared page for the whole visit.
+      pageLoad = null
+      return { organization: null, unknown: false, sharedAddress: null }
+    },
+  )
   return pageLoad
 }
 

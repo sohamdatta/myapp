@@ -107,7 +107,17 @@ public class OidcController {
     /** The page trades the one-time code in the cookie for a session (or a challenge, when the login has two-step sign-in). */
     @PostMapping("/auth/oidc/exchange")
     public ResponseEntity<Object> exchange(@CookieValue(value = OidcService.COOKIE, required = false) String code, HttpServletRequest http) {
-        AuthService.SignIn result = oidc.exchange(code, Requests.clientIp(http, trustForwardedFor));
+        return signedIn(oidc.exchange(code, Requests.clientIp(http, trustForwardedFor)), http);
+    }
+
+    /**
+     * The answer for a Google sign-in that worked. On an Organization's own address the login must belong to it (as with a
+     * password); a login that wants a code is held to that when the code is given, as with a password.
+     */
+    public ResponseEntity<Object> signedIn(AuthService.SignIn result, HttpServletRequest http) {
+        if (!result.mfaRequired()) {
+            pages.requireMember(auth, pages.forHost(Requests.host(http)), result.token());
+        }
         Map<String, Object> body = new LinkedHashMap<>();
         if (result.mfaRequired()) {
             body.put("mfaRequired", true);
