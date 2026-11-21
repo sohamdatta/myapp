@@ -143,6 +143,7 @@ test('the payroll guide, screen by screen', async ({ browser }) => {
     await exceptions.locator('li.exception.blocking').filter({ has: owner.getByRole('button', { name: 'Accept…' }) }).first().getByRole('button', { name: 'Accept…' }).click();
     await owner.fill('#reason-Accept', 'Paid by cheque this month; details follow');
     await owner.locator('form:has(#reason-Accept)').getByRole('button', { name: 'Accept', exact: true }).click();
+    await expect(owner.locator('#reason-Accept')).toHaveCount(0);   // saved before the next one is picked
     await expect(buttons).toHaveCount(left - 1);
   }
   await shot(owner, '14-exceptions', async () => { await exceptions.scrollIntoViewIfNeeded(); });

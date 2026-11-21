@@ -233,6 +233,8 @@ test.describe.serial('tax filing screens', () => {
   // A certificate is built only once the year's March pay is approved, so a month in the middle of the year builds none and says why.
   // Building, releasing by a second person and the employee's download are covered against a March clock by TaxCertificatesTest.
   test('Hema builds the certificates mid-year; nobody is ready, and the screen says who was left out and why', async () => {
+    // In March the month approved above is the year's last, so certificates are built here: that case is TaxCertificatesTest's.
+    test.skip(period.slice(5, 7) === '03', 'the run month is March, the year\'s last pay');
     await payroll(hema, 'Tax filing');
     await hema.getByRole('tab', { name: 'Certificates' }).click();
     await expect(hema.getByTestId('tax-certificates')).toContainText('No certificates for');

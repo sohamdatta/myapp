@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { SUPER_ADMIN, signIn, newPage, nav, tab, api, isoDay, shot as save } from './helpers';
+import { SUPER_ADMIN, signIn, newPage, nav, tab, api, isoDay, currentYear, shot as save } from './helpers';
 import { join, tokenOf } from './join';
 
 // The screenshots in docs/user-guide/attendance.md, taken in a demo Organization of their own (Northwind Foods)
@@ -41,7 +41,7 @@ test('the attendance guide, screen by screen', async ({ browser }) => {
   const shifts = (await api(hr, 'GET', '/org/attendance/shifts')).body as any[];
   const shift = shifts.find((s) => s.name === 'General') ?? await ok(api(hr, 'POST', '/org/attendance/shifts', { name: 'General', startTime: '09:30', endTime: '18:30', graceMinutes: 10, fullDayMinutes: 480, halfDayMinutes: 240, active: true }));
   if (!shifts.find((s) => s.name === 'Night')) await api(hr, 'POST', '/org/attendance/shifts', { name: 'Night', startTime: '22:00', endTime: '06:00', graceMinutes: 10, fullDayMinutes: 480, halfDayMinutes: 240, active: true });
-  const yr = new Date().getFullYear();
+  const yr = currentYear();
   for (const [d, n] of [[`${yr}-01-26`, 'Republic Day'], [`${yr}-08-15`, 'Independence Day'], [`${yr}-10-02`, 'Gandhi Jayanti'], [`${yr}-11-08`, 'Diwali'], [`${yr}-12-25`, 'Christmas']]) await api(hr, 'POST', '/org/attendance/holidays', { date: d, name: n });
   const asg = async (names: string[], l: any, extra: any = {}) => api(hr, 'POST', '/org/attendance/assignments', { membershipIds: names.map((n) => id[em(n)]), workLocationId: l.id, shiftId: shift.id, weeklyOffs: [0, 6], remoteDays: [], effectiveFrom: isoDay(-5), ...extra });
   if (!list.find((p) => p.email === em('priya') && (p.workLocationId || p.assignment))) {

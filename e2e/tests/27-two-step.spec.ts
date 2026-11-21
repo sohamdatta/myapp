@@ -1,6 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
 import { createHmac } from 'node:crypto';
-import { SUPER_ADMIN, newPage, acceptInvite, signIn, expectNoConsoleErrors, PASSWORD } from './helpers';
+import { SUPER_ADMIN, newPage, acceptInvite, signIn, expectNoConsoleErrors, PASSWORD, nowMs } from './helpers';
 
 // Two-step sign-in, end to end: set it up in the Security dialog from the key on screen, sign in with a code, see a used code
 // refused, sign in with a recovery code (once), and turn it off. The test works out the codes itself, as an authenticator does.
@@ -25,7 +25,7 @@ function base32Decode(text: string): Buffer {
   return Buffer.from(out);
 }
 
-const stepNow = () => Math.floor(Date.now() / 30000);
+const stepNow = () => Math.floor(nowMs() / 30000);   // the server's clock, which the fixed-date jobs move
 
 /** The 6-digit code for a 30-second step. */
 function totp(secret: string, step: number): string {
