@@ -79,8 +79,12 @@ jobs:
         # go-offline does not fetch the annotation processor path, so Error Prone (compiler plugin) is
         # fetched by compiling once; with the faked clock Maven Central's TLS certificate looks expired.
         run: |
-          mvn -B -ntp -q dependency:go-offline
-          mvn -B -ntp -q test-compile
+          # Maven Central sometimes fails to resolve plugins from a runner; a second try nearly always works.
+          for try in 1 2 3; do
+            mvn -B -ntp -q dependency:go-offline && mvn -B -ntp -q test-compile && break
+            [ "$try" = 3 ] && exit 1
+            sleep 20
+          done
 
       - name: Backend tests
         working-directory: backend
