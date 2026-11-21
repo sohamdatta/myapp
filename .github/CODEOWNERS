@@ -9,18 +9,18 @@
 /.github/scripts/schema_diff.py                        @sohamdatta
 
 # Money: payroll, tax and settlement rules
-/backend/src/main/java/com/example/loginapp/core/Formula.java           @sohamdatta
-/backend/src/main/java/com/example/loginapp/core/Payroll*.java          @sohamdatta
-/backend/src/main/java/com/example/loginapp/core/TaxDeclarations.java   @sohamdatta
-/backend/src/main/java/com/example/loginapp/core/ExitSettlement.java    @sohamdatta
+/backend/src/main/java/com/nexvance/loginapp/core/Formula.java           @sohamdatta
+/backend/src/main/java/com/nexvance/loginapp/core/Payroll*.java          @sohamdatta
+/backend/src/main/java/com/nexvance/loginapp/core/TaxDeclarations.java   @sohamdatta
+/backend/src/main/java/com/nexvance/loginapp/core/ExitSettlement.java    @sohamdatta
 
 # Security: sign-in, sessions, encryption, deployment
-/backend/src/main/java/com/example/loginapp/core/AuthService.java   @sohamdatta
-/backend/src/main/java/com/example/loginapp/core/Crypto.java        @sohamdatta
-/backend/src/main/java/com/example/loginapp/core/Secrets.java       @sohamdatta
+/backend/src/main/java/com/nexvance/loginapp/core/AuthService.java   @sohamdatta
+/backend/src/main/java/com/nexvance/loginapp/core/Crypto.java        @sohamdatta
+/backend/src/main/java/com/nexvance/loginapp/core/Secrets.java       @sohamdatta
 /deploy/                                                            @sohamdatta
 /.github/workflows/                                                 @sohamdatta
 
 # Statutory returns and TDS filings (money and identifiers)
-/backend/src/main/java/com/example/loginapp/core/StatutoryFilings.java   @sohamdatta
-/backend/src/main/java/com/example/loginapp/core/Tds*.java               @sohamdatta
+/backend/src/main/java/com/nexvance/loginapp/core/StatutoryFilings.java   @sohamdatta
+/backend/src/main/java/com/nexvance/loginapp/core/Tds*.java               @sohamdatta

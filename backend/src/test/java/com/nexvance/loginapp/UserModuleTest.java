@@ -1,0 +1,639 @@
+package com.nexvance.loginapp;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
+
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.Statement;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import java.util.concurrent.atomic.AtomicInteger;
+
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.Test;
+import org.postgresql.ds.PGSimpleDataSource;
+
+import com.nexvance.loginapp.core.ApiException;
+import com.nexvance.loginapp.core.AuthService;
+import com.nexvance.loginapp.core.Db;
+import com.nexvance.loginapp.core.InvitationService;
+import com.nexvance.loginapp.core.Migrator;
+import com.nexvance.loginapp.core.PlatformService;
+import com.nexvance.loginapp.core.SessionCtx;
+import com.nexvance.loginapp.core.Sql;
+import com.nexvance.loginapp.core.UserService;
+
+/**
+ * Exercises the user module against a real PostgreSQL, because the rules that
+ * matter most (isolation between Organizations, the last Org Admin guard, the
+ * payroll role rule) live in the database.
+ *
+ * Needs PostgreSQL on localhost:5432 with the owner account from
+ * application.properties; the tests are skipped when it cannot be reached.
+ * Override with APP_TEST_DB_HOST, APP_DB_OWNER_USER and APP_DB_OWNER_PASSWORD.
+ */
+class UserModuleTest {
+
+    private static final String PASSWORD = "correct-horse-battery";
+    private static final String ROLE_PASSWORD = "test-role-password";
+    private static final AtomicInteger SEQUENCE = new AtomicInteger();
+
+    private static Db db;
+    private static AuthService auth;
+    private static UserService users;
+    private static InvitationService invitations;
+    private static PlatformService platform;
+    private static SessionCtx superAdmin;
+
+    @BeforeAll
+    static void startDatabase() throws Exception {
+        java.util.TimeZone.setDefault(java.util.TimeZone.getTimeZone("UTC"));   // as the application does
+        String host = env("APP_TEST_DB_HOST", "localhost:5432");
+        String ownerUser = env("APP_DB_OWNER_USER", "postgres");
+        String ownerPassword = env("APP_DB_OWNER_PASSWORD", "postgres");
+        boolean reachable;
+        try (Connection c = DriverManager.getConnection("jdbc:postgresql://" + host + "/postgres", ownerUser, ownerPassword);
+             Statement st = c.createStatement()) {
+            st.execute("drop database if exists hrms_test with (force)");
+            st.execute("create database hrms_test");
+            reachable = true;
+        } catch (Exception e) {
+            reachable = false;
+        }
+        if (!reachable && "true".equals(System.getenv("APP_TEST_DB_REQUIRED"))) {
+            throw new IllegalStateException("PostgreSQL is not reachable on " + host + " and APP_TEST_DB_REQUIRED is set");
+        }
+        assumeTrue(reachable, "PostgreSQL is not reachable on " + host + "; skipping the user module tests");
+
+        String url = "jdbc:postgresql://" + host + "/hrms_test";
+        db = new Db(source(url, ownerUser, ownerPassword), source(url, "app_platform", ROLE_PASSWORD),
+                source(url, "app_auth", ROLE_PASSWORD), source(url, "app_tenant", ROLE_PASSWORD));
+        Migrator.migrate(db, ROLE_PASSWORD);
+        Migrator.migrate(db, ROLE_PASSWORD);   // a second run must change nothing
+        auth = new AuthService(db);
+        users = new UserService(db);
+        invitations = new InvitationService(db);
+        platform = new PlatformService(db);
+        platform.ensureFirstSuperAdmin("root@platform.test", PASSWORD);
+        superAdmin = auth.resolve(auth.enterConsole(auth.resolve(auth.login("root@platform.test", PASSWORD))));
+    }
+
+    // ── database roles ──────────────────────────────────────────────────
+
+    @Test
+    void theDefinerReachesEveryProtectedTableWithOrWithoutBypassRls() {
+        // On a managed database app_definer cannot be BYPASSRLS; a policy on every table under
+        // row-level security gives it the same reach. A new table without one would break the
+        // functions that cross Organizations, there and only there.
+        long missing = db.inOwner(c -> (Long) Sql.one(c, "select count(*) as n from pg_class c "
+                + "join pg_namespace n on n.oid = c.relnamespace where c.relrowsecurity and n.nspname in ('app','auth','platform') "
+                + "and not exists (select 1 from pg_policy p where p.polrelid = c.oid and p.polname = 'definer_access')").get("n"));
+        assertEquals(0L, missing);
+        long tenantRoles = db.inOwner(c -> (Long) Sql.one(c, "select count(*) as n from pg_roles "
+                + "where rolname in ('app_platform','app_auth','app_tenant') and (rolbypassrls or rolsuper)").get("n"));
+        assertEquals(0L, tenantRoles);
+    }
+
+    // ── sign-in ─────────────────────────────────────────────────────────
+
+    @Test
+    void wrongPasswordAndUnknownEmailGetTheSameError() {
+        assertError(401, "auth.invalid_credentials", () -> auth.login("root@platform.test", "not-the-password"));
+        assertError(401, "auth.invalid_credentials", () -> auth.login("nobody@nowhere.test", "not-the-password"));
+    }
+
+    @Test
+    void fiveFailedSignInsLockTheLogin() {
+        Org org = newOrg();
+        for (int i = 0; i < 5; i++) {
+            assertError(401, "auth.invalid_credentials", () -> auth.login(org.adminEmail, "wrong-password-here"));
+        }
+        assertError(429, "auth.locked", () -> auth.login(org.adminEmail, PASSWORD));
+    }
+
+    @Test
+    void aHashMadeWithFewerIterationsIsReplacedAtTheNextSignIn() {
+        Org org = newOrg();
+        // a hash as the application made them before the iteration count was raised
+        String old = oldHash(PASSWORD, 210_000);
+        db.inOwner(c -> Sql.update(c, "update auth.identity set password_hash = ? where email = ?::citext", old, org.adminEmail));
+        assertError(401, "auth.invalid_credentials", () -> auth.login(org.adminEmail, "wrong-password-here"));
+        assertEquals(old, storedHash(org.adminEmail), "a wrong password changes nothing");
+        assertNotNull(auth.login(org.adminEmail, PASSWORD));
+        String now = storedHash(org.adminEmail);
+        assertTrue(now.startsWith("pbkdf2-sha256$600000$"), now);
+        assertNotNull(auth.login(org.adminEmail, PASSWORD), "the new hash still opens with the same password");
+        assertEquals(now, storedHash(org.adminEmail), "an up-to-date hash is left alone");
+    }
+
+    @Test
+    void aRightPasswordTakesBackTheFailureCountedForItsOwnAttempt() {
+        Org org = newOrg();
+        for (int i = 0; i < 4; i++) {
+            assertError(401, "auth.invalid_credentials", () -> auth.login(org.adminEmail, "wrong-password-here"));
+        }
+        assertNotNull(auth.login(org.adminEmail, PASSWORD));   // the fifth attempt, and right: not locked, and the run ends
+        long left = db.inOwner(c -> (Long) Sql.one(c, "select count(*) as n from auth.login_failure where email = ?::citext", org.adminEmail).get("n"));
+        assertEquals(0L, left);
+    }
+
+    @Test
+    void guessesSentTogetherAreEachCounted() throws Exception {
+        Org org = newOrg();
+        List<Thread> threads = new java.util.ArrayList<>();
+        AtomicInteger refused = new AtomicInteger();
+        AtomicInteger locked = new AtomicInteger();
+        for (int i = 0; i < 12; i++) {
+            threads.add(Thread.ofVirtual().start(() -> {
+                try {
+                    auth.login(org.adminEmail, "wrong-password-here");
+                } catch (ApiException e) {
+                    (e.status() == 429 ? locked : refused).incrementAndGet();
+                }
+            }));
+        }
+        for (Thread t : threads) {
+            t.join();
+        }
+        assertEquals(5, refused.get(), "only as many guesses as the limit allows have their password checked");
+        assertEquals(7, locked.get());
+    }
+
+    private static String storedHash(String email) {
+        return db.inOwner(c -> (String) Sql.one(c, "select password_hash from auth.identity where email = ?::citext", email).get("passwordHash"));
+    }
+
+    private static String oldHash(String password, int iterations) {
+        try {
+            byte[] salt = new byte[16];
+            new java.security.SecureRandom().nextBytes(salt);
+            byte[] hash = javax.crypto.SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256")
+                    .generateSecret(new javax.crypto.spec.PBEKeySpec(password.toCharArray(), salt, iterations, 256)).getEncoded();
+            java.util.Base64.Encoder b64 = java.util.Base64.getEncoder();
+            return "pbkdf2-sha256$" + iterations + "$" + b64.encodeToString(salt) + "$" + b64.encodeToString(hash);
+        } catch (java.security.GeneralSecurityException e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
+    @Test
+    void emailIsNotCaseSensitive() {
+        Org org = newOrg();
+        assertNotNull(auth.login(org.adminEmail.toUpperCase(), PASSWORD));
+    }
+
+    // ── the three levels ────────────────────────────────────────────────
+
+    @Test
+    void firstInvitationMakesAnOrgAdminAndActivatesTheOrganization() {
+        Org org = newOrg();
+        assertEquals("tenant", org.admin.kind());
+        assertTrue(org.admin.canAcrossOrganization("user.invite"));
+        assertTrue(org.admin.canAcrossOrganization("billing.manage"));
+        Map<String, Object> row = organization(org);
+        assertEquals("active", row.get("status"));
+        assertEquals(1L, ((Number) row.get("owners")).longValue());
+    }
+
+    @Test
+    void superAdminHasNoWayIntoOrganizationData() {
+        Org org = newOrg();
+        assertError(403, "tenant.required", () -> users.users(superAdmin));
+        // The console's database role cannot even name the table.
+        assertError(403, "permission.denied", () -> db.inPlatform(c -> Sql.query(c, "select * from app.membership")));
+        assertError(403, "permission.denied", () -> db.inAuth(c -> Sql.query(c, "select * from app.membership")));
+        // Once the Organization has a member, the platform can no longer invite into it.
+        assertError(409, "request.refused", () -> platform.inviteFirstAdmin(superAdmin, org.id, "intruder@x.test"));
+    }
+
+    @Test
+    void organizationsCannotSeeEachOther() {
+        Org a = newOrg();
+        Org b = newOrg();
+        Map<String, Object> pending = users.invite(b.admin, "pending@b.test", List.of("employee"));
+        List<String> emailsSeenByA = users.users(a.admin).stream().map(u -> (String) u.get("email")).toList();
+        assertEquals(List.of(a.adminEmail), emailsSeenByA);
+        assertTrue(users.invitations(a.admin).isEmpty());
+        UUID bInvitation = UUID.fromString((String) pending.get("id"));
+        assertError(404, "not_found", () -> users.revokeInvitation(a.admin, bInvitation));
+        UUID bAdmin = b.admin.membershipId();
+        assertError(404, "not_found", () -> users.suspend(a.admin, bAdmin));
+        // Writing a row for another Organization is refused by row-level security.
+        assertError(403, "permission.denied", () -> db.inTenant(a.id, c -> Sql.query(c,
+                "insert into app.invitation (tenant_id, email, role_ids, token_hash, expires_at) "
+                        + "select ?, 'x@x.test', array[id], '\\x01', now() from app.role where code = 'employee' returning id",
+                b.id)));
+    }
+
+    // ── invitations ─────────────────────────────────────────────────────
+
+    @Test
+    void invitedUserSetsAPasswordAndJoinsWithTheOfferedRoles() {
+        Org org = newOrg();
+        SessionCtx employee = join(org, "emp", List.of("employee"));
+        assertEquals(org.id, employee.tenantId());
+        assertTrue(employee.can("employee.read"));
+        assertFalse(employee.canAcrossOrganization("user.read"));
+        assertError(403, "permission.denied", () -> users.users(employee));
+        assertTrue(actions(org).contains("invitation.accepted"));
+    }
+
+    @Test
+    void invitationLinkWorksOnceAndNeedsAStrongPassword() {
+        Org org = newOrg();
+        String token = (String) users.invite(org.admin, "once@" + org.slug + ".test", List.of("employee")).get("token");
+        assertError(400, "auth.weak_password", () -> invitations.accept(token, "short", null));
+        invitations.accept(token, PASSWORD, null);
+        assertError(410, "invitation.invalid", () -> invitations.accept(token, PASSWORD, null));
+        assertError(410, "invitation.invalid", () -> invitations.preview("no-such-token"));
+    }
+
+    @Test
+    void duplicateAndRevokedInvitationsAreRefused() {
+        Org org = newOrg();
+        String email = "dup@" + org.slug + ".test";
+        Map<String, Object> first = users.invite(org.admin, email, List.of("employee"));
+        assertError(409, "membership.exists", () -> users.invite(org.admin, email.toUpperCase(), List.of("employee")));
+        assertError(409, "membership.exists", () -> users.invite(org.admin, org.adminEmail, List.of("employee")));
+        users.revokeInvitation(org.admin, UUID.fromString((String) first.get("id")));
+        assertError(410, "invitation.invalid", () -> invitations.accept((String) first.get("token"), PASSWORD, null));
+        Map<String, Object> again = users.invite(org.admin, email, List.of("employee"));
+        String resent = (String) users.resendInvitation(org.admin, UUID.fromString((String) again.get("id"))).get("token");
+        assertError(410, "invitation.invalid", () -> invitations.accept((String) again.get("token"), PASSWORD, null));
+        assertNotNull(invitations.accept(resent, PASSWORD, null));
+    }
+
+    @Test
+    void oneLoginCanBelongToTwoOrganizations() {
+        Org a = newOrg();
+        Org b = newOrg();
+        String token = (String) users.invite(b.admin, a.adminEmail, List.of("auditor")).get("token");
+        assertTrue((Boolean) invitations.preview(token).get("identityExists"));
+        assertError(403, "invitation.email_mismatch", () -> invitations.accept(token, "not-their-password", null));
+        SessionCtx inB = auth.resolve(invitations.accept(token, PASSWORD, null));
+        assertEquals(b.id, inB.tenantId());
+        assertEquals(2, ((List<?>) auth.destinations(inB).get("organizations")).size());
+        // Switching issues a new session and ends the old one.
+        SessionCtx inA = auth.resolve(auth.enterOrganization(inB, a.id));
+        assertEquals(a.id, inA.tenantId());
+        assertTrue(inA.canAcrossOrganization("billing.manage"));
+        assertFalse(auth.resolve(auth.enterOrganization(inA, b.id)).canAcrossOrganization("billing.manage"));
+    }
+
+    // ── who may grant what ──────────────────────────────────────────────
+
+    @Test
+    void hrAdminCanGrantEmployeeRolesButNotPayrollOrAdminRoles() {
+        Org org = newOrg();
+        SessionCtx hr = join(org, "hr", List.of("hr_admin", "employee"));
+        assertNotNull(users.invite(hr, "new-emp@" + org.slug + ".test", List.of("employee", "manager")));
+        assertError(403, "grant.not_allowed", () -> users.invite(hr, "pay@" + org.slug + ".test", List.of("payroll_operator")));
+        assertError(403, "grant.not_allowed", () -> users.invite(hr, "boss@" + org.slug + ".test", List.of("owner")));
+        assertError(403, "grant.not_allowed", () -> users.invite(hr, "aud@" + org.slug + ".test", List.of("auditor")));
+        assertError(403, "grant.not_allowed", () -> users.invite(hr, "ex@" + org.slug + ".test", List.of("ex_employee")));
+        // Nor can an HR Admin demote, suspend or remove an Org Admin.
+        UUID admin = org.admin.membershipId();
+        assertError(403, "grant.not_allowed", () -> users.changeRoles(hr, admin, List.of("employee")));
+        assertError(403, "grant.not_allowed", () -> users.suspend(hr, admin));
+        assertError(403, "grant.not_allowed", () -> users.end(hr, admin));
+        Map<String, Boolean> grantable = new java.util.HashMap<>();
+        users.roles(hr).forEach(r -> grantable.put((String) r.get("code"), (Boolean) r.get("grantable")));
+        // Finance holds the permission to verify claims, which an HR Admin does not, so only an Org Admin grants it.
+        assertEquals(Map.ofEntries(Map.entry("auditor", false), Map.entry("employee", true), Map.entry("ex_employee", false),
+                Map.entry("hr_admin", true), Map.entry("it_admin", true), Map.entry("joiner", false), Map.entry("manager", true),
+                Map.entry("owner", false), Map.entry("payroll_approver", false), Map.entry("payroll_operator", false),
+                Map.entry("finance", false)), grantable);
+    }
+
+    @Test
+    void nobodyChangesTheirOwnRolesOrStatus() {
+        Org org = newOrg();
+        UUID self = org.admin.membershipId();
+        assertError(409, "request.refused", () -> users.changeRoles(org.admin, self, List.of("employee")));
+        assertError(409, "request.refused", () -> users.suspend(org.admin, self));
+        assertError(409, "request.refused", () -> users.end(org.admin, self));
+    }
+
+    @Test
+    void oneUserCannotHoldBothPayrollRoles() {
+        Org org = newOrg();
+        SessionCtx operator = join(org, "pay", List.of("payroll_operator"));
+        UUID id = operator.membershipId();
+        assertError(409, "role.maker_checker", () -> users.changeRoles(org.admin, id, List.of("payroll_operator", "payroll_approver")));
+        users.changeRoles(org.admin, id, List.of("payroll_approver"));   // swapping is fine
+        assertTrue(auth.resolve(tokenOf(org, "pay")).can("payroll.approve"));
+        assertError(409, "role.maker_checker", () -> users.invite(org.admin, "both@" + org.slug + ".test",
+                List.of("payroll_operator", "payroll_approver")));
+    }
+
+    @Test
+    void theLastOrgAdminIsProtectedByTheDatabase() {
+        Org org = newOrg();
+        UUID admin = org.admin.membershipId();
+        assertError(409, "membership.last_owner", () -> db.inTenant(org.id, c ->
+                Sql.update(c, "update app.membership set status = 'suspended' where id = ?", admin)));
+        assertError(409, "membership.last_owner", () -> db.inTenant(org.id, c ->
+                Sql.update(c, "delete from app.membership_role where membership_id = ?", admin)));
+        // With a second Org Admin, the first can be suspended.
+        SessionCtx second = join(org, "second", List.of("owner"));
+        users.suspend(second, admin);
+        assertError(401, "auth.session_revoked", () -> auth.resolve(org.adminToken));
+    }
+
+    // ── lifecycle ───────────────────────────────────────────────────────
+
+    @Test
+    void roleChangesApplyOnTheNextRequest() {
+        Org org = newOrg();
+        SessionCtx employee = join(org, "emp", List.of("employee"));
+        String token = tokenOf(org, "emp");
+        assertFalse(auth.resolve(token).canAcrossOrganization("user.invite"));
+        users.changeRoles(org.admin, employee.membershipId(), List.of("employee", "hr_admin"));
+        assertTrue(auth.resolve(token).canAcrossOrganization("user.invite"));
+        users.changeRoles(org.admin, employee.membershipId(), List.of("employee"));
+        assertFalse(auth.resolve(token).canAcrossOrganization("user.invite"));
+        assertTrue(actions(org).containsAll(List.of("role.granted", "role.removed")));
+    }
+
+    @Test
+    void suspendingEndsSessionsAndReactivatingRestoresAccess() {
+        Org org = newOrg();
+        SessionCtx employee = join(org, "emp", List.of("employee"));
+        String token = tokenOf(org, "emp");
+        users.suspend(org.admin, employee.membershipId());
+        assertError(401, "auth.session_revoked", () -> auth.resolve(token));
+        SessionCtx fresh = auth.resolve(auth.login("emp@" + org.slug + ".test", PASSWORD));
+        assertTrue(((List<?>) auth.destinations(fresh).get("organizations")).isEmpty());
+        assertError(403, "tenant.unavailable", () -> auth.enterOrganization(fresh, org.id));
+        users.reactivate(org.admin, employee.membershipId());
+        assertEquals(org.id, auth.resolve(auth.enterOrganization(fresh, org.id)).tenantId());
+    }
+
+    @Test
+    void endedUserCannotEnterAndCanBeInvitedBack() {
+        Org org = newOrg();
+        SessionCtx employee = join(org, "emp", List.of("employee"));
+        String email = "emp@" + org.slug + ".test";
+        users.end(org.admin, employee.membershipId());
+        SessionCtx fresh = auth.resolve(auth.login(email, PASSWORD));
+        assertTrue(((List<?>) auth.destinations(fresh).get("organizations")).isEmpty());
+        // Rehire: the same membership row is reactivated with the new roles.
+        String token = (String) users.invite(org.admin, email, List.of("manager")).get("token");
+        SessionCtx back = auth.resolve(invitations.accept(token, null, fresh));
+        assertEquals(employee.membershipId(), back.membershipId());
+        assertEquals(2, users.users(org.admin).size());
+    }
+
+    @Test
+    void suspendedOrganizationCannotBeEntered() {
+        Org org = newOrg();
+        platform.changeOrganizationStatus(superAdmin, org.id, "suspend");
+        assertError(401, "auth.session_revoked", () -> auth.resolve(org.adminToken));
+        SessionCtx fresh = auth.resolve(auth.login(org.adminEmail, PASSWORD));
+        assertTrue(((List<?>) auth.destinations(fresh).get("organizations")).isEmpty());
+        platform.changeOrganizationStatus(superAdmin, org.id, "reactivate");
+        assertEquals(1, ((List<?>) auth.destinations(fresh).get("organizations")).size());
+    }
+
+    // ── support access ──────────────────────────────────────────────────
+
+    @Test
+    void supportAccessIsGrantedLoggedLimitedAndRevocable() {
+        Org org = newOrg();
+        // With a single Super Admin the grant is approved automatically, and says so.
+        Map<String, Object> grant = platform.requestGrant(superAdmin, org.id, "read_only", "Ticket 42: user list looks wrong");
+        assertEquals("approved", grant.get("status"));
+        UUID grantId = UUID.fromString((String) grant.get("id"));
+        Map<String, Object> listed = platform.grants(superAdmin).stream()
+                .filter(g -> g.get("id").equals(grant.get("id"))).findFirst().orElseThrow();
+        assertEquals(true, listed.get("autoApproved"));
+
+        String token = platform.startSupportSession(superAdmin, grantId);
+        SessionCtx support = auth.resolve(token);
+        assertEquals("support", support.kind());
+        assertEquals(1, users.users(support).size());
+        // Read-only: no writes, and never the money or role permissions.
+        assertError(403, "permission.denied", () -> users.invite(support, "x@x.test", List.of("employee")));
+        assertFalse(support.can("payroll.approve"));
+        assertFalse(support.can("role.assign"));
+        // The Organization's own audit log shows the session and its reason.
+        Map<String, Object> event = users.auditLog(org.admin).stream()
+                .filter(e -> e.get("action").equals("support.session_started")).findFirst().orElseThrow();
+        assertEquals("support", event.get("actorKind"));
+        assertTrue(((String) event.get("detail")).contains("Ticket 42"));
+
+        // Ending the session is logged too, once.
+        auth.logout(support);
+        auth.logout(support);
+        assertEquals(1L, users.auditLog(org.admin).stream().filter(e -> e.get("action").equals("support.session_ended")).count());
+        assertError(401, "auth.session_revoked", () -> auth.resolve(token));
+
+        String again = platform.startSupportSession(superAdmin, grantId);
+        platform.decideGrant(superAdmin, grantId, "revoke");
+        assertError(401, "support.expired", () -> auth.resolve(again));
+        assertError(409, "support.expired", () -> platform.startSupportSession(superAdmin, grantId));
+    }
+
+    @Test
+    void writeModeSupportStillCannotGrantRolesOrApprovePayroll() {
+        Org org = newOrg();
+        Map<String, Object> grant = platform.requestGrant(superAdmin, org.id, "write", "Ticket 77: fix a stuck invitation");
+        SessionCtx support = auth.resolve(platform.startSupportSession(superAdmin, UUID.fromString((String) grant.get("id"))));
+        assertTrue(support.canAcrossOrganization("user.manage"));
+        assertFalse(support.can("payroll.approve"));
+        assertFalse(support.can("payroll.release"));
+        assertError(403, "grant.not_allowed", () -> users.invite(support, "x@" + org.slug + ".test", List.of("employee")));
+        assertError(403, "permission.denied", () -> users.changeRoles(support, org.admin.membershipId(), List.of("employee")));
+    }
+
+    @Test
+    void aGrantNeedsASecondPersonWhenOneExists() {
+        Org org = newOrg();
+        String email = "second-admin-" + SEQUENCE.incrementAndGet() + "@platform.test";
+        platform.addPlatformUser(superAdmin, email, "super_admin", PASSWORD);
+        try {
+            SessionCtx second = auth.resolve(auth.enterConsole(auth.resolve(auth.login(email, PASSWORD))));
+            Map<String, Object> grant = platform.requestGrant(superAdmin, org.id, "read_only", "Ticket 99: needs a second approver");
+            assertEquals("requested", grant.get("status"));
+            UUID grantId = UUID.fromString((String) grant.get("id"));
+            assertError(409, "support.expired", () -> platform.startSupportSession(superAdmin, grantId));
+            assertError(409, "request.refused", () -> platform.decideGrant(superAdmin, grantId, "approve"));
+            platform.decideGrant(second, grantId, "approve");
+            assertEquals("support", auth.resolve(platform.startSupportSession(superAdmin, grantId)).kind());
+            // A grant belongs to its requester.
+            assertError(409, "support.expired", () -> platform.startSupportSession(second, grantId));
+        } finally {
+            Map<String, Object> row = platform.platformUsers(superAdmin).stream()
+                    .filter(u -> u.get("email").equals(email)).findFirst().orElseThrow();
+            platform.setPlatformUserStatus(superAdmin, UUID.fromString((String) row.get("id")), false);
+        }
+    }
+
+    @Test
+    void platformRolesAreChecked() {
+        Org org = newOrg();
+        assertError(403, "permission.denied", () -> platform.organizations(org.admin));
+        assertError(403, "permission.denied", () -> platform.createOrganization(org.admin, "X", "xxx", "a@b.test"));
+        assertError(409, "request.refused", () -> platform.setPlatformUserStatus(superAdmin, superAdmin.platformUserId(), false));
+        assertError(409, "tenant.slug_taken", () -> platform.createOrganization(superAdmin, "Copy", org.slug, "a@b.test"));
+        assertError(400, "request.invalid", () -> platform.createOrganization(superAdmin, "Bad", "Not A Slug", "a@b.test"));
+    }
+
+    // ── helpers ─────────────────────────────────────────────────────────
+
+    /** An Organization with its first Org Admin signed in. */
+    // ── what an Organization has bought ─────────────────────────────────
+
+    @Test
+    void anOrganizationHasTheModulesItBoughtUntilATrialEnds() {
+        java.time.LocalDate today = java.time.LocalDate.now(java.time.ZoneId.of("Asia/Kolkata"));
+        // Created without saying: everything, as Organizations made before modules existed.
+        Org all = newOrg();
+        assertEquals(java.util.Set.of("attendance", "leave", "payroll", "expenses"), all.admin().modules());
+
+        String slug = "mod-" + SEQUENCE.incrementAndGet();
+        Map<String, Object> created = platform.createOrganization(superAdmin, "Payroll only " + slug, slug,
+                "admin@" + slug + ".test", List.of("payroll"));
+        UUID id = UUID.fromString((String) created.get("id"));
+        String token = invitations.accept((String) created.get("invitationToken"), PASSWORD, null);
+        SessionCtx admin = auth.resolve(token);
+        assertTrue(admin.hasModule("payroll"));
+        assertFalse(admin.hasModule("attendance"));
+        assertEquals(List.of("payroll"), auth.me(admin).get("modules"));
+        assertFalse(superAdmin.hasModule("payroll"), "the console is in no Organization");
+
+        Map<String, Object> row = platform.organizations(superAdmin).stream()
+                .filter(o -> o.get("id").equals(id.toString())).findFirst().orElseThrow();
+        List<?> modules = (List<?>) row.get("modules");
+        assertEquals(List.of("attendance", "leave", "payroll", "expenses"), modules.stream().map(m -> ((Map<?, ?>) m).get("module")).toList());
+        assertEquals("off", ((Map<?, ?>) modules.get(0)).get("status"));
+        assertEquals("off", ((Map<?, ?>) modules.get(1)).get("status"));
+        assertEquals("on", ((Map<?, ?>) modules.get(2)).get("status"));
+
+        // A trial of Attendance: on until the day it ends, then off without anyone touching it.
+        platform.setModule(superAdmin, id, "attendance", true, today.plusDays(14).toString());
+        assertTrue(auth.resolve(token).hasModule("attendance"));
+        db.inOwner(c -> Sql.update(c, "update platform.tenant_module set trial_ends_on = ? where tenant_id = ? and module = 'attendance'",
+                today.minusDays(1), id));
+        assertFalse(auth.resolve(token).hasModule("attendance"));
+        assertEquals(false, ((Map<?, ?>) ((List<?>) platform.organizations(superAdmin).stream()
+                .filter(o -> o.get("id").equals(id.toString())).findFirst().orElseThrow().get("modules")).get(0)).get("active"));
+
+        // Off and on again.
+        platform.setModule(superAdmin, id, "payroll", false, null);
+        assertFalse(auth.resolve(token).hasModule("payroll"));
+        platform.setModule(superAdmin, id, "payroll", true, null);
+        assertTrue(auth.resolve(token).hasModule("payroll"));
+
+        assertError(400, "request.invalid", () -> platform.setModule(superAdmin, id, "chess", true, null));
+        assertError(400, "request.invalid", () -> platform.setModule(superAdmin, id, "attendance", true, today.minusDays(1).toString()));
+        assertError(400, "request.invalid", () -> platform.setModule(superAdmin, id, "attendance", true, today.plusYears(2).toString()));
+        assertError(400, "request.invalid", () -> platform.setModule(superAdmin, id, "attendance", true, "next week"));
+        assertError(404, "not_found", () -> platform.setModule(superAdmin, UUID.randomUUID(), "payroll", true, null));
+        assertError(403, "permission.denied", () -> platform.setModule(admin, id, "attendance", true, null));
+        assertError(400, "request.invalid", () -> platform.createOrganization(superAdmin, "Bad", "bad-" + slug,
+                "a@bad-" + slug + ".test", List.of("chess")));
+        List<String> actions = db.inOwner(c -> Sql.query(c, "select action from platform.platform_audit where target_id = ?", id))
+                .stream().map(r -> (String) r.get("action")).toList();
+        assertTrue(actions.containsAll(List.of("tenant.created", "tenant.module_on", "tenant.module_off")), actions.toString());
+    }
+
+    @Test
+    void leaveIsAModuleOfItsOwnApartFromAttendance() {
+        // The free plan: Core HR with Leave, and neither Attendance nor Payroll.
+        String slug = "leave-" + SEQUENCE.incrementAndGet();
+        Map<String, Object> created = platform.createOrganization(superAdmin, "Leave only " + slug, slug,
+                "admin@" + slug + ".test", List.of("leave"));
+        UUID id = UUID.fromString((String) created.get("id"));
+        String token = invitations.accept((String) created.get("invitationToken"), PASSWORD, null);
+        SessionCtx admin = auth.resolve(token);
+        assertTrue(admin.hasModule("leave"));
+        assertFalse(admin.hasModule("attendance"));
+        assertFalse(admin.hasModule("payroll"));
+        assertEquals(List.of("leave"), auth.me(admin).get("modules"));
+        List<?> subscription = (List<?>) auth.me(admin).get("subscription");
+        assertEquals(List.of("Attendance", "Leave", "Payroll", "Expenses"), subscription.stream().map(m -> ((Map<?, ?>) m).get("name")).toList());
+        assertEquals(true, ((Map<?, ?>) subscription.get(1)).get("active"));
+
+        // Switched on and off independently: Attendance does not bring Leave with it, nor take it away.
+        platform.setModule(superAdmin, id, "attendance", true, null);
+        assertTrue(auth.resolve(token).hasModule("attendance"));
+        platform.setModule(superAdmin, id, "leave", false, null);
+        SessionCtx now = auth.resolve(token);
+        assertTrue(now.hasModule("attendance"));
+        assertFalse(now.hasModule("leave"));
+        List<String> actions = db.inOwner(c -> Sql.query(c, "select action, detail::text as detail from platform.platform_audit "
+                + "where target_id = ? and action = 'tenant.module_off'", id)).stream().map(r -> (String) r.get("detail")).toList();
+        assertTrue(actions.stream().anyMatch(d -> d.contains("leave")), actions.toString());
+    }
+
+    @Test
+    void organizationsThatHadAttendanceBeforeTheSplitHaveLeaveForAsLong() {
+        // V19 gave every Organization Leave on the terms of its Attendance; the database says so for any that existed.
+        List<Map<String, Object>> mismatched = db.inOwner(c -> Sql.query(c,
+                "select a.tenant_id from platform.tenant_module a "
+                        + "left join platform.tenant_module l on l.tenant_id = a.tenant_id and l.module = 'leave' "
+                        + "where a.module = 'attendance' and l.tenant_id is null"));
+        assertEquals(List.of(), mismatched, "every Organization with an Attendance row has a Leave row");
+    }
+
+    private record Org(UUID id, String slug, String adminEmail, String adminToken, SessionCtx admin) {}
+
+    private static final Map<String, String> TOKENS = new java.util.concurrent.ConcurrentHashMap<>();
+
+    private static Org newOrg() {
+        String slug = "org-" + SEQUENCE.incrementAndGet();
+        String adminEmail = "admin@" + slug + ".test";
+        Map<String, Object> created = platform.createOrganization(superAdmin, "Org " + slug, slug, adminEmail);
+        assertEquals("provisioning", created.get("status"));
+        String token = invitations.accept((String) created.get("invitationToken"), PASSWORD, null);
+        return new Org(UUID.fromString((String) created.get("id")), slug, adminEmail, token, auth.resolve(token));
+    }
+
+    /** Invites name@slug.test with the roles, accepts, and returns the new user's session. */
+    private static SessionCtx join(Org org, String name, List<String> roles) {
+        String email = name + "@" + org.slug + ".test";
+        String invitation = (String) users.invite(org.admin, email, roles).get("token");
+        String token = invitations.accept(invitation, PASSWORD, null);
+        TOKENS.put(org.slug + "/" + name, token);
+        return auth.resolve(token);
+    }
+
+    private static String tokenOf(Org org, String name) {
+        return TOKENS.get(org.slug + "/" + name);
+    }
+
+    private static Map<String, Object> organization(Org org) {
+        return platform.organizations(superAdmin).stream()
+                .filter(o -> o.get("id").equals(org.id.toString())).findFirst().orElseThrow();
+    }
+
+    private static List<String> actions(Org org) {
+        return users.auditLog(org.admin).stream().map(e -> (String) e.get("action")).toList();
+    }
+
+    private static void assertError(int status, String code, org.junit.jupiter.api.function.Executable work) {
+        ApiException e = assertThrows(ApiException.class, work);
+        assertEquals(code, e.code(), e.getMessage());
+        assertEquals(status, e.status(), e.getMessage());
+    }
+
+    private static PGSimpleDataSource source(String url, String user, String password) {
+        PGSimpleDataSource ds = new PGSimpleDataSource();
+        ds.setUrl(url);
+        ds.setUser(user);
+        ds.setPassword(password);
+        return ds;
+    }
+
+    private static String env(String name, String fallback) {
+        String value = System.getenv(name);
+        return value == null || value.isBlank() ? fallback : value;
+    }
+}
