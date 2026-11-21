@@ -11,7 +11,7 @@
     <relativePath/>
   </parent>
 
-  <groupId>com.example</groupId>
+  <groupId>com.nexvance</groupId>
   <artifactId>login-app</artifactId>
   <version>0.0.1-SNAPSHOT</version>
   <name>login-app</name>
@@ -157,7 +157,7 @@
               </rule>
               <rule>
                 <element>CLASS</element>
-                <includes><include>com.example.loginapp.core.Formula</include></includes>
+                <includes><include>com.nexvance.loginapp.core.Formula</include></includes>
                 <limits>
                   <limit><counter>LINE</counter><value>COVEREDRATIO</value><minimum>0.58</minimum></limit>
                   <limit><counter>BRANCH</counter><value>COVEREDRATIO</value><minimum>0.39</minimum></limit>
@@ -165,7 +165,7 @@
               </rule>
               <rule>
                 <element>CLASS</element>
-                <includes><include>com.example.loginapp.core.PayrollConfig</include></includes>
+                <includes><include>com.nexvance.loginapp.core.PayrollConfig</include></includes>
                 <limits>
                   <limit><counter>LINE</counter><value>COVEREDRATIO</value><minimum>0.61</minimum></limit>
                   <limit><counter>BRANCH</counter><value>COVEREDRATIO</value><minimum>0.39</minimum></limit>
@@ -173,7 +173,7 @@
               </rule>
               <rule>
                 <element>CLASS</element>
-                <includes><include>com.example.loginapp.core.Payslips</include></includes>
+                <includes><include>com.nexvance.loginapp.core.Payslips</include></includes>
                 <limits>
                   <limit><counter>LINE</counter><value>COVEREDRATIO</value><minimum>0.32</minimum></limit>
                   <limit><counter>BRANCH</counter><value>COVEREDRATIO</value><minimum>0.16</minimum></limit>
@@ -181,7 +181,7 @@
               </rule>
               <rule>
                 <element>CLASS</element>
-                <includes><include>com.example.loginapp.core.PayrollRuns</include></includes>
+                <includes><include>com.nexvance.loginapp.core.PayrollRuns</include></includes>
                 <limits>
                   <limit><counter>LINE</counter><value>COVEREDRATIO</value><minimum>0.87</minimum></limit>
                   <limit><counter>BRANCH</counter><value>COVEREDRATIO</value><minimum>0.64</minimum></limit>
@@ -189,7 +189,7 @@
               </rule>
               <rule>
                 <element>CLASS</element>
-                <includes><include>com.example.loginapp.core.PayrollEngine</include></includes>
+                <includes><include>com.nexvance.loginapp.core.PayrollEngine</include></includes>
                 <limits>
                   <limit><counter>LINE</counter><value>COVEREDRATIO</value><minimum>0.89</minimum></limit>
                   <limit><counter>BRANCH</counter><value>COVEREDRATIO</value><minimum>0.70</minimum></limit>
@@ -197,7 +197,7 @@
               </rule>
               <rule>
                 <element>CLASS</element>
-                <includes><include>com.example.loginapp.core.ExitSettlement</include></includes>
+                <includes><include>com.nexvance.loginapp.core.ExitSettlement</include></includes>
                 <limits>
                   <limit><counter>LINE</counter><value>COVEREDRATIO</value><minimum>0.85</minimum></limit>
                   <limit><counter>BRANCH</counter><value>COVEREDRATIO</value><minimum>0.65</minimum></limit>
@@ -205,7 +205,7 @@
               </rule>
               <rule>
                 <element>CLASS</element>
-                <includes><include>com.example.loginapp.core.TaxDeclarations</include></includes>
+                <includes><include>com.nexvance.loginapp.core.TaxDeclarations</include></includes>
                 <limits>
                   <limit><counter>LINE</counter><value>COVEREDRATIO</value><minimum>0.93</minimum></limit>
                   <limit><counter>BRANCH</counter><value>COVEREDRATIO</value><minimum>0.77</minimum></limit>

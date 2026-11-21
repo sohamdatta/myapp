@@ -1,0 +1,133 @@
+package com.nexvance.loginapp.web;
+
+import java.io.IOException;
+import java.io.InputStream;
+import java.util.Map;
+
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+
+import com.nexvance.loginapp.core.ApiException;
+import com.nexvance.loginapp.core.SessionCtx;
+import com.nexvance.loginapp.core.AuthService;
+import com.nexvance.loginapp.core.DocumentService;
+import com.nexvance.loginapp.core.FileSniffer;
+
+/**
+ * Documents. An upload is the file itself as the request body (its type is
+ * read from its bytes, never from the header), with the file name and the
+ * document type in the query string. Files are sent back as attachments,
+ * never to be rendered by the browser as a page.
+ */
+@RestController
+@RequestMapping("/api/org")
+public class DocumentController {
+
+    public record Note(String note) {}
+
+    private final AuthService auth;
+    private final DocumentService documents;
+
+    public DocumentController(AuthService auth, DocumentService documents) {
+        this.auth = auth;
+        this.documents = documents;
+    }
+
+    @GetMapping("/onboarding/me/documents")
+    public Map<String, Object> mine(SessionCtx ctx) {
+        return documents.mine(ctx);
+    }
+
+    @PostMapping("/onboarding/me/documents")
+    public Map<String, Object> uploadMine(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                          @RequestParam(value = "type", required = false) String type,
+                                          @RequestParam(value = "name", required = false) String name, InputStream body) {
+        var ctx = Requests.session(auth, authorization);
+        return documents.uploadMine(ctx, type, name, read(body));
+    }
+
+    @GetMapping("/onboarding/me/documents/{id}/content")
+    public ResponseEntity<byte[]> myContent(SessionCtx ctx,
+                                            @PathVariable("id") String id) {
+        return file(documents.myContent(ctx, Requests.id(id)));
+    }
+
+    @GetMapping("/people/joiners/{id}/documents")
+    public Map<String, Object> forJoiner(SessionCtx ctx,
+                                         @PathVariable("id") String id) {
+        return documents.forJoiner(ctx, Requests.id(id));
+    }
+
+    @PostMapping("/people/joiners/{id}/documents")
+    public Map<String, Object> uploadForJoiner(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                               @PathVariable("id") String id,
+                                               @RequestParam(value = "type", required = false) String type,
+                                               @RequestParam(value = "name", required = false) String name, InputStream body) {
+        var ctx = Requests.session(auth, authorization);
+        return documents.uploadForJoiner(ctx, Requests.id(id), type, name, read(body));
+    }
+
+    @PostMapping("/people/joiners/{id}/documents/{documentId}/verify")
+    public Map<String, Object> verify(SessionCtx ctx,
+                                      @PathVariable("id") String id, @PathVariable("documentId") String documentId) {
+        return documents.verify(ctx, Requests.id(id), Requests.id(documentId));
+    }
+
+    @PostMapping("/people/joiners/{id}/documents/{documentId}/reject")
+    public Map<String, Object> reject(SessionCtx ctx,
+                                      @PathVariable("id") String id, @PathVariable("documentId") String documentId,
+                                      @RequestBody Note request) {
+        return documents.reject(ctx, Requests.id(id), Requests.id(documentId), request.note());
+    }
+
+    @GetMapping("/people/documents/{id}/content")
+    public ResponseEntity<byte[]> content(SessionCtx ctx,
+                                          @PathVariable("id") String id) {
+        return file(documents.content(ctx, Requests.id(id)));
+    }
+
+    private static final java.util.concurrent.Semaphore UPLOADS = new java.util.concurrent.Semaphore(8);
+
+    /** Reads at most one byte more than allowed, so an oversized upload is refused without reading it all. */
+    static byte[] read(InputStream body) {
+        // Each upload being read holds up to 10 MB, and requests run on virtual threads, so only a few are read at once.
+        try {
+            if (!UPLOADS.tryAcquire(10, java.util.concurrent.TimeUnit.SECONDS)) {
+                throw new ApiException(503, "upload.busy", "Too many files are being uploaded right now. Try again in a moment");
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw ApiException.badRequest("The upload was interrupted. Try again");
+        }
+        try {
+            byte[] bytes = body == null ? new byte[0] : body.readNBytes(FileSniffer.MAX_BYTES + 1);
+            if (bytes.length > FileSniffer.MAX_BYTES) {
+                throw new ApiException(413, "document.too_large", "The file is larger than 10 MB. Send a smaller photo or a PDF");
+            }
+            return bytes;
+        } catch (IOException e) {
+            throw ApiException.badRequest("The upload was interrupted. Try again");
+        } finally {
+            UPLOADS.release();
+        }
+    }
+
+    static ResponseEntity<byte[]> file(DocumentService.Content content) {
+        HttpHeaders headers = new HttpHeaders();
+        headers.set(HttpHeaders.CONTENT_TYPE, content.contentType());
+        // The name was made safe on upload: letters, digits, spaces, dots, dashes and underscores only.
+        headers.set("Content-Disposition", "attachment; filename=\"" + content.fileName() + "\"");
+        headers.set("X-Content-Type-Options", "nosniff");
+        headers.set("Cache-Control", "no-store");
+        return new ResponseEntity<>(content.bytes(), headers, HttpStatus.OK);
+    }
+}
