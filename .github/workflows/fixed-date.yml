@@ -30,7 +30,7 @@ jobs:
   fixed-date:
     name: Tests on ${{ matrix.day.name }}
     runs-on: ubuntu-24.04
-    timeout-minutes: 90   # libfaketime makes the JVM's clock calls slower; the backend tests take 3-5x as long
+    timeout-minutes: 150  # libfaketime makes the JVM's clock calls slower; the backend tests take 3-5x as long
     strategy:
       fail-fast: false
       matrix:

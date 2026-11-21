@@ -157,11 +157,6 @@ class TaxCertificatesTest {
     }
 
     /** Calculates and approves a month; with {@code finish} it is also paid and released, which the next month's run waits for. */
-    private BigDecimal tdsOf(UUID run) throws Exception {
-        return db.inOwner(c -> new BigDecimal(String.valueOf(Sql.one(c, "select coalesce(sum(l.amount), 0) as t from app.payslip_line l "
-                + "join app.payslip ps on ps.id = l.payslip_id where ps.run_id = ? and l.code = 'TDS'", run).get("t"))));
-    }
-
     private UUID approve(Case k, LocalDate period, boolean finish) throws Exception {
         String group = (String) ((Map<?, ?>) ((List<?>) runs.list(k.operator).get("groups")).get(0)).get("id");
         UUID run = UUID.fromString((String) runs.open(k.operator, UUID.fromString(group), period.toString()).get("id"));
@@ -182,6 +177,12 @@ class TaxCertificatesTest {
             }
         }
         return run;
+    }
+
+    /** The tax deducted in a run, across all its payslips. */
+    private BigDecimal tdsOf(UUID run) throws Exception {
+        return db.inOwner(c -> new BigDecimal(String.valueOf(Sql.one(c, "select coalesce(sum(l.amount), 0) as t from app.payslip_line l "
+                + "join app.payslip ps on ps.id = l.payslip_id where ps.run_id = ? and l.code = 'TDS'", run).get("t"))));
     }
 
     /** The last tax projection on a person's payslips for the year, and the sum of their taxable pay and TDS. */
@@ -305,7 +306,7 @@ class TaxCertificatesTest {
                 MARCH.toString().substring(0, 7), "company", "200", "6360001", "00001", MARCH.plusMonths(1).plusDays(3).toString(), deducted,
                 null, null, null, null, List.of(march.toString())));
         challans.approve(k.org.admin, UUID.fromString(challan.id()));
-        // On a date in January to March the current month is in this quarter too, and its tax needs a challan of its own
+        // In January and February the current month (not March) is in this quarter too, and its tax needs a challan of its own
         // (a missing challan is a check that cannot be accepted).
         if (current != null && tdsOf(current).signum() > 0) {
             LocalDate month = TODAY.withDayOfMonth(1);
