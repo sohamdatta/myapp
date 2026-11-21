@@ -20,6 +20,8 @@ test.describe('attendance test cases, part 3', () => {
     await expect(hr.locator('tr', { hasText: 'Pia' }).first()).toContainText(/half day|marked by hand/i);
     d = await open();
     await d.getByLabel('Mark the day').selectOption({ label: 'Present (take back the mark)' }); await d.getByLabel('Reason').nth(await d.getByLabel('Reason').count() - 1).fill('Marked in error'); await d.getByRole('button', { name: 'Save mark' }).click();
+    // The save runs in the background: wait until the half day is gone before reading the answer.
+    await expect.poll(async () => ((await api(hr, 'GET', `/org/attendance/days?date=${isoDay(0)}`)).body as any[]).find((x) => x.membershipId === ids['e6@acme.test']).mark, { timeout: 10_000 }).not.toBe('half_day');
     const after = await api(hr, 'GET', `/org/attendance/days?date=${isoDay(0)}`); const r = (after.body as any[]).find((x) => x.membershipId === ids['e6@acme.test']);
     expect(['present', null], JSON.stringify(r)).toContain(r.mark);
   });
