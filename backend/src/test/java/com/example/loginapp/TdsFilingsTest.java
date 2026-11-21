@@ -340,15 +340,23 @@ class TdsFilingsTest {
     // ── other employers (Form 122, Part B) ──────────────────────────────
 
     private static OtherEmployerIncome.Input previous() {
-        // The tax year of the run, not of today: on a date in March next month is April, the next tax year.
-        return new OtherEmployerIncome.Input(taxYear(TODAY.withDayOfMonth(1).plusMonths(1)), "Old Co Pvt Ltd", "ABCD12345E", 6, new BigDecimal("6000000"), new BigDecimal("80000"),
+        return previous(null);
+    }
+
+    /** The earlier salary for the tax year of the run (next month): on a date in March that is April, the next tax year. */
+    private static OtherEmployerIncome.Input previousForRun() {
+        return previous(taxYear(TODAY.withDayOfMonth(1).plusMonths(1)));
+    }
+
+    private static OtherEmployerIncome.Input previous(String taxYear) {
+        return new OtherEmployerIncome.Input(taxYear, "Old Co Pvt Ltd", "ABCD12345E", 6, new BigDecimal("6000000"), new BigDecimal("80000"),
                 new BigDecimal("2400"), new BigDecimal("500000"));
     }
 
     @Test
     void salaryFromAPreviousEmployerRaisesTheTaxLeftToDeductAndUsesUpTheProfessionalTaxCeiling() throws Exception {
         assumeTrue(reachable, "PostgreSQL is not reachable");
-        Month m = approvedMonth((org, a, v, ashaId, vikramId) -> other.add(a, previous()));
+        Month m = approvedMonth((org, a, v, ashaId, vikramId) -> other.add(a, previousForRun()));
         BigDecimal withOther = lineAmount(runs.employee(m.operator, m.run, m.asha), "TDS");
         BigDecimal without = lineAmount(runs.employee(m.operator, m.run, m.vikram), "TDS");
         assertTrue(withOther.compareTo(without) != 0, "the earlier salary must change the tax left: " + withOther + " vs " + without);
@@ -364,14 +372,14 @@ class TdsFilingsTest {
     void aReturnedEntryCountsForNothingAndAnAcceptedOneCounts() throws Exception {
         assumeTrue(reachable, "PostgreSQL is not reachable");
         Month returned = approvedMonth((org, a, v, ashaId, vikramId) -> {
-            OtherEmployerIncome.Entry e = other.add(a, previous());
+            OtherEmployerIncome.Entry e = other.add(a, previousForRun());
             other.returnEntry(org.admin, UUID.fromString(e.id()), "Attach the Form 16 from Old Co", e.updatedAt());
         });
         assertEquals(0, lineAmount(runs.employee(returned.operator, returned.run, returned.asha), "TDS")
                 .compareTo(lineAmount(runs.employee(returned.operator, returned.run, returned.vikram), "TDS")));
 
         Month accepted = approvedMonth((org, a, v, ashaId, vikramId) -> {
-            OtherEmployerIncome.Entry e = other.add(a, previous());
+            OtherEmployerIncome.Entry e = other.add(a, previousForRun());
             other.accept(org.admin, UUID.fromString(e.id()), e.updatedAt());
         });
         assertTrue(lineAmount(runs.employee(accepted.operator, accepted.run, accepted.asha), "TDS")
