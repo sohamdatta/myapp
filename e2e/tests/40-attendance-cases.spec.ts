@@ -171,6 +171,8 @@ test.describe('attendance test cases, part 1', () => {
     await expect(hr.getByRole('heading', { name: 'Change Two nets' })).toBeVisible();
     await expect(hr.locator('#loc-name')).toHaveValue('Two nets');
     await hr.fill('#loc-ips', '198.51.100.7'); await saveLoc(hr);
+    // The old value ("203.0.113.0/24, 198.51.100.7") contains the new one, so wait for the first network to go.
+    await expect(hr.locator('tr', { hasText: 'Two nets' })).not.toContainText('203.0.113.0/24');
     await expect(hr.locator('tr', { hasText: 'Two nets' })).toContainText('198.51.100.7');
     await hr.locator('tr', { hasText: 'Two nets' }).getByRole('button', { name: 'Change', exact: true }).click();
     // The form fills itself in after it opens; untick only once it shows this location, or the fill ticks it again.
