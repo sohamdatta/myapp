@@ -40,6 +40,7 @@ import com.example.loginapp.core.Sql;
 import com.example.loginapp.core.Totp;
 import com.example.loginapp.core.UserService;
 import com.example.loginapp.web.AuthController;
+import com.example.loginapp.web.OidcController;
 import com.example.loginapp.web.SignInPageController;
 
 /**
@@ -280,7 +281,9 @@ class SignInPageTest {
         assertEquals(old, pages.setSlug(acme.admin(), old, PUBLIC_URL).slug());
         assertError(409, "tenant.slug_held", () -> pages.setSlug(other.admin(), fresh, PUBLIC_URL));
 
-        // After 90 days it is free again.
+        // Still held a day before the 90 are up, free a day after.
+        db.inOwner(c -> Sql.update(c, "update platform.retired_slug set retired_at = now() - interval '89 days' where slug = ?", fresh));
+        assertError(409, "tenant.slug_held", () -> pages.setSlug(other.admin(), fresh, PUBLIC_URL));
         db.inOwner(c -> Sql.update(c, "update platform.retired_slug set retired_at = now() - interval '91 days' where slug = ?", fresh));
         assertEquals(fresh, pages.setSlug(other.admin(), fresh, PUBLIC_URL).slug());
     }
@@ -302,6 +305,48 @@ class SignInPageTest {
     }
 
     // ── the same rules, through the endpoints with a real Host header ─────
+
+    @Test
+    void aGoogleSignInIsHeldToTheOrganizationsPageToo() {
+        Org acme = organization();
+        Org other = organization();
+        String acmeHost = acme.slug() + ".hr.example.test";
+        OidcController google = new OidcController(null, null, null, auth, pages, false, PUBLIC_URL);
+
+        // A login of another Organization is refused on Acme's address and its session ends; a member's goes through.
+        String outsider = auth.login(other.hr().email(), PASSWORD);
+        assertEquals("signin.not_member", assertThrows(ApiException.class,
+                () -> google.signedIn(new AuthService.SignIn(outsider, false), request(acmeHost, true))).code());
+        assertThrows(ApiException.class, () -> auth.resolve(outsider), "the refused session is ended");
+        String member = auth.login(acme.hr().email(), PASSWORD);
+        assertNotNull(((java.util.Map<?, ?>) google.signedIn(new AuthService.SignIn(member, false), request(acmeHost, true)).getBody()).get("token"));
+
+        // On the shared address anyone signs in, and a login that still needs its code is held to the page when the code is given.
+        String anyone = auth.login(other.hr().email(), PASSWORD);
+        assertNotNull(((java.util.Map<?, ?>) google.signedIn(new AuthService.SignIn(anyone, false), request("hr.example.test", true)).getBody()).get("token"));
+        assertEquals(200, google.signedIn(new AuthService.SignIn("challenge", true), request(acmeHost, true)).getStatusCode().value());
+    }
+
+    @Test
+    void aMadeUpHostOnlyPicksWhichPagesRulesApply() {
+        Org acme = organization();
+        Org other = organization();
+        String acmeHost = acme.slug() + ".hr.example.test";
+
+        // Sent straight to the server, with no proxy replacing the header: a browser can name any host it likes.
+        MockHttpServletRequest spoofed = new MockHttpServletRequest();
+        spoofed.setRemoteAddr("10.0.0.9");
+        spoofed.addHeader("Host", acmeHost);
+        spoofed.addHeader("X-Forwarded-Host", "hr.example.test");
+        // It gets the shared page's rules: what the shared address gives anyone with the right password, nothing more.
+        assertNotNull(controller.login(new AuthController.LoginRequest(other.hr().email(), PASSWORD), spoofed).get("token"));
+        String identity = (String) controller.login(new AuthController.LoginRequest(other.hr().email(), PASSWORD), spoofed).get("token");
+        // ... and entering Acme itself still needs membership of it, whatever host is named.
+        assertThrows(ApiException.class, () -> controller.enter("Bearer " + identity, new AuthController.EnterRequest(acme.id().toString(), null), spoofed));
+        // Naming Acme's host does not let an outsider in either.
+        assertEquals("signin.not_member", assertThrows(ApiException.class,
+                () -> controller.login(new AuthController.LoginRequest(other.hr().email(), PASSWORD), request(acmeHost, true))).code());
+    }
 
     private static MockHttpServletRequest request(String host, boolean forwarded) {
         MockHttpServletRequest http = new MockHttpServletRequest();
