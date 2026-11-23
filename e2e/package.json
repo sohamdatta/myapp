@@ -10,10 +10,10 @@
   },
   "devDependencies": {
     "@axe-core/playwright": "4.14.0",
-    "@playwright/test": "1.65.0",
+    "@playwright/test": "1.65.1",
     "@types/node": "^26.6.6",
-    "mailparser": "^3.14.3",
+    "mailparser": "^3.14.5",
     "monocart-coverage-reports": "^3.2.1",
-    "smtp-server": "^3.21.4"
+    "smtp-server": "^3.21.6"
   }
 }
